@@ -136,8 +136,8 @@ export function SelectableList({
                 onKeyDown={handleKeyDown}
                 className={cn(
                   "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  "disabled:pointer-events-none disabled:opacity-50",
+                  "focus-ring",
+                  "disabled:pointer-events-none disabled:text-neutral-6",
                   selected
                     ? "bg-muted font-medium text-foreground"
                     : "text-foreground hover:bg-muted/50",

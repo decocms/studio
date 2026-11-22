@@ -42,7 +42,7 @@ export function ToolbarIconButton({
       variant="ghost"
       size="icon-sm"
       className={cn(
-        "relative size-10 md:size-7",
+        "relative md:",
         "max-md:[&_svg:not([class*='size-'])]:size-5",
         panelButtonChrome(active),
         className,

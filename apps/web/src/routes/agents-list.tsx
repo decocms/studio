@@ -7,6 +7,7 @@ import {
   useVirtualMCPsLastUsed,
 } from "@/sdk";
 import { Page } from "@/components/page";
+import { SettingsPage } from "@/components/settings/settings-section";
 import { ProjectCard } from "@/components/project-card";
 import { useCapability } from "@/hooks/use-capability";
 import { useIsDecoStaff } from "@/hooks/use-organization-settings";
@@ -116,7 +117,7 @@ export default function AgentsListPage() {
     <Page>
       <Page.Content>
         <Page.Container>
-          <div className="flex flex-col gap-6">
+          <SettingsPage className="gap-6">
             <Page.Title actions={createAction}>
               {t("routes.agentsList.title")}
             </Page.Title>
@@ -134,15 +135,11 @@ export default function AgentsListPage() {
                 }}
               />
             </div>
-          </div>
 
-          {filteredAgents.length === 0 && (
-            <div className="flex items-center justify-center py-20">
+            {filteredAgents.length === 0 && (
               <EmptyState
                 actions={false}
-                image={
-                  <FolderClosed size={48} className="text-muted-foreground" />
-                }
+                image={<FolderClosed />}
                 title={
                   search
                     ? t("routes.agentsList.noAgentsFound")
@@ -156,34 +153,31 @@ export default function AgentsListPage() {
                       : t("routes.agentsList.askAdminToCreate")
                 }
               />
-            </div>
-          )}
+            )}
 
-          {filteredAgents.length > 0 && (
-            <div className="mt-6 @container">
-              <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                {t("routes.agentsList.agentsHeading")}
-              </h3>
-              <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
-                {filteredAgents.map((agent) => (
-                  <ProjectCard
-                    key={agent.id}
-                    project={agent}
-                    lastUsedAt={lastUsedMap?.get(agent.id)?.last_used_at}
-                    onDeleteClick={
-                      canManageAgents
-                        ? () =>
-                            setDeleteTarget({
-                              id: agent.id,
-                              title: agent.title,
-                            })
-                        : undefined
-                    }
-                  />
-                ))}
+            {filteredAgents.length > 0 && (
+              <div className="@container">
+                <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
+                  {filteredAgents.map((agent) => (
+                    <ProjectCard
+                      key={agent.id}
+                      project={agent}
+                      lastUsedAt={lastUsedMap?.get(agent.id)?.last_used_at}
+                      onDeleteClick={
+                        canManageAgents
+                          ? () =>
+                              setDeleteTarget({
+                                id: agent.id,
+                                title: agent.title,
+                              })
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </SettingsPage>
         </Page.Container>
       </Page.Content>
 

@@ -7,7 +7,7 @@ export const layoutTour = {
     "Organizações e projetos agora dividem este mesmo controle. Busque nele para ir direto a qualquer projeto, inclusive os das suas outras organizações.",
   "layoutTour.nav.title": "A navegação agora fica aqui",
   "layoutTour.nav.description":
-    "Tudo o que antes estava espalhado pelo app está neste único painel — seus destinos, o projeto que você tem aberto e sua conta no rodapé. Seja o que for que você procura, comece por aqui.",
+    "Tudo o que antes estava espalhado pelo app está neste único painel, seus destinos, o projeto que você tem aberto e sua conta no rodapé. Seja o que for que você procura, comece por aqui.",
   "layoutTour.tasks.title": "Acompanhe o trabalho em Tarefas",
   "layoutTour.tasks.description":
     "Cada trabalho que seus projetos assumem aparece aqui como uma tarefa, então você acompanha e direciona tudo em um quadro só, em vez de conversa por conversa.",
@@ -18,7 +18,7 @@ export const layoutTour = {
   // ---- Home da organização.
   "layoutTour.projects.title": "Todo projeto, na barra lateral",
   "layoutTour.projects.description":
-    "Todo projeto que seu time construiu está listado aqui — escolha um para ir direto ao trabalho dele, ou importe um repositório para adicionar outro.",
+    "Todo projeto que seu time construiu está listado aqui, escolha um para ir direto ao trabalho dele, ou importe um repositório para adicionar outro.",
   "layoutTour.recentActivity.title": "Veja o que esteve rodando",
   "layoutTour.recentActivity.description":
     "As tarefas mais recentes em que seus projetos trabalharam, das mais novas para as mais antigas, para você continuar de onde o time parou.",
@@ -38,7 +38,7 @@ export const layoutTour = {
     "Automações rodam este projeto por gatilho ou agendamento, então o trabalho recorrente acontece sem ninguém precisar iniciar.",
   "layoutTour.settings.title": "Uma linha de Configurações, dois destinos",
   "layoutTour.settings.description":
-    "Com um projeto em escopo, ela abre as configurações dele — conexões, modelos e layout. Sem nenhum projeto em escopo, abre as da organização: membros, cobrança e como seu time se conecta ao Studio.",
+    "Com um projeto em escopo, ela abre as configurações dele, conexões, modelos e layout. Sem nenhum projeto em escopo, abre as da organização: membros, cobrança e como seu time se conecta ao Studio.",
 
   // ---- Chrome.
   "layoutTour.next": "Avançar",

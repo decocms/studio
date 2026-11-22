@@ -335,17 +335,18 @@ export const TASK_TYPE_CONFIG: Record<
     icon: Settings01,
     iconClassName: "text-muted-foreground",
   },
+  // Darkened lime: amber and blue are taken by High and Medium priority.
   spike: {
     labelKey: "taskBoard.config.typeSpike",
     icon: Lightbulb02,
-    iconClassName: "text-yellow-500",
+    iconClassName:
+      "text-[color-mix(in_srgb,var(--chart-2)_60%,var(--foreground))]",
   },
-  // Purple, vacated by spike: security can't take amber without reading as the
-  // High priority arrow two glyphs to its right, and red is the bug's.
+  // Magenta: amber reads as High priority and red is the bug's.
   security: {
     labelKey: "taskBoard.config.typeSecurity",
     icon: Shield01,
-    iconClassName: "text-purple-500",
+    iconClassName: "text-special",
   },
 };
 
@@ -471,10 +472,10 @@ export const PRIORITY_CONFIG: Record<
   },
   medium: {
     labelKey: "taskBoard.config.priorityMedium",
-    flagClassName: "text-blue-500",
-    dotClassName: "bg-blue-500",
+    flagClassName: "text-notice",
+    dotClassName: "bg-notice",
     icon: Equal,
-    iconClassName: "text-blue-500",
+    iconClassName: "text-notice",
   },
   high: {
     labelKey: "taskBoard.config.priorityHigh",

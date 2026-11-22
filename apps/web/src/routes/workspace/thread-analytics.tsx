@@ -327,7 +327,7 @@ function LiveThreadSheet({
             <Suspense
               fallback={
                 <SheetHeader className="shrink-0 border-b border-border px-5 pb-5 pt-6 md:px-6">
-                  <SheetTitle className="truncate text-sm leading-snug">
+                  <SheetTitle className="truncate">
                     {thread.title || t("thread.analytics.untitled")}
                   </SheetTitle>
                 </SheetHeader>
@@ -416,9 +416,6 @@ export default function ThreadAnalyticsRoute() {
       <div className="flex h-full min-h-0 flex-col overflow-auto">
         <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 py-6 sm:px-8 sm:py-8">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-medium text-foreground">
-              {t("thread.analytics.title")}
-            </h1>
             <div className="ml-auto flex items-center gap-2">
               <Combobox
                 options={orgOptions}

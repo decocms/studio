@@ -190,9 +190,9 @@ function FlipToBackgroundButton({ onFlip }: { onFlip: () => Promise<void> }) {
         }
       }}
       className={cn(
-        "shrink-0 text-[12px] text-muted-foreground/70 px-2 py-1 rounded-lg transition-colors",
+        "shrink-0 text-xs text-muted-foreground/70 px-2 py-1 rounded-lg transition-colors",
         "[@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent/40",
-        "disabled:opacity-50",
+        "disabled:text-neutral-6",
       )}
     >
       {pending
@@ -265,7 +265,7 @@ function SubtaskCard({
           </div>
           <span
             className={cn(
-              "shrink-0 text-[14px] font-normal",
+              "shrink-0 text-s font-normal",
               isError ? "text-warning/80" : "text-foreground",
             )}
           >
@@ -273,7 +273,7 @@ function SubtaskCard({
           </span>
           {summary ? (
             <span className="min-w-0 flex-1 truncate">
-              <span className="text-[12px] text-muted-foreground/60 bg-muted/50 rounded-[3px] px-1 py-px leading-none">
+              <span className="text-xs text-muted-foreground/60 bg-muted/50 rounded-xs px-1 py-px leading-none">
                 {summary}
               </span>
             </span>
@@ -295,7 +295,7 @@ function SubtaskCard({
           className="w-full sm:max-w-2xl flex flex-col p-0 gap-0"
         >
           <SheetHeader className="px-4 py-3 border-b border-border shrink-0">
-            <SheetTitle className="flex items-center gap-2 text-sm font-medium">
+            <SheetTitle className="flex items-center gap-2">
               <span className="flex items-center [&>svg]:size-4 [&>svg]:text-muted-foreground/75">
                 {icon}
               </span>
@@ -326,7 +326,7 @@ function SubtaskResultBody({ part }: { part: SubtaskToolPart }) {
         <h3 className="text-xs font-medium text-muted-foreground/70 mb-1.5">
           {t("chat.subtask.taskLabel")}
         </h3>
-        <p className="text-[13px] text-foreground/90 whitespace-pre-wrap wrap-break-word">
+        <p className="text-s text-foreground/90 whitespace-pre-wrap wrap-break-word">
           {prompt}
         </p>
       </section>
@@ -339,7 +339,7 @@ function SubtaskResultBody({ part }: { part: SubtaskToolPart }) {
         {response.trim() ? (
           <MemoizedMarkdown id={`${part.toolCallId}-result`} text={response} />
         ) : (
-          <p className="text-[13px] text-muted-foreground/60 italic">
+          <p className="text-s text-muted-foreground/60 italic">
             {t("chat.subtask.running")}
           </p>
         )}
@@ -402,13 +402,13 @@ function BackgroundSubtaskBody({
         <h3 className="text-xs font-medium text-muted-foreground/70 mb-1.5">
           {t("chat.subtask.taskLabel")}
         </h3>
-        <p className="text-[13px] text-foreground/90 whitespace-pre-wrap wrap-break-word">
+        <p className="text-s text-foreground/90 whitespace-pre-wrap wrap-break-word">
           {prompt}
         </p>
       </section>
       <section className="flex flex-col gap-3 sm:gap-2">
         {items.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground/60 italic py-1">
+          <p className="text-s text-muted-foreground/60 italic py-1">
             {t("chat.subtask.runningInBackground")}
           </p>
         ) : (

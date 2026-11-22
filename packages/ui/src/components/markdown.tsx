@@ -16,22 +16,34 @@ import remarkGfm from "remark-gfm";
 
 export const markdownComponents: Components = {
   h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h1 {...props} className="text-2xl font-bold mt-6 mb-3 first:mt-0" />
+    <h1
+      {...props}
+      className="text-l font-heavy mt-(--space-l) mb-(--space-s) first:mt-0"
+    />
   ),
   h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h2 {...props} className="text-xl font-semibold mt-5 mb-2 first:mt-0" />
+    <h2
+      {...props}
+      className="text-l font-medium mt-(--space-l) mb-(--space-xs) first:mt-0"
+    />
   ),
   h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h3 {...props} className="text-lg font-semibold mt-4 mb-2 first:mt-0" />
+    <h3
+      {...props}
+      className="text-s font-heavy mt-(--space-m) mb-(--space-xs) first:mt-0"
+    />
   ),
   h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h4 {...props} className="text-base font-semibold mt-3 mb-1 first:mt-0" />
+    <h4
+      {...props}
+      className="text-s font-medium mt-(--space-s) mb-(--space-xxs) first:mt-0"
+    />
   ),
   p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
-    <p {...props} className="leading-relaxed text-[14px] mb-2 last:mb-0" />
+    <p {...props} className="text-s font-regular mb-(--space-xs) last:mb-0" />
   ),
   strong: (props: React.HTMLAttributes<HTMLElement>) => (
-    <strong {...props} className="font-bold" />
+    <strong {...props} className="font-heavy" />
   ),
   em: (props: React.HTMLAttributes<HTMLElement>) => (
     <em {...props} className="italic" />
@@ -41,46 +53,52 @@ export const markdownComponents: Components = {
       {...props}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-primary-dark hover:underline break-all font-medium"
+      className="text-foreground hover:underline break-all font-medium"
     />
   ),
   ul: (props: React.HTMLAttributes<HTMLUListElement>) => (
-    <ul {...props} className="list-disc ml-6 my-3 space-y-1.5" />
+    <ul
+      {...props}
+      className="list-disc ml-(--space-l) my-(--space-s) space-y-(--space-xxs)"
+    />
   ),
   ol: (props: React.HTMLAttributes<HTMLOListElement>) => (
-    <ol {...props} className="list-decimal ml-6 my-3 space-y-1.5" />
+    <ol
+      {...props}
+      className="list-decimal ml-(--space-l) my-(--space-s) space-y-(--space-xxs)"
+    />
   ),
   li: (props: React.HTMLAttributes<HTMLLIElement>) => (
-    <li {...props} className="leading-relaxed text-[14px]" />
+    <li {...props} className="text-s font-regular" />
   ),
   blockquote: (props: React.HTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
       {...props}
-      className="border-l-4 border-border pl-4 my-3 text-muted-foreground italic"
+      className="border-l-4 border-border pl-(--space-m) my-(--space-s) text-muted-foreground italic"
     />
   ),
   hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
-    <hr {...props} className="my-4 border-border" />
+    <hr {...props} className="my-(--space-m) border-border" />
   ),
   code: (props: React.HTMLAttributes<HTMLElement>) => (
     <code
       {...props}
-      className="px-1 py-0.5 bg-background border border-border rounded text-[14px] font-mono break-all"
+      className="px-(--space-xxs) py-0.5 bg-muted rounded-xs text-s font-mono break-all"
     />
   ),
   pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
     <pre
       {...props}
-      className="flex w-full min-w-0 my-4 bg-background rounded-lg border border-border overflow-hidden"
+      className="surface-inset flex w-full min-w-0 my-(--space-m) overflow-hidden"
     >
-      <code className="flex-1 min-w-0 p-4 text-[14px] font-mono whitespace-pre overflow-x-auto">
+      <code className="flex-1 min-w-0 p-(--space-m) text-s font-mono whitespace-pre overflow-x-auto">
         {props.children}
       </code>
     </pre>
   ),
   table: (props: React.HTMLAttributes<HTMLTableElement>) => (
-    <div className="overflow-x-auto my-3 rounded-lg border border-border">
-      <table {...props} className="min-w-full border-collapse text-sm" />
+    <div className="overflow-x-auto my-(--space-s) rounded-(--radius-s) shadow-(--edge)">
+      <table {...props} className="min-w-full border-collapse text-s" />
     </div>
   ),
   thead: (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
@@ -91,17 +109,20 @@ export const markdownComponents: Components = {
   tr: (props: React.HTMLAttributes<HTMLTableRowElement>) => (
     <tr
       {...props}
-      className="even:bg-muted/50 border-b border-border last:border-0"
+      className="even:bg-neutral-3-transparent border-b border-border last:border-0"
     />
   ),
   th: (props: React.HTMLAttributes<HTMLTableCellElement>) => (
     <th
       {...props}
-      className="px-4 py-2 text-left font-semibold text-muted-foreground border-b border-border"
+      className="px-(--space-m) py-(--space-xs) text-left text-s font-medium text-muted-foreground border-b border-border"
     />
   ),
   td: (props: React.HTMLAttributes<HTMLTableCellElement>) => (
-    <td {...props} className="px-4 py-2 border-b border-border" />
+    <td
+      {...props}
+      className="px-(--space-m) py-(--space-xs) border-b border-border"
+    />
   ),
 };
 

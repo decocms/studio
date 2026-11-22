@@ -107,8 +107,8 @@ function CopyInline({ text }: { text: string }) {
   return (
     <Button
       variant="ghost"
-      size="icon"
-      className="size-7 shrink-0"
+      size="icon-sm"
+      className="shrink-0"
       onClick={() => handleCopy(text)}
       aria-label={t("settings.connectClients.copy")}
     >
@@ -138,7 +138,7 @@ function OAuthDiscovery({ url }: { url: string }) {
       <div className="mt-2 space-y-1 pl-[18px]">
         <p>{t("settings.connectClients.oauthMetadataHint")}</p>
         <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
-          <code className="flex-1 truncate font-mono text-[11px]">
+          <code className="flex-1 truncate font-mono text-xs">
             {metadataUrl}
           </code>
           <CopyInline text={metadataUrl} />
@@ -170,16 +170,15 @@ function ModeSelect({
     >
       <SelectTrigger
         size="sm"
-        className="text-xs"
         aria-label={t("settings.connectClients.installMethod")}
       >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="oauth" className="text-xs">
+        <SelectItem value="oauth">
           {t("settings.connectClients.oauthOption")}
         </SelectItem>
-        <SelectItem value="api-key" className="text-xs">
+        <SelectItem value="api-key">
           {t("settings.connectClients.apiKeyOption")}
         </SelectItem>
       </SelectContent>
@@ -232,12 +231,7 @@ function ClientPanel({
       {mode === "api-key" && canManageKeys && (
         <div>
           {showsKey ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearNewKey}
-              className="text-xs"
-            >
+            <Button variant="ghost" size="sm" onClick={onClearNewKey}>
               {t("settings.connectClients.doneHideKey")}
             </Button>
           ) : (
@@ -316,10 +310,7 @@ function OrgConnectContent() {
 
   return (
     <>
-      <SettingsSection
-        headerClassName="px-0"
-        title={t("settings.connectClients.connectAClient")}
-      >
+      <SettingsSection title={t("settings.connectClients.connectAClient")}>
         <Card className="gap-0 overflow-hidden p-0">
           <Tabs
             value={client}
@@ -330,7 +321,7 @@ function OrgConnectContent() {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1">
               <TabsList
                 variant="underline"
-                className="h-10 min-w-0 flex-1 gap-1 overflow-x-auto border-b-0"
+                className="h-10 min-w-0 flex-1 overflow-x-auto border-b-0"
               >
                 {CLIENTS.map(({ id, label, labelKey, Icon }) => (
                   <TabsTrigger
@@ -376,13 +367,13 @@ function OrgConnectContent() {
         </Card>
         {/* Outside the card: these describe the CHOICES above (method, and the
             Other client), not the snippet the card is showing. */}
-        <p className="text-xs leading-snug text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {mode === "oauth"
             ? t("settings.connectClients.oauthKeyHint")
             : t("settings.connectClients.headlessKeyHint")}
         </p>
         {client === "raw" && (
-          <p className="text-xs leading-snug text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t("settings.connectClients.anyOtherClientDescription")}
           </p>
         )}

@@ -174,13 +174,13 @@ function EditForm({
       className="space-y-3"
     >
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
+        <label className="text-s font-medium">
           {t("settings.editProviderDialog.label")}
         </label>
         <Input
           placeholder={t("settings.editProviderDialog.labelPlaceholder")}
           {...register("label")}
-          className="h-8 text-sm"
+          className="h-8"
         />
         {errors.label && (
           <p className="text-xs text-destructive">{errors.label.message}</p>
@@ -189,7 +189,7 @@ function EditForm({
 
       {isOpenAICompatible && !preset?.defaultBaseUrl && (
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">
+          <label className="text-s font-medium">
             {t("settings.editProviderDialog.baseUrl")}
           </label>
           <Input
@@ -199,14 +199,14 @@ function EditForm({
               t("settings.editProviderDialog.baseUrlPlaceholder")
             }
             {...register("baseUrl")}
-            className="h-8 text-sm"
+            className="h-8"
           />
         </div>
       )}
 
       {supportsApiKey && (
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">
+          <label className="text-s font-medium">
             {t("settings.editProviderDialog.apiKey")}{" "}
             <span className="text-muted-foreground/60">
               ({t("settings.editProviderDialog.leaveBlankHint")})
@@ -217,7 +217,7 @@ function EditForm({
               type={showKey && typedApiKey ? "text" : "password"}
               placeholder={maskedKey}
               {...register("apiKey")}
-              className="ph-no-capture h-8 text-sm pr-8"
+              className="ph-no-capture h-8 pr-8"
             />
             {typedApiKey && (
               <button

@@ -1,16 +1,6 @@
 /* /report styles. Loaded only with the lazy /report route chunk, so none of
    this leaks into the app. */
 
-/* The scan screen's typeface. Scoped: only elements that opt into
-   font-family: Switzer pick it up. */
-@font-face {
-  font-family: "Switzer";
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url("./fonts/Switzer-Variable.woff2") format("woff2");
-}
-
 /* Indeterminate progress: a partial bar sweeps left→right. The child bar is
    width:40%, so the translate range keeps it fully on-track at both ends. */
 @keyframes reportIndeterminate {
@@ -129,7 +119,7 @@
   margin: 0;
 }
 .dg code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
   color: var(--dg-muted);
 }
@@ -509,7 +499,7 @@
   font-size: 14px;
   color: var(--dg-fg-2);
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   line-height: 1.6;
   background: var(--dg-inset);
   border: 1px solid var(--dg-hair);

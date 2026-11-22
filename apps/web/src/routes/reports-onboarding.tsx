@@ -616,11 +616,9 @@ function CommerceHeader({
       )}
       {(title || description) && (
         <div className="space-y-2">
-          {title && <h1 className="text-2xl font-medium leading-8">{title}</h1>}
+          {title && <h1 className="text-2xl font-medium">{title}</h1>}
           {description && (
-            <p className="text-base text-muted-foreground leading-6">
-              {description}
-            </p>
+            <p className="text-base text-muted-foreground">{description}</p>
           )}
         </div>
       )}
@@ -1048,7 +1046,7 @@ function SiteUrlForm({
 
 function InlineError({ message }: { message: string }) {
   return (
-    <p className="text-sm leading-5 text-destructive" role="alert">
+    <p className="text-sm text-destructive" role="alert">
       {message}
     </p>
   );

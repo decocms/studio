@@ -146,7 +146,7 @@ export function SplitButton({
           <TooltipTrigger asChild>
             <span
               className={cn(
-                "inline-flex rounded-lg outline-none",
+                "inline-flex rounded-(--studio-button-radius) outline-none",
                 focusRing,
                 disabled && "cursor-not-allowed",
               )}
@@ -171,7 +171,7 @@ export function SplitButton({
               variant={variant}
               size={size}
               aria-label={menuAriaLabel}
-              className={cn("has-[>svg]:px-2", focusRing)}
+              className={cn("has-[>svg]:px-(--space-xs)", focusRing)}
             >
               <ChevronDown className="size-3.5" />
             </Button>

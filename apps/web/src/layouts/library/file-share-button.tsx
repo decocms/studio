@@ -162,8 +162,8 @@ function ShareControls({
       </code>
       <Button
         variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
+        size="icon-xs"
+        className="shrink-0"
         onClick={handleCopy}
         aria-label={t("library.fileShareButton.copyLink")}
       >
@@ -213,7 +213,7 @@ function ShareControls({
             disabled={setShareMode.isPending}
             onClick={() => selectMode(mode)}
             className={cn(
-              "flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:opacity-60",
+              "flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:text-neutral-6",
               activeMode === mode
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",

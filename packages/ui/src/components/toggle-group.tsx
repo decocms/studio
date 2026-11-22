@@ -28,7 +28,9 @@ function ToggleGroup({
       data-variant={variant}
       data-size={size}
       className={cn(
-        "group/toggle-group flex w-fit items-center rounded-lg data-[variant=outline]:shadow-xs",
+        "group/toggle-group flex w-fit items-center gap-(--space-xxs) rounded-(--radius-s)",
+        /* Outline groups are deco's toolbar; items drop their own edge. */
+        "data-[variant=outline]:bg-neutral-1 data-[variant=outline]:p-(--space-xxs) data-[variant=outline]:shadow-(--card-shadow)",
         className,
       )}
       {...props}
@@ -60,7 +62,7 @@ function ToggleGroupItem({
           variant: context.variant || variant,
           size: context.size || size,
         }),
-        "min-w-0 flex-1 shrink-0 rounded-none shadow-none first:rounded-l-lg last:rounded-r-lg focus:z-10 focus-visible:z-10 data-[variant=outline]:border-l-0 data-[variant=outline]:first:border-l",
+        "min-w-0 flex-1 shrink-0 focus:z-10 focus-visible:z-10 data-[variant=outline]:shadow-none",
         className,
       )}
       {...props}

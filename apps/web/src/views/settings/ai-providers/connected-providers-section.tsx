@@ -31,7 +31,6 @@ export function ConnectedProvidersSection({
   return (
     <SettingsSection
       title={t("settings.connectedProvidersSection.sectionTitle")}
-      headerClassName="px-0"
       actions={
         <Button size="sm" onClick={onConnectClick}>
           <Plus size={14} />

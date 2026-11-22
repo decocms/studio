@@ -122,7 +122,7 @@ export function VisualEditorPrompt({
       }}
     >
       <form
-        className="pointer-events-auto flex w-full items-center gap-1.5 rounded-xl border border-border bg-background/95 px-3 py-1.5 shadow-lg backdrop-blur"
+        className="pointer-events-auto flex w-full items-center gap-1.5 rounded-m bg-background/95 px-3 py-1.5 shadow-(--popup-shadow) backdrop-blur"
         onSubmit={(e) => {
           e.preventDefault();
           void handleSend();
@@ -143,7 +143,7 @@ export function VisualEditorPrompt({
         <button
           type="submit"
           disabled={!input.trim()}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity disabled:opacity-30"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-colors disabled:bg-neutral-3 disabled:text-neutral-6"
           title={t("sandbox.visualEditorPrompt.sendButton")}
         >
           <svg

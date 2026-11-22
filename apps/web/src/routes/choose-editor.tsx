@@ -18,6 +18,7 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { KEYS } from "@/lib/query-keys";
@@ -111,22 +112,23 @@ function DeadEndScreen({
   const t = useT();
   const navigate = useNavigate();
   return (
-    <CenteredCard>
-      <div className="flex flex-col gap-2">
-        <h1 className="text-lg font-medium text-foreground">{t(titleKey)}</h1>
-        <p className="text-sm text-muted-foreground">{t(descriptionKey)}</p>
-      </div>
-      <div className="flex items-center gap-2">
-        {onRetry ? (
-          <Button variant="outline" onClick={onRetry}>
-            {t("chooseEditor.retry")}
+    <EmptyState
+      className="min-h-screen w-full bg-background"
+      title={t(titleKey)}
+      description={t(descriptionKey)}
+      buttonComponent={
+        <>
+          {onRetry ? (
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              {t("chooseEditor.retry")}
+            </Button>
+          ) : null}
+          <Button size="sm" onClick={() => navigate({ to: "/" })}>
+            {t("chooseEditor.backToStudio")}
           </Button>
-        ) : null}
-        <Button onClick={() => navigate({ to: "/" })}>
-          {t("chooseEditor.backToStudio")}
-        </Button>
-      </div>
-    </CenteredCard>
+        </>
+      }
+    />
   );
 }
 

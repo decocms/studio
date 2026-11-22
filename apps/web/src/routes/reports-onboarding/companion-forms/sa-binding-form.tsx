@@ -219,9 +219,7 @@ export function SaBindingForm({
               {i + 1}
             </span>
             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-              <p className="text-sm leading-5 text-foreground">
-                {t(step, { host })}
-              </p>
+              <p className="text-sm text-foreground">{t(step, { host })}</p>
               {controlFor(i)}
             </div>
           </li>
@@ -256,13 +254,13 @@ export function SaBindingForm({
       )}
 
       {onOAuthInstead && (
-        <p className="text-sm leading-5 text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {t("reportsOnboarding.saBinding.oauthNote")}{" "}
           <button
             type="button"
             onClick={onOAuthInstead}
             disabled={isPending}
-            className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+            className="underline underline-offset-2 hover:text-foreground disabled:text-neutral-6"
           >
             {t("reportsOnboarding.saBindingForm.googleLoginAlternative")}
           </button>

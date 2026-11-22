@@ -98,10 +98,7 @@ export function MentionInput({
         role: "textbox",
         "aria-label": placeholder,
         "aria-multiline": "true",
-        class: cn(
-          "outline-none text-sm leading-relaxed text-foreground",
-          PLACEHOLDER_CLASS,
-        ),
+        class: cn("outline-none text-sm text-foreground", PLACEHOLDER_CLASS),
       },
       handleKeyDown: (view, event) => {
         if (event.key !== "Enter" || event.shiftKey) return false;

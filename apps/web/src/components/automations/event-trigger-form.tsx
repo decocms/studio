@@ -197,7 +197,7 @@ export function EventTriggerForm({
                         setParams((p) => ({ ...p, [key]: e.target.value }))
                       }
                       placeholder={schema.description ?? key}
-                      className="text-sm border border-border rounded-md bg-background px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="text-sm border border-border rounded-md bg-background px-2 py-1.5 focus-ring"
                     />
                   )}
                 </div>

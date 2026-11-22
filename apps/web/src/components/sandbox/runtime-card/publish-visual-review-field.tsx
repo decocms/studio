@@ -24,10 +24,7 @@ export function PublishVisualReviewField<T extends FieldValues>({
       render={({ field }) => (
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-0.5 min-w-0">
-            <Label
-              htmlFor="publish-visual-review"
-              className="font-normal text-foreground"
-            >
+            <Label htmlFor="publish-visual-review" className="text-foreground">
               {t("sandbox.publishVisualReviewField.label")}
             </Label>
             <p className="text-xs text-muted-foreground">

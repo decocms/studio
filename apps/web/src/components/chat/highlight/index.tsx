@@ -93,21 +93,11 @@ function StatusHighlight(props: StatusHighlightProps) {
       onClose={onDismiss}
       footerRight={
         isError ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={props.onFixInChat}
-            className="h-7 text-xs"
-          >
+          <Button size="sm" variant="outline" onClick={props.onFixInChat}>
             {t("chat.highlight.fixInChat")}
           </Button>
         ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={props.onContinue}
-            className="h-7 text-xs"
-          >
+          <Button size="sm" variant="outline" onClick={props.onContinue}>
             {t("chat.highlight.continue")}
           </Button>
         )

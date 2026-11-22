@@ -17,8 +17,6 @@ const TEAM_PHOTOS = [
   "https://decoims.com/decocms/48013ca2-3277-464b-b0f1-dd5f1f08d986/tavano.png",
 ] as const;
 
-const GREEN_DARK = "var(--brand-green-dark)";
-
 /**
  * Build the scheduling link, prefilling the site under diagnosis and the
  * signed-in user's email as query params so the booking page arrives with
@@ -144,9 +142,9 @@ export function ScheduleMeetingVisual({
     <div className="relative flex h-full w-full items-center justify-center p-10">
       {/* Bigger footprint (wide card + generous padding); content stays at its
           normal scale. */}
-      <div className="w-full max-w-[440px] overflow-hidden rounded-3xl border border-border bg-card card-shadow">
+      <div className="surface w-full max-w-[440px] overflow-hidden">
         {/* Solid brand-green header band */}
-        <div className="h-20" style={{ backgroundColor: GREEN_DARK }} />
+        <div className="h-20 bg-(--brand-green-dark)" />
 
         <div className="px-8 pb-8">
           {/* Team overlaps the band */}
@@ -155,10 +153,10 @@ export function ScheduleMeetingVisual({
           </div>
 
           <div className="grid gap-1.5">
-            <h2 className="text-lg font-medium leading-6 text-foreground">
+            <h2 className="text-lg font-medium text-foreground">
               {t("routes.reportsOnboarding.scheduleMeeting.headline")}
             </h2>
-            <p className="text-sm leading-5 text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {t("routes.reportsOnboarding.scheduleMeeting.body")}
             </p>
           </div>

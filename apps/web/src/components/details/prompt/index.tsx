@@ -118,7 +118,7 @@ function PromptEditForm({ form }: { form: PromptForm }) {
                     {...field}
                     value={field.value ?? ""}
                     placeholder={t("details.prompt.bodyPlaceholder")}
-                    className="min-h-[240px] resize-none text-base leading-relaxed font-normal rounded-xl border border-border bg-muted/20 px-4 py-3 shadow-none focus-visible:ring-0"
+                    className="min-h-[240px] resize-none rounded-m border border-border bg-muted/20 px-4 py-3 shadow-none focus-visible:ring-0"
                   />
                 </FormControl>
               </FormItem>

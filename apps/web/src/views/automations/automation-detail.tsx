@@ -399,7 +399,7 @@ export function SettingsTab({
                   placeholder={t(
                     "automations.automationDetail.automationNamePlaceholder",
                   )}
-                  className="border border-transparent shadow-none px-0 text-lg font-medium h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
+                  className="border border-transparent shadow-none px-0 h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
                   style={{ boxShadow: "none" }}
                 />
               )}
@@ -607,7 +607,7 @@ export function SettingsTab({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1.5 px-2 text-xs"
+              className="gap-1.5"
               disabled={isImproving || !tiptapDoc}
               onClick={handleImprovePrompt}
             >
@@ -622,7 +622,7 @@ export function SettingsTab({
               "automations.automationDetail.instructionsPlaceholder",
             )}
           >
-            <div className="rounded-xl border border-border min-h-[120px] flex flex-col">
+            <div className="rounded-m border border-border min-h-[120px] flex flex-col">
               <TiptapInput
                 virtualMcpId={agentId || null}
                 className="max-h-[45vh]"
@@ -634,7 +634,7 @@ export function SettingsTab({
                     <Button
                       type="button"
                       variant="default"
-                      className="h-8 gap-1.5 px-3 text-sm font-medium"
+                      className="gap-1.5"
                       onClick={handleRunClick}
                       disabled={!agentId}
                     >

@@ -8,7 +8,7 @@ export const taskBoard = {
   "taskBoard.feed.eventDone": "Shipped",
   "taskBoard.feed.eventDelivered": "Moved forward",
   "taskBoard.feed.eventReview": "In review",
-  "taskBoard.taskDialog.commentReplyPlaceholder": "Leave a reply...",
+  "taskBoard.taskDialog.commentReplyPlaceholder": "Leave a reply…",
   "taskBoard.conversation.openChat": "Open chat",
   "taskBoard.conversation.reviewer": "Reviewer",
   "taskBoard.conversation.details": "Details",
@@ -32,10 +32,10 @@ export const taskBoard = {
   "taskBoard.config.statusBacklog": "Backlog",
   "taskBoard.config.statusMerged": "Merged",
   "taskBoard.config.statusDone": "Done",
-  "taskBoard.config.statusInProgress": "In Progress",
-  "taskBoard.config.statusInReview": "In Review",
-  "taskBoard.config.statusPostDeployValidation": "Post-deploy Validation",
-  "taskBoard.config.statusTodo": "To Do",
+  "taskBoard.config.statusInProgress": "In progress",
+  "taskBoard.config.statusInReview": "In review",
+  "taskBoard.config.statusPostDeployValidation": "Post-deploy validation",
+  "taskBoard.config.statusTodo": "To do",
   "taskBoard.taskBoard.assignedToSuperAgent": "Assigned to Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Assigned to Super Agent by {name}",
@@ -58,7 +58,7 @@ export const taskBoard = {
     "Run puts the Super Agent to work on this task and saves the change to your codebase, ready for your team to review and approve.",
   "taskBoard.taskBoard.connectGithubTitle": "Connect GitHub",
   "taskBoard.taskBoard.handedToHumanBadgeTitle":
-    "Automation stopped on this task — open it to see why",
+    "Automation stopped on this task, open it to see why",
   "taskBoard.taskBoard.layoutViewAriaLabel": "{label} view",
   "taskBoard.taskBoard.needsInput": "Needs input",
   "taskBoard.taskBoard.needsYou": "Needs you",
@@ -76,7 +76,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
   "taskBoard.taskBoard.hideColumn": "Hide",
-  "taskBoard.agenticSetup.button": "Agentic Setup",
+  "taskBoard.agenticSetup.button": "Agentic setup",
   "taskBoard.agenticSetup.message":
     "Help me set up my board around the work I'm doing.",
   "taskBoard.agenticSetup.failed": "Couldn't start the board setup chat",
@@ -127,7 +127,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.runFailedGithubMissing":
     "The GitHub connection for this repository no longer exists. Link the repository again, then re-run the task.",
   "taskBoard.taskDialog.runFailedGithubOwnerOnly":
-    "Only an owner of the {owner} GitHub organization can accept the App's new permissions — GitHub shows everyone else a 404. If that isn't you, send them this task.",
+    "Only an owner of the {owner} GitHub organization can accept the App's new permissions, GitHub shows everyone else a 404. If that isn't you, send them this task.",
   "taskBoard.taskDialog.runFailedReconnect": "Reconnect GitHub",
   "taskBoard.taskDialog.runFailedLinkRepo": "Link repository",
   "taskBoard.taskDialog.activityLabel": "Activity",
@@ -141,9 +141,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMovedFromTo": "moved from {from} to {to}",
   "taskBoard.taskDialog.activityMovedTo": "moved to {to}",
   "taskBoard.taskDialog.activityRetryScheduled":
-    "scheduled retry {attempt} of {of} — {reason}",
+    "scheduled retry {attempt} of {of}, {reason}",
   "taskBoard.taskDialog.activityRetriesExhausted":
-    "moved to {to} after {count} failed retries — {reason}",
+    "moved to {to} after {count} failed retries, {reason}",
   "taskBoard.taskDialog.activityAssigned": "assigned to {name}",
   "taskBoard.taskDialog.activityUnassigned": "removed the assignee",
   "taskBoard.taskDialog.activityDelegated": "delegated to {name}",
@@ -172,16 +172,16 @@ export const taskBoard = {
   "taskBoard.taskDialog.subscribe": "Subscribe",
   "taskBoard.taskDialog.unsubscribe": "Unsubscribe",
   "taskBoard.taskDialog.activityMergeConflictResolution":
-    "couldn't merge the pull request — resolving a merge conflict",
+    "couldn't merge the pull request, resolving a merge conflict",
   "taskBoard.taskDialog.activityMergeFailed": "couldn't merge the pull request",
   "taskBoard.taskDialog.activityMergeFailedNoPr":
-    "couldn't merge — no pull request is linked to this task",
+    "couldn't merge, no pull request is linked to this task",
   "taskBoard.taskDialog.activityMergeFailedChecksFailing":
-    "couldn't merge — the pull request's checks are failing",
+    "couldn't merge, the pull request's checks are failing",
   "taskBoard.taskDialog.activityMergeFailedNoConnection":
-    "couldn't merge — this organization has no GitHub connection for {detail}. Connect that repository to ship this task.",
+    "couldn't merge, this organization has no GitHub connection for {detail}. Connect that repository to ship this task.",
   "taskBoard.taskDialog.activityMergeFailedRateLimited":
-    "couldn't merge yet — GitHub is rate-limiting us. This retries automatically.",
+    "couldn't merge yet, GitHub is rate-limiting us. This retries automatically.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
     "the provider refused the merge: {detail}",
   "taskBoard.taskDialog.activityMergeFailedConflict":
@@ -208,7 +208,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentCollapseThread": "Collapse",
   "taskBoard.taskDialog.commentDelete": "Delete",
   "taskBoard.taskDialog.commentDropToAttach": "Drop to attach",
-  "taskBoard.taskDialog.commentPlaceholder": "Leave a comment...",
+  "taskBoard.taskDialog.commentPlaceholder": "Leave a comment…",
   "taskBoard.taskDialog.commentResolveThread": "Resolve thread",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
     "{count} resolved comments from {names}",
@@ -225,7 +225,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.copyDescription": "Copy description",
   "taskBoard.taskDialog.createTaskButton": "Create task",
   "taskBoard.taskDialog.descriptionPlaceholder":
-    "Describe a task for an agent...",
+    "Describe a task for an agent…",
   "taskBoard.taskDialog.dueDateLabel": "Due date",
   "taskBoard.taskDetail.breadcrumbTasks": "Tasks",
   "taskBoard.taskDetail.breadcrumbTask": "Task",
@@ -247,40 +247,40 @@ export const taskBoard = {
   "taskBoard.taskDialog.previewRoutesLabel": "Pages changed in this PR",
   "taskBoard.taskDialog.previewUnavailable": "Preview unavailable",
   "taskBoard.taskDialog.previewUnavailableTitle":
-    "The deploy preview isn't responding yet — it may still be building",
+    "The deploy preview isn't responding yet, it may still be building",
   "taskBoard.taskDialog.shipToProductionButton": "Ship to production",
   "taskBoard.taskDialog.shipSuccess": "Merged and shipped to production",
   "taskBoard.taskDialog.shipError": "Couldn't merge the pull request",
   "taskBoard.taskDialog.prConflict": "Resolve conflicts before shipping",
   "taskBoard.taskDialog.resolveConflictButton": "Resolve",
   "taskBoard.taskDialog.resolveConflictTitle":
-    "This change has conflicts that need resolving before it can ship — the agent will resolve them for you",
+    "This change has conflicts that need resolving before it can ship, the agent will resolve them for you",
   "taskBoard.taskDialog.resolveConflictSuccess":
     "Agent dispatched to resolve the conflicts",
   "taskBoard.taskDialog.resolveConflictError": "Couldn't start the agent",
   "taskBoard.taskDialog.runReviewerButton": "Run reviewer",
   "taskBoard.taskDialog.runReviewerTitle":
-    "Automated review is off for this organization — run the Reviewer on this task only",
+    "Automated review is off for this organization, run the Reviewer on this task only",
   "taskBoard.taskDialog.runReviewerSuccess": "Reviewer dispatched",
   "taskBoard.taskDialog.runReviewerAlreadyRunning":
     "A reviewer is already working this task",
   "taskBoard.taskDialog.runReviewerError": "Couldn't start the reviewer",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
   "taskBoard.taskDialog.costTooltipSingular":
-    "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
+    "Estimated AI cost of this task, across its only run, the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
   "taskBoard.taskDialog.costTooltipPlural":
-    "Estimated AI cost of this task, across all {runs} of its runs — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
+    "Estimated AI cost of this task, across all {runs} of its runs, the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
   "taskBoard.taskDialog.costTooltipSubscriptionSingular":
-    "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. This run used your linked Claude plan, so you were not charged this: it counts against your plan's usage limits. The figure is what the same tokens would list for on the metered API.",
+    "Estimated AI cost of this task, across its only run, the Super Agent plus every reviewer and re-run round. This run used your linked Claude plan, so you were not charged this: it counts against your plan's usage limits. The figure is what the same tokens would list for on the metered API.",
   "taskBoard.taskDialog.costTooltipSubscriptionPlural":
-    "Estimated AI cost of this task, across all {runs} of its runs — the Super Agent plus every reviewer and re-run round. These runs used your linked Claude plan, so you were not charged this: it counts against your plan's usage limits. The figure is what the same tokens would list for on the metered API.",
+    "Estimated AI cost of this task, across all {runs} of its runs, the Super Agent plus every reviewer and re-run round. These runs used your linked Claude plan, so you were not charged this: it counts against your plan's usage limits. The figure is what the same tokens would list for on the metered API.",
   "taskBoard.taskDialog.propertiesLabel": "Properties",
   "taskBoard.taskDialog.labelsLabel": "Labels",
   "taskBoard.taskDialog.projectLabel": "Project",
   "taskBoard.taskDialog.reviewsLabel": "Reviews",
   "taskBoard.taskDialog.reportsContentLocked":
-    "Generated from your Deco Score — title, description, and priority are managed automatically",
-  "taskBoard.taskDialog.savingLabel": "Saving...",
+    "Generated from your Deco Score, title, description, and priority are managed automatically",
+  "taskBoard.taskDialog.savingLabel": "Saving…",
   "taskBoard.taskDialog.showMore": "Show more",
   "taskBoard.taskDialog.timelineFoldMore": "{count} more updates",
   "taskBoard.taskDialog.timelineFoldLess": "Show fewer updates",
@@ -302,11 +302,11 @@ export const taskBoard = {
   "taskBoard.taskDialog.startedByLabel": "started by",
   "taskBoard.taskDialog.reviewerLabel": "Reviewer",
   // The two-reviewer era's names, still on older cards' timelines.
-  "taskBoard.taskDialog.qaAgentLabel": "QA Agent",
-  "taskBoard.taskDialog.codeReviewerLabel": "Code Reviewer",
+  "taskBoard.taskDialog.qaAgentLabel": "QA agent",
+  "taskBoard.taskDialog.codeReviewerLabel": "Code reviewer",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",
   "taskBoard.taskDialog.superAgentLabel": "Super Agent",
-  "taskBoard.taskDialog.taskTitlePlaceholder": "Task title...",
+  "taskBoard.taskDialog.taskTitlePlaceholder": "Task title…",
   "taskBoard.taskDialog.threadStatusCompleted": "Completed",
   "taskBoard.taskDialog.threadStatusEndedAfterDelivery":
     "Ended after delivering",
@@ -368,7 +368,7 @@ export const taskBoard = {
   "taskBoard.rerun.description":
     "The Super Agent will start a fresh run on this task.",
   "taskBoard.rerun.descriptionTakeover":
-    "The Super Agent will start a fresh run on this task. A run is still open on it — that one will be stopped.",
+    "The Super Agent will start a fresh run on this task. A run is still open on it, that one will be stopped.",
   "taskBoard.rerun.titleMany": "Re-run {count} tasks?",
   "taskBoard.rerun.descriptionMany":
     "The Super Agent will start a fresh run on each of the {count} selected tasks. Any run still open on them will be stopped.",
@@ -425,7 +425,7 @@ export const taskBoard = {
   "taskBoard.analytics.openAnalytics": "Analytics",
   "taskBoard.analytics.backToBoard": "Back to board",
   "taskBoard.analytics.orgPickerPlaceholder": "Organization",
-  "taskBoard.analytics.orgSearch": "Search organizations...",
+  "taskBoard.analytics.orgSearch": "Search organizations…",
   "taskBoard.analytics.orgEmpty": "No organizations found.",
   "taskBoard.analytics.orgCurrent": "This organization",
   "taskBoard.analytics.orgAll": "All organizations",
@@ -445,7 +445,7 @@ export const taskBoard = {
   "taskBoard.analytics.noDataInRange": "No data in this range",
   "taskBoard.analytics.nothingToShow": "Nothing to show",
   "taskBoard.feed.composerPlaceholder": "What needs doing?",
-  "taskBoard.feed.composerDescriptionPlaceholder": "Add description...",
+  "taskBoard.feed.composerDescriptionPlaceholder": "Add description…",
   "taskBoard.feed.composerSubmit": "Add",
   "taskBoard.feed.railRunning": "Running now",
   "taskBoard.feed.railWaiting": "Waiting on you",

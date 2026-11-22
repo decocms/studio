@@ -61,7 +61,7 @@ export function TaskMessage({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs text-muted-foreground"
+              className="text-muted-foreground"
               onClick={onOpenThread}
             >
               {t("taskBoard.conversation.openChat")}
@@ -73,7 +73,7 @@ export function TaskMessage({
       {body && (
         <div
           className={cn(
-            "min-w-0 break-words pl-8 text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
+            "min-w-0 break-words pl-8 text-sm text-foreground [&_li]:text-sm [&_p]:text-sm",
             // A thumbnail: a tall screenshot would take over the conversation, and a click opens it whole.
             "[&_img]:max-h-80",
             isReply && "ml-3 border-l border-border pl-5",

@@ -122,7 +122,7 @@ function Table(props: React.HTMLAttributes<HTMLTableElement>) {
           variant="ghost"
           onClick={handleCopyCsv}
           aria-label={t("chat.markdown.copyAsCSV")}
-          className="text-muted-foreground hover:text-foreground h-6 text-[10px]"
+          className="text-muted-foreground hover:text-foreground"
           type="button"
         >
           {t("chat.markdown.copyAsCSV")}
@@ -215,7 +215,7 @@ type MdProps = {
 
 // Inline-code styling, mirrored from the shared design-system `code` override.
 const INLINE_CODE_CLASS =
-  "px-1 py-0.5 bg-background border border-border rounded text-[14px] font-mono break-all";
+  "px-1 py-0.5 bg-background border border-border rounded text-s font-mono break-all";
 
 // Inline code that names an org file becomes a clickable chip; everything else
 // keeps the plain code styling. Block code (rendered via `pre > code`, and the
@@ -322,7 +322,7 @@ const animatedComponents = {
     </h1>
   ),
   h2: ({ node: _n, children, ...p }: MdProps) => (
-    <h2 {...p} className="text-xl font-semibold mt-5 mb-2 first:mt-0">
+    <h2 {...p} className="text-l font-semibold mt-5 mb-2 first:mt-0">
       {animateText(children)}
     </h2>
   ),
@@ -337,7 +337,7 @@ const animatedComponents = {
     </h4>
   ),
   p: ({ node: _n, children, ...p }: MdProps) => (
-    <p {...p} className="leading-relaxed text-[14px] mb-2 last:mb-0">
+    <p {...p} className="text-s mb-2 last:mb-0">
       {animateText(children)}
     </p>
   ),
@@ -352,7 +352,7 @@ const animatedComponents = {
     </em>
   ),
   li: ({ node: _n, children, ...p }: MdProps) => (
-    <li {...p} className="leading-relaxed text-[14px]">
+    <li {...p} className="text-s">
       {animateText(children)}
     </li>
   ),
@@ -388,7 +388,7 @@ function CodeBlock({
   return (
     <div className="my-4 rounded-lg bg-muted overflow-hidden border border-border grid min-w-0">
       <div className="flex items-center justify-between p-1 pl-4 bg-muted border-b border-border">
-        <span className="text-xs font-mono uppercase text-muted-foreground tracking-widest select-none">
+        <span className="text-xs font-mono text-muted-foreground select-none">
           {language ? language : "text"}
         </span>
         <Button

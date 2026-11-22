@@ -412,7 +412,7 @@ function SubProviderGroup({
           </span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <Badge variant="secondary" className="text-xs text-muted-foreground">
+          <Badge variant="secondary" className="text-muted-foreground">
             {t("settings.orgRoleDetail.enabledCount", {
               enabledCount,
               total: models.length,
@@ -1682,7 +1682,7 @@ function RoleDetailPageInner({
           activeTab !== "org" && "overflow-hidden",
         )}
       >
-        <div className="shrink-0 mx-auto w-full max-w-[1200px] px-4 md:px-10 pt-8 md:pt-12 pb-4">
+        <div className="shrink-0 mx-auto w-full max-w-[1200px] px-4 pt-6 pb-4 md:px-8 md:pt-8">
           <div className="flex flex-col gap-5">
             <Page.Title
               actions={
@@ -1777,7 +1777,7 @@ function RoleDetailPageInner({
 
         <div
           className={cn(
-            "mx-auto w-full max-w-[1200px] px-4 md:px-10 pb-6",
+            "mx-auto w-full max-w-[1200px] px-4 md:px-8 pb-6",
             activeTab !== "org" && "flex-1 min-h-0",
           )}
         >
@@ -1787,7 +1787,7 @@ function RoleDetailPageInner({
               activeTab !== "models" &&
                 activeTab !== "projects" &&
                 activeTab !== "org" &&
-                "border border-border rounded-xl bg-card",
+                "border border-border rounded-m bg-card",
             )}
           >
             {activeTab === "mcp" && !isOwnerBuiltin && (

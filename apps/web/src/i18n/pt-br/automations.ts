@@ -4,7 +4,7 @@ export const automations = {
   "automations.addStarterPopover.addStarter": "Adicionar Gatilho",
   "automations.addStarterPopover.customCron": "Personalizado (cron)",
   "automations.addStarterPopover.event": "Evento",
-  "automations.addStarterPopover.every": "A cada...",
+  "automations.addStarterPopover.every": "A cada…",
   "automations.addStarterPopover.everyUnit": "A cada {unit}",
   "automations.addStarterPopover.failedAddStarter": "Erro ao adicionar gatilho",
   "automations.addStarterPopover.failedAddWebhookStarter":
@@ -33,7 +33,7 @@ export const automations = {
     "Selecione um projeto primeiro",
   "automations.automationConfig.pickModelPlaceholder": "Selecione um modelo",
   "automations.automationConfig.searchToolsPlaceholder":
-    "Pesquisar ferramentas...",
+    "Pesquisar ferramentas…",
   "automations.automationConfig.selectAll": "Selecionar tudo",
   "automations.automationConfig.specificModel": "Modelo específico",
   "automations.automationConfig.tierFast": "Rápido",
@@ -101,7 +101,7 @@ export const automations = {
   "automations.automationDetail.instructionsPlaceholder":
     "O que esta automação deve fazer?",
   "automations.automationDetail.invalid": "inválido",
-  "automations.automationDetail.loadingConnections": "Carregando conexões...",
+  "automations.automationDetail.loadingConnections": "Carregando conexões…",
   "automations.automationDetail.maxSteps": "Máx. passos",
   "automations.automationDetail.maxStepsPlaceholder": "{default} (padrão)",
   "automations.automationDetail.noInstructionsConfigured":
@@ -153,19 +153,19 @@ export const automations = {
   "automations.automationsList.noResultsDescription":
     'Nenhuma automação corresponde a "{search}"',
   "automations.automationsList.noResultsTitle": "Nenhuma automação encontrada",
-  "automations.automationsList.searchPlaceholder": "Pesquisar automações...",
+  "automations.automationsList.searchPlaceholder": "Pesquisar automações…",
   "automations.automationsList.title": "Automações",
   "automations.eventTriggerForm.addTriggerButton": "Adicionar gatilho",
   "automations.eventTriggerForm.errorFailed":
     "Falha ao adicionar gatilho de evento",
-  "automations.eventTriggerForm.loadingEvents": "Carregando eventos...",
+  "automations.eventTriggerForm.loadingEvents": "Carregando eventos…",
   "automations.eventTriggerForm.noConnectionsWithTrigger":
     "Nenhuma conexão com suporte a gatilho",
   "automations.eventTriggerForm.selectConnectionPlaceholder":
-    "Selecionar conexão...",
+    "Selecionar conexão…",
   "automations.eventTriggerForm.selectEventTypePlaceholder":
-    "Selecionar tipo de evento...",
-  "automations.eventTriggerForm.selectParamPlaceholder": "Selecionar {key}...",
+    "Selecionar tipo de evento…",
+  "automations.eventTriggerForm.selectParamPlaceholder": "Selecionar {key}…",
   "automations.eventTriggerForm.successAdded": "Gatilho de evento adicionado",
   "automations.eventTriggerForm.title": "Gatilho de evento",
   "automations.triggerCard.cancel": "Cancelar",
@@ -179,7 +179,7 @@ export const automations = {
   "automations.triggerCard.invalid": "inválido",
   "automations.triggerCard.newWebhookToken": "Novo token de webhook",
   "automations.triggerCard.newWebhookTokenDescription":
-    "O token anterior foi revogado. Copie o novo token agora — ele não será mostrado novamente.",
+    "O token anterior foi revogado. Copie o novo token agora, ele não será mostrado novamente.",
   "automations.triggerCard.remove": "Remover",
   "automations.triggerCard.removeStarter": "Remover Disparador",
   "automations.triggerCard.rotate": "Girar",

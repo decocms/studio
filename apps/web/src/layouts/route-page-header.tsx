@@ -50,8 +50,16 @@ export function RoutePageHeader({
       // picker, and repeating it as the page title says it twice.
       scopeId
       ? projectTitle
-      : t("sidebar.navDestinations.home")
-    : t(page?.pageTitle ?? "page.view");
+      : t(
+          projectFirstNav
+            ? "sidebar.navDestinations.today"
+            : "sidebar.navDestinations.home",
+        )
+    : t(
+        projectFirstNav && page?.pageTitle === "sidebar.navDestinations.tasks"
+          ? "sidebar.navDestinations.spineTasks"
+          : (page?.pageTitle ?? "page.view"),
+      );
   /** Project-first navigation: the crumb is the way out of an app, so it lands
    *  on the project as the reader knows it: its one screen. Sending them to
    *  the scoped workspace instead is how someone loses the sidebar and cannot

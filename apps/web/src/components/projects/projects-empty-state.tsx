@@ -29,10 +29,10 @@ export function ProjectsEmptyState({ canCreate }: { canCreate: boolean }) {
       </div>
 
       <div className="flex max-w-md flex-col items-center gap-2">
-        <h2 className="text-xl font-medium tracking-tight text-foreground">
+        <h2 className="text-l font-medium text-foreground">
           {t("projects.empty.title")}
         </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
+        <p className="text-s text-muted-foreground">
           {canCreate
             ? t("projects.empty.description")
             : t("projects.empty.readOnly")}

@@ -337,7 +337,7 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(r.variant).toBe("brand");
     expect(r.menu).toEqual([
@@ -353,7 +353,7 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
     const r = selectCmsHeaderButton(
       input({ branch: ready({ aheadOfBase: 2 }), pr: pr(), reviews: null }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 
@@ -368,7 +368,7 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
           reviews: reviews({ mergeableState }),
         }),
       );
-      expect(r.label).toBe("Review & Publish");
+      expect(r.label).toBe("Review & publish");
       expect(r.variant).toBe("brand");
     },
   );
@@ -450,7 +450,7 @@ describe("selectCmsHeaderButton — 6. draft (no open PR)", () => {
     const r = selectCmsHeaderButton(
       input({ branch: ready({ aheadOfBase: 3 }) }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(r.variant).toBe("brand");
     expect(r.menu).toEqual([
@@ -474,7 +474,7 @@ describe("selectCmsHeaderButton — 6. draft (no open PR)", () => {
         }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(menuKeys(r.menu)).toEqual(["request-approval"]);
   });
 
@@ -485,7 +485,7 @@ describe("selectCmsHeaderButton — 6. draft (no open PR)", () => {
         pr: pr({ state: "closed", merged: false }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 

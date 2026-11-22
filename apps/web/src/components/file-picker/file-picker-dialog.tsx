@@ -174,7 +174,7 @@ function PickerBody({
 function NoConfigsEmpty() {
   const t = useT();
   return (
-    <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
+    <div className="rounded-m border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
       <div className="size-12 rounded-full bg-muted flex items-center justify-center">
         <Upload01 size={20} className="text-muted-foreground" />
       </div>
@@ -293,7 +293,7 @@ function BucketPanel({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          "rounded-xl border border-dashed border-border/60 p-6 flex flex-col items-center justify-center gap-2 text-center transition-colors",
+          "rounded-m border border-dashed border-border/60 p-6 flex flex-col items-center justify-center gap-2 text-center transition-colors",
           isDragging && "border-primary bg-primary/5",
           upload.isPending && "opacity-60 pointer-events-none",
         )}
@@ -501,7 +501,7 @@ function AssetCard({
             }}
           />
         </button>
-        <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium uppercase text-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+        <span className="pointer-events-none absolute left-1.5 top-1.5 rounded bg-background/80 px-1.5 py-0.5 text-xxs font-medium uppercase text-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
           {ext}
         </span>
         <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -534,7 +534,7 @@ function AssetCard({
             {item.key}
           </p>
         </div>
-        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xxs font-medium uppercase text-muted-foreground">
           {ext}
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">
@@ -574,8 +574,8 @@ function AssetCardMenu({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-7 bg-background/80 backdrop-blur-sm"
+          size="icon-sm"
+          className="bg-background/80 backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
           aria-label={t("filePicker.filePickerDialog.assetActions")}
         >

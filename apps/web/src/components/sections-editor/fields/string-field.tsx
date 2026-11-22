@@ -145,7 +145,7 @@ function DatePickerInput({
             type="button"
             variant="outline"
             size="icon"
-            className="h-10 w-10 shrink-0"
+            className="shrink-0"
             aria-label={calendarLabel}
           >
             <CalendarIcon className="h-4 w-4" />

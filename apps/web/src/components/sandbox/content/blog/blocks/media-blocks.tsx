@@ -90,7 +90,7 @@ export function CtaBlock({
   const t = useT();
   return (
     <div className="flex flex-col items-center gap-2 py-2">
-      <div className="inline-flex items-center rounded-full bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground">
+      <div className="inline-flex items-center rounded-(--radius-s) bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground">
         <input
           value={text}
           onChange={(e) => onChange({ text: e.target.value, href })}
@@ -112,10 +112,10 @@ export function CtaBlock({
 // ---------------------------------------------------------------- Callout
 
 const CALLOUT_VARIANTS = [
-  { value: "info", icon: "ℹ", color: "oklch(0.62 0.19 250)" },
-  { value: "tip", icon: "✓", color: "oklch(0.65 0.17 150)" },
-  { value: "warning", icon: "⚠", color: "oklch(0.75 0.15 75)" },
-  { value: "product", icon: "★", color: "oklch(0.62 0.21 300)" },
+  { value: "info", icon: "ℹ", color: "var(--notice)" },
+  { value: "tip", icon: "✓", color: "var(--success)" },
+  { value: "warning", icon: "⚠", color: "var(--warning)" },
+  { value: "product", icon: "★", color: "var(--special)" },
 ] as const;
 
 export function CalloutBlock({
@@ -176,7 +176,7 @@ export function CalloutBlock({
             value={title}
             onChange={(e) => onChange({ title: e.target.value, body, variant })}
             placeholder={t("sandbox.mediaBlocks.calloutTitle")}
-            className="flex-1 border-0 bg-transparent p-0 text-xs font-semibold uppercase tracking-wide outline-none focus:ring-0"
+            className="flex-1 border-0 bg-transparent p-0 text-xs font-semibold outline-none focus:ring-0"
             style={{ color: v.color }}
           />
         </div>
@@ -184,7 +184,7 @@ export function CalloutBlock({
           value={body}
           onChange={(b) => onChange({ title, body: b, variant })}
           placeholder={t("sandbox.mediaBlocks.calloutText")}
-          className="text-[15px] leading-relaxed text-foreground"
+          className="text-m text-foreground"
         />
       </div>
     </div>
@@ -225,7 +225,7 @@ export function StatBlock({
           onChange({ value, label: e.target.value, description })
         }
         placeholder={t("sandbox.mediaBlocks.label")}
-        className="w-full border-0 bg-transparent p-0 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground outline-none placeholder:text-muted-foreground/40 focus:ring-0"
+        className="w-full border-0 bg-transparent p-0 text-center text-xs font-semibold text-muted-foreground outline-none placeholder:text-muted-foreground/40 focus:ring-0"
       />
       <InlineText
         value={description}

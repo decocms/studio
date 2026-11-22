@@ -348,9 +348,9 @@ export function RepositoryPicker({
             <div className="flex items-center h-12 border-b border-border px-4 pr-12 gap-3 shrink-0">
               {account ? (
                 <Button
-                  size="icon"
+                  size="icon-xs"
                   variant="ghost"
-                  className="size-6 -ml-1"
+                  className="-ml-1"
                   disabled={pendingPath !== null}
                   onClick={() => setAccount(null)}
                   aria-label={t("common.repositoryPicker.back")}
@@ -427,7 +427,7 @@ export function RepositoryPicker({
                   />
                 )}
                 <div className="border-t border-border py-2">
-                  <p className="px-4 py-2 text-xs text-muted-foreground leading-relaxed">
+                  <p className="px-4 py-2 text-xs text-muted-foreground">
                     {t("common.repositoryPicker.description")}
                   </p>
                   <GitAccountConnect

@@ -167,7 +167,7 @@ export function RichTextField({
         description={schema.description}
         virtualMcpId={sandbox?.virtualMcpId}
       />
-      <div className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))] border card-shadow border-input">
+      <div className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))] card-shadow">
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">
           <ToolbarButton
             active={marks.bold}
@@ -277,9 +277,7 @@ export function RichTextField({
                 label={t("sectionsEditor.richTextField.orderedList")}
                 onClick={() => editor.chain().focus().toggleOrderedList().run()}
               >
-                <span className="text-[11px] font-semibold leading-none">
-                  1.
-                </span>
+                <span className="text-xs font-semibold leading-none">1.</span>
               </ToolbarButton>
             </>
           )}

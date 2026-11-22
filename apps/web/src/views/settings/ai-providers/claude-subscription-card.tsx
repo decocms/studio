@@ -58,7 +58,7 @@ export function ClaudeSubscriptionCard() {
   const expired = !connected && Boolean(status.data?.linkedAt);
 
   return (
-    <div className="rounded-xl border border-border px-6 py-5 flex flex-col gap-4">
+    <div className="rounded-m border border-border px-6 py-5 flex flex-col gap-4">
       <div className="flex items-center gap-4">
         <div className="flex-1 min-w-0">
           <p className="text-base font-semibold">

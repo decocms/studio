@@ -369,7 +369,7 @@ export function PageHeaderInputs({
   };
 
   const FIELD_CLASS =
-    "w-full truncate outline-none h-9 rounded-[var(--studio-control-radius,var(--radius-md))] border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20";
+    "w-full truncate outline-none h-9 rounded-[var(--studio-control-radius,var(--radius-md))] bg-transparent px-3 text-sm shadow-(--edge) placeholder:text-muted-foreground focus-ring";
 
   const handlePathKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -516,9 +516,9 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
           <Button
             type="button"
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             aria-label={t("sectionsEditor.sectionsEditorPanels.addVariant")}
-            className="size-7 shrink-0 text-[oklch(0.65_0.15_160)]"
+            className="shrink-0"
             onClick={onClick}
           >
             <Flag01 size={14} />
@@ -535,7 +535,7 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
     <Button
       type="button"
       variant="outline"
-      className="h-7 shrink-0 gap-1 px-2 text-xs font-medium"
+      className="shrink-0 gap-1"
       onClick={onClick}
     >
       <LayersThree01 className="size-3.5 shrink-0" />
@@ -594,7 +594,7 @@ export function HeaderSelectOptions({
 }) {
   return (
     <>
-      <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+      <DropdownMenuLabel className="text-muted-foreground">
         {heading}
       </DropdownMenuLabel>
       {options.map((option, index) => (

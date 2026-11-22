@@ -88,7 +88,7 @@ function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] bg-global-section/14 px-1.5 py-0.5 text-xs font-medium text-global-section-fg dark:text-global-section-fg-dark">
           <Globe01 size={11} />
           {t("sectionsEditor.anyOfField.global")}
         </span>
@@ -128,7 +128,7 @@ function CollapsibleLoaderConfig({
   return (
     <div
       className={cn(
-        "rounded-[var(--studio-surface-radius,var(--radius-lg))] border border-border/80 bg-muted/30",
+        "rounded-[var(--studio-surface-radius,var(--radius-lg))] bg-muted/30 shadow-(--edge)",
         nestedBlockRef && "ml-1",
       )}
     >
@@ -144,7 +144,7 @@ function CollapsibleLoaderConfig({
             {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </span>
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <span className="truncate text-xs font-medium text-muted-foreground">
               {title}
             </span>
             {globalBlockKey && <GlobalLoaderBadge blockKey={globalBlockKey} />}
@@ -156,9 +156,9 @@ function CollapsibleLoaderConfig({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 aria-label={t("sectionsEditor.anyOfField.loaderActions")}
-                className="h-7 w-7 shrink-0 text-muted-foreground"
+                className="shrink-0 text-muted-foreground"
               >
                 <DotsHorizontal size={16} />
               </Button>
@@ -445,8 +445,8 @@ export function AnyOfField({
                               <Button
                                 type="button"
                                 variant="ghost"
-                                size="icon"
-                                className="size-7 shrink-0 text-muted-foreground"
+                                size="icon-sm"
+                                className="shrink-0 text-muted-foreground"
                                 aria-label={t(
                                   "sectionsEditor.anyOfField.browseSections",
                                 )}
@@ -709,7 +709,7 @@ export function AnyOfField({
         type="text"
         value={value != null ? String(value) : ""}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-[var(--studio-control-radius,var(--radius-md))] border bg-background px-3 py-1.5 text-sm"
+        className="w-full rounded-[var(--studio-control-radius,var(--radius-md))] bg-background px-3 py-1.5 text-sm shadow-(--edge)"
         placeholder={schema.description ?? ""}
       />
     </div>

@@ -1,5 +1,5 @@
 export const admin = {
-  "admin.layout.adminDashboard": "Admin Dashboard",
+  "admin.layout.adminDashboard": "Admin dashboard",
   "admin.layout.adminDashboardArea": "the admin dashboard",
   "admin.layout.emailVerificationRequired":
     "Verify your email address to access the admin dashboard.",
@@ -13,7 +13,7 @@ export const admin = {
   "admin.orgs.notice": "Notice",
   "admin.orgs.noticeFor": "Billing notice for {org}",
   "admin.orgs.noticeDescription":
-    "A warning shows as a banner over the org. A block replaces the org's UI with this text and refuses writes until it is cleared — billing stays reachable.",
+    "A warning shows as a banner over the org. A block replaces the org's UI with this text and refuses writes until it is cleared, billing stays reachable.",
   "admin.orgs.noticeSeverity": "Severity",
   "admin.orgs.noticeSeverityWarn": "Warning",
   "admin.orgs.noticeSeverityBlock": "Block",
@@ -27,7 +27,7 @@ export const admin = {
   "admin.orgs.noticeCtaIncomplete":
     "Set both the button label and its link, or neither.",
   "admin.orgs.noticeSave": "Save notice",
-  "admin.orgs.noticeSaving": "Saving...",
+  "admin.orgs.noticeSaving": "Saving…",
   "admin.orgs.noticeClear": "Clear notice",
   "admin.orgs.noticeSaved": "Notice saved for {org}",
   "admin.orgs.noticeCleared": "Notice cleared for {org}",
@@ -35,7 +35,7 @@ export const admin = {
   "admin.orgs.failedClearNotice": "Failed to clear notice",
   "admin.orgs.addMember": "Add member",
   "admin.orgs.addMemberTo": "Add member to {org}",
-  "admin.orgs.adding": "Adding...",
+  "admin.orgs.adding": "Adding…",
   "admin.orgs.cancel": "Cancel",
   "admin.orgs.created": "Created",
   "admin.orgs.email": "Email",
@@ -65,7 +65,7 @@ export const admin = {
   "admin.orgs.invalidStoredValue":
     "This org has a flag whose stored value is not true/false. Fix it in the JSON view before saving.",
   "admin.orgs.invalidJson":
-    "Invalid JSON — expected snake_case keys mapped to boolean values.",
+    "Invalid JSON, expected snake_case keys mapped to boolean values.",
   "admin.orgs.jsonReplaceHint":
     "This replaces the entire flags object. Removing a key unsets it.",
   "admin.orgs.failedLoadOrgsDescription":
@@ -77,8 +77,8 @@ export const admin = {
   "admin.orgs.noOrgsYet": "No organizations exist yet.",
   "admin.orgs.organization": "Organization",
   "admin.orgs.save": "Save",
-  "admin.orgs.saving": "Saving...",
-  "admin.orgs.searchPlaceholder": "Search organizations by name or slug...",
+  "admin.orgs.saving": "Saving…",
+  "admin.orgs.searchPlaceholder": "Search organizations by name or slug…",
   "admin.orgs.anotherOrg": "another organization",
   "admin.orgs.analyticsOwnSite": "Own site ({slug})",
   "admin.orgs.analyticsSiteCleared":
@@ -93,7 +93,7 @@ export const admin = {
   "admin.orgs.failedSaveAnalyticsSite": "Failed to update analytics site",
   "admin.orgs.invalidSiteSlug":
     "Use lowercase letters, digits and hyphens (e.g. my-site)",
-  "admin.orgs.loading": "Loading...",
+  "admin.orgs.loading": "Loading…",
   "admin.orgs.noProjects": "This organization has no site projects.",
   "admin.orgs.noSites": "This organization owns no sites.",
   "admin.orgs.projectAnalytics": "Project analytics",
@@ -117,9 +117,9 @@ export const admin = {
     "Check that GitHub is connected in your active organization, then try again.",
   "admin.prompts.failedToLoadTitle": "Failed to load prompts",
   "admin.prompts.markerMissing":
-    'The prompt-region markers for "{id}" are missing from this file — fix the markers in the repo before editing here.',
+    'The prompt-region markers for "{id}" are missing from this file, fix the markers in the repo before editing here.',
   "admin.prompts.openPr": "Open pull request ({count})",
-  "admin.prompts.opening": "Opening...",
+  "admin.prompts.opening": "Opening…",
   "admin.prompts.prFailed": "Failed to open the pull request",
   "admin.prompts.prOpened": "Pull request #{number} opened",
   "admin.prompts.prTitleLabel": "Pull request title",
@@ -138,7 +138,7 @@ export const admin = {
   "admin.users.noUsersFoundTitle": "No users found",
   "admin.users.noUsersMatchSearch": 'No users match "{search}"',
   "admin.users.noUsersYet": "No users yet.",
-  "admin.users.searchPlaceholder": "Search users by email or name...",
+  "admin.users.searchPlaceholder": "Search users by email or name…",
   "admin.users.unknown": "Unknown",
   "admin.users.unverified": "Unverified",
   "admin.users.verified": "Verified",

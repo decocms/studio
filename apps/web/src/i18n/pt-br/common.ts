@@ -66,7 +66,7 @@ export const common = {
   "common.capabilityLoadError.tryAgain": "Tentar novamente",
   "common.createOrganizationDialog.cancel": "Cancelar",
   "common.createOrganizationDialog.createButton": "Criar Organização",
-  "common.createOrganizationDialog.creating": "Criando...",
+  "common.createOrganizationDialog.creating": "Criando…",
   "common.createOrganizationDialog.description":
     "Configure uma nova organização para colaborar com outras pessoas.",
   "common.createOrganizationDialog.failedToCreate":
@@ -151,12 +151,12 @@ export const common = {
   "common.iconPicker.changeColor": "Alterar cor",
   "common.iconPicker.changeIcon": "Alterar ícone",
   "common.iconPicker.failedToReadImage": "Falha ao ler arquivo de imagem",
-  "common.iconPicker.filterPlaceholder": "Filtrar...",
+  "common.iconPicker.filterPlaceholder": "Filtrar…",
   "common.iconPicker.iconsTab": "Ícones",
   "common.iconPicker.imageTooLarge": "A imagem deve ser menor que 2MB",
   "common.iconPicker.noIconsFound": "Nenhum ícone encontrado",
   "common.iconPicker.or": "ou",
-  "common.iconPicker.pasteUrlPlaceholder": "Cole a URL da imagem...",
+  "common.iconPicker.pasteUrlPlaceholder": "Cole a URL da imagem…",
   "common.iconPicker.randomIcon": "Ícone aleatório",
   "common.iconPicker.uploadHint": "Clique para enviar uma imagem (máx 2MB)",
   "common.iconPicker.uploadTab": "Upload",
@@ -172,22 +172,22 @@ export const common = {
   "common.importFromDecoDialog.import": "Importar",
   "common.importFromDecoDialog.importFailed": "Falha na importação: {error}",
   "common.importFromDecoDialog.importSuccess": "Importado {slug} de deco.cx",
-  "common.importFromDecoDialog.importing": "Importando...",
+  "common.importFromDecoDialog.importing": "Importando…",
   "common.importFromDecoDialog.installGithubApp":
     'Instale o aplicativo GitHub na organização "{owner}" para importar este site. {installUrl}',
   "common.loading": "Carregando",
-  "common.importFromDecoDialog.loadingSites": "Carregando sites...",
+  "common.importFromDecoDialog.loadingSites": "Carregando sites…",
   "common.importFromDecoDialog.noSitesFound":
     "Nenhum site encontrado para esta conta.",
   "common.importFromDecoDialog.noSitesMatch":
     'Nenhum site corresponde a "{search}"',
   "common.importFromDecoDialog.retryGithubSetup":
     "Tentar configurar GitHub novamente",
-  "common.importFromDecoDialog.searchPlaceholder": "Procurar sites...",
+  "common.importFromDecoDialog.searchPlaceholder": "Procurar sites…",
   "common.importFromDecoDialog.selectGithubConnection":
     "Selecione uma conexão GitHub",
   "common.importFromDecoDialog.settingUpGithub":
-    "Configurando conexão com GitHub...",
+    "Configurando conexão com GitHub…",
   "common.importFromDecoDialog.siteNoLongerAvailable":
     "O site selecionado não está mais disponível",
   "common.importFromDecoDialog.title": "Importar de deco.cx",
@@ -206,7 +206,7 @@ export const common = {
     "Digite pelo menos um endereço de e-mail válido",
   "common.inviteMemberDialog.errorSelectRole": "Selecione uma função",
   "common.inviteMemberDialog.inviteButton": "Convidar {count} membro(s)",
-  "common.inviteMemberDialog.invitingButton": "Convidando...",
+  "common.inviteMemberDialog.invitingButton": "Convidando…",
   "common.inviteMemberDialog.permAllConnections": "Todas as conexões",
   "common.inviteMemberDialog.permAllTools": "todas as ferramentas",
   "common.inviteMemberDialog.permConnections": "{count} conexão(ões)",
@@ -254,11 +254,11 @@ export const common = {
   "common.ssoRequiredScreen.signInWithSso": "Entrar com SSO",
   "common.ssoRequiredScreen.title": "Autenticação SSO Necessária",
   "common.ssoRequiredScreen.via": "via {domain}",
-  "common.tagMultiSelect.addTags": "Adicionar tags...",
+  "common.tagMultiSelect.addTags": "Adicionar tags…",
   "common.tagMultiSelect.available": "Disponível",
   "common.tagMultiSelect.createTag": 'Criar "{tagName}"',
   "common.tagMultiSelect.noTagsFound": "Nenhuma tag encontrada.",
-  "common.tagMultiSelect.searchOrCreate": "Pesquisar ou criar...",
+  "common.tagMultiSelect.searchOrCreate": "Pesquisar ou criar…",
   "common.tagMultiSelect.selected": "Selecionado",
   "common.toolSetSelector.filterAll": "Todos",
   "common.toolSetSelector.filterSelected": "Selecionados",
@@ -270,7 +270,7 @@ export const common = {
     "Esta conexão não tem ferramentas disponíveis",
   "common.toolSetSelector.noUnselectedServers":
     "Nenhum servidor não selecionado",
-  "common.toolSetSelector.searchPlaceholder": "Pesquisar servidores MCP...",
+  "common.toolSetSelector.searchPlaceholder": "Pesquisar servidores MCP…",
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",

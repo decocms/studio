@@ -99,7 +99,7 @@ function ChatInputDisabledState({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
+    <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-m border border-border bg-muted/40 text-muted-foreground">
       {icon ?? <Lock01 size={14} className="shrink-0" />}
       <span className="text-sm">{message ?? ""}</span>
     </div>
@@ -253,7 +253,7 @@ function FileDropZone({
   return (
     <div
       className={cn(
-        "absolute inset-0 z-20 rounded-xl flex flex-col items-center justify-center gap-2 bg-muted border-2 border-dashed transition-opacity",
+        "absolute inset-0 z-20 rounded-m flex flex-col items-center justify-center gap-2 bg-muted border-2 border-dashed transition-opacity",
         isDraggingOver ? "opacity-100" : "opacity-0 pointer-events-none",
         supportsFiles
           ? "border-primary/40 text-primary/70"
@@ -716,7 +716,7 @@ export function ChatInput({
       <button
         type="button"
         onClick={startCodingSession}
-        className="group flex w-full items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group flex w-full items-center gap-3 rounded-2xl bg-background/60 px-4 py-3.5 text-left card-shadow backdrop-blur-sm transition-colors hover:bg-background/90 focus-ring"
       >
         <Code01 size={18} className="shrink-0 text-muted-foreground" />
         <span className="flex min-w-0 flex-1 flex-col">
@@ -874,7 +874,7 @@ export function ChatInput({
                           onClick={() => dismissChatMode("gen-image")}
                           label={t("chat.input.createImage")}
                           icon={<Image01 size={14} className="shrink-0" />}
-                          colorClass="text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          colorClass="text-pink-600 dark:text-pink-400 hover:bg-pink-500/10"
                           maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
                         />
                       )}
@@ -883,7 +883,7 @@ export function ChatInput({
                           onClick={() => dismissChatMode("web-search")}
                           label={t("chat.input.webSearch")}
                           icon={<Globe02 size={14} className="shrink-0" />}
-                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
                           maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
                         />
                       )}
@@ -892,7 +892,7 @@ export function ChatInput({
                           onClick={() => dismissChatMode("deep-research")}
                           label={t("chat.input.deepResearch")}
                           icon={<Telescope size={14} className="shrink-0" />}
-                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
                           maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
                         />
                       )}
@@ -920,9 +920,9 @@ export function ChatInput({
                           onClick={handleVoiceStart}
                           disabled={false}
                           variant="ghost"
-                          size="icon"
+                          size="icon-sm"
                           className={cn(
-                            "size-8 transition-colors",
+                            "transition-colors",
                             voice.status === "permission-denied"
                               ? "text-destructive hover:text-destructive hover:bg-destructive/10"
                               : "text-muted-foreground hover:text-foreground",

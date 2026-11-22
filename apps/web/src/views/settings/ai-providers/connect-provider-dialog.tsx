@@ -325,9 +325,8 @@ export function ConnectProviderDialog({
             {showBack && (
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 aria-label={t("settings.connectProviderDialog.backButtonLabel")}
-                className="h-7 w-7"
                 onClick={handleBack}
               >
                 <ArrowLeft size={16} />

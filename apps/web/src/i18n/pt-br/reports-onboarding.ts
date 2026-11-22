@@ -21,8 +21,8 @@ export const reportsOnboarding = {
   "reportsOnboarding.companionCard.editConfiguration": "Editar configuração",
   "reportsOnboarding.companionCard.finishSetup": "Concluir configuração",
   "reportsOnboarding.companionCard.required": "Obrigatório",
-  "reportsOnboarding.connectSourceDialog.connecting": "Conectando {title}...",
-  "reportsOnboarding.connectSourceDialog.loading": "Carregando...",
+  "reportsOnboarding.connectSourceDialog.connecting": "Conectando {title}…",
+  "reportsOnboarding.connectSourceDialog.loading": "Carregando…",
   "reportsOnboarding.connectSourceDialog.noConnectionMethod":
     "{title} não pode ser conectado: nenhum método de conexão disponível",
   "reportsOnboarding.connectSourceDialog.signInFailed":
@@ -36,15 +36,15 @@ export const reportsOnboarding = {
   "reportsOnboarding.githubConfigForm.invalidRepository":
     'Repositório inválido: "{repo}". Use o formato owner/nome.',
   "reportsOnboarding.githubConfigForm.loadingRepositories":
-    "Carregando repositórios...",
+    "Carregando repositórios…",
   "reportsOnboarding.githubConfigForm.noGithubInstallation":
     'Nenhuma instalação do GitHub encontrada para "{owner}".',
   "reportsOnboarding.githubConfigForm.noRepositoriesFound":
     "Nenhum repositório encontrado. Digite o nome do repositório (owner/nome) para buscar.",
   "reportsOnboarding.githubConfigForm.save": "Salvar",
-  "reportsOnboarding.githubConfigForm.saving": "Salvando...",
+  "reportsOnboarding.githubConfigForm.saving": "Salvando…",
   "reportsOnboarding.githubConfigForm.searchFailedPartial":
-    "Parte da busca falhou — alguns repositórios podem não ter aparecido. Tente novamente ou digite owner/nome.",
+    "Parte da busca falhou, alguns repositórios podem não ter aparecido. Tente novamente ou digite owner/nome.",
   "reportsOnboarding.githubConfigForm.searchFailedTotal":
     "Não foi possível buscar os repositórios (erro ou tempo esgotado). Tente novamente ou digite o repositório no formato owner/nome.",
   "reportsOnboarding.githubConfigForm.searchRepositoryLabel":
@@ -66,7 +66,7 @@ export const reportsOnboarding = {
     "Informe o {resourceLabel}",
   "reportsOnboarding.saBindingForm.storeUrlUnavailable":
     "URL da loja indisponível. Recarregue a página.",
-  "reportsOnboarding.saBindingForm.verifying": "Verificando...",
+  "reportsOnboarding.saBindingForm.verifying": "Verificando…",
   "reportsOnboarding.saBinding.sampleDomain": "sualoja.com.br",
   "reportsOnboarding.saBinding.oauthNote":
     "O nosso app ainda está em revisão pelo Google, então a tela de login avisa que ele não é verificado.",
@@ -147,7 +147,7 @@ export const reportsOnboarding = {
   "reportsOnboarding.vtexConfigForm.appTokenPlaceholder": "App Token da VTEX",
   "reportsOnboarding.vtexConfigForm.cancelButton": "Cancelar",
   "reportsOnboarding.vtexConfigForm.saveButton": "Salvar",
-  "reportsOnboarding.vtexConfigForm.savingButton": "Salvando...",
+  "reportsOnboarding.vtexConfigForm.savingButton": "Salvando…",
   "reportsOnboarding.vtexConfigForm.savingError":
     "Não foi possível salvar a configuração",
   "reportsOnboarding.shopifyConfigForm.storeDomainLabel": "Domínio da loja",
@@ -159,17 +159,17 @@ export const reportsOnboarding = {
     "Access token da Admin API",
   "reportsOnboarding.shopifyConfigForm.accessTokenRequired":
     "Informe o Admin API access token",
-  "reportsOnboarding.shopifyConfigForm.accessTokenPlaceholder": "shpat_...",
+  "reportsOnboarding.shopifyConfigForm.accessTokenPlaceholder": "shpat_…",
   "reportsOnboarding.shopifyConfigForm.apiVersionLabel":
     "Versão da API (opcional)",
   "reportsOnboarding.shopifyConfigForm.apiVersionPlaceholder": "2026-07",
   "reportsOnboarding.shopifyConfigForm.cancelButton": "Cancelar",
   "reportsOnboarding.shopifyConfigForm.saveButton": "Salvar",
-  "reportsOnboarding.shopifyConfigForm.savingButton": "Salvando...",
+  "reportsOnboarding.shopifyConfigForm.savingButton": "Salvando…",
   "reportsOnboarding.shopifyConfigForm.savingError":
     "Não foi possível salvar a configuração",
   "reportsOnboarding.googleSearchConsoleConfigForm.loadingSites":
-    "Carregando sites...",
+    "Carregando sites…",
   "reportsOnboarding.googleSearchConsoleConfigForm.loadSitesError":
     "Não foi possível carregar os sites do Google Search Console.",
   "reportsOnboarding.googleSearchConsoleConfigForm.noSitesFound":
@@ -182,8 +182,8 @@ export const reportsOnboarding = {
     "Não foi possível salvar a configuração",
   "reportsOnboarding.googleSearchConsoleConfigForm.cancelButton": "Cancelar",
   "reportsOnboarding.googleSearchConsoleConfigForm.saveButton": "Salvar",
-  "reportsOnboarding.googleSearchConsoleConfigForm.savingButton": "Salvando...",
-  "reportsOnboarding.selectableList.searchPlaceholder": "Buscar...",
+  "reportsOnboarding.googleSearchConsoleConfigForm.savingButton": "Salvando…",
+  "reportsOnboarding.selectableList.searchPlaceholder": "Buscar…",
   "reportsOnboarding.selectableList.searchAriaLabel": "Buscar {label}",
   "reportsOnboarding.selectableList.noResults": "Nenhum resultado",
 } satisfies Record<keyof typeof reportsOnboardingEn, string>;

@@ -1,7 +1,7 @@
 export const reportsOnboarding = {
   "reportsOnboarding.companionCard.configField.accountName": "Account name",
-  "reportsOnboarding.companionCard.configField.appKey": "App Key",
-  "reportsOnboarding.companionCard.configField.appToken": "App Token",
+  "reportsOnboarding.companionCard.configField.appKey": "App key",
+  "reportsOnboarding.companionCard.configField.appToken": "App token",
   "reportsOnboarding.companionCard.configField.propertyId": "Property",
   "reportsOnboarding.companionCard.configField.siteUrl": "Site",
   "reportsOnboarding.companionCard.configure": "Configure",
@@ -19,8 +19,8 @@ export const reportsOnboarding = {
   "reportsOnboarding.companionCard.editConfiguration": "Edit configuration",
   "reportsOnboarding.companionCard.finishSetup": "Finish setup",
   "reportsOnboarding.companionCard.required": "Required",
-  "reportsOnboarding.connectSourceDialog.connecting": "Connecting {title}...",
-  "reportsOnboarding.connectSourceDialog.loading": "Loading...",
+  "reportsOnboarding.connectSourceDialog.connecting": "Connecting {title}…",
+  "reportsOnboarding.connectSourceDialog.loading": "Loading…",
   "reportsOnboarding.connectSourceDialog.noConnectionMethod":
     "{title} cannot be connected: no connection method available",
   "reportsOnboarding.connectSourceDialog.signInFailed":
@@ -34,15 +34,15 @@ export const reportsOnboarding = {
   "reportsOnboarding.githubConfigForm.invalidRepository":
     'Invalid repository: "{repo}". Use the owner/name format.',
   "reportsOnboarding.githubConfigForm.loadingRepositories":
-    "Loading repositories...",
+    "Loading repositories…",
   "reportsOnboarding.githubConfigForm.noGithubInstallation":
     'No GitHub installation found for "{owner}".',
   "reportsOnboarding.githubConfigForm.noRepositoriesFound":
     "No repositories found. Type the repository name (owner/name) to search.",
   "reportsOnboarding.githubConfigForm.save": "Save",
-  "reportsOnboarding.githubConfigForm.saving": "Saving...",
+  "reportsOnboarding.githubConfigForm.saving": "Saving…",
   "reportsOnboarding.githubConfigForm.searchFailedPartial":
-    "Part of the search failed — some repositories may be missing. Try again or type owner/name.",
+    "Part of the search failed, some repositories may be missing. Try again or type owner/name.",
   "reportsOnboarding.githubConfigForm.searchFailedTotal":
     "Couldn't search the repositories (error or timeout). Try again or type the repository as owner/name.",
   "reportsOnboarding.githubConfigForm.searchRepositoryLabel":
@@ -63,7 +63,7 @@ export const reportsOnboarding = {
     "Provide the {resourceLabel}",
   "reportsOnboarding.saBindingForm.storeUrlUnavailable":
     "Store URL unavailable. Reload the page.",
-  "reportsOnboarding.saBindingForm.verifying": "Verifying...",
+  "reportsOnboarding.saBindingForm.verifying": "Verifying…",
   "reportsOnboarding.saBinding.sampleDomain": "yourstore.com",
   "reportsOnboarding.saBinding.oauthNote":
     "Google is still reviewing our app, so its login screen warns that the app isn't verified.",
@@ -139,12 +139,12 @@ export const reportsOnboarding = {
   "reportsOnboarding.vtexConfigForm.accountNamePlaceholder":
     "Your VTEX account name",
   "reportsOnboarding.vtexConfigForm.appKeyLabel": "App Key (optional)",
-  "reportsOnboarding.vtexConfigForm.appKeyPlaceholder": "VTEX App Key",
+  "reportsOnboarding.vtexConfigForm.appKeyPlaceholder": "VTEX app key",
   "reportsOnboarding.vtexConfigForm.appTokenLabel": "App Token (optional)",
-  "reportsOnboarding.vtexConfigForm.appTokenPlaceholder": "VTEX App Token",
+  "reportsOnboarding.vtexConfigForm.appTokenPlaceholder": "VTEX app token",
   "reportsOnboarding.vtexConfigForm.cancelButton": "Cancel",
   "reportsOnboarding.vtexConfigForm.saveButton": "Save",
-  "reportsOnboarding.vtexConfigForm.savingButton": "Saving...",
+  "reportsOnboarding.vtexConfigForm.savingButton": "Saving…",
   "reportsOnboarding.vtexConfigForm.savingError":
     "Couldn't save the configuration",
   "reportsOnboarding.shopifyConfigForm.storeDomainLabel": "Store domain",
@@ -156,17 +156,17 @@ export const reportsOnboarding = {
     "Admin API access token",
   "reportsOnboarding.shopifyConfigForm.accessTokenRequired":
     "Enter the Admin API access token",
-  "reportsOnboarding.shopifyConfigForm.accessTokenPlaceholder": "shpat_...",
+  "reportsOnboarding.shopifyConfigForm.accessTokenPlaceholder": "shpat_…",
   "reportsOnboarding.shopifyConfigForm.apiVersionLabel":
     "API version (optional)",
   "reportsOnboarding.shopifyConfigForm.apiVersionPlaceholder": "2026-07",
   "reportsOnboarding.shopifyConfigForm.cancelButton": "Cancel",
   "reportsOnboarding.shopifyConfigForm.saveButton": "Save",
-  "reportsOnboarding.shopifyConfigForm.savingButton": "Saving...",
+  "reportsOnboarding.shopifyConfigForm.savingButton": "Saving…",
   "reportsOnboarding.shopifyConfigForm.savingError":
     "Couldn't save the configuration",
   "reportsOnboarding.googleSearchConsoleConfigForm.loadingSites":
-    "Loading sites...",
+    "Loading sites…",
   "reportsOnboarding.googleSearchConsoleConfigForm.loadSitesError":
     "Couldn't load Google Search Console sites.",
   "reportsOnboarding.googleSearchConsoleConfigForm.noSitesFound":
@@ -179,8 +179,8 @@ export const reportsOnboarding = {
     "Couldn't save the configuration",
   "reportsOnboarding.googleSearchConsoleConfigForm.cancelButton": "Cancel",
   "reportsOnboarding.googleSearchConsoleConfigForm.saveButton": "Save",
-  "reportsOnboarding.googleSearchConsoleConfigForm.savingButton": "Saving...",
-  "reportsOnboarding.selectableList.searchPlaceholder": "Search...",
+  "reportsOnboarding.googleSearchConsoleConfigForm.savingButton": "Saving…",
+  "reportsOnboarding.selectableList.searchPlaceholder": "Search…",
   "reportsOnboarding.selectableList.searchAriaLabel": "Search {label}",
   "reportsOnboarding.selectableList.noResults": "No results",
 } as const;

@@ -98,7 +98,7 @@ export function AddButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40 disabled:hover:border-dashed disabled:hover:text-muted-foreground cursor-pointer"
+      className="flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:text-neutral-6 disabled:hover:border-dashed disabled:hover:text-neutral-6 cursor-pointer"
     >
       <Plus size={13} />
       {label}
@@ -129,7 +129,7 @@ export function RemoveButton({
 /** A floating segmented control shown above a focused block (variant/level). */
 export function FloatingToolbar({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute -top-9 left-0 z-10 flex items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md">
+    <div className="absolute -top-9 left-0 z-10 flex items-center gap-0.5 rounded-(--radius-s) bg-popover p-0.5 shadow-(--popup-shadow)">
       {children}
     </div>
   );
@@ -194,9 +194,9 @@ function Chip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+        "cursor-pointer rounded-xs px-2.5 py-1 text-xs font-medium shadow-(--edge-inset) transition-colors",
         active
-          ? "border-primary bg-primary text-primary-foreground"
+          ? "bg-primary text-primary-foreground"
           : "bg-card hover:bg-muted",
       )}
     >

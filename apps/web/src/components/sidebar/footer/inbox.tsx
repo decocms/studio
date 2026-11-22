@@ -23,6 +23,7 @@ import {
 import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { useInboxFeed } from "@/hooks/use-inbox-feed";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
@@ -73,7 +74,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs text-muted-foreground"
+            className="text-muted-foreground"
             onClick={markAllRead}
           >
             {t("sidebar.inbox.markAllRead")}
@@ -92,15 +93,13 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
       {updates.length === 0 && invitations.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-          <Bell01 size={24} className="text-muted-foreground/50" />
-          <p className="text-sm font-medium text-foreground">
-            {t("sidebar.inbox.emptyTitle")}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t("sidebar.inbox.emptyBody")}
-          </p>
-        </div>
+        <EmptyState
+          size="sm"
+          className="flex-1"
+          icon={<Bell01 />}
+          title={t("sidebar.inbox.emptyTitle")}
+          description={t("sidebar.inbox.emptyBody")}
+        />
       ) : (
         <ScrollArea className="min-h-0 flex-1">
           {updates.map((update) => {
@@ -178,7 +177,7 @@ export function InboxIconButton() {
         <button
           type="button"
           aria-label={t("sidebar.inbox.title")}
-          className="relative flex size-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          className="relative flex size-(--studio-control-height-sm) shrink-0 items-center justify-center rounded-(--studio-control-radius) text-sidebar-foreground/60 [&_svg]:size-4 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
         >
           <Bell01 size={15} />
           <InboxDot />

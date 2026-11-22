@@ -369,7 +369,7 @@ function BrandPreviewContent({
           <Palette size={18} />
         </div>
         {variant === "dialog" ? (
-          <DialogTitle className="flex-1 truncate text-base font-medium text-foreground">
+          <DialogTitle className="flex-1 truncate text-foreground">
             {dirName}
           </DialogTitle>
         ) : (
@@ -410,15 +410,15 @@ function BrandPreviewContent({
           ))}
         {variant === "dialog" ? (
           <DialogClose asChild>
-            <Button variant="ghost" size="icon" className="size-8 shrink-0">
+            <Button variant="ghost" size="icon-sm" className="shrink-0">
               <X size={16} />
             </Button>
           </DialogClose>
         ) : (
           <Button
             variant="ghost"
-            size="icon"
-            className="size-8 shrink-0"
+            size="icon-sm"
+            className="shrink-0"
             onClick={onClose}
           >
             <X size={16} />
@@ -430,7 +430,7 @@ function BrandPreviewContent({
       <div className="flex min-h-0 flex-1 flex-col">
         {listing.isPending ? (
           <div className="flex flex-col gap-3 p-6">
-            <Skeleton className="h-40 w-full rounded-xl" />
+            <Skeleton className="h-40 w-full rounded-m" />
             <Skeleton className="h-4 w-1/3" />
             <Skeleton className="h-4 w-2/3" />
           </div>
@@ -517,7 +517,7 @@ function BrandPreviewContent({
                   <div className="px-4 pb-4">
                     <div
                       className={cn(
-                        "w-full overflow-hidden rounded-xl border border-border bg-muted/30",
+                        "w-full overflow-hidden rounded-m border border-border bg-muted/30",
                         showDeck ? "aspect-[16/9]" : "h-96",
                       )}
                     >
@@ -542,7 +542,7 @@ function BrandPreviewContent({
               <div className="flex flex-col gap-3">
                 <SectionLabel>{t("library.brandPreview.logo")}</SectionLabel>
                 <div className="flex items-center gap-4">
-                  <div className="flex size-24 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/30">
+                  <div className="flex size-24 items-center justify-center overflow-hidden rounded-m border border-border bg-muted/30">
                     {logoPath ? (
                       <img
                         src={fileUrl(volume, logoPath)}

@@ -3044,7 +3044,7 @@ export function SectionsEditor({
             )}
           </div>
           {showGlobalBanner && (
-            <p className="mt-1.5 py-1.5 pl-1 text-sm leading-snug text-foreground">
+            <p className="mt-1.5 py-1.5 pl-1 text-sm text-foreground">
               {t("sectionsEditor.sectionsEditor.globalSectionBanner")}
             </p>
           )}
@@ -3066,9 +3066,9 @@ export function SectionsEditor({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label={t("sectionsEditor.sectionsEditor.editSeo")}
-              className="size-7 shrink-0"
+              className="shrink-0"
               onClick={() => setEditingSeo(true)}
             >
               <CreditCardSearch size={14} />
@@ -3083,9 +3083,9 @@ export function SectionsEditor({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label={t("sectionsEditor.sectionsEditor.viewJson")}
-              className="size-7 shrink-0"
+              className="shrink-0"
               onClick={() =>
                 onViewJsonFile && activePageKey
                   ? onViewJsonFile()
@@ -3503,9 +3503,9 @@ export function SectionsEditor({
                       <Button
                         type="button"
                         variant="outline"
-                        size="icon"
+                        size="icon-sm"
                         aria-label={t("sectionsEditor.sectionsEditor.editSeo")}
-                        className="size-7 shrink-0"
+                        className="shrink-0"
                         onClick={openSeo}
                       >
                         <CreditCardSearch size={14} />
@@ -3523,11 +3523,11 @@ export function SectionsEditor({
                         <Button
                           type="button"
                           variant="outline"
-                          size="icon"
+                          size="icon-sm"
                           aria-label={t(
                             "sectionsEditor.sectionsEditor.viewJson",
                           )}
-                          className="size-7 shrink-0"
+                          className="shrink-0"
                           onClick={() => setJsonOpen(true)}
                         >
                           <Code01 size={14} />

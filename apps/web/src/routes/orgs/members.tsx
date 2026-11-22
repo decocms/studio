@@ -240,8 +240,7 @@ function MemberActionsDropdown({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
+          size="icon-sm"
           disabled={isOwner}
           onClick={(e) => e.stopPropagation()}
         >
@@ -360,8 +359,7 @@ function InvitationActionsDropdown({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
+          size="icon-sm"
           onClick={(e) => e.stopPropagation()}
         >
           <DotsVertical size={20} />

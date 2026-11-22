@@ -4,7 +4,7 @@ export const tasksPanel = {
   "tasksPanel.globalSearchDialog.description":
     "Pesquise pelos recursos da sua organização.",
   "tasksPanel.globalSearchDialog.noResults": "Sem resultados.",
-  "tasksPanel.globalSearchDialog.placeholder": "Pesquisar...",
+  "tasksPanel.globalSearchDialog.placeholder": "Pesquisar…",
   "tasksPanel.globalSearchDialog.recent": "Recentes",
   "tasksPanel.globalSearchDialog.searching": "Pesquisando…",
   "tasksPanel.globalSearchDialog.title": "Pesquisar",

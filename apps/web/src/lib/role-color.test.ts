@@ -10,6 +10,8 @@ const DESIGN_SYSTEM_TOKEN_CLASSES = new Set([
   "bg-destructive",
   "bg-success",
   "bg-muted-foreground",
+  "bg-foreground",
+  "bg-notice",
 ]);
 
 describe("role-color", () => {

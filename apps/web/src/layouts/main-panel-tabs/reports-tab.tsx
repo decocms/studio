@@ -148,10 +148,10 @@ function StartDiagnosticState({
       </div>
 
       <div className="flex flex-col items-center gap-2 text-center">
-        <h2 className="text-lg font-medium leading-7 text-foreground">
+        <h2 className="text-m font-medium text-foreground">
           {t("reports.emptyState.title")}
         </h2>
-        <p className="max-w-sm text-sm leading-5 text-muted-foreground">
+        <p className="max-w-sm text-s text-muted-foreground">
           {t("reports.emptyState.description")}
         </p>
       </div>
@@ -159,13 +159,13 @@ function StartDiagnosticState({
       <div className="flex w-full max-w-md flex-col items-center gap-4">
         {children ??
           (host ? (
-            <p className="text-sm text-muted-foreground">{host}</p>
+            <p className="text-s text-muted-foreground">{host}</p>
           ) : null)}
         <ul className="flex flex-wrap items-center justify-center gap-2">
           {CHECK_KEYS.map((key) => (
             <li
               key={key}
-              className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
+              className="rounded-full bg-card px-3 py-1 text-xs text-muted-foreground shadow-(--edge)"
             >
               {t(key)}
             </li>
@@ -273,7 +273,7 @@ function StartDiagnostic({
           </Button>
         </div>
         {error ? (
-          <p className="text-sm leading-5 text-destructive" role="alert">
+          <p className="text-s text-destructive" role="alert">
             {translateSiteError(t, error)}
           </p>
         ) : null}

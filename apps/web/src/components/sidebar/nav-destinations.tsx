@@ -7,7 +7,7 @@
 
 import type { ReactNode } from "react";
 import { useSearch, type LinkProps } from "@tanstack/react-router";
-import { Columns03, Home02, Lock01, Zap } from "@untitledui/icons";
+import { Columns03, CpuChip01, Home02, Lock01 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
 import { useTabLocked } from "./use-tab-locked";
@@ -87,7 +87,7 @@ function useNavDestinations(): NavDestination[] {
     agents: {
       key: "agents",
       label: t("sidebar.navDestinations.agents"),
-      icon: <Zap size={16} />,
+      icon: <CpuChip01 size={16} />,
       isActive: leafPath === DESTINATION_ROUTE.home && view === "agents",
       trackAs: "agents",
       link: {

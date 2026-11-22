@@ -121,7 +121,6 @@ import {
   type TaskBoardItem,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
-  type TaskBoardItemTag,
   type Member,
   type OrgTag,
 } from "./config";
@@ -137,6 +136,7 @@ import {
   toEndOfDayIso,
 } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
+import { TagChip, TagOverflowChip } from "./tag-chip";
 import { useRepositories } from "@/hooks/use-git-providers";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
@@ -235,18 +235,17 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   return { label: DATE_FMT.format(d), overdue };
 }
 
-/** Shared meta chip: an outlined pill, neutral border by default. */
+/** Shared meta chip: outlined, neutral border by default. */
 const PILL =
-  "inline-flex items-center gap-1 rounded-full border-[length:var(--border-hairline)] border-border px-2 py-0.5 text-xs font-medium text-muted-foreground";
+  "inline-flex items-center gap-1 rounded-xs border-[length:var(--border-hairline)] border-border px-2 py-0.5 text-xs font-medium text-muted-foreground";
 
-/** A fact about a row said in plain text — glyph and word, no chrome. The
- *  bordered {@link PILL} is kept for a tag, whose colour IS its border. */
+/** A fact about a row said in plain text — glyph and word, no chrome. */
 const META =
   "inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground";
 
 /** A lane's own controls: revealed on hover, focus, or an open menu. */
 const LANE_ACTION =
-  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+  "flex size-6 shrink-0 items-center justify-center rounded-(--studio-control-radius) text-muted-foreground [&_svg]:size-3.5 opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
@@ -661,18 +660,6 @@ function DueDatePill({ iso }: { iso: string }) {
   );
 }
 
-/** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
-function TagPill({ tag }: { tag: TaskBoardItemTag }) {
-  return (
-    <span
-      className={cn(PILL, "text-foreground")}
-      style={{ borderColor: tagDotColor(tag.color) }}
-    >
-      {tag.name}
-    </span>
-  );
-}
-
 /**
  * How far a card is through review, as one glyph: `1/2`.
  *
@@ -886,8 +873,8 @@ function AssigneeDisplay({
             e.stopPropagation();
             setOpen(true);
           }}
-          // Hover-only: a dashed circle on every unassigned card is a row of holes.
-          className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100"
+          // Hover-only, and out of the layout until then: a dashed circle on every unassigned card is a row of holes, and a reserved blank pushes the priority glyph off the edge.
+          className="hidden size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 transition-[color,border-color] group-focus-within:flex group-hover:flex hover:border-muted-foreground hover:text-muted-foreground data-[state=open]:flex"
         >
           <UserPlus01 size={13} />
         </button>
@@ -1517,7 +1504,7 @@ function TaskBoardBody({
             inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
           )}
         >
-          <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+          <div className="rounded-m bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
             {t("taskBoard.taskBoard.noTasksYet")}
           </div>
         </div>
@@ -1528,7 +1515,7 @@ function TaskBoardBody({
             inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
           )}
         >
-          <div className="flex flex-col items-center gap-3 rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+          <div className="flex flex-col items-center gap-3 rounded-m bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
             {t("taskBoard.taskBoard.noTasksMatch")}
             <Button
               variant="outline"
@@ -1925,7 +1912,7 @@ function SelectionBar({
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background px-3 py-2 card-shadow">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-m bg-background px-3 py-2 card-shadow">
         <span className="pl-1 text-sm font-medium text-foreground">
           {t("taskBoard.taskBoard.selectedCount", { count })}
         </span>
@@ -2479,7 +2466,7 @@ function Lanes({
                 className="w-full shadow-lg"
               />
               {activeGroup.length > 1 && (
-                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-[11px] font-semibold text-background">
+                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-xs font-semibold text-background">
                   {activeGroup.length}
                 </span>
               )}
@@ -2521,7 +2508,7 @@ function HiddenLanes({
             <div
               key={status}
               data-hidden-lane={status}
-              className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 card-shadow"
+              className="flex items-center gap-2 rounded-m bg-background px-3 py-2.5 card-shadow"
             >
               <LaneIcon
                 size={15}
@@ -2530,7 +2517,7 @@ function HiddenLanes({
               <span className="text-sm font-medium text-foreground">
                 {label}
               </span>
-              <span className="ml-auto text-[11px] font-medium text-muted-foreground">
+              <span className="ml-auto text-xs font-medium text-muted-foreground">
                 {countOf(status)}
               </span>
               <DropdownMenu>
@@ -2540,7 +2527,7 @@ function HiddenLanes({
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                       lane: label,
                     })}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="flex size-6 shrink-0 items-center justify-center rounded-(--studio-control-radius) text-muted-foreground [&_svg]:size-3.5 transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <DotsHorizontal size={15} />
                   </button>
@@ -2620,7 +2607,7 @@ function Lane({
       // identifiable by their localized label or utility classes.
       data-lane={status}
       className={cn(
-        "group/lane flex h-full min-w-0 flex-col rounded-xl py-1 transition-colors",
+        "group/lane flex h-full min-w-0 flex-col rounded-m py-1 transition-colors",
         isTarget && "bg-muted/50",
       )}
     >
@@ -2652,7 +2639,7 @@ function Lane({
           )}
         />
         <span className="text-sm font-medium text-foreground">{label}</span>
-        <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+        <span className="rounded-md bg-muted px-1.5 text-xs font-medium text-muted-foreground">
           {items.length}
         </span>
         <DropdownMenu>
@@ -2929,7 +2916,7 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-xl px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-3 rounded-m px-3.5 pt-3.5 pb-2.5 text-left card-shadow active:cursor-grabbing",
         attentionLabel
           ? "bg-warning/10 hover:bg-warning/15"
           : "bg-card hover:bg-accent/60",
@@ -2942,8 +2929,7 @@ function TaskCard({
       )}
     >
       <div className="flex items-start gap-2">
-        {/* 14px: one step over the design system's `text-sm`, which is 13 here, not Tailwind's 14. */}
-        <div className="relative min-w-0 flex-1 text-[14px] font-[450] leading-snug">
+        <div className="relative min-w-0 flex-1 text-s font-medium">
           <span
             className={cn(
               "block text-foreground line-clamp-2",
@@ -2961,10 +2947,10 @@ function TaskCard({
       {item.tags.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
-            <TagPill key={tag.id} tag={tag} />
+            <TagChip key={tag.id} name={tag.name} color={tag.color} />
           ))}
           {item.tags.length > CARD_TAG_LIMIT && (
-            <span className={PILL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+            <TagOverflowChip count={item.tags.length - CARD_TAG_LIMIT} />
           )}
         </div>
       )}
@@ -3080,7 +3066,7 @@ function FeedRow({
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full flex-col gap-3 rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card p-4 text-left card-shadow transition-colors hover:bg-accent/60"
+      className="flex w-full flex-col gap-3 surface p-4 text-left transition-colors hover:bg-accent/60"
     >
       {/* Badges first, Discord-style: what kind of post this is, before what
           it says. */}
@@ -3092,22 +3078,20 @@ function FeedRow({
             </span>
           )}
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
-            <TagPill key={tag.id} tag={tag} />
+            <TagChip key={tag.id} name={tag.name} color={tag.color} />
           ))}
           {item.tags.length > CARD_TAG_LIMIT && (
-            <span className={PILL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+            <TagOverflowChip count={item.tags.length - CARD_TAG_LIMIT} />
           )}
         </span>
       )}
 
       <span className="flex min-w-0 flex-col gap-1">
-        <span className="text-[15px] leading-snug font-medium text-foreground">
-          {item.title}
-        </span>
+        <span className="text-m font-medium text-foreground">{item.title}</span>
         {/* Discord's one-liner: who said it and what, truncated to a single
             line rather than clamped to two — a preview, not a second body. */}
         {body && (
-          <span className="truncate text-sm leading-relaxed text-muted-foreground">
+          <span className="truncate text-sm text-muted-foreground">
             {name && (
               <span className="font-medium text-foreground">{name}: </span>
             )}
@@ -3224,7 +3208,7 @@ function FeedComposer({
   const TypeIconGlyph = typeConfig.icon;
 
   return (
-    <div className="flex flex-col rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card card-shadow focus-within:ring-[2px] focus-within:ring-ring/20">
+    <div className="flex flex-col surface has-focus-visible:[outline:var(--focus-ring-outline)]">
       <div className="flex flex-col gap-1 px-4 pt-4 pb-4">
         <input
           value={title}
@@ -3807,10 +3791,10 @@ function ListRow({
       {item.tags.length > 0 && (
         <span className="hidden items-center gap-1.5 sm:inline-flex">
           {item.tags.slice(0, 2).map((tag) => (
-            <TagPill key={tag.id} tag={tag} />
+            <TagChip key={tag.id} name={tag.name} color={tag.color} />
           ))}
           {item.tags.length > 2 && (
-            <span className={PILL}>+{item.tags.length - 2}</span>
+            <TagOverflowChip count={item.tags.length - 2} />
           )}
         </span>
       )}

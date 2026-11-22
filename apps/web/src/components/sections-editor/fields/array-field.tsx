@@ -556,7 +556,7 @@ export function ArrayField({
       </div>
 
       {!tooltipsEnabled && schema.description && (
-        <p className="break-words text-xs leading-normal text-muted-foreground">
+        <p className="break-words text-xs text-muted-foreground">
           {schema.description}
         </p>
       )}
@@ -574,7 +574,7 @@ export function ArrayField({
               items={entryIds}
               strategy={verticalListSortingStrategy}
             >
-              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/50 p-1.5">
+              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] card-shadow p-1.5">
                 {items.length > 0 &&
                   (() => {
                     // Compute base labels once for the whole list rather than per
@@ -649,7 +649,7 @@ export function ArrayField({
             {createPortal(
               <DragOverlay dropAnimation={SORTABLE_DROP_ANIMATION}>
                 {activeLabel ? (
-                  <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60">
+                  <div className="flex min-w-0 items-center gap-2.5 rounded-lg bg-background px-2 py-2.5 shadow-(--popup-shadow)">
                     <ArrayRowContent
                       labelText={activeLabel}
                       imageSrc={activeImage}
@@ -667,7 +667,7 @@ export function ArrayField({
         <button
           type="button"
           onClick={handleAddClick}
-          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:text-neutral-6"
         >
           <Plus size={14} />
           {usesSectionPicker

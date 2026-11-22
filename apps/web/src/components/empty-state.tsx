@@ -1,30 +1,14 @@
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
+import { EmptyState as DesignSystemEmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 interface EmptyStateProps {
+  /** Icons render in the design-system tile; `<img>` illustrations render as-is. */
   image?: ReactNode;
   title: string;
   description: string | ReactNode;
   actions?: ReactNode;
   className?: string;
-  descriptionClassName?: string;
-  actionsClassName?: string;
-}
-
-/**
- * Default stacked cards illustration for empty states
- * PNG exported from Figma design
- */
-function StackedCardsIllustration() {
-  return (
-    <img
-      src="/empty-state-cards.png"
-      alt=""
-      width={336}
-      height={320}
-      aria-hidden="true"
-    />
-  );
 }
 
 export function EmptyState({
@@ -33,46 +17,17 @@ export function EmptyState({
   description,
   actions,
   className,
-  descriptionClassName,
-  actionsClassName,
 }: EmptyStateProps) {
+  const isIllustration = isValidElement(image) && image.type === "img";
+
   return (
-    <div
-      className={cn(
-        "flex flex-1 flex-col items-center justify-center gap-8 p-4",
-        className,
-      )}
-    >
-      {/* Image/Illustration */}
-      {image !== null && (
-        <div className="flex items-center justify-center">
-          {image ?? <StackedCardsIllustration />}
-        </div>
-      )}
-
-      {/* Text content */}
-      <div className="flex flex-col items-center gap-4">
-        <div className="flex flex-col items-center gap-2">
-          <h3 className="text-center text-lg font-medium text-foreground">
-            {title}
-          </h3>
-          <div
-            className={cn(
-              "text-sm text-muted-foreground text-center max-w-[300px]",
-              descriptionClassName,
-            )}
-          >
-            {description}
-          </div>
-        </div>
-
-        {/* Actions */}
-        {actions && (
-          <div className={cn("flex items-center gap-2", actionsClassName)}>
-            {actions}
-          </div>
-        )}
-      </div>
-    </div>
+    <DesignSystemEmptyState
+      className={cn("flex-1", className)}
+      icon={isIllustration ? undefined : image}
+      illustration={isIllustration ? image : undefined}
+      title={title}
+      description={description}
+      buttonComponent={actions || undefined}
+    />
   );
 }

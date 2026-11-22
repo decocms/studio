@@ -10,7 +10,7 @@ export function RedirectTypeBadge({ type }: { type: RedirectType }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+        <span className="shrink-0 rounded-xs bg-muted px-1.5 py-0.5 text-xxs font-medium tabular-nums text-muted-foreground">
           {REDIRECT_STATUS[type]}
         </span>
       </TooltipTrigger>

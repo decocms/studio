@@ -35,17 +35,17 @@ export function StepIndicator({
               onClick={() => isClickable && onStepClick?.(index)}
               disabled={!isClickable}
               className={cn(
-                "flex items-center gap-2",
+                "flex items-center gap-(--space-xs) rounded-xs focus-ring",
                 isClickable && "cursor-pointer",
                 !isClickable && "cursor-default",
               )}
             >
               <div
                 className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-colors",
+                  "flex size-7 items-center justify-center rounded-full text-xs font-medium transition-[background-color,color,box-shadow] duration-(--motion-duration) ease-motion",
                   isCompleted && "bg-primary text-primary-foreground",
                   isCurrent &&
-                    "bg-primary text-primary-foreground ring-2 ring-primary/20",
+                    "bg-primary text-primary-foreground shadow-[0_0_0_var(--border-l)_var(--neutral-4)]",
                   !isCompleted &&
                     !isCurrent &&
                     "bg-muted text-muted-foreground",
@@ -55,7 +55,7 @@ export function StepIndicator({
               </div>
               <span
                 className={cn(
-                  "text-sm font-medium",
+                  "text-s font-medium",
                   isCurrent && "text-foreground",
                   !isCurrent && "text-muted-foreground",
                 )}
@@ -66,7 +66,7 @@ export function StepIndicator({
             {index < steps.length - 1 && (
               <div
                 className={cn(
-                  "mx-3 h-px w-8",
+                  "mx-(--space-s) h-px w-8",
                   index < currentStep ? "bg-primary" : "bg-border",
                 )}
               />

@@ -45,9 +45,7 @@ function TaskThreadSheetLoading({ title }: { title: string }) {
   return (
     <>
       <SheetHeader className="shrink-0 border-b border-border px-5 pb-5 pt-6 md:px-6">
-        <SheetTitle className="truncate text-sm leading-snug">
-          {title}
-        </SheetTitle>
+        <SheetTitle className="truncate">{title}</SheetTitle>
       </SheetHeader>
       <div className="flex flex-1 items-center justify-center" />
     </>

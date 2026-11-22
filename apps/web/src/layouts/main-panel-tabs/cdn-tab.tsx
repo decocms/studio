@@ -20,7 +20,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Globe01 } from "@untitledui/icons";
+import { ChevronDown, Globe01 } from "@untitledui/icons";
 import {
   ChartContainer,
   ChartTooltip,
@@ -39,11 +39,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Page } from "@/components/page";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAnalyticsSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { Figure, StatCard } from "@/components/stat-card";
 
 // Date presets, in display order. The CDN warehouse is DATE-granular (facts are
 // keyed by a `date` column, no timestamp), so sub-day presets (60m/24h/48h/72h)
@@ -91,18 +101,15 @@ function RangePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground"
-        >
+        <Button variant="outline" size="sm">
           {label}
           {value.compare && (
             <span className="text-muted-foreground">
               · {t("mainPanelTabs.cdnTab.compare")}
             </span>
           )}
-          <span className="text-muted-foreground">▾</span>
-        </button>
+          <ChevronDown className="text-muted-foreground" />
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-2">
         <div className="grid grid-cols-2 gap-1">
@@ -149,7 +156,7 @@ function RangePicker({
                 onChange({ ...value, range: "custom", since: cs, until: cu });
                 setOpen(false);
               }}
-              className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
+              className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:bg-neutral-3 disabled:text-neutral-6"
             >
               {t("mainPanelTabs.cdnTab.apply")}
             </button>
@@ -368,10 +375,10 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card overflow-hidden">
+    <section className="surface overflow-hidden">
       <header className="flex items-start gap-2 px-4 py-3 border-b border-border">
         <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground">{title}</h3>
+          <h3 className="text-m font-medium text-foreground">{title}</h3>
           {subtitle && (
             <p className="text-xs text-muted-foreground">{subtitle}</p>
           )}
@@ -400,12 +407,9 @@ function ChartLegendItem({ color, label }: { color: string; label: string }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
-        {value}
-      </div>
-    </div>
+    <StatCard label={label}>
+      <Figure value={value} />
+    </StatCard>
   );
 }
 
@@ -666,8 +670,6 @@ function FilterBar({
 }) {
   const t = useT();
   const [draft, setDraft] = useState<MonitorFilter | null>(null);
-  const selectCls =
-    "rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground";
   const opLabel = (op: string) => t(`mainPanelTabs.cdnTab.op_${op}` as never);
   const fieldLabel = (v: string) =>
     t(
@@ -698,43 +700,57 @@ function FilterBar({
 
       {draft ? (
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-1">
-          <select
+          <Select
             value={draft.field}
-            onChange={(e) => setDraft({ ...draft, field: e.target.value })}
-            className={selectCls}
+            onValueChange={(field) => setDraft({ ...draft, field })}
           >
-            {fields.map((f) => (
-              <option key={f.value} value={f.value}>
-                {fieldLabel(f.value)}
-              </option>
-            ))}
-          </select>
-          <select
-            value={draft.op}
-            onChange={(e) =>
-              setDraft({ ...draft, op: e.target.value as MonitorFilter["op"] })
-            }
-            className={selectCls}
-          >
-            {FILTER_OPS.map((op) => (
-              <option key={op} value={op}>
-                {opLabel(op)}
-              </option>
-            ))}
-          </select>
-          {FIELD_OPTIONS[draft.field] ? (
-            <select
-              value={draft.value}
-              onChange={(e) => setDraft({ ...draft, value: e.target.value })}
-              className={selectCls}
-            >
-              <option value="">{t("mainPanelTabs.cdnTab.filterValue")}</option>
-              {FIELD_OPTIONS[draft.field]!.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fields.map((f) => (
+                <SelectItem key={f.value} value={f.value}>
+                  {fieldLabel(f.value)}
+                </SelectItem>
               ))}
-            </select>
+            </SelectContent>
+          </Select>
+          <Select
+            value={draft.op}
+            onValueChange={(op) =>
+              setDraft({ ...draft, op: op as MonitorFilter["op"] })
+            }
+          >
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FILTER_OPS.map((op) => (
+                <SelectItem key={op} value={op}>
+                  {opLabel(op)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {FIELD_OPTIONS[draft.field] ? (
+            <Select
+              // Radix Select shows its placeholder only for an undefined value.
+              value={draft.value || undefined}
+              onValueChange={(value) => setDraft({ ...draft, value })}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue
+                  placeholder={t("mainPanelTabs.cdnTab.filterValue")}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {FIELD_OPTIONS[draft.field]!.map((v) => (
+                  <SelectItem key={v} value={v}>
+                    {v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <input
               value={draft.value}
@@ -757,7 +773,7 @@ function FilterBar({
               onChange([...filters, { ...draft, value: draft.value.trim() }]);
               setDraft(null);
             }}
-            className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
+            className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:bg-neutral-3 disabled:text-neutral-6"
           >
             {t("mainPanelTabs.cdnTab.apply")}
           </button>
@@ -1502,17 +1518,18 @@ function AudienceSection({
           onChange={setFilters}
         />
         {hosts.length > 1 && (
-          <select
-            value={host}
-            onChange={(e) => setSelectedHost(e.target.value)}
-            className="max-w-full truncate rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground"
-          >
-            {hosts.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </select>
+          <Select value={host} onValueChange={setSelectedHost}>
+            <SelectTrigger size="sm" className="max-w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {hosts.map((h) => (
+                <SelectItem key={h} value={h}>
+                  {h}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
@@ -1537,7 +1554,7 @@ function AudienceSection({
                 type="button"
                 onClick={() => setPlotted(d.key)}
                 className={cn(
-                  "rounded-xl border bg-card px-4 py-3 text-left transition-colors",
+                  "rounded-m border bg-card px-4 py-3 text-left transition-colors",
                   plotted === d.key
                     ? "border-foreground/40"
                     : "border-border hover:border-border/70",
@@ -1554,7 +1571,7 @@ function AudienceSection({
                     <span
                       className={cn(
                         "text-xs font-medium tabular-nums",
-                        good ? "text-emerald-600" : "text-rose-600",
+                        good ? "text-success" : "text-destructive",
                       )}
                     >
                       {delta >= 0 ? "↑" : "↓"}
@@ -1789,59 +1806,52 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   ];
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-auto p-4">
-      <div>
-        <h2 className="text-base font-semibold text-foreground">
-          {t("mainPanelTabs.cdnTab.title")}
-        </h2>
-        {hosts.length > 0 && (
-          <p className="font-mono text-xs text-muted-foreground">
-            {hosts[0]}
-            {hosts.length > 1 &&
-              ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
-                "{count}",
-                String(hosts.length - 1),
-              )}`}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-          {sections.map((sec) => (
-            <button
-              key={sec.id}
-              type="button"
-              onClick={() => setSection(sec.id)}
-              className={cn(
-                "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
-                section === sec.id
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {sec.label}
-            </button>
-          ))}
-        </div>
-        <RangePicker value={sel} onChange={setSel} />
-      </div>
+    <Page>
+      <Page.Content>
+        <Page.Container width="wide" className="flex flex-col gap-4">
+          {hosts.length > 0 && (
+            <p className="max-w-[60ch] text-s text-muted-foreground">
+              <span className="font-mono">{hosts[0]}</span>
+              {hosts.length > 1 &&
+                ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
+                  "{count}",
+                  String(hosts.length - 1),
+                )}`}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Page.Tabs>
+              {sections.map((sec) => (
+                <Page.Tab
+                  key={sec.id}
+                  active={section === sec.id}
+                  onClick={() => setSection(sec.id)}
+                >
+                  {sec.label}
+                </Page.Tab>
+              ))}
+            </Page.Tabs>
+            <RangePicker value={sel} onChange={setSel} />
+          </div>
 
-      {section === "performance" ? (
-        <PerformanceSection
-          base={base}
-          range={sel.range}
-          rangeExtra={rangeExtra}
-          enabled={enabled}
-        />
-      ) : (
-        <AudienceSection
-          base={base}
-          range={sel.range}
-          rangeExtra={rangeExtra}
-          compare={sel.compare}
-          enabled={enabled}
-        />
-      )}
-    </div>
+          {section === "performance" ? (
+            <PerformanceSection
+              base={base}
+              range={sel.range}
+              rangeExtra={rangeExtra}
+              enabled={enabled}
+            />
+          ) : (
+            <AudienceSection
+              base={base}
+              range={sel.range}
+              rangeExtra={rangeExtra}
+              compare={sel.compare}
+              enabled={enabled}
+            />
+          )}
+        </Page.Container>
+      </Page.Content>
+    </Page>
   );
 }

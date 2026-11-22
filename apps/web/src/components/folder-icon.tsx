@@ -1,9 +1,5 @@
 /**
- * FolderIcon — the macOS-style blue folder from the Figma Library design
- * (file qFc7wr91, node 7874:856): gradient back tab + gradient front body
- * with two hairline stripes. Inline SVG traced from the design asset, so it
- * scales crisply; brand blues are constant across themes (like a real
- * Finder folder).
+ * FolderIcon: the Finder-style folder from the Figma Library design, in the theme's neutral ramp.
  *
  * `glyph` renders a Finder-special-folder style mark centered on the body
  * (the design reserves this slot — node 7874:861) for well-known folders
@@ -11,9 +7,7 @@
  * corner — an eye (the Drive convention), not a lock: read-only sets are
  * public, a padlock would misread as "private".
  *
- * `tone` picks the palette: Finder blue for folders people make, graphite for
- * the system folders the product fills (uploads/outputs/skills), so "nobody
- * made this by hand" reads at a glance.
+ * `tone`: a firmer grey for folders people make, a lighter one for system folders.
  *
  * `sheets` draws up to three pages peeking over the front body — the one thing
  * a closed folder can honestly say about itself from a listing: it has
@@ -22,26 +16,19 @@
  * at a glance instead of holding one thick page.
  */
 
-import { useId } from "react";
 import type { ComponentType, SVGProps } from "react";
 import { Eye } from "@untitledui/icons";
 
 const TONES = {
   default: {
-    backFrom: "#4D87DF",
-    backTo: "#296FE8",
-    frontFrom: "#72B6FA",
-    frontTo: "#5BB1EF",
-    stripe: "#84CDFB",
-    glyph: "#014AC9",
+    back: "fill-neutral-5",
+    front: "fill-neutral-4",
+    stripe: "fill-neutral-5",
   },
   system: {
-    backFrom: "#8A94A6",
-    backTo: "#6B7687",
-    frontFrom: "#B6BEC9",
-    frontTo: "#A3ADBA",
-    stripe: "#D5DBE3",
-    glyph: "#3D4757",
+    back: "fill-neutral-4",
+    front: "fill-neutral-3",
+    stripe: "fill-neutral-4",
   },
 } as const;
 
@@ -65,11 +52,6 @@ export function FolderIcon({
   sheets?: number;
 } & SVGProps<SVGSVGElement>) {
   const colors = TONES[tone];
-  // Gradient ids must be unique per instance — folder cards render many of
-  // these on one page and a hidden duplicate id can break url() references.
-  const id = useId();
-  const backId = `${id}-back`;
-  const frontId = `${id}-front`;
 
   return (
     <svg
@@ -82,7 +64,7 @@ export function FolderIcon({
       {/* back tab */}
       <path
         d="M2.53738 2.55C1.13602 2.55 0 3.68602 0 5.08738V11.535H31.931V7.65326C31.931 6.23616 30.7822 5.08738 29.3651 5.08738H14.7681L13.8775 5.02542C13.3886 4.99141 12.9197 4.81809 12.5261 4.52596L10.7726 3.22419C10.1828 2.78638 9.46784 2.55 8.73334 2.55H2.53738Z"
-        fill={`url(#${backId})`}
+        className={colors.back}
       />
       {/* pages inside, peeking over the front body's top edge */}
       {SHEET_ANGLES.slice(0, Math.min(Math.max(sheets, 0), 3)).map((angle) => (
@@ -93,9 +75,8 @@ export function FolderIcon({
           width="14"
           height="12"
           rx="1.2"
-          /* Constant in both themes: `fill-background` goes near-black in dark and reads as a slot cut into the folder. */
-          fill="#F4F6F9"
-          stroke="#C9D2DC"
+          /* Pages must stay lighter than the body; the background token goes black in dark and reads as a slot. */
+          className="fill-neutral-1 stroke-neutral-5 dark:fill-neutral-7 dark:stroke-neutral-6"
           strokeWidth="0.7"
           transform={`rotate(${angle} 16 12)`}
         />
@@ -106,22 +87,12 @@ export function FolderIcon({
         width="32"
         height="21"
         rx="2.566"
-        fill={`url(#${frontId})`}
-      />
-      {/* top inner highlight */}
-      <rect
-        x="0.3"
-        y="8.86"
-        width="31.4"
-        height="0.55"
-        rx="0.275"
-        fill="#FFFFFF"
-        opacity="0.25"
+        className={colors.front}
       />
       {/* bottom stripes */}
-      <rect y="25.81" width="32" height="0.552" fill={colors.stripe} />
-      <rect y="27.05" width="32" height="0.552" fill={colors.stripe} />
-      {/* well-known-folder glyph, embossed on the body (design's glyph blue) */}
+      <rect y="25.81" width="32" height="0.552" className={colors.stripe} />
+      <rect y="27.05" width="32" height="0.552" className={colors.stripe} />
+      {/* well-known-folder glyph, embossed on the body */}
       {Glyph && (
         <Glyph
           x={10.5}
@@ -129,10 +100,10 @@ export function FolderIcon({
           width={11}
           height={11}
           strokeWidth={2.2}
-          style={{ color: colors.glyph, opacity: 0.55 }}
+          className="text-muted-foreground"
         />
       )}
-      {/* read-only corner badge — eye = view-only (Drive convention) */}
+      {/* read-only corner badge: eye = view-only (Drive convention) */}
       {readOnly && (
         <>
           <circle
@@ -152,30 +123,6 @@ export function FolderIcon({
           />
         </>
       )}
-      <defs>
-        <linearGradient
-          id={backId}
-          x1="15.97"
-          y1="2.55"
-          x2="15.97"
-          y2="9.53"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0.3" stopColor={colors.backFrom} />
-          <stop offset="1" stopColor={colors.backTo} />
-        </linearGradient>
-        <radialGradient
-          id={frontId}
-          cx="0"
-          cy="0"
-          r="10"
-          gradientUnits="userSpaceOnUse"
-          gradientTransform="matrix(1.6 0 0 2.1538 16 19.22)"
-        >
-          <stop stopColor={colors.frontFrom} />
-          <stop offset="1" stopColor={colors.frontTo} />
-        </radialGradient>
-      </defs>
     </svg>
   );
 }

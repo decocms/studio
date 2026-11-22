@@ -33,11 +33,9 @@ export function SettingsSection({
           )}
         >
           <div className="flex flex-col gap-1 min-w-0">
-            {title && (
-              <h2 className="text-[15px] font-medium leading-tight">{title}</h2>
-            )}
+            {title && <h2 className="text-m font-medium">{title}</h2>}
             {(description || docsHref) && (
-              <p className="text-sm text-muted-foreground leading-snug">
+              <p className="text-s text-muted-foreground">
                 {description}
                 {docsHref && (
                   <a
@@ -132,9 +130,7 @@ export function SettingsCardItem({
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium">{title}</div>
         {description && (
-          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-            {description}
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
         )}
         {children}
       </div>

@@ -55,7 +55,7 @@ export function DeckThemePreview({
   if (theme.isPending || (!!tokensUrl && tokens.isPending)) {
     return (
       <div className="flex h-full w-full items-center justify-center p-6">
-        <Skeleton className="aspect-[16/9] w-full max-w-3xl rounded-xl" />
+        <Skeleton className="aspect-[16/9] w-full max-w-3xl rounded-m" />
       </div>
     );
   }

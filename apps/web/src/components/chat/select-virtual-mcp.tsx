@@ -48,7 +48,7 @@ function VirtualMCPItemContent({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 py-3 px-3 hover:bg-accent cursor-pointer rounded-xl transition-colors",
+        "flex items-start gap-3 py-3 px-3 hover:bg-accent cursor-pointer rounded-m transition-colors",
         isSelected && "bg-accent",
       )}
     >
@@ -66,7 +66,7 @@ function VirtualMCPItemContent({
           )}
         </div>
         {virtualMcp.description && (
-          <p className="text-xs text-muted-foreground line-clamp-1 leading-relaxed">
+          <p className="text-xs text-muted-foreground line-clamp-1">
             {virtualMcp.description}
           </p>
         )}
@@ -157,7 +157,7 @@ function VirtualMCPPopoverContentInner({
             onClick={createVirtualMCP}
             variant="outline"
             size="sm"
-            className="h-8 px-3 text-sm font-medium shrink-0"
+            className="shrink-0"
             disabled={isCreating}
           >
             {isCreating
@@ -183,7 +183,7 @@ function VirtualMCPPopoverContentInner({
                     handleSelect(virtualMcp.id);
                   }
                 }}
-                className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+                className="outline-none rounded-m focus-ring"
               >
                 <VirtualMCPItemContent
                   virtualMcp={virtualMcp}
@@ -337,7 +337,7 @@ export function VirtualMCPSelector({
             </PopoverTrigger>
           </TooltipTrigger>
           {showTooltip && !open && (
-            <TooltipContent side="top" className="text-xs">
+            <TooltipContent side="top">
               {selectedVirtualMcp?.title ??
                 t("chat.selectVirtualMcp.chooseAgentTooltip")}
             </TooltipContent>

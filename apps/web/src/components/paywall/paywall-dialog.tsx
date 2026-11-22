@@ -73,11 +73,9 @@ export function PaywallDialog({
           <div className="mb-7">{icon}</div>
 
           <DialogHeader className="gap-2">
-            <DialogTitle className="text-2xl font-semibold leading-tight tracking-tight text-balance">
-              {title}
-            </DialogTitle>
+            <DialogTitle className="text-balance">{title}</DialogTitle>
             {description && (
-              <DialogDescription className="mx-auto max-w-[32ch] text-sm leading-relaxed text-pretty">
+              <DialogDescription className="mx-auto max-w-[32ch] text-pretty">
                 {description}
               </DialogDescription>
             )}

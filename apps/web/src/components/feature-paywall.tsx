@@ -167,7 +167,7 @@ export function FeaturePaywall({
       price={
         price !== undefined ? (
           <span className="flex items-baseline justify-center gap-1.5">
-            <span className="text-2xl font-semibold tabular-nums tracking-tight">
+            <span className="text-l font-semibold tabular-nums">
               {formatPlanPrice(price, preferences.language)}
             </span>
             <span className="text-sm text-muted-foreground">

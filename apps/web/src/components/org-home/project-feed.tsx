@@ -231,7 +231,7 @@ function FeedCard({
       : (assignee?.user?.name ?? undefined);
 
   return (
-    <article className="card-shadow flex flex-col gap-4 rounded-xl bg-card p-6">
+    <article className="card-shadow flex flex-col gap-4 rounded-m bg-card p-6">
       {/* The identity line: who this belongs to, which card it is, when it
           moved. The key sits HERE and not beside the title — it is an address,
           not part of the sentence, and inline it split the one line a reader
@@ -294,7 +294,7 @@ function FeedCard({
         }
         className="flex cursor-pointer flex-col items-start gap-2.5 text-left"
       >
-        <span className="text-lg leading-snug font-semibold text-foreground transition-colors hover:text-primary">
+        <span className="text-lg font-semibold text-foreground transition-colors hover:text-primary">
           {task.title}
         </span>
         {/* Pills, so the middle dots can go: a bordered chip separates itself,
@@ -328,7 +328,7 @@ function FeedCard({
           slab under every card. `leading-relaxed` is what earns it the space
           instead — prose at 1.4 in a 24px-padded card reads as a caption. */}
       {task.description && (
-        <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+        <p className="line-clamp-3 text-sm text-muted-foreground">
           {task.description}
         </p>
       )}
@@ -414,7 +414,7 @@ export function ProjectFeed({
         )}
       </div>
       {entries.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+        <p className="rounded-m border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
           {t("home.projectFeed.empty")}
         </p>
       ) : (

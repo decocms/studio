@@ -150,6 +150,7 @@ import { entryForFilter, stampableEntries } from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
+import { TagChip } from "./tag-chip";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
@@ -323,7 +324,7 @@ function ReviewsGroup({ item }: { item: TaskBoardItem }) {
           key={pr.url}
           asChild
           variant="ghost"
-          className="h-9 w-full justify-start gap-2 px-3 font-medium"
+          className="w-full justify-start gap-2"
         >
           <a
             href={pr.url}
@@ -855,7 +856,7 @@ function TaskBoardItemEditor({
             aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
             /* -ml-2 cancels the button's own padding so the glyph starts on
                  the pane's 32px gutter, as drawn. */
-            className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
+            className="-ml-2 gap-2 text-muted-foreground hover:text-foreground"
             onClick={() => {
               copyId(key);
               toast.success(t("taskBoard.taskDialog.idCopied"));
@@ -869,7 +870,7 @@ function TaskBoardItemEditor({
                row from reading as broken. */
           <span
             aria-hidden
-            className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
+            className="flex h-7 items-center gap-2 text-m text-neutral-6"
           >
             <Bookmark size={16} />–
           </span>
@@ -945,7 +946,7 @@ function TaskBoardItemEditor({
               )}
               <div>
                 {item && !editingPost ? (
-                  <h1 className="text-2xl font-semibold leading-snug text-foreground">
+                  <h1 className="text-2xl font-semibold text-foreground">
                     {title}
                   </h1>
                 ) : (
@@ -971,24 +972,19 @@ function TaskBoardItemEditor({
                     rows={1}
                     readOnly={contentLocked}
                     className={cn(
-                      "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
+                      "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold text-foreground outline-none placeholder:text-foreground/30",
                       contentLocked && "cursor-default",
                     )}
                   />
                 )}
                 {item && tagIds.length > 0 && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
                     {tagIds.map((id) => {
                       const tag = orgTags.find(
                         (candidate) => candidate.id === id,
                       );
                       return tag ? (
-                        <span
-                          key={id}
-                          className="rounded-md border border-border px-2 py-1"
-                        >
-                          {tag.name}
-                        </span>
+                        <TagChip key={id} name={tag.name} color={tag.color} />
                       ) : null;
                     })}
                   </div>
@@ -1213,12 +1209,14 @@ function TaskBoardItemEditor({
                       </>
                     ) : (
                       <>
-                        <span
-                          className={cn(
-                            "size-2 rounded-full",
-                            PRIORITY_CONFIG[priority].dotClassName,
-                          )}
-                        />
+                        <span className="flex size-4 shrink-0 items-center justify-center">
+                          <span
+                            className={cn(
+                              "size-2 rounded-full",
+                              PRIORITY_CONFIG[priority].dotClassName,
+                            )}
+                          />
+                        </span>
                         {t(PRIORITY_CONFIG[priority].labelKey)}
                       </>
                     )}
@@ -1451,40 +1449,21 @@ function TaskBoardItemEditor({
                       const tag = orgTags.find((ot) => ot.id === tagId);
                       if (!tag) return null;
                       return (
-                        // Two sibling buttons, not one nested in the other — a <button> can't validly contain another interactive element.
-                        <div
+                        <TagChip
                           key={tagId}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setTagsOpen(true)}
-                            className="inline-flex items-center gap-1.5"
-                          >
-                            <span
-                              className="size-2 shrink-0 rounded-full"
-                              style={{
-                                backgroundColor: tagDotColor(tag.color),
-                              }}
-                            />
-                            <span className="truncate">{tag.name}</span>
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={t(
-                              "taskBoard.taskDialog.removeTagAriaLabel",
-                              { name: tag.name },
-                            )}
-                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
-                            onClick={() => {
-                              patch({
-                                tagIds: tagIds.filter((id) => id !== tagId),
-                              });
-                            }}
-                          >
-                            <X size={10} />
-                          </button>
-                        </div>
+                          name={tag.name}
+                          color={tag.color}
+                          onSelect={() => setTagsOpen(true)}
+                          removeLabel={t(
+                            "taskBoard.taskDialog.removeTagAriaLabel",
+                            { name: tag.name },
+                          )}
+                          onRemove={() => {
+                            patch({
+                              tagIds: tagIds.filter((id) => id !== tagId),
+                            });
+                          }}
+                        />
                       );
                     })}
                     <PopoverTrigger asChild>
@@ -1959,7 +1938,7 @@ function PreviewButton({ url, routes }: { url: string; routes: string[] }) {
             type="button"
             variant="outline"
             size="sm"
-            className="rounded-l-none border-l-0 px-1.5"
+            className="rounded-l-none border-l-0"
             aria-label={t("taskBoard.taskDialog.previewRoutesLabel")}
             title={t("taskBoard.taskDialog.previewRoutesLabel")}
           >
@@ -2044,7 +2023,7 @@ function PrCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl border border-border bg-card p-3",
+        "flex flex-col gap-3 rounded-m border border-border bg-card p-3",
         // Cards are seeded from localStorage, so what's on screen may be a
         // minute (or a day) old. The breathing border says "these numbers are
         // being checked" without blanking the card back to a skeleton.
@@ -2215,7 +2194,7 @@ function PrCard({
  *  preview) is still loading — the enrichment can take a moment. */
 function PrCardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
+    <div className="flex flex-col gap-3 surface p-3">
       <div className="flex items-center gap-3">
         <Skeleton className="size-4 shrink-0 rounded" />
         <Skeleton className="h-4 min-w-0 flex-1" />
@@ -2382,7 +2361,7 @@ function RunReviewerButton({ item }: { item: TaskBoardItem }) {
       size="sm"
       disabled={runReviewer.isPending}
       title={t("taskBoard.taskDialog.runReviewerTitle")}
-      className="h-7 gap-1.5 px-2 text-sm font-normal text-muted-foreground"
+      className="gap-1.5 text-muted-foreground"
       onClick={() =>
         runReviewer.mutate(undefined, {
           onSuccess: (res) =>
@@ -2744,7 +2723,11 @@ function describeActivity(
     if (!cfg) return String(p ?? "");
     return (
       <ValueChip
-        icon={<span className={cn("size-2 rounded-full", cfg.dotClassName)} />}
+        icon={
+          <span className="flex size-3.5 items-center justify-center">
+            <span className={cn("size-2 rounded-full", cfg.dotClassName)} />
+          </span>
+        }
         label={t(cfg.labelKey)}
       />
     );

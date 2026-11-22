@@ -754,7 +754,7 @@ export function SectionList({
             {activeSection ? (
               <div
                 className={cn(
-                  "cursor-grabbing shadow-lg ring-1 ring-border/60",
+                  "cursor-grabbing shadow-(--popup-shadow)",
                   sectionRowClassName(activeSection, false, compact),
                 )}
               >

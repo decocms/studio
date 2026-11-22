@@ -473,11 +473,10 @@ export function PageVariantTabs({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-xs"
                 aria-label={t(
                   "sectionsEditor.pageVariantTabs.addVariantAriaLabel",
                 )}
-                className="size-6"
                 onClick={onAdd}
               >
                 <Plus size={14} />

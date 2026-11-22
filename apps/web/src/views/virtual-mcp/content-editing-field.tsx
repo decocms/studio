@@ -64,10 +64,7 @@ export function ContentEditingField<T extends FieldValues>({
         return (
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5 min-w-0">
-              <Label
-                htmlFor="content-editing-mode"
-                className="font-normal text-foreground"
-              >
+              <Label htmlFor="content-editing-mode" className="text-foreground">
                 {t("sandbox.cmsSettings.contentEditing.title")}
               </Label>
               <p className="text-xs text-muted-foreground">
@@ -85,7 +82,7 @@ export function ContentEditingField<T extends FieldValues>({
             >
               <SelectTrigger
                 id="content-editing-mode"
-                className="w-44 shrink-0 text-sm"
+                className="w-44 shrink-0"
               >
                 <SelectValue />
               </SelectTrigger>

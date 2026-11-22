@@ -446,10 +446,10 @@ function ConnectionInspectorViewWithConnection({
           className="sm:max-w-[520px] p-0 flex flex-col gap-0 overflow-hidden"
         >
           <SheetHeader className="px-4 py-3 md:px-6 md:py-4 border-b border-border shrink-0">
-            <SheetTitle className="text-base">
+            <SheetTitle>
               {configureInstance?.title ?? connection.title}
             </SheetTitle>
-            <SheetDescription className="text-xs">
+            <SheetDescription>
               {t("details.connection.settingsDescription")}
             </SheetDescription>
             {instanceCreator && (

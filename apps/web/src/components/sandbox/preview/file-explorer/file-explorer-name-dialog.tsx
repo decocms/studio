@@ -100,7 +100,7 @@ export function FileExplorerNameDialog({
                   value={parentLabel}
                   readOnly
                   disabled
-                  className="font-mono text-xs"
+                  className="font-mono"
                 />
               </div>
             )}

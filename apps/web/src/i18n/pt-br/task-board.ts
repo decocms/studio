@@ -10,7 +10,7 @@ export const taskBoard = {
   "taskBoard.feed.eventDone": "Entregue",
   "taskBoard.feed.eventDelivered": "Avançou",
   "taskBoard.feed.eventReview": "Em revisão",
-  "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
+  "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta…",
   "taskBoard.conversation.openChat": "Abrir chat",
   "taskBoard.conversation.reviewer": "Revisor",
   "taskBoard.conversation.details": "Detalhes",
@@ -59,7 +59,7 @@ export const taskBoard = {
     "Executar coloca o Super Agent para trabalhar nesta tarefa e salva a mudança no seu projeto, pronta para seu time revisar e aprovar.",
   "taskBoard.taskBoard.connectGithubTitle": "Conectar GitHub",
   "taskBoard.taskBoard.handedToHumanBadgeTitle":
-    "A automação parou nesta tarefa — abra para ver o motivo",
+    "A automação parou nesta tarefa, abra para ver o motivo",
   "taskBoard.taskBoard.layoutViewAriaLabel": "visualização {label}",
   "taskBoard.taskBoard.needsInput": "Precisa de entrada",
   "taskBoard.taskBoard.needsYou": "Precisa de você",
@@ -132,7 +132,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.runFailedGithubMissing":
     "A conexão do GitHub para este repositório não existe mais. Vincule o repositório novamente e execute a tarefa de novo.",
   "taskBoard.taskDialog.runFailedGithubOwnerOnly":
-    "Só um owner da organização {owner} no GitHub pode aceitar as novas permissões do App — o GitHub mostra 404 para todo mundo. Se não for você, encaminhe esta tarefa.",
+    "Só um owner da organização {owner} no GitHub pode aceitar as novas permissões do App, o GitHub mostra 404 para todo mundo. Se não for você, encaminhe esta tarefa.",
   "taskBoard.taskDialog.runFailedReconnect": "Reconectar GitHub",
   "taskBoard.taskDialog.runFailedLinkRepo": "Vincular repositório",
   "taskBoard.taskDialog.activityLabel": "Atividade",
@@ -146,9 +146,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
   "taskBoard.taskDialog.activityMovedTo": "moveu para {to}",
   "taskBoard.taskDialog.activityRetryScheduled":
-    "agendou a tentativa {attempt} de {of} — {reason}",
+    "agendou a tentativa {attempt} de {of}, {reason}",
   "taskBoard.taskDialog.activityRetriesExhausted":
-    "moveu para {to} depois de {count} tentativas sem sucesso — {reason}",
+    "moveu para {to} depois de {count} tentativas sem sucesso, {reason}",
   "taskBoard.taskDialog.activityAssigned": "atribuiu para {name}",
   "taskBoard.taskDialog.activityUnassigned": "removeu a atribuição",
   "taskBoard.taskDialog.activityDelegated": "delegou a {name}",
@@ -178,17 +178,17 @@ export const taskBoard = {
   "taskBoard.taskDialog.subscribe": "Seguir",
   "taskBoard.taskDialog.unsubscribe": "Deixar de seguir",
   "taskBoard.taskDialog.activityMergeConflictResolution":
-    "não conseguiu mesclar o pull request — resolvendo um conflito de merge",
+    "não conseguiu mesclar o pull request, resolvendo um conflito de merge",
   "taskBoard.taskDialog.activityMergeFailed":
     "não conseguiu mesclar o pull request",
   "taskBoard.taskDialog.activityMergeFailedNoPr":
-    "não conseguiu mesclar — nenhum pull request está vinculado a esta tarefa",
+    "não conseguiu mesclar, nenhum pull request está vinculado a esta tarefa",
   "taskBoard.taskDialog.activityMergeFailedChecksFailing":
-    "não conseguiu mesclar — as verificações do pull request estão falhando",
+    "não conseguiu mesclar, as verificações do pull request estão falhando",
   "taskBoard.taskDialog.activityMergeFailedNoConnection":
-    "não conseguiu mesclar — esta organização não tem conexão do GitHub para {detail}. Conecte esse repositório para publicar esta tarefa.",
+    "não conseguiu mesclar, esta organização não tem conexão do GitHub para {detail}. Conecte esse repositório para publicar esta tarefa.",
   "taskBoard.taskDialog.activityMergeFailedRateLimited":
-    "ainda não deu para fazer o merge — o GitHub está limitando nossas requisições. Isso é tentado de novo automaticamente.",
+    "ainda não deu para fazer o merge, o GitHub está limitando nossas requisições. Isso é tentado de novo automaticamente.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
     "o provider recusou o merge: {detail}",
   "taskBoard.taskDialog.activityMergeFailedConflict":
@@ -216,7 +216,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentCollapseThread": "Recolher",
   "taskBoard.taskDialog.commentDelete": "Excluir",
   "taskBoard.taskDialog.commentDropToAttach": "Solte para anexar",
-  "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário...",
+  "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário…",
   "taskBoard.taskDialog.commentResolveThread": "Resolver conversa",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
     "{count} comentários resolvidos de {names}",
@@ -233,7 +233,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.copyDescription": "Copiar descrição",
   "taskBoard.taskDialog.createTaskButton": "Criar tarefa",
   "taskBoard.taskDialog.descriptionPlaceholder":
-    "Descreva uma tarefa para um agente...",
+    "Descreva uma tarefa para um agente…",
   "taskBoard.taskDialog.dueDateLabel": "Data de vencimento",
   "taskBoard.taskDetail.breadcrumbTasks": "Tarefas",
   "taskBoard.taskDetail.breadcrumbTask": "Tarefa",
@@ -256,7 +256,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.previewRoutesLabel": "Páginas alteradas neste PR",
   "taskBoard.taskDialog.previewUnavailable": "Preview indisponível",
   "taskBoard.taskDialog.previewUnavailableTitle":
-    "O deploy preview ainda não está respondendo — pode estar em construção",
+    "O deploy preview ainda não está respondendo, pode estar em construção",
   "taskBoard.taskDialog.shipToProductionButton": "Subir para produção",
   "taskBoard.taskDialog.shipSuccess": "Mesclado e enviado para produção",
   "taskBoard.taskDialog.shipError": "Não foi possível mesclar o pull request",
@@ -264,34 +264,34 @@ export const taskBoard = {
     "Precisa resolver conflitos antes de subir",
   "taskBoard.taskDialog.resolveConflictButton": "Resolver",
   "taskBoard.taskDialog.resolveConflictTitle":
-    "Essa alteração tem conflitos que precisam ser resolvidos antes de subir — o agente resolve pra você",
+    "Essa alteração tem conflitos que precisam ser resolvidos antes de subir, o agente resolve pra você",
   "taskBoard.taskDialog.resolveConflictSuccess":
     "Agente acionado para resolver os conflitos",
   "taskBoard.taskDialog.resolveConflictError":
     "Não foi possível acionar o agente",
   "taskBoard.taskDialog.runReviewerButton": "Executar revisor",
   "taskBoard.taskDialog.runReviewerTitle":
-    "A revisão automática está desligada nesta organização — execute o Revisor apenas nesta tarefa",
+    "A revisão automática está desligada nesta organização, execute o Revisor apenas nesta tarefa",
   "taskBoard.taskDialog.runReviewerSuccess": "Revisor acionado",
   "taskBoard.taskDialog.runReviewerAlreadyRunning":
     "Um revisor já está trabalhando nesta tarefa",
   "taskBoard.taskDialog.runReviewerError": "Não foi possível acionar o revisor",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
   "taskBoard.taskDialog.costTooltipSingular":
-    "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
+    "Custo estimado de IA desta tarefa, somando sua única execução, o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
   "taskBoard.taskDialog.costTooltipPlural":
-    "Custo estimado de IA desta tarefa, somando as {runs} execuções — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
+    "Custo estimado de IA desta tarefa, somando as {runs} execuções, o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
   "taskBoard.taskDialog.costTooltipSubscriptionSingular":
-    "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Esta execução usou seu plano Claude conectado, então você não foi cobrado por isso: ela consome os limites de uso do plano. O valor é quanto os mesmos tokens custariam na API medida.",
+    "Custo estimado de IA desta tarefa, somando sua única execução, o Super Agent mais cada rodada de revisão e reexecução. Esta execução usou seu plano Claude conectado, então você não foi cobrado por isso: ela consome os limites de uso do plano. O valor é quanto os mesmos tokens custariam na API medida.",
   "taskBoard.taskDialog.costTooltipSubscriptionPlural":
-    "Custo estimado de IA desta tarefa, somando as {runs} execuções — o Super Agent mais cada rodada de revisão e reexecução. Estas execuções usaram seu plano Claude conectado, então você não foi cobrado por isso: elas consomem os limites de uso do plano. O valor é quanto os mesmos tokens custariam na API medida.",
+    "Custo estimado de IA desta tarefa, somando as {runs} execuções, o Super Agent mais cada rodada de revisão e reexecução. Estas execuções usaram seu plano Claude conectado, então você não foi cobrado por isso: elas consomem os limites de uso do plano. O valor é quanto os mesmos tokens custariam na API medida.",
   "taskBoard.taskDialog.propertiesLabel": "Propriedades",
   "taskBoard.taskDialog.labelsLabel": "Tags",
   "taskBoard.taskDialog.projectLabel": "Projeto",
   "taskBoard.taskDialog.reviewsLabel": "Revisões",
   "taskBoard.taskDialog.reportsContentLocked":
-    "Gerado pelo seu Deco Score — título, descrição e prioridade são gerenciados automaticamente",
-  "taskBoard.taskDialog.savingLabel": "Salvando...",
+    "Gerado pelo seu Deco Score, título, descrição e prioridade são gerenciados automaticamente",
+  "taskBoard.taskDialog.savingLabel": "Salvando…",
   "taskBoard.taskDialog.showMore": "Ver mais",
   "taskBoard.taskDialog.timelineFoldMore": "mais {count} atualizações",
   "taskBoard.taskDialog.timelineFoldLess": "Ver menos atualizações",
@@ -316,7 +316,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.codeReviewerLabel": "Revisor de Código",
   "taskBoard.taskDialog.superAgentDefaultName": "Super Agent",
   "taskBoard.taskDialog.superAgentLabel": "Super Agent",
-  "taskBoard.taskDialog.taskTitlePlaceholder": "Título da tarefa...",
+  "taskBoard.taskDialog.taskTitlePlaceholder": "Título da tarefa…",
   "taskBoard.taskDialog.threadStatusCompleted": "Concluído",
   "taskBoard.taskDialog.threadStatusEndedAfterDelivery":
     "Terminou depois de entregar",
@@ -378,7 +378,7 @@ export const taskBoard = {
   "taskBoard.rerun.description":
     "O Super Agent vai iniciar uma nova execução nesta tarefa.",
   "taskBoard.rerun.descriptionTakeover":
-    "O Super Agent vai iniciar uma nova execução nesta tarefa. Ainda há uma execução aberta nela — essa será interrompida.",
+    "O Super Agent vai iniciar uma nova execução nesta tarefa. Ainda há uma execução aberta nela, essa será interrompida.",
   "taskBoard.rerun.titleMany": "Executar {count} tarefas de novo?",
   "taskBoard.rerun.descriptionMany":
     "O Super Agent vai iniciar uma nova execução em cada uma das {count} tarefas selecionadas. Qualquer execução ainda aberta nelas será interrompida.",
@@ -436,7 +436,7 @@ export const taskBoard = {
   "taskBoard.analytics.openAnalytics": "Análise",
   "taskBoard.analytics.backToBoard": "Voltar ao quadro",
   "taskBoard.analytics.orgPickerPlaceholder": "Organização",
-  "taskBoard.analytics.orgSearch": "Buscar organizações...",
+  "taskBoard.analytics.orgSearch": "Buscar organizações…",
   "taskBoard.analytics.orgEmpty": "Nenhuma organização encontrada.",
   "taskBoard.analytics.orgCurrent": "Esta organização",
   "taskBoard.analytics.orgAll": "Todas as organizações",
@@ -454,7 +454,7 @@ export const taskBoard = {
   "taskBoard.analytics.noDataInRange": "Sem dados neste período",
   "taskBoard.analytics.nothingToShow": "Nada para mostrar",
   "taskBoard.feed.composerPlaceholder": "O que precisa ser feito?",
-  "taskBoard.feed.composerDescriptionPlaceholder": "Adicionar descrição...",
+  "taskBoard.feed.composerDescriptionPlaceholder": "Adicionar descrição…",
   "taskBoard.feed.composerSubmit": "Adicionar",
   "taskBoard.feed.railRunning": "Rodando agora",
   "taskBoard.feed.railWaiting": "Esperando por você",

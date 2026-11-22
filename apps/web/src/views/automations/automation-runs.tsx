@@ -20,7 +20,7 @@ import {
   SELF_MCP_ALIAS_ID,
 } from "@/sdk";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Card } from "@decocms/ui/components/card.tsx";
+import { Figure, StatCard as SharedStatCard } from "@/components/stat-card";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Sheet, SheetContent } from "@decocms/ui/components/sheet.tsx";
 import {
@@ -64,13 +64,12 @@ function StatCard({
   subtitle?: string;
 }) {
   return (
-    <Card className="pt-4 px-4 pb-5 gap-1">
-      <span className="text-sm text-foreground/70">{title}</span>
-      <span className="text-3xl font-normal tabular-nums">{value}</span>
+    <SharedStatCard label={title}>
+      <Figure value={value} />
       {subtitle && (
         <span className="text-xs text-muted-foreground">{subtitle}</span>
       )}
-    </Card>
+    </SharedStatCard>
   );
 }
 
@@ -315,19 +314,19 @@ export function AutomationRunsView({
         <Table className="w-full border-collapse">
           <TableHeader className="border-b-0">
             <TableRow className="h-9 hover:bg-transparent border-b border-border">
-              <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+              <TableHead className="pl-4">
                 {t("automations.automationRuns.runHeader")}
               </TableHead>
-              <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+              <TableHead className="w-28 px-3">
                 {t("automations.automationRuns.statusHeader")}
               </TableHead>
-              <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+              <TableHead className="w-24 px-3 text-right">
                 {t("automations.automationRuns.tokensHeader")}
               </TableHead>
-              <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+              <TableHead className="w-24 px-3 text-right">
                 {t("automations.automationRuns.costHeader")}
               </TableHead>
-              <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+              <TableHead className="w-32 px-3 pr-5">
                 {t("automations.automationRuns.startedHeader")}
               </TableHead>
             </TableRow>

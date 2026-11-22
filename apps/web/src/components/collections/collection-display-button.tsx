@@ -78,7 +78,7 @@ export function CollectionDisplayButton({
                 {activeFilterCount > 0 && (
                   <Badge
                     variant="default"
-                    className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+                    className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 leading-none"
                   >
                     {activeFilterCount}
                   </Badge>
@@ -109,7 +109,7 @@ export function CollectionDisplayButton({
         {/* Sort Options */}
         {sortOptions.length > 0 && onSort && (
           <div className="p-1 flex flex-col gap-0.5 border-b border-border">
-            <div className="px-2 py-1.5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
               {t("collections.collectionDisplayButton.sortBy")}
             </div>
             {sortOptions.map((option) => {
@@ -157,7 +157,7 @@ export function CollectionDisplayButton({
             key={filter.label}
             className="p-1 flex flex-col gap-0.5 border-b border-border last:border-b-0"
           >
-            <div className="px-2 py-1.5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
               {filter.label}
             </div>
             {filter.options.map((option) => {

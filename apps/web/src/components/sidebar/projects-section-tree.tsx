@@ -333,7 +333,7 @@ export function SidebarProjectsTree({
                 ? "sidebar.customize.folderOptions"
                 : "sidebar.projects.more",
             )}
-            className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex size-6 shrink-0 items-center justify-center rounded-(--studio-control-radius) text-muted-foreground [&_svg]:size-3.5 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <DotsHorizontal size={14} />
           </button>
@@ -394,7 +394,7 @@ export function SidebarProjectsTree({
               folder ? { onCreated: (id) => move(id, folder.id) } : undefined,
             )
           }
-          className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          className="flex size-6 shrink-0 items-center justify-center rounded-(--studio-control-radius) text-muted-foreground [&_svg]:size-3.5 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
         >
           <Plus size={14} />
         </button>

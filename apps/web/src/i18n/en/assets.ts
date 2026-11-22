@@ -1,5 +1,4 @@
 export const assets = {
-  "assets.browser.title": "Assets",
   "assets.browser.bucketLabel": "Bucket: {name}",
   "assets.browser.noBucketTitle": "No assets bucket for this site",
   "assets.browser.noBucketDescription":

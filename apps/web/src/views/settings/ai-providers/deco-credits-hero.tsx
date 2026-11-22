@@ -90,10 +90,10 @@ export function QuickTopUp() {
             if (v) setCurrency(v as "usd" | "brl");
           }}
         >
-          <ToggleGroupItem value="usd" className="h-8 px-3 text-sm">
+          <ToggleGroupItem value="usd" className="h-8 px-3">
             USD
           </ToggleGroupItem>
-          <ToggleGroupItem value="brl" className="h-8 px-3 text-sm">
+          <ToggleGroupItem value="brl" className="h-8 px-3">
             BRL
           </ToggleGroupItem>
         </ToggleGroup>
@@ -207,7 +207,7 @@ function CreditsBalance({ enabled }: { enabled: boolean }) {
         ) : (
           <span
             className={cn(
-              "text-3xl font-semibold tabular-nums tracking-tight",
+              "text-3xl font-semibold tabular-nums",
               balanceDollars != null && creditColorClass(balanceDollars),
             )}
           >
@@ -218,7 +218,7 @@ function CreditsBalance({ enabled }: { enabled: boolean }) {
           type="button"
           onClick={() => refetch()}
           disabled={isFetching}
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-lg hover:bg-muted/50"
+          className="text-muted-foreground hover:text-foreground disabled:text-neutral-6 transition-colors p-1 rounded-lg hover:bg-muted/50"
           aria-label={t("settings.decoCreditsHero.refreshBalance")}
         >
           <RefreshCw01 size={14} className={cn(isFetching && "animate-spin")} />
@@ -279,7 +279,7 @@ export function DecoCreditsHero() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs text-muted-foreground hover:text-destructive"
+              className="text-muted-foreground hover:text-destructive"
               onClick={() => setConfirmDisconnect(true)}
               disabled={isDisconnecting}
             >

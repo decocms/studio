@@ -101,7 +101,7 @@ function ColorDot({ name, value }: { name: string; value: string }) {
         style={{ backgroundColor: value }}
         aria-hidden
       />
-      <div className="flex flex-col leading-tight min-w-0">
+      <div className="flex flex-col min-w-0">
         <span className="text-sm text-foreground">{name}</span>
         <span className="text-xs font-mono tabular-nums text-muted-foreground">
           {value}
@@ -121,7 +121,7 @@ function FontChip({ role, family }: { role: string; family: string }) {
       >
         Aa
       </span>
-      <div className="flex flex-col leading-tight">
+      <div className="flex flex-col">
         <span className="text-xs text-muted-foreground">{role}</span>
         <span
           className="text-sm text-foreground"
@@ -214,7 +214,7 @@ function BrandCard({
               <span className="inline-flex items-center gap-2 text-lg font-semibold text-foreground truncate">
                 {name}
                 {showDefaultBadge && isDefault && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 rounded-xs bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                     <Star01 className="size-3 text-warning" />
                     {t("chat.brandContext.defaultBadge")}
                   </span>
@@ -236,9 +236,7 @@ function BrandCard({
         </div>
 
         {overview && (
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {overview}
-          </p>
+          <p className="text-sm text-muted-foreground">{overview}</p>
         )}
 
         {colorEntries.length > 0 && (
@@ -488,7 +486,7 @@ export function BrandContextListPart({
                     }}
                   />
                 )}
-                <div className="flex flex-col leading-tight min-w-0 flex-1">
+                <div className="flex flex-col min-w-0 flex-1">
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground truncate">
                     {brand.name ?? t("chat.brandContext.untitled")}
                     {brand.isDefault && (
@@ -496,7 +494,7 @@ export function BrandContextListPart({
                     )}
                   </span>
                   {brand.domain && (
-                    <span className="text-[11px] text-muted-foreground truncate">
+                    <span className="text-xs text-muted-foreground truncate">
                       {brand.domain}
                     </span>
                   )}

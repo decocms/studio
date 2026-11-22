@@ -159,18 +159,18 @@ export function PublishCompare({
           <TabsList className="h-8 w-auto" variant="pill">
             {canRender ? (
               <>
-                <TabsTrigger value="split" className="px-3 text-xs">
+                <TabsTrigger value="split" className="px-3">
                   {t("thread.publishCompare.sideBySide")}
                 </TabsTrigger>
-                <TabsTrigger value="before" className="px-3 text-xs">
+                <TabsTrigger value="before" className="px-3">
                   {t("thread.publishCompare.before")}
                 </TabsTrigger>
-                <TabsTrigger value="after" className="px-3 text-xs">
+                <TabsTrigger value="after" className="px-3">
                   {t("thread.publishCompare.after")}
                 </TabsTrigger>
               </>
             ) : null}
-            <TabsTrigger value="code" className="px-3 text-xs">
+            <TabsTrigger value="code" className="px-3">
               {t("thread.publishCompare.code")}
             </TabsTrigger>
           </TabsList>
@@ -221,7 +221,7 @@ export function PublishCompare({
         ) : null}
       </div>
       {pathHint && canRender && view !== "code" ? (
-        <p className="border-b bg-background px-4 py-1.5 text-[11px] text-muted-foreground">
+        <p className="border-b bg-background px-4 py-1.5 text-xs text-muted-foreground">
           {pathHint}
         </p>
       ) : null}
@@ -295,7 +295,7 @@ function ComparePane({
 }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5">
-      <div className="flex items-center gap-1.5 px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+      <div className="flex items-center gap-1.5 px-0.5 text-xs font-medium text-muted-foreground">
         <span
           className={cn(
             "size-1.5 rounded-full bg-muted-foreground/50",

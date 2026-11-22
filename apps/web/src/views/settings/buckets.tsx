@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertCircle, HardDrive, Plus, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +40,8 @@ import {
   useFileConfigs,
 } from "@/hooks/use-file-configs";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
+import { SettingsCard } from "@/components/settings/settings-section";
+import { Page } from "@/components/page";
 
 /**
  * MCP tool errors arrive as Error messages like
@@ -89,7 +92,7 @@ function FileConfigRow({
 }) {
   const t = useT();
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
+    <div className="flex items-start justify-between gap-4 px-4 py-3">
       <div className="flex items-start gap-3 min-w-0">
         <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
           <HardDrive size={16} className="text-muted-foreground" />
@@ -98,11 +101,11 @@ function FileConfigRow({
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">{config.name}</span>
             {config.credentialType === "sts-session" ? (
-              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+              <span className="text-xxs font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
                 STS
               </span>
             ) : config.credentialType === "managed" ? (
-              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+              <span className="text-xxs font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
                 {t("settings.buckets.managed")}
               </span>
             ) : null}
@@ -148,29 +151,6 @@ function FileConfigRow({
           <Trash01 size={14} />
         </Button>
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  const t = useT();
-  return (
-    <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
-      <div className="size-12 rounded-full bg-muted flex items-center justify-center">
-        <HardDrive size={20} className="text-muted-foreground" />
-      </div>
-      <div>
-        <p className="font-medium text-sm">
-          {t("settings.buckets.noBucketsConfigured")}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          {t("settings.buckets.emptyStateDescription")}
-        </p>
-      </div>
-      <Button onClick={onCreate} size="sm" className="mt-2">
-        <Plus size={14} />
-        {t("settings.buckets.addBucket")}
-      </Button>
     </div>
   );
 }
@@ -345,7 +325,7 @@ function CreateFileConfigDialog({
 
           <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-3">
             <div className="min-w-0">
-              <Label htmlFor="file-config-path-style" className="text-sm">
+              <Label htmlFor="file-config-path-style">
                 {t("settings.buckets.forcePathStyleLabel")}
               </Label>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -593,10 +573,24 @@ function FilesContent() {
     null,
   );
 
+  const createAction = (
+    <Page.Actions>
+      <Button onClick={() => setCreateOpen(true)} size="sm">
+        <Plus size={16} />
+        {t("settings.buckets.addBucket")}
+      </Button>
+    </Page.Actions>
+  );
+
   if (configs.length === 0) {
     return (
       <>
-        <EmptyState onCreate={() => setCreateOpen(true)} />
+        {createAction}
+        <EmptyState
+          icon={<HardDrive />}
+          title={t("settings.buckets.noBucketsConfigured")}
+          description={t("settings.buckets.emptyStateDescription")}
+        />
         <CreateFileConfigDialog
           open={createOpen}
           onOpenChange={setCreateOpen}
@@ -607,23 +601,13 @@ function FilesContent() {
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("settings.buckets.bucketsConfigured", { count: configs.length })}
-        </p>
-        <Button onClick={() => setCreateOpen(true)} size="sm">
-          <Plus size={14} />
-          {t("settings.buckets.addBucket")}
-        </Button>
-      </div>
+      {createAction}
 
-      <section className="rounded-2xl border border-border/60 bg-background p-5">
-        <div>
-          {configs.map((c) => (
-            <FileConfigRow key={c.id} config={c} onDelete={setPendingDelete} />
-          ))}
-        </div>
-      </section>
+      <SettingsCard>
+        {configs.map((c) => (
+          <FileConfigRow key={c.id} config={c} onDelete={setPendingDelete} />
+        ))}
+      </SettingsCard>
 
       <CreateFileConfigDialog open={createOpen} onOpenChange={setCreateOpen} />
       <DeleteFileConfigDialog

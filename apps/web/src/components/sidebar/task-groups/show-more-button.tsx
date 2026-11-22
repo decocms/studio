@@ -32,8 +32,8 @@ export function ShowMoreButton({
       className={cn(
         "flex items-center gap-2 py-1.5 rounded-lg text-sm text-muted-foreground",
         indented ? "-ml-4 pl-6 pr-2" : "px-2",
-        "hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        "transition-colors disabled:cursor-progress disabled:opacity-60",
+        "hover:bg-accent/60 hover:text-foreground focus-ring",
+        "transition-colors disabled:cursor-progress disabled:text-neutral-6",
       )}
     >
       {isFetching && <Spinner className="size-3.5" />}

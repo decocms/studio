@@ -154,7 +154,7 @@ function SkillCard({
               <div className="relative z-10 pointer-events-auto transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="icon-sm">
                       <DotsVertical size={16} />
                     </Button>
                   </DropdownMenuTrigger>
@@ -180,7 +180,8 @@ function SkillCard({
               {entry.name}
             </h3>
             <p className="text-sm text-muted-foreground line-clamp-2">
-              {entry.description || t("settings.skills.noDescription")}
+              {entry.description?.replace(/^["']|["']$/g, "") ||
+                t("settings.skills.noDescription")}
             </p>
           </div>
         </div>
@@ -432,7 +433,7 @@ export default function SettingsSkillsPage() {
               <div className="@container">
                 <SkillsGrid>
                   {Array.from({ length: 8 }, (_, i) => (
-                    <Skeleton key={i} className="h-[168px] rounded-xl" />
+                    <Skeleton key={i} className="h-[168px] rounded-m" />
                   ))}
                 </SkillsGrid>
               </div>

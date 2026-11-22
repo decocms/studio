@@ -128,7 +128,7 @@ function ThreadSheetHeader({
             className="shadow-sm shrink-0 rounded-md"
           />
           <div className="min-w-0">
-            <SheetTitle className="text-sm leading-snug truncate">
+            <SheetTitle className="truncate">
               {thread.title || t("orgs.threads.untitledChat")}
             </SheetTitle>
             {agentName && (
@@ -141,21 +141,21 @@ function ThreadSheetHeader({
         {nav && (
           <div className="flex items-center gap-0.5 shrink-0">
             <Button
-              size="icon"
+              size="icon-sm"
               variant="ghost"
               onClick={nav.onPrev}
               disabled={nav.index === 0}
-              className="h-7 w-7 text-muted-foreground"
+              className="text-muted-foreground"
               aria-label={t("orgs.threads.previousChat")}
             >
               <ChevronUp size={14} />
             </Button>
             <Button
-              size="icon"
+              size="icon-sm"
               variant="ghost"
               onClick={nav.onNext}
               disabled={nav.index === nav.total - 1}
-              className="h-7 w-7 text-muted-foreground"
+              className="text-muted-foreground"
               aria-label={t("orgs.threads.nextChat")}
             >
               <ChevronDown size={14} />

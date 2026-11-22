@@ -5,7 +5,7 @@ export const layoutTour = {
     "Organizations and projects now share this one control. Search it to jump straight to any project, including ones in your other organizations.",
   "layoutTour.nav.title": "Navigation lives here now",
   "layoutTour.nav.description":
-    "Everything that used to be spread around the app is in this one panel — your destinations, the project you have open, and your account at the foot of it. Whatever you are looking for, start here.",
+    "Everything that used to be spread around the app is in this one panel, your destinations, the project you have open, and your account at the foot of it. Whatever you are looking for, start here.",
   "layoutTour.tasks.title": "Track the work in Tasks",
   "layoutTour.tasks.description":
     "Every job your projects pick up shows here as a task, so you follow and steer their work from one board instead of chat by chat.",
@@ -15,7 +15,7 @@ export const layoutTour = {
 
   "layoutTour.projects.title": "Every project, in the sidebar",
   "layoutTour.projects.description":
-    "Every project your team built is listed here — pick one to go straight to its work, or import a repository to add another.",
+    "Every project your team built is listed here, pick one to go straight to its work, or import a repository to add another.",
 
   // ---- Org home.
   "layoutTour.recentActivity.title": "See what has been running",
@@ -37,7 +37,7 @@ export const layoutTour = {
     "Automations run this project on a trigger or a schedule, so recurring work happens without anyone starting it.",
   "layoutTour.settings.title": "One Settings row, two targets",
   "layoutTour.settings.description":
-    "Scoped to a project, this opens that project's own settings — its connections, models and layout. With no project scoped it opens the organization's: members, billing, and how your team connects to Studio.",
+    "Scoped to a project, this opens that project's own settings, its connections, models and layout. With no project scoped it opens the organization's: members, billing, and how your team connects to Studio.",
 
   // ---- Chrome.
   "layoutTour.next": "Next",

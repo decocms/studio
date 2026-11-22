@@ -6,9 +6,11 @@
 import {
   ArrowUpRight,
   BarChartSquare02,
+  Beaker02,
   CheckDone01,
   Columns03,
   DotsVertical,
+  FileSearch02,
   Globe02,
   Home02,
   Image01,
@@ -35,7 +37,7 @@ import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sid
 
 export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
   if (viewId === "overview") return <Home02 size={16} />;
-  if (viewId === "reports") return <BarChartSquare02 size={16} />;
+  if (viewId === "reports") return <FileSearch02 size={16} />;
   if (viewId === "board") return <Columns03 size={16} />;
   if (viewId === "site-editor") return <Monitor01 size={16} />;
   if (viewId === "assets") return <Image01 size={16} />;
@@ -43,6 +45,7 @@ export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
   if (viewId === "e2e") return <CheckDone01 size={16} />;
   if (viewId === "analytics") return <BarChartSquare02 size={16} />;
   if (viewId === "cdn") return <Globe02 size={16} />;
+  if (viewId === "experiments") return <Beaker02 size={16} />;
   return <Lightning01 size={16} />;
 }
 
@@ -73,9 +76,9 @@ export function ViewRowActions({
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             className={cn(
-              "size-7",
+              "",
               pinned ? "text-foreground" : "text-muted-foreground/40",
             )}
             aria-label={
@@ -99,8 +102,8 @@ export function ViewRowActions({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground"
+            size="icon-sm"
+            className="text-muted-foreground"
             aria-label={t("virtualMcp.settings.views.rowActions")}
           >
             <DotsVertical size={16} />

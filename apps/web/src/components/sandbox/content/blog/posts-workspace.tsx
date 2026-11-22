@@ -512,9 +512,7 @@ export function PostsWorkspace({
                 />
                 {pillars.length > 0 && (
                   <div className="space-y-1.5">
-                    <Label className="text-xs">
-                      {t("sandbox.postBoard.ideaPillarLabel")}
-                    </Label>
+                    <Label>{t("sandbox.postBoard.ideaPillarLabel")}</Label>
                     <PickList
                       options={pillars.map((pillar) => pillar.title)}
                       value={
@@ -532,7 +530,7 @@ export function PostsWorkspace({
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="idea-count" className="text-xs">
+                  <Label htmlFor="idea-count">
                     {t("sandbox.postBoard.ideaCount")}
                   </Label>
                   <Input
@@ -727,7 +725,7 @@ export function PostsWorkspace({
                   onDrop(status, e.dataTransfer.getData(DRAG_KEY));
                 }}
                 className={cn(
-                  "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
+                  "flex shrink-0 flex-col rounded-m border bg-muted/30 transition-colors",
                   isCollapsed ? "w-11" : "w-72",
                   dragOverLane === status && "border-primary bg-primary/5",
                 )}
@@ -1291,7 +1289,7 @@ function IdeaTray({
                     variant="ghost"
                     size="sm"
                     disabled
-                    className="h-7 w-full justify-start px-1.5 text-xs"
+                    className="w-full justify-start"
                     onClick={() => onGenerate(idea)}
                   >
                     <Stars02 size={13} />

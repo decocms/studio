@@ -1,5 +1,5 @@
 export const virtualMcp = {
-  "virtualMcp.addConnectionDialog.addConnectionTitle": "Add Connection",
+  "virtualMcp.addConnectionDialog.addConnectionTitle": "Add connection",
   "virtualMcp.addConnectionDialog.authenticationFailedError":
     "Authentication failed: {error}",
   "virtualMcp.addConnectionDialog.connected": "Connected",
@@ -12,7 +12,7 @@ export const virtualMcp = {
   "virtualMcp.addConnectionDialog.mcpServerConnectionError":
     "This MCP Server cannot be connected: no connection method available",
   "virtualMcp.addConnectionDialog.searchConnectionsPlaceholder":
-    "Search connections...",
+    "Search connections…",
   "virtualMcp.addConnectionDialog.signInFailedDescription":
     "It was added to your project, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. ({error})",
   "virtualMcp.addConnectionDialog.signInFailedTitle":
@@ -25,7 +25,7 @@ export const virtualMcp = {
     "Built and maintained by the official vendor",
   "virtualMcp.connectionDialogContent.connect": "Connect",
   "virtualMcp.connectionDialogContent.connected": "Connected",
-  "virtualMcp.connectionDialogContent.customConnection": "Custom Connection",
+  "virtualMcp.connectionDialogContent.customConnection": "Custom connection",
   "virtualMcp.connectionDialogContent.emptyStateNoConnectionsAvailable":
     "No connections available",
   "virtualMcp.connectionDialogContent.emptyStateNoConnectionsYet":
@@ -100,8 +100,8 @@ export const virtualMcp = {
     "No files or skills yet. Add one or drag and drop here.",
   "virtualMcp.filesSection.noSkillsFound": "No skills found.",
   "virtualMcp.filesSection.removeAriaLabel": "Remove {name}",
-  "virtualMcp.filesSection.searchFilesPlaceholder": "Search files...",
-  "virtualMcp.filesSection.searchSkillsPlaceholder": "Search skills...",
+  "virtualMcp.filesSection.searchFilesPlaceholder": "Search files…",
+  "virtualMcp.filesSection.searchSkillsPlaceholder": "Search skills…",
   "virtualMcp.filesSection.selectFileOrFolder": "Select file or folder",
   "virtualMcp.filesSection.selectSkill": "Select skill",
   "virtualMcp.filesSection.uploadFile": "Upload file",
@@ -117,7 +117,7 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.showChat": "Show chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Display Chat in the side panel alongside the main view.",
-  "virtualMcp.layoutTabContent.siteEditor": "Site Editor",
+  "virtualMcp.layoutTabContent.siteEditor": "Site editor",
   "virtualMcp.settings.title": "Project settings",
   "virtualMcp.settings.navigation": "Project settings sections",
   "virtualMcp.settings.identity.icon": "Project icon",
@@ -144,10 +144,10 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.canOnlyDelegateToItself":
     "Can only delegate to a fresh copy of itself, no other projects.",
   "virtualMcp.subAgentsSection.emptyStateMessage":
-    "No sub-projects selected yet. Add one — until then this project can only delegate to itself.",
+    "No sub-projects selected yet. Add one, until then this project can only delegate to itself.",
   "virtualMcp.subAgentsSection.noAgentsFound": "No projects found.",
   "virtualMcp.subAgentsSection.onlyItself": "Only itself",
-  "virtualMcp.subAgentsSection.searchPlaceholder": "Search projects...",
+  "virtualMcp.subAgentsSection.searchPlaceholder": "Search projects…",
   "virtualMcp.subAgentsSection.specificAgents": "Specific projects",
   "virtualMcp.subAgentsSection.title": "Sub-projects",
   "virtualMcp.virtualMcp.addConnection": "Add connection",
@@ -169,7 +169,7 @@ export const virtualMcp = {
     "This action cannot be undone. This will permanently delete {title}.",
   "virtualMcp.virtualMcp.deleteAgentDescription":
     "Permanently delete this project and all its data.",
-  "virtualMcp.virtualMcp.descriptionPlaceholder": "Add a description...",
+  "virtualMcp.virtualMcp.descriptionPlaceholder": "Add a description…",
   "virtualMcp.virtualMcp.failedToCreateInstance": "Failed to create instance",
   "virtualMcp.virtualMcp.fullscreen": "Fullscreen",
   "virtualMcp.virtualMcp.improve": "Improve",
@@ -177,7 +177,7 @@ export const virtualMcp = {
     "This instance is already added to the project",
   "virtualMcp.virtualMcp.instructions": "Instructions",
   "virtualMcp.virtualMcp.instructionsPlaceholder":
-    "Define how this agent should behave, what tone to use, any constraints or guidelines...",
+    "Define how this agent should behave, what tone to use, any constraints or guidelines…",
   "virtualMcp.virtualMcp.lastUsed": "Last used {time}",
   "virtualMcp.virtualMcp.neverUsed": "Never used",
   "virtualMcp.virtualMcp.newInstanceCreated": "New instance created",
@@ -259,10 +259,10 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcpShareModal.installOnClaudeCode":
     "Install on Claude Code",
   "virtualMcp.virtualMcpShareModal.installOnCursor": "Install on Cursor",
-  "virtualMcp.virtualMcpShareModal.openingCursor": "Opening Cursor...",
+  "virtualMcp.virtualMcpShareModal.openingCursor": "Opening Cursor…",
   "virtualMcp.virtualMcpShareModal.runtimeVariables": "Runtime variables",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
-    "Store this key securely — it won't be shown again.",
+    "Store this key securely, it won't be shown again.",
   "virtualMcp.settings.general.description":
     "Instructions, attached files and who this project may delegate to.",
   "virtualMcp.settings.site.description":
@@ -276,5 +276,5 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.settings.value.connectionMany": "{count} connections",
   "virtualMcp.settings.value.inSidebar": "{count} in sidebar",
   "virtualMcp.virtualMcp.settings": "Settings",
-  "virtualMcp.virtualMcp.testAgent": "Test Project",
+  "virtualMcp.virtualMcp.testAgent": "Test project",
 } as const;

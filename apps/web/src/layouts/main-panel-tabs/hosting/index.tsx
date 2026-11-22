@@ -115,80 +115,80 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
     : null;
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <Page.Container width="standard">
-        <SettingsPage>
-          <div className="flex flex-col gap-2">
-            <Page.Title
-              actions={
-                <DeployButton base={base} orgSlug={org.slug} site={siteSlug} />
-              }
-            >
-              <span className="inline-flex items-center gap-2.5">
-                {t("mainPanelTabs.hostingTab.title")}
+    <Page>
+      <Page.Title
+        actions={
+          <DeployButton base={base} orgSlug={org.slug} site={siteSlug} />
+        }
+      >
+        {t("mainPanelTabs.hostingTab.title")}
+      </Page.Title>
+      <Page.Content>
+        <Page.Container width="standard">
+          <SettingsPage>
+            {((liveUrl && liveHost) || framework) && (
+              <p className="flex flex-wrap items-center gap-2 text-s text-muted-foreground">
+                {liveUrl && liveHost && (
+                  <a
+                    href={liveUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-mono text-xs text-foreground hover:underline"
+                  >
+                    {liveHost}
+                    <LinkExternal01 className="size-3" />
+                  </a>
+                )}
                 {framework && <Badge variant="secondary">{framework}</Badge>}
-              </span>
-            </Page.Title>
-            {liveUrl && liveHost && (
-              <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
-                <a
-                  href={liveUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 font-mono text-xs text-foreground hover:underline"
-                >
-                  {liveHost}
-                  <LinkExternal01 className="size-3" />
-                </a>
               </p>
             )}
-          </div>
 
-          <DeploymentsSection
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            enabled={enabled}
-            deployments={deployments}
-            isLoading={deploymentsQuery.isLoading}
-            error={deploymentsQuery.error}
-          />
-          <EnvSection
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            envVars={envVars}
-            codeVars={codeVars}
-            isLoading={envQuery.isLoading}
-            error={envQuery.error}
-          />
-          <SecretsSection
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            secrets={secrets}
-            isLoading={secretsQuery.isLoading}
-            error={secretsQuery.error}
-          />
-          <DomainsSection
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            domains={domains}
-            dnsTemplate={dnsTemplate}
-            isLoading={domainsQuery.isLoading}
-            error={domainsQuery.error}
-          />
-          <RedirectsSection
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            redirects={redirects}
-            isLoading={redirectsQuery.isLoading}
-            error={redirectsQuery.error}
-          />
-        </SettingsPage>
-      </Page.Container>
-    </div>
+            <DeploymentsSection
+              base={base}
+              orgSlug={org.slug}
+              site={siteSlug}
+              enabled={enabled}
+              deployments={deployments}
+              isLoading={deploymentsQuery.isLoading}
+              error={deploymentsQuery.error}
+            />
+            <EnvSection
+              base={base}
+              orgSlug={org.slug}
+              site={siteSlug}
+              envVars={envVars}
+              codeVars={codeVars}
+              isLoading={envQuery.isLoading}
+              error={envQuery.error}
+            />
+            <SecretsSection
+              base={base}
+              orgSlug={org.slug}
+              site={siteSlug}
+              secrets={secrets}
+              isLoading={secretsQuery.isLoading}
+              error={secretsQuery.error}
+            />
+            <DomainsSection
+              base={base}
+              orgSlug={org.slug}
+              site={siteSlug}
+              domains={domains}
+              dnsTemplate={dnsTemplate}
+              isLoading={domainsQuery.isLoading}
+              error={domainsQuery.error}
+            />
+            <RedirectsSection
+              base={base}
+              orgSlug={org.slug}
+              site={siteSlug}
+              redirects={redirects}
+              isLoading={redirectsQuery.isLoading}
+              error={redirectsQuery.error}
+            />
+          </SettingsPage>
+        </Page.Container>
+      </Page.Content>
+    </Page>
   );
 }

@@ -416,10 +416,11 @@ export function DynamicOptionsField({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            size="lg"
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="h-10 w-full justify-between font-normal"
+            className="w-full justify-between"
           >
             {selectedOption ? (
               <span className="flex min-w-0 items-center gap-2">

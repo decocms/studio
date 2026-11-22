@@ -116,9 +116,7 @@ export function Th({
   children?: ReactNode;
 }) {
   return (
-    <TableHead
-      className={cn("text-xs font-medium text-muted-foreground", className)}
-    >
+    <TableHead className={cn("text-muted-foreground", className)}>
       {children}
     </TableHead>
   );

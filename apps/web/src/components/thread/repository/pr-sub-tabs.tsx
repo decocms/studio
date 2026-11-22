@@ -71,7 +71,7 @@ export function PrSubTabs({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 space-y-3 pb-4">
         <div className="space-y-1">
-          <h1 className="text-lg font-semibold leading-tight">
+          <h1 className="text-lg font-semibold">
             {decodeHtmlEntities(pr.title)}
           </h1>
           <div className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
@@ -105,13 +105,13 @@ export function PrSubTabs({
         className="flex min-h-0 flex-1 flex-col"
       >
         <TabsList className="h-8 w-fit max-w-[600px] shrink-0" variant="pill">
-          <TabsTrigger value="description" className="px-3 text-xs">
+          <TabsTrigger value="description" className="px-3">
             Description
           </TabsTrigger>
-          <TabsTrigger value="changes" className="px-3 text-xs">
+          <TabsTrigger value="changes" className="px-3">
             Changes{diffCount !== undefined ? ` ${diffCount}` : ""}
           </TabsTrigger>
-          <TabsTrigger value="checks" className="px-3 text-xs">
+          <TabsTrigger value="checks" className="px-3">
             Checks
           </TabsTrigger>
         </TabsList>

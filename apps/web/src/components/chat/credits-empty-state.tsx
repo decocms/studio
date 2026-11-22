@@ -102,10 +102,8 @@ export function CreditsEmptyState() {
               <Coins04 size={20} className="text-warning" />
             </div>
             <div className="text-center">
-              <DialogTitle className="text-lg font-semibold">
-                {t("chat.creditsEmptyState.title")}
-              </DialogTitle>
-              <DialogDescription className="mt-2 text-[13px] leading-relaxed max-w-[320px] mx-auto">
+              <DialogTitle>{t("chat.creditsEmptyState.title")}</DialogTitle>
+              <DialogDescription className="mt-2 max-w-[320px] mx-auto">
                 {t("chat.creditsEmptyState.description")}
               </DialogDescription>
             </div>
@@ -141,7 +139,7 @@ export function CreditsEmptyState() {
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs text-muted-foreground"
+            className="text-muted-foreground"
             onClick={dismiss}
           >
             {t("chat.creditsEmptyState.skipForNow")}

@@ -114,7 +114,7 @@ function ConnectFormFields() {
   return (
     <div className="flex flex-col gap-4 mt-3 max-w-md">
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-muted-foreground">
+        <label className="text-s font-medium">
           {t("settings.jira.siteLabel")}
         </label>
         <Input
@@ -125,7 +125,7 @@ function ConnectFormFields() {
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-muted-foreground">
+        <label className="text-s font-medium">
           {t("settings.jira.emailLabel")}
         </label>
         <Input
@@ -137,7 +137,7 @@ function ConnectFormFields() {
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <label className="text-xs font-medium text-muted-foreground">
+          <label className="text-s font-medium">
             {t("settings.jira.tokenLabel")}
           </label>
           <a
@@ -283,7 +283,7 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
             <Button
               variant="outline"
               role="combobox"
-              className="w-72 justify-between font-normal"
+              className="justify-between"
             >
               <span className="truncate">
                 {selectedBoardLabel ?? t("settings.jira.boardPlaceholder")}
@@ -579,7 +579,7 @@ function StatusAutomationCard({
     );
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
+    <div className="flex flex-col gap-3 rounded-m border border-border p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col min-w-0">
           <span className="truncate text-sm font-medium">{columnName}</span>
@@ -657,12 +657,12 @@ function NewOriginRule({
         value={kind}
         onValueChange={(v) => setKind(v as JiraRuleFrom["kind"])}
       >
-        <SelectTrigger className="h-8 w-fit min-w-56 text-xs">
+        <SelectTrigger className="h-8 w-fit min-w-56">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {kinds.map((k) => (
-            <SelectItem key={k} value={k} className="text-xs">
+            <SelectItem key={k} value={k}>
               {k === "any"
                 ? t("settings.jira.fromAny")
                 : k === "earlier"
@@ -979,7 +979,7 @@ function WebhookRow({ integration }: { integration: JiraIntegration }) {
     >
       <div className="flex flex-col gap-3 mt-3">
         <div className="flex items-center gap-2">
-          <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+          <Input readOnly value={webhookUrl} className="font-mono" />
           <Button
             variant="outline"
             size="sm"

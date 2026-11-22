@@ -74,12 +74,12 @@ export function Combobox({
             className={cn("justify-between", width, triggerClassName)}
           >
             {selectedOption ? selectedOption.label : placeholder}
-            <ChevronSelectorVertical className="opacity-50" />
+            <ChevronSelectorVertical className="text-muted-foreground" />
           </Button>
         )}
       </PopoverTrigger>
       <PopoverContent
-        className={cn("p-0", contentClassName)}
+        className={cn("rounded-m p-0", contentClassName)}
         style={{ width: "var(--radix-popover-trigger-width)" }}
       >
         <Command filter={filter}>
@@ -97,6 +97,7 @@ export function Combobox({
                   <CommandItem
                     key={option.value}
                     value={option.label}
+                    className={cn(isSelected && "bg-neutral-2")}
                     // Closes over this option's own value — no reverse lookup by label.
                     onSelect={() => {
                       onChange(option.value === value ? "" : option.value);

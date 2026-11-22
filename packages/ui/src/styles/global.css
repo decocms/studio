@@ -1,43 +1,32 @@
+/* Geist is the one product face; Geist Mono is for code and identifiers. */
 @font-face {
-  font-family: "Inter var";
+  font-family: "Geist";
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url("../assets/fonts/InterVariable.woff2") format("woff2");
+  src: url("../assets/fonts/Geist-Variable.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Inter var";
+  font-family: "Geist";
   font-style: italic;
   font-weight: 100 900;
   font-display: swap;
-  src: url("../assets/fonts/InterVariable-Italic.woff2") format("woff2");
+  src: url("../assets/fonts/Geist-Italic-Variable.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "CommitMono";
-  src:
-    local("Commit Mono"),
-    local("CommitMono"),
-    url("../assets/fonts/CommitMono-VariableFont.woff2") format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Switzer — deco's typeface, already used by the landing page and the report
-   deck. Inter is the fallback while it loads. */
-@font-face {
-  font-family: "Switzer";
+  font-family: "Geist Mono";
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url("../assets/fonts/Switzer-Variable.woff2") format("woff2");
+  src: url("../assets/fonts/GeistMono-Variable.woff2") format("woff2");
 }
 
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./deco-theme.css";
 
 /* Explicitly scan @decocms/ui components for Tailwind classes */
 @source "../components/**/*.tsx";
@@ -86,8 +75,8 @@
 /** A surface that can be picked up — raises on hover. Pair with `surface`. */
 @utility surface-interactive {
   transition:
-    box-shadow 160ms var(--ease-out-cubic),
-    transform 160ms var(--ease-out-cubic);
+    box-shadow var(--motion-duration) var(--motion-easing),
+    transform var(--motion-duration) var(--motion-easing);
 
   &:hover {
     box-shadow: var(--card-shadow-raised);
@@ -98,7 +87,7 @@
  *  It recedes rather than lifts: no shadow, just the paper showing through. */
 @utility surface-inset {
   background-color: var(--muted);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-s);
 }
 
 /**
@@ -109,24 +98,18 @@
  * Tabular figures stay so costs and counts line up.
  */
 @utility text-meta {
-  font-size: var(--text-xs);
-  line-height: 1.0625rem;
+  font-size: var(--size-xs);
+  line-height: var(--line-xs);
+  letter-spacing: var(--letter-spacing-xs);
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
 }
 
-/**
- * Display type — the same typeface, set like a headline. There is no second
- * family; a headline earns its authority from weight, tracking and size.
- *
- * The optical tracking belongs to the role, not the call site: Switzer at 40px
- * with default spacing reads loose.
- */
+/** Display type: the brand role at the title weight; size comes from the text step beside it. */
 @utility font-display {
-  font-weight: 640;
-  letter-spacing: -0.03em;
+  font-family: var(--font-brand);
+  font-weight: var(--weight-brand-medium);
   text-wrap: balance;
-  font-feature-settings: "ss01";
 }
 
 /** Numbers that have to line up down a column, or not jitter as they tick. */
@@ -142,7 +125,7 @@
  */
 @utility focus-ring {
   &:focus-visible {
-    outline: 2px solid var(--ring);
+    outline: var(--focus-ring-outline);
     outline-offset: 2px;
   }
 }
@@ -154,6 +137,20 @@
     outline: 2px solid var(--background);
     outline-offset: 2px;
   }
+}
+
+/* Popups on deco's small curve; pairs with tw-animate's `animate-in`/`animate-out`. */
+@utility motion-popup {
+  --tw-duration: var(--motion-duration);
+  --tw-ease: var(--motion-easing);
+  --tw-enter-scale: var(--motion-popup-scale);
+  --tw-exit-scale: var(--motion-popup-scale);
+}
+
+/* Dialogs, drawers, sheets and toasts move on deco's large curve. */
+@utility motion-large {
+  --tw-duration: var(--motion-large-duration);
+  --tw-ease: var(--motion-large-easing);
 }
 
 /* Fades text out over its last `--fade-text-end`, for a control floating in that
@@ -177,177 +174,214 @@
   --card-shadow: 0 0 0 var(--border-hairline) var(--warning), var(--card-drop);
 }
 
-/* ============================================================
-   Colour.
+/* Local theme change (product request): the two smallest steps sit at 10 and 12px. */
+:root,
+.light {
+  --size-xxs: 0.625rem;
+  --line-xxs: 0.875rem;
+  --size-xs: 0.75rem;
+  --line-xs: 1rem;
+  /* One family for every role; the theme's "Sidebar Geist" is Geist. */
+  --font-ui: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-brand: var(--font-ui);
+  --font-editorial: var(--font-ui);
+  --font-data: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* The theme ships fully transparent shadows; popups need real elevation. */
+  --shadow-s: 0px 1px 2px 0px #0000000d;
+  --shadow-m: 0px 8px 24px -4px #0000001f, 0px 2px 6px 0px #0000000f;
+  --shadow-l: 0px 16px 40px -8px #00000029, 0px 4px 10px 0px #00000014;
+  /* Light mode deepens status and palette hues so they read as text; the brand lime stays. */
+  --success: #0e8003;
+  --success-transparent: #0e800333;
+  --warning: #af660a;
+  --warning-transparent: #af660a33;
+  --error: #ce414e;
+  --error-transparent: #ce414e33;
+  --color-2: #0e8003;
+  --color-2-transparent: #0e800333;
+  --color-3: #0781c4;
+  --color-3-transparent: #0781c433;
+  --color-4: #ad46bf;
+  --color-4-transparent: #ad46bf33;
+  /* Warm test: the theme's neutral ramp at the same lightness, tinted toward hue 70. */
+  --neutral-1: #fffffe;
+  --neutral-1-transparent: #fffffe33;
+  --neutral-2: #fbfaf9;
+  --neutral-2-transparent: #fbfaf933;
+  --neutral-3: #f3efec;
+  --neutral-3-transparent: #f3efec33;
+  --neutral-4: #e0dcd9;
+  --neutral-4-transparent: #e0dcd933;
+  --neutral-5: #c8c4c1;
+  --neutral-5-transparent: #c8c4c133;
+  --neutral-6: #999692;
+  --neutral-6-transparent: #99969233;
+  --neutral-7: #6e6c68;
+  --neutral-7-transparent: #6e6c6833;
+  --neutral-8: #474542;
+  --neutral-8-transparent: #47454233;
+  --neutral-9: #292622;
+  --neutral-9-transparent: #29262233;
+  --neutral-10: #181512;
+  --neutral-10-transparent: #18151233;
+  --cte-canvas: var(--neutral-1);
+  --cte-surface: var(--neutral-2);
+  --cte-surface-muted: var(--neutral-3);
+  --cte-text: var(--neutral-10);
+  --cte-text-muted: var(--neutral-7);
+}
 
-   These are the product's original palette values, kept as they were. The
-   structural layer around them — radius by role, the type scale, the
-   `surface` / `text-meta` utilities — is separate on purpose: shape and
-   typography were the parts that needed work, and the colours did not.
-   ============================================================ */
-:root {
-  --background: oklch(0.99 0.003 73);
-  --foreground: oklch(0.145 0.01 60);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.01 60);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.01 60);
-  --muted: oklch(0.955 0.006 80);
-  --muted-foreground: oklch(0.46 0.012 60);
-  --accent: oklch(0.955 0.008 80);
-  --accent-foreground: oklch(0.2 0.01 60);
-  --border: oklch(0.915 0.005 80);
-  --input: oklch(0.88 0.006 80);
-  --ring: oklch(0.205 0.012 60);
+/* Local dark ramp: no pure black, sidebar deepest, content one step up; warm test tint. */
+.dark {
+  --success: #76ef6b;
+  --success-transparent: #76ef6b33;
+  --warning: #ffa344;
+  --warning-transparent: #ffa34433;
+  --error: #ff5263;
+  --error-transparent: #ff526333;
+  --color-2: #76ef6b;
+  --color-2-transparent: #76ef6b33;
+  --color-3: #009ff0;
+  --color-3-transparent: #009ff033;
+  --color-4: #e864ff;
+  --color-4-transparent: #e864ff33;
+  --shadow-s: 0px 1px 2px 0px #00000040;
+  --shadow-m: 0px 8px 24px -4px #00000080, 0px 2px 6px 0px #00000040;
+  --shadow-l: 0px 16px 40px -8px #00000099, 0px 4px 10px 0px #00000059;
+  --neutral-1: #100e0b;
+  --neutral-1-transparent: #100e0b33;
+  --neutral-2: #171512;
+  --neutral-2-transparent: #17151233;
+  --neutral-3: #211f1b;
+  --neutral-3-transparent: #211f1b33;
+  --neutral-4: #2d2b27;
+  --neutral-4-transparent: #2d2b2733;
+  --neutral-5: #403c39;
+  --neutral-5-transparent: #403c3933;
+  --neutral-6: #6e6a67;
+  --neutral-6-transparent: #6e6a6733;
+  --neutral-7: #9e9a96;
+  --neutral-7-transparent: #9e9a9633;
+  --neutral-8: #c7c3bf;
+  --neutral-8-transparent: #c7c3bf33;
+  --neutral-9: #e7e3df;
+  --neutral-9-transparent: #e7e3df33;
+  --neutral-10: #f5f1ed;
+  --neutral-10-transparent: #f5f1ed33;
+  --cte-canvas: var(--neutral-2);
+  --cte-surface: var(--neutral-1);
+  --cte-surface-muted: var(--neutral-3);
+  --cte-text: var(--neutral-10);
+  --cte-text-muted: var(--neutral-7);
+}
 
-  --primary: oklch(0.205 0.012 60);
-  --primary-foreground: oklch(0.98 0.005 60);
+/* Role aliases: every app colour, radius and text step resolves to a deco token (deco-theme.css). */
+/* `.light` re-resolves the aliases for a fixed-light region inside dark mode. */
+:root,
+.light {
+  --background: var(--cte-canvas);
+  --foreground: var(--neutral-10);
+  --card: var(--neutral-1);
+  --card-foreground: var(--neutral-10);
+  --popover: var(--neutral-1);
+  --popover-foreground: var(--neutral-10);
+  --muted: var(--neutral-3);
+  --muted-foreground: var(--neutral-7);
+  --accent: var(--neutral-3);
+  --accent-foreground: var(--neutral-10);
+  /* Hairlines are translucent ink, so they stay quiet on any surface in both modes. */
+  --border: color-mix(in srgb, var(--neutral-10) 9%, transparent);
+  /* Edges share the divider colour so outlines and borders match in both modes. */
+  --input: var(--border);
+  --ring: color-mix(in srgb, var(--neutral-10) 50%, transparent);
 
-  --secondary: oklch(0.955 0.006 80);
-  --secondary-foreground: oklch(0.2 0.01 60);
+  --primary: var(--neutral-10);
+  --primary-foreground: var(--neutral-1);
+
+  --secondary: var(--neutral-3);
+  --secondary-foreground: var(--neutral-10);
 
   /* Layout-dependent defaults remain overridable by component className. */
-  --studio-input-background: var(--background);
-  --studio-outline-foreground: var(--foreground);
-  --studio-outline-hover-background: var(--accent);
-  --studio-secondary-background: var(--secondary);
-  --studio-secondary-foreground: var(--secondary-foreground);
-  --studio-secondary-hover-background: color-mix(
-    in oklab,
-    var(--secondary) 80%,
-    transparent
-  );
-  --studio-secondary-hover-foreground: var(--secondary-foreground);
+  --studio-input-background: var(--neutral-1);
+  --studio-outline-foreground: var(--neutral-10);
+  --studio-outline-hover-background: var(--neutral-3-transparent);
+  --studio-secondary-background: var(--neutral-3);
+  --studio-secondary-foreground: var(--neutral-10);
+  --studio-secondary-hover-background: var(--neutral-4-transparent);
+  --studio-secondary-hover-foreground: var(--neutral-10);
   --studio-secondary-shadow: none;
 
-  --destructive: oklch(0.58 0.22 27);
-  --destructive-foreground: oklch(0.97 0.01 17);
-  --success: oklch(0.6 0.17 149);
-  --success-foreground: oklch(0.98 0.02 156);
-  --warning: oklch(0.62 0.17 70);
-  --warning-foreground: oklch(0.99 0.02 95);
-  --special: oklch(0.55 0.18 290);
-  --special-foreground: oklch(0.98 0.02 295);
-  --notice: oklch(0.65 0.13 245);
+  --destructive: var(--error);
+  --destructive-foreground: var(--neutral-1);
+  /* The status fills are light in both modes, so they carry dark ink. */
+  --success-foreground: var(--cte-accent-text);
+  --warning-foreground: var(--cte-accent-text);
+  --special: var(--color-4);
+  --special-foreground: var(--cte-accent-text);
+  --notice: var(--color-3);
 
   /* How much of a user-picked colour (org tags) survives against the surface. */
   --user-color-strength: 100%;
 
-  --sidebar: oklch(0.975 0.006 80);
-  --sidebar-foreground: oklch(0.2 0.01 60);
-  --sidebar-accent: oklch(0.94 0.012 80);
-  --sidebar-accent-foreground: oklch(0.2 0.01 60);
-  --sidebar-border: oklch(0.915 0.005 80);
-  --sidebar-ring: oklch(0.205 0.012 60);
-  --sidebar-primary: oklch(0.205 0.012 60);
-  --sidebar-primary-foreground: oklch(0.98 0.005 60);
+  --sidebar: var(--cte-surface);
+  --sidebar-foreground: var(--neutral-10);
+  /* Neutral active row and chips: deco's lime tints were a product decision to drop. */
+  --sidebar-accent: var(--neutral-3);
+  --sidebar-accent-foreground: var(--neutral-10);
+  --chip: var(--neutral-3);
+  --chip-foreground: var(--neutral-10);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --sidebar-primary: var(--neutral-10);
+  --sidebar-primary-foreground: var(--neutral-1);
 
-  --chart-1: oklch(0.73 0.15 289);
-  --chart-2: oklch(0.6 0.18 150);
-  --chart-3: oklch(0.61 0.2 6.81);
-  --chart-4: oklch(0.84 0.17 84.5);
-  --chart-5: oklch(0.74 0.17 159);
+  /* deco has four palette colours; series 5 uses a neutral, not a status colour. */
+  --chart-1: var(--color-3);
+  --chart-2: var(--color-1);
+  --chart-3: var(--color-4);
+  --chart-4: var(--color-2);
+  --chart-5: var(--neutral-6);
 
-  --font-sans:
-    "Switzer", "Inter var", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-  --font-mono:
-    "CommitMono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+  --font-sans: var(--font-ui);
+  --font-serif: var(--font-editorial);
+  --font-mono: var(--font-data);
 
   --spacing: 0.25rem;
-  --radius: 0.5rem;
-  --border-hairline: 1px;
+  --radius: var(--radius-s);
+  --border-hairline: var(--border-s);
 
-  /* ----------------------------------------------------------
-     Radius by ROLE, not by size. A component picks the one that matches what
-     it IS. These used to live only under `[data-compact-layout]`, so the same
-     card had two different corners depending on a preference nobody set.
+  /* Radius and height by role: buttons/controls take radius S, surfaces M. */
+  --studio-button-radius: var(--radius-s);
+  --studio-control-radius: var(--radius-s);
+  --studio-surface-radius: var(--radius-m);
+  --studio-control-height: calc(var(--line-s) + 2 * var(--space-xs));
+  /* deco defines one control size; the app's other sizes step around it. */
+  --studio-control-height-xs: calc(var(--line-xs) + 2 * var(--space-xxs));
+  --studio-control-height-sm: calc(var(--line-xs) + 2 * var(--space-xs));
+  --studio-control-height-lg: calc(var(--line-s) + 2 * var(--space-s));
+  --studio-control-height-xl: calc(var(--line-m) + 2 * var(--space-s));
 
-       button   a pill, always, at every size
-       control  an input, select, chip — a thing you operate
-       surface  a card, popover, dialog — a thing that holds other things
-     ---------------------------------------------------------- */
-  --studio-button-radius: 9999px;
-  --studio-control-radius: 0.625rem;
-  --studio-surface-radius: 0.875rem;
-  --studio-control-height: 2.25rem;
-
-  --shadow-xs: oklch(0 0 0 / 0.03) 0px 1px 2px;
-  --shadow-sm: oklch(0 0 0 / 0.04) 0px 2px 4px, oklch(0 0 0 / 0.02) 0px 1px 2px;
-  --shadow-md:
-    oklch(0 0 0 / 0.06) 0px 4px 12px, oklch(0 0 0 / 0.04) 0px 2px 4px;
-  --shadow-lg:
-    oklch(0 0 0 / 0.08) 0px 8px 32px, oklch(0 0 0 / 0.06) 0px 4px 12px;
-  --card-drop: 0px 1px 2px -1px #1d1b1812, 0px 2px 4px 0px #1d1b180d;
-  --card-ring: 0px 0px 0px 1px #1d1b1814;
+  /* Edges are box shadows so edge and elevation compose in one property. */
+  --edge: 0 0 0 var(--border-s) var(--border);
+  --edge-inset: inset 0 0 0 var(--border-s) var(--border);
+  --card-drop: var(--shadow-s);
+  --card-ring: var(--edge);
   --card-shadow: var(--card-ring), var(--card-drop);
   /* A card you can pick up — hover and drag states raise it this far. */
-  --card-shadow-raised:
-    var(--card-ring), 0px 2px 4px -2px #1d1b1814, 0px 10px 24px -8px #1d1b181f;
+  --card-shadow-raised: var(--card-ring), var(--shadow-m);
+  --popup-shadow: var(--edge), var(--shadow-m);
+  --scrim: var(--neutral-10-transparent);
+  --modal-shadow: var(--edge), var(--shadow-l);
 }
 
 .dark {
-  --background: oklch(0.175 0.005 60);
-  --foreground: oklch(0.96 0.005 60);
-  --card: oklch(0.21 0.005 60);
-  --card-foreground: oklch(0.96 0.005 60);
-  --popover: oklch(0.22 0.005 60);
-  --popover-foreground: oklch(0.96 0.005 60);
-  --muted: oklch(0.23 0.005 60);
-  --muted-foreground: oklch(0.62 0.008 60);
-  --accent: oklch(0.26 0.005 60);
-  --accent-foreground: oklch(0.96 0.005 60);
-  --border: oklch(0.26 0.005 60);
-  --input: oklch(0.28 0.005 60);
-  --ring: oklch(0.82 0.01 60);
-
-  --primary: oklch(0.82 0.01 60);
-  --primary-foreground: oklch(0.14 0.01 60);
-
-  --secondary: oklch(0.21 0.005 60);
-  --secondary-foreground: oklch(0.96 0.005 60);
-  --studio-input-background: color-mix(in oklab, var(--input) 30%, transparent);
-  --studio-outline-hover-background: color-mix(
-    in oklab,
-    var(--input) 50%,
-    transparent
-  );
-
-  --destructive: oklch(0.62 0.22 27);
-  --destructive-foreground: oklch(0.97 0.01 17);
-  --success: oklch(0.45 0.15 149);
-  --success-foreground: oklch(0.97 0.02 156);
-  --warning: oklch(0.65 0.15 70);
-  --warning-foreground: oklch(0.98 0.02 95);
-  --special: oklch(0.6 0.16 290);
-  --special-foreground: oklch(0.97 0.02 295);
-
   /* Saturated hex reads far louder on a dark surface than a light one. */
   --user-color-strength: 55%;
-
-  --sidebar: oklch(0.155 0.005 60);
-  --sidebar-foreground: oklch(0.96 0.005 60);
-  --sidebar-accent: oklch(0.23 0.005 60);
-  --sidebar-accent-foreground: oklch(0.96 0.005 60);
-  --sidebar-border: oklch(0.26 0.005 60);
-  --sidebar-ring: oklch(0.82 0.01 60);
-  --sidebar-primary: oklch(0.82 0.01 60);
-  --sidebar-primary-foreground: oklch(0.14 0.01 60);
-
-  --chart-1: oklch(0.73 0.15 289);
-  --chart-2: oklch(0.6 0.18 150);
-  --chart-3: oklch(0.61 0.2 6.81);
-  --chart-4: oklch(0.84 0.17 84.5);
-  --chart-5: oklch(0.74 0.17 159);
-  --notice: oklch(0.72 0.11 245);
-  --card-drop:
-    0 2px 2px 0 #0000001a, 0 4px 4px 0 #0000001a, 0 8px 8px 0 #0000001a;
-  --card-ring:
-    inset 0 1px 0 0 #ffffff08, inset 0 0 0 1px #ffffff08, 0 0 0 1px #0000001a;
-  --card-shadow: var(--card-ring), var(--card-drop);
-  --card-shadow-raised:
-    var(--card-ring), 0 4px 8px 0 #00000026, 0 16px 32px -8px #00000040;
+  --card: var(--neutral-2);
+  --popover: var(--neutral-2);
+  --studio-input-background: var(--neutral-2);
+  /* A white tint lightens a dark page; dialogs should dim it. */
+  --scrim: #00000099;
 }
 
 @theme inline {
@@ -389,6 +423,25 @@
   --color-brand-purple: var(--brand-purple-light);
   --color-brand-blue: var(--brand-blue);
 
+  /* deco's own colour names, for parts the role aliases above don't cover. */
+  --color-error: var(--error);
+  --color-error-transparent: var(--error-transparent);
+  --color-neutral-1: var(--neutral-1);
+  --color-neutral-2: var(--neutral-2);
+  --color-neutral-3: var(--neutral-3);
+  --color-neutral-4: var(--neutral-4);
+  --color-neutral-5: var(--neutral-5);
+  --color-neutral-6: var(--neutral-6);
+  --color-neutral-7: var(--neutral-7);
+  --color-neutral-8: var(--neutral-8);
+  --color-neutral-9: var(--neutral-9);
+  --color-neutral-10: var(--neutral-10);
+  --color-neutral-3-transparent: var(--neutral-3-transparent);
+  --color-neutral-4-transparent: var(--neutral-4-transparent);
+  --color-neutral-10-transparent: var(--neutral-10-transparent);
+  --color-palette-1: var(--color-1);
+  --color-palette-1-transparent: var(--color-1-transparent);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
@@ -402,38 +455,42 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
-  /* Custom font weight scale */
-  --font-weight-light: 300;
-  --font-weight-normal: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 650;
+  /* Older weight names alias onto deco's roles; semibold titles are medium in deco. */
+  --font-weight-regular: var(--weight-ui-regular);
+  --font-weight-medium: var(--weight-ui-medium);
+  --font-weight-heavy: var(--weight-ui-heavy);
+  --font-weight-light: var(--weight-ui-regular);
+  --font-weight-normal: var(--weight-ui-regular);
+  --font-weight-semibold: var(--weight-ui-medium);
+  --font-weight-bold: var(--weight-ui-heavy);
 
-  /* Box Shadow Scale */
-  --shadow-xs: var(--shadow-xs);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
+  /* Elevation: deco's S/M/L, with the older steps aliased onto them. */
+  --shadow-s: var(--shadow-s);
+  --shadow-m: var(--shadow-m);
+  --shadow-l: var(--shadow-l);
+  --shadow-xs: var(--shadow-s);
+  --shadow-sm: var(--shadow-s);
+  --shadow-md: var(--shadow-m);
+  --shadow-lg: var(--shadow-l);
 
-  /* Border radius — an explicit scale, not multiples of a base.
-     The steps are drawn to land on the three role radii above, so the loose
-     `rounded-*` classes scattered through the app agree with the system
-     instead of drifting near it: `rounded-xl` IS the surface radius (14px)
-     and `rounded-lg` IS the control radius (10px). A derived scale cannot
-     promise that — every step moved when the base did. */
-  --radius-none: 0;
-  --radius-xs: 0.25rem;
-  --radius-sm: 0.375rem;
-  --radius-DEFAULT: 0.5rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.625rem;
-  --radius-xl: 0.875rem;
-  --radius-2xl: 1.125rem;
-  --radius-3xl: 1.5rem;
-  --radius-4xl: 2rem;
-  --radius-full: 9999px;
+  /* deco radii under their own names; older steps alias onto them by role. */
+  --radius-zero: var(--radius-zero);
+  --radius-xs: var(--radius-xs);
+  --radius-s: var(--radius-s);
+  --radius-m: var(--radius-m);
+  --radius-l: var(--radius-l);
+  --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-full);
+  --radius-none: var(--radius-zero);
+  --radius-sm: var(--radius-xs);
+  --radius-DEFAULT: var(--radius-xs);
+  --radius-md: var(--radius-xs);
+  --radius-lg: var(--radius-s);
+  --radius-2xl: var(--radius-l);
+  --radius-3xl: var(--radius-l);
+  --radius-4xl: var(--radius-xl);
 
-  --default-border-width: 1px;
+  --default-border-width: var(--border-s);
 
   /* Spacing Scale - dynamic scaling based on --spacing */
   --spacing-0: 0;
@@ -472,58 +529,74 @@
   --spacing-80: calc(var(--spacing) * 80);
   --spacing-96: calc(var(--spacing) * 96);
 
-  /* ----------------------------------------------------------
-     Type scale.
+  /* deco text steps under their own names; older steps alias by role (`lg` → M). */
+  --text-xxs: var(--size-xxs);
+  --text-xxs--line-height: var(--line-xxs);
+  --text-xxs--letter-spacing: var(--letter-spacing-xxs);
+  --text-xs: var(--size-xs);
+  --text-xs--line-height: var(--line-xs);
+  --text-xs--letter-spacing: var(--letter-spacing-xs);
+  --text-s: var(--size-s);
+  --text-s--line-height: var(--line-s);
+  --text-s--letter-spacing: var(--letter-spacing-s);
+  --text-m: var(--size-m);
+  --text-m--line-height: var(--line-m);
+  --text-m--letter-spacing: var(--letter-spacing-m);
+  --text-l: var(--size-l);
+  --text-l--line-height: var(--line-l);
+  --text-l--letter-spacing: var(--letter-spacing-l);
+  --text-xl: var(--size-xl);
+  --text-xl--line-height: var(--line-xl);
+  --text-xl--letter-spacing: var(--letter-spacing-xl);
+  --text-xxl: var(--size-xxl);
+  --text-xxl--line-height: var(--line-xxl);
+  --text-xxl--letter-spacing: var(--letter-spacing-xxl);
 
-     Tuned, not doubled. Interface text lives in a narrow band (11–15px) where
-     the steps have to be small or the hierarchy turns into shouting; display
-     text jumps clear of that band so a headline is unmistakably a headline.
-     Tracking tightens as size grows — Inter set at 40px with default tracking
-     reads loose and amateur, and the fix belongs in the scale rather than in
-     a `tracking-tight` a developer has to remember on every heading.
-     ---------------------------------------------------------- */
-  --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 1rem;
-  --text-2xs--letter-spacing: 0.01em;
-  --text-xs: 0.75rem;
-  --text-xs--line-height: 1.0625rem;
-  --text-xs--letter-spacing: 0.005em;
-  --text-sm: 0.8125rem;
-  --text-sm--line-height: var(--studio-text-sm-line-height, 1.25rem);
-  --text-base: 0.9375rem;
-  --text-base--line-height: 1.4375rem;
-  --text-base--letter-spacing: -0.005em;
-  --text-lg: 1.0625rem;
-  --text-lg--line-height: 1.625rem;
-  --text-lg--letter-spacing: -0.01em;
-  --text-xl: 1.25rem;
-  --text-xl--line-height: 1.75rem;
-  --text-xl--letter-spacing: -0.015em;
-  --text-2xl: 1.5rem;
-  --text-2xl--line-height: 1.95rem;
-  --text-2xl--letter-spacing: -0.02em;
-  --text-3xl: 1.9375rem;
-  --text-3xl--line-height: 2.375rem;
-  --text-3xl--letter-spacing: -0.022em;
-  --text-4xl: 2.5rem;
-  --text-4xl--line-height: 2.875rem;
-  --text-4xl--letter-spacing: -0.025em;
-  --text-5xl: 3.25rem;
-  --text-5xl--line-height: 3.5rem;
-  --text-5xl--letter-spacing: -0.028em;
+  --text-2xs: var(--size-xxs);
+  --text-2xs--line-height: var(--line-xxs);
+  --text-2xs--letter-spacing: var(--letter-spacing-xxs);
+  --text-sm: var(--size-s);
+  --text-sm--line-height: var(--line-s);
+  --text-sm--letter-spacing: var(--letter-spacing-s);
+  --text-base: var(--size-m);
+  --text-base--line-height: var(--line-m);
+  --text-base--letter-spacing: var(--letter-spacing-m);
+  --text-lg: var(--size-m);
+  --text-lg--line-height: var(--line-m);
+  --text-lg--letter-spacing: var(--letter-spacing-m);
+  --text-2xl: var(--size-l);
+  --text-2xl--line-height: var(--line-l);
+  --text-2xl--letter-spacing: var(--letter-spacing-l);
+  --text-3xl: var(--size-xl);
+  --text-3xl--line-height: var(--line-xl);
+  --text-3xl--letter-spacing: var(--letter-spacing-xl);
+  --text-4xl: var(--size-xl);
+  --text-4xl--line-height: var(--line-xl);
+  --text-4xl--letter-spacing: var(--letter-spacing-xl);
+  --text-5xl: var(--size-xxl);
+  --text-5xl--line-height: var(--line-xxl);
+  --text-5xl--letter-spacing: var(--letter-spacing-xxl);
 
-  --animate-search-expand: search-expand 180ms var(--ease-out-cubic) both;
-  --animate-device-icon-pop: device-icon-pop 150ms var(--ease-out-cubic) both;
+  --ease-motion: var(--motion-easing);
+  --ease-motion-large: var(--motion-large-easing);
+
+  --animate-search-expand: search-expand var(--motion-duration)
+    var(--motion-easing) both;
+  --animate-device-icon-pop: device-icon-pop var(--motion-duration)
+    var(--motion-easing) both;
   --animate-connection-travel: connection-travel 2.6s var(--ease-in-out-cubic)
     infinite;
   --animate-connection-arrive: connection-arrive 2.6s var(--ease-out-cubic)
     infinite;
   --animate-preview-ramp: preview-ramp 20s var(--ease-out-cubic) forwards;
-  --animate-card-land: card-land 240ms var(--ease-out-quint) both;
+  --animate-card-land: card-land var(--motion-large-duration)
+    var(--motion-large-easing) both;
   --animate-pulse-brightness: pulse-brightness 1.8s var(--ease-in-out-cubic)
     infinite;
-  --animate-accordion-down: accordion-down 220ms var(--ease-out-cubic);
-  --animate-accordion-up: accordion-up 180ms var(--ease-out-cubic);
+  --animate-accordion-down: accordion-down var(--motion-large-duration)
+    var(--motion-large-easing);
+  --animate-accordion-up: accordion-up var(--motion-large-duration)
+    var(--motion-large-easing);
 }
 
 /* Animations */
@@ -581,40 +654,12 @@
   }
 }
 
-:root {
-  /* Three radii, by role: a button is a pill, a control (input, select,
-     swatch) is generously rounded, and a surface (card, popover, drop zone)
-     rounds a step further still because it is larger. One height goes with
-     them, so an input, a select and the button beside them line up. Nothing in
-     the editor should hardcode either — these are the knobs. */
-  --studio-control-height: 2.25rem;
-  --studio-control-radius: calc(var(--radius) * 2.667);
-  --studio-surface-radius: var(--radius-xl);
-  --studio-button-radius: 9999px;
-}
-
-/* Secondary and outline controls sit ON the card surface rather than being
-   tinted: a white pill with the card's own hairline and drop, so a toolbar
-   reads as a row of objects on the page instead of a row of holes in it.
-   Last write wins over the tinted defaults further up, which is the whole
-   reason this block sits down here. */
-:root {
-  --studio-input-background: var(--card);
-  --studio-outline-foreground: var(--card-foreground);
-  --studio-outline-hover-background: var(--accent);
-  --studio-secondary-background: var(--card);
-  --studio-secondary-foreground: var(--card-foreground);
-  --studio-secondary-hover-background: var(--accent);
-  --studio-secondary-hover-foreground: var(--accent-foreground);
-  --studio-secondary-shadow: var(--card-shadow);
-}
-
 /* A search field growing out of the icon button it replaces. `from` only, so
    the browser interpolates up to whatever width the field resolves to — that
    target is responsive and a keyframe cannot name it. */
 @keyframes search-expand {
   from {
-    width: 1.75rem;
+    width: var(--studio-control-height-sm);
     opacity: 0;
   }
 }
@@ -779,14 +824,12 @@
 /* Shadows */
 
 :root {
-  --shadow-border:
-    0px 0px 0px 0.5px rgba(0, 0, 0, 0.09), 0px 1px 2px -1px rgba(0, 0, 0, 0.2),
-    0px 2px 4px 0px rgba(0, 0, 0, 0.04);
+  --shadow-border: var(--edge), var(--shadow-s);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/20;
+    @apply border-border outline-ring;
   }
 
   button:not(:disabled),
@@ -811,13 +854,10 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-weight: 450;
-    font-feature-settings:
-      "cv01", "cv02", "cv03", "cv04", "cv08", "cv10", "ss08";
-    /* Inter var carries an optical-size axis; letting the browser drive it is
-       the difference between a headline that was scaled up and one that was
-       drawn at that size. */
-    font-optical-sizing: auto;
+    font-weight: var(--weight-ui-regular);
+    font-size: var(--size-s);
+    line-height: var(--line-s);
+    letter-spacing: var(--letter-spacing-s);
   }
 
   h1,
@@ -881,8 +921,8 @@
    The palette variables are kept for reference and marketing surfaces.
    ============================================================ */
 :root {
-  --brand: #d0ec1a;
-  --brand-foreground: #07401a;
+  --brand: var(--color-1);
+  --brand-foreground: var(--cte-accent-text);
 
   --brand-green-light: #d0ec1a;
   --brand-green-dark: #07401a;
@@ -896,13 +936,6 @@
   --brand-yellow-dark: #392b02;
   /* #69daec. One value, no dark pair — it is light enough for both themes. */
   --brand-blue: oklch(0.829 0.105 209.2);
-}
-
-@media only screen and (min-device-pixel-ratio: 2),
-  only screen and (min-resolution: 192dpi) {
-  :root {
-    --border-hairline: 0.5px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -18,6 +18,7 @@ import {
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
 import {
   Select,
@@ -35,7 +36,10 @@ import {
   TableHeader,
   TableRow,
 } from "@decocms/ui/components/table.tsx";
-import { SettingsSection } from "@/components/settings/settings-section";
+import {
+  SettingsCard,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import {
   useInfraBilling,
@@ -170,7 +174,7 @@ function UsageChart({
               dataKey="label"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+              tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
               interval="preserveStartEnd"
               tickMargin={8}
             />
@@ -178,7 +182,7 @@ function UsageChart({
               orientation="right"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+              tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
               tickFormatter={formatValue}
               width={68}
             />
@@ -230,9 +234,9 @@ function InfraBillingContent() {
   }
   if (sites.length === 0) {
     return (
-      <Card className="p-6 text-sm text-muted-foreground">
-        {t("settings.infraBilling.noSites")}
-      </Card>
+      <SettingsCard>
+        <EmptyState size="sm" title={t("settings.infraBilling.noSites")} />
+      </SettingsCard>
     );
   }
 
@@ -309,7 +313,7 @@ function InfraBillingContent() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center gap-3 px-4">
+      <div className="flex flex-wrap items-center gap-3">
         <MultiSelect
           className="w-auto min-w-56 max-w-full"
           options={sites.map((slug) => ({ label: slug, value: slug }))}
@@ -336,13 +340,13 @@ function InfraBillingContent() {
       </div>
 
       {selected.length === 0 && (
-        <Card className="mx-4 p-4 text-sm text-muted-foreground">
+        <Card className="p-4 text-sm text-muted-foreground">
           {t("settings.infraBilling.pickASite")}
         </Card>
       )}
 
       {truncated && (
-        <Card className="mx-4 p-4 text-sm text-muted-foreground">
+        <Card className="p-4 text-sm text-muted-foreground">
           {t("settings.infraBilling.tooManySites", {
             count: String(MAX_SELECTED_SITES),
           })}
@@ -350,7 +354,7 @@ function InfraBillingContent() {
       )}
 
       {data?.usageUnavailable && (
-        <Card className="mx-4 p-4 text-sm text-muted-foreground">
+        <Card className="p-4 text-sm text-muted-foreground">
           {t("settings.infraBilling.warehouseUnavailable")}
         </Card>
       )}
@@ -358,7 +362,7 @@ function InfraBillingContent() {
       {selected.length > 0 && (
         <>
           <SettingsSection title={t("settings.infraBilling.summaryTitle")}>
-            <div className="flex flex-col lg:flex-row gap-4 px-4">
+            <div className="flex flex-col lg:flex-row gap-4">
               <Card className="flex-1 flex flex-col gap-4 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -463,7 +467,7 @@ function InfraBillingContent() {
           </SettingsSection>
 
           <SettingsSection title={t("settings.infraBilling.metricsTitle")}>
-            <div className="flex flex-col xl:flex-row gap-4 px-4">
+            <div className="flex flex-col xl:flex-row gap-4">
               {metrics.map((metric) => (
                 <Card
                   key={metric.key}
@@ -488,7 +492,7 @@ function InfraBillingContent() {
           </SettingsSection>
 
           <SettingsSection title={t("settings.infraBilling.invoicesTitle")}>
-            <div className="flex flex-col gap-4 px-4">
+            <div className="flex flex-col gap-4">
               {!data ? (
                 <Card>
                   <Skeleton className="m-4 h-24" />

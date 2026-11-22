@@ -46,7 +46,7 @@ function TemplateCard({
   description: string;
 }) {
   return (
-    <div className="flex h-40 flex-col justify-between rounded-xl border border-border bg-background p-4">
+    <div className="flex h-40 flex-col justify-between rounded-m border border-border bg-background p-4">
       <div>
         <p className="text-sm font-medium text-foreground">{title}</p>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>

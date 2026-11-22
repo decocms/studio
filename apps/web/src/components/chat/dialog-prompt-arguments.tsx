@@ -129,7 +129,7 @@ export function PromptArgsDialog({
                 name={arg.name}
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs">
+                    <FormLabel>
                       {arg.name}
                       {arg.required ? null : (
                         <span className="text-muted-foreground font-normal">

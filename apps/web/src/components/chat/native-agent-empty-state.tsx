@@ -82,7 +82,7 @@ export function NativeAgentTerminalPrompt({
 
   return (
     <section
-      className="flex w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-sidebar shadow-sm"
+      className="flex w-full max-w-xl flex-col overflow-hidden rounded-m bg-sidebar card-shadow"
       aria-labelledby="native-agent-prompt-title"
     >
       <div className="border-b border-border px-6 py-5">
@@ -146,7 +146,7 @@ export function NativeAgentTerminalPrompt({
               <strong className="min-w-0 truncate text-sm font-semibold text-foreground">
                 {item.label}
               </strong>
-              <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-xxs text-muted-foreground">
                 <span
                   aria-hidden="true"
                   className={cn(
@@ -166,7 +166,7 @@ export function NativeAgentTerminalPrompt({
       </div>
 
       <footer className="mt-auto flex justify-end border-t border-border px-6 py-4 text-muted-foreground">
-        <span className="font-mono text-[10px]">
+        <span className="font-mono text-xxs">
           {t("chat.nativeAgentEmptyState.keyboardHint")}
         </span>
       </footer>

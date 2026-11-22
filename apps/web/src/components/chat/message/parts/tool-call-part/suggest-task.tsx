@@ -19,12 +19,10 @@ export function SuggestTaskPart({ part }: { part: SuggestTaskToolPart }) {
   return (
     <div className="my-1.5 flex items-start gap-2">
       <ClipboardCheck className="size-4 text-muted-foreground/50 shrink-0 mt-0.5" />
-      <span className="text-[14px] leading-snug text-muted-foreground">
-        {part.input?.title}
-      </span>
+      <span className="text-s text-muted-foreground">{part.input?.title}</span>
       <span
         className={cn(
-          "text-[14px] leading-snug shrink-0",
+          "text-s shrink-0",
           accepted ? "text-foreground/70" : "text-muted-foreground/50 italic",
         )}
       >

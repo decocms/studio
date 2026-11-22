@@ -61,7 +61,7 @@ export function SubscriptionPaywallDialog({
         >
           {/* Board-preview hero — one image
               image, not a second asset. */}
-          <div className="overflow-hidden rounded-xl bg-muted">
+          <div className="overflow-hidden rounded-m bg-muted">
             <img
               src={KANBAN_PREVIEW_SRC}
               alt={t("taskBoard.subscriptionPaywall.previewAlt")}
@@ -70,7 +70,7 @@ export function SubscriptionPaywallDialog({
           </div>
 
           <div className="flex flex-col gap-6 px-3 pb-3 pt-7">
-            <DialogTitle className="text-xl font-semibold text-foreground">
+            <DialogTitle className="text-foreground">
               {t("taskBoard.subscriptionPaywall.trialTitle")}
             </DialogTitle>
             <ul className="flex flex-col gap-3">

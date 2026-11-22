@@ -127,10 +127,8 @@ function OnboardingHeader({
         )}
       </div>
       <div className="space-y-2">
-        <h1 className="text-2xl font-medium leading-8">{title}</h1>
-        <p className="text-base text-muted-foreground leading-6">
-          {description}
-        </p>
+        <h1 className="text-2xl font-medium">{title}</h1>
+        <p className="text-base text-muted-foreground">{description}</p>
       </div>
     </div>
   );
@@ -433,7 +431,7 @@ function SetupForm({
           description={t("routes.onboarding.setupDescription")}
         />
 
-        <div className="rounded-xl card-shadow bg-background dark:bg-input/30 divide-y divide-border">
+        <div className="surface divide-y divide-border">
           <div className="flex items-center justify-between gap-4 p-4">
             <div className="space-y-0.5">
               <p className="text-sm font-medium">
@@ -454,7 +452,7 @@ function SetupForm({
           </div>
 
           <div className="flex items-center justify-between gap-4 p-4">
-            <Label htmlFor="org-name" className="text-sm font-medium shrink-0">
+            <Label htmlFor="org-name" className="shrink-0">
               {t("routes.onboarding.orgName")}
             </Label>
             <Input
@@ -719,7 +717,7 @@ function SetupWorkflow({
               </span>
               <span
                 className={cn(
-                  "text-base leading-6 motion-safe:transition-colors motion-safe:duration-300",
+                  "text-base motion-safe:transition-colors motion-safe:duration-300",
                   isActive || isDone
                     ? "text-foreground"
                     : "text-muted-foreground",

@@ -56,7 +56,7 @@ export function OrgSearch({
               type="button"
               aria-label={t("sidebar.rail.searchOrganizations")}
               onClick={() => setOpen(true)}
-              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-m text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
             >
               <SearchLg size={18} />
             </button>

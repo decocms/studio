@@ -59,7 +59,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.dnsActiveHint":
     "Deco is serving this redirect (DNS is pointing here).",
   "mainPanelTabs.hostingTab.dnsAwaitingHint":
-    "Not resolving to Deco yet — add the records below; DNS changes can take up to a few hours to propagate.",
+    "Not resolving to Deco yet, add the records below; DNS changes can take up to a few hours to propagate.",
   "mainPanelTabs.hostingTab.dnsColType": "Type",
   "mainPanelTabs.hostingTab.dnsColName": "Name",
   "mainPanelTabs.hostingTab.dnsColValue": "Value",
@@ -114,7 +114,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.secretScopeRuntimeHint":
     "Injected at serving time (the site's runtime environment).",
   "mainPanelTabs.hostingTab.secretScopeBuildHint":
-    "Mounted by the build only (e.g. a private registry token) — never exposed at runtime.",
+    "Mounted by the build only (e.g. a private registry token), never exposed at runtime.",
   "mainPanelTabs.hostingTab.deleteSecret": "Delete secret",
   "mainPanelTabs.hostingTab.confirmDeleteSecretTitle": "Delete secret?",
   "mainPanelTabs.hostingTab.confirmDeleteSecretDescription":
@@ -169,7 +169,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.buildLogsEmpty":
     "No build logs available for this commit.",
   "mainPanelTabs.hostingTab.buildLogsTruncated":
-    "Output truncated — open the full log for everything.",
+    "Output truncated, open the full log for everything.",
   "mainPanelTabs.hostingTab.buildLogsOpenFull": "Open full log",
   "mainPanelTabs.hostingTab.domains": "Domains",
   "mainPanelTabs.hostingTab.domainsError": "Failed to load domains",
@@ -182,7 +182,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.statusPending": "Pending",
   "mainPanelTabs.hostingTab.statusActionRequired": "Action required",
   "mainPanelTabs.hostingTab.detailZoneNotOnboarded":
-    "This domain isn't fully set up yet — reach out so we can finish connecting it.",
+    "This domain isn't fully set up yet, reach out so we can finish connecting it.",
   "mainPanelTabs.hostingTab.deleteDomain": "Detach domain",
   "mainPanelTabs.hostingTab.confirmDeleteDomainTitle": "Detach this domain?",
   "mainPanelTabs.hostingTab.confirmDeleteDomainDescription":
@@ -196,8 +196,6 @@ export const mainPanelTabs = {
     "{count} variables declared in code",
   "mainPanelTabs.hostingTab.showDetails": "Show details",
   "mainPanelTabs.hostingTab.hideDetails": "Hide details",
-  "mainPanelTabs.e2eTab.title": "E2E",
-  "mainPanelTabs.e2eTab.subtitle": "End-to-end checks for {site}",
   "mainPanelTabs.e2eTab.helpTitle": "How E2E tests work",
   "mainPanelTabs.e2eTab.helpIntro":
     "E2E tests run automated end-to-end checks against your site's production URL in a real browser.",
@@ -219,7 +217,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.runsError": "Failed to load E2E runs",
   "mainPanelTabs.e2eTab.checksSection": "Checks",
   "mainPanelTabs.e2eTab.noChecks":
-    "No checks yet. Run a test above — it appears here as pending while it runs.",
+    "No checks yet. Run a test above, it appears here as pending while it runs.",
   "mainPanelTabs.e2eTab.checksError": "Failed to load E2E checks",
   "mainPanelTabs.e2eTab.colSchedule": "Schedule",
   "mainPanelTabs.e2eTab.colUpdated": "Updated",
@@ -239,6 +237,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.scheduleOnce": "One-shot (run now)",
   "mainPanelTabs.e2eTab.scheduleLabel": "Schedule",
   "mainPanelTabs.e2eTab.scheduleHourly": "Hourly",
+  "mainPanelTabs.experimentsTab.rolePlaceholder": "Role…",
   "mainPanelTabs.e2eTab.scheduleDaily": "Daily at 08:00 UTC",
   "mainPanelTabs.e2eTab.scheduleWeekly": "Weekly (Mon 08:00 UTC)",
   "mainPanelTabs.e2eTab.noSiteTitle": "No site linked",
@@ -280,7 +279,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.console": "Console",
   "mainPanelTabs.e2eTab.network": "Network",
   "mainPanelTabs.e2eTab.video": "Video",
-  "mainPanelTabs.e2eTab.openTrace": "Open in Playwright Trace Viewer",
+  "mainPanelTabs.e2eTab.openTrace": "Open in Playwright trace viewer",
   "mainPanelTabs.e2eTab.downloadTrace": "Download .zip",
   "mainPanelTabs.e2eTab.noReport": "No detailed report for this run.",
   "mainPanelTabs.e2eTab.noConsole": "No console output.",
@@ -296,8 +295,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.noArtifacts": "No artifacts for this run.",
   "mainPanelTabs.e2eTab.openArtifact": "Open",
   "mainPanelTabs.e2eTab.viewScreenshot": "View screenshot",
-  "mainPanelTabs.analyticsTab.title": "Deco Analytics",
-  "mainPanelTabs.analyticsTab.subtitle": "Traffic and usage for {site}",
   "mainPanelTabs.analyticsTab.noSiteTitle": "No site linked",
   "mainPanelTabs.analyticsTab.noSiteDescription":
     "This project isn't linked to a hosted site yet.",
@@ -332,9 +329,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.hostLabel": "Hostname",
   "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
   "mainPanelTabs.analyticsTab.hostHint":
-    "This site has no production domain on record — enter the hostname to collect under.",
+    "This site has no production domain on record, enter the hostname to collect under.",
   "mainPanelTabs.analyticsTab.registerInstallHint":
-    "Once enabled, traffic is collected automatically — no code to add.",
+    "Once enabled, traffic is collected automatically, no code to add.",
   "mainPanelTabs.analyticsTab.enableAnalytics": "Enable analytics",
   "mainPanelTabs.analyticsTab.enabling": "Enabling…",
   "mainPanelTabs.analyticsTab.toastRegistered": "Analytics enabled",
@@ -367,7 +364,7 @@ export const mainPanelTabs = {
   // Usage
   "mainPanelTabs.analyticsTab.installTitle": "Tracking",
   "mainPanelTabs.analyticsTab.installAuto":
-    "Analytics is active for this site — it's added automatically, nothing to paste.",
+    "Analytics is active for this site, it's added automatically, nothing to paste.",
   "mainPanelTabs.analyticsTab.installTrackPrefix":
     "Send custom events from your code via ",
   // Dashboard (tenant-scoped /data views), rendered as collapsible sections.
@@ -392,7 +389,7 @@ export const mainPanelTabs = {
     "{count} accepted in the selected range. The cap resets each calendar month; the collector drops events once the site is flagged over. Month-to-date consumption and the over-quota state are on the site's hosting detail.",
   "mainPanelTabs.analyticsTab.dataLoadError": "Couldn't load this view.",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
-    "The analytics data surface isn't wired to this environment yet — configuration below still works.",
+    "The analytics data surface isn't wired to this environment yet, configuration below still works.",
   // Token (key) registration
   "mainPanelTabs.analyticsTab.registerByKey":
     "Register by token (site not on our CDN)",
@@ -403,9 +400,9 @@ export const mainPanelTabs = {
     "loja.com.br, staging.loja.com.br",
   "mainPanelTabs.analyticsTab.domainsHint":
     "Domains the collector accepts (Origin check); the first is primary. Required for a token.",
-  "mainPanelTabs.analyticsTab.tokenTitle": "Token created — copy it now",
+  "mainPanelTabs.analyticsTab.tokenTitle": "Token created, copy it now",
   "mainPanelTabs.analyticsTab.tokenOnce":
-    "Shown once. It is public (it ships in the script), so it identifies but never authenticates — events are not billable.",
+    "Shown once. It is public (it ships in the script), so it identifies but never authenticates, events are not billable.",
   "mainPanelTabs.analyticsTab.registeredOk": "Registered",
   "mainPanelTabs.analyticsTab.copy": "Copy",
   "mainPanelTabs.analyticsTab.copied": "Copied",
@@ -423,7 +420,6 @@ export const mainPanelTabs = {
     "No visitors in the last few minutes.",
   "mainPanelTabs.analyticsTab.emptyView":
     "Nothing collected for this range yet.",
-  "mainPanelTabs.cdnTab.title": "Monitor",
   "mainPanelTabs.cdnTab.noSiteTitle": "No site linked",
   "mainPanelTabs.cdnTab.noSiteBody":
     "This project isn't linked to a site, so there's no CDN traffic to show.",
@@ -451,7 +447,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.country": "Country",
   "mainPanelTabs.cdnTab.performance": "Performance",
   "mainPanelTabs.cdnTab.audience": "Analytics",
-  "mainPanelTabs.cdnTab.directUnknown": "Direct/Unknown",
+  "mainPanelTabs.cdnTab.directUnknown": "Direct/unknown",
   "mainPanelTabs.cdnTab.addFilter": "Add filter",
   "mainPanelTabs.cdnTab.removeFilter": "Remove filter",
   "mainPanelTabs.cdnTab.filterValue": "value",
@@ -485,7 +481,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.source": "Source",
   "mainPanelTabs.cdnTab.devices": "Devices",
   "mainPanelTabs.cdnTab.device": "Device",
-  "mainPanelTabs.cdnTab.requestsPerPageview": "Requests / Pageview",
+  "mainPanelTabs.cdnTab.requestsPerPageview": "Requests / pageview",
   "mainPanelTabs.cdnTab.bandwidthPer10k": "Bandwidth / 10k Pageviews",
   "mainPanelTabs.cdnTab.usageSubtitle":
     "Requests & Pageviews (left axis), Bandwidth (right axis)",

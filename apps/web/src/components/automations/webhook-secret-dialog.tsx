@@ -148,10 +148,10 @@ export function WebhookSecretDialog({
                     onValueChange={(v) => setExample(v as ExampleKind)}
                   >
                     <TabsList className="h-8 p-[2px]">
-                      <TabsTrigger value="curl" className="h-7 px-2.5 text-xs">
+                      <TabsTrigger value="curl" className="h-7 px-2.5">
                         curl
                       </TabsTrigger>
-                      <TabsTrigger value="fetch" className="h-7 px-2.5 text-xs">
+                      <TabsTrigger value="fetch" className="h-7 px-2.5">
                         fetch
                       </TabsTrigger>
                     </TabsList>

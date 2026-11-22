@@ -3,7 +3,7 @@ import type { deck as deckEn } from "../en/deck.ts";
 export const deck = {
   "deck.deckToolbar.agentRewriteWarning":
     "O agente reescreveu este deck enquanto você estava editando. Recarregar descarta as diferenças não salvas.",
-  "deck.deckToolbar.agentUpdatedReload": "Agente atualizado — recarregar",
+  "deck.deckToolbar.agentUpdatedReload": "Agente atualizado, recarregar",
   "deck.deckToolbar.doneEditing": "Terminar edição",
   "deck.deckToolbar.download": "Baixar",
   "deck.deckToolbar.downloadHtml": "Baixar HTML",

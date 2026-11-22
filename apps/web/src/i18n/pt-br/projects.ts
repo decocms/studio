@@ -47,13 +47,9 @@ export const projects = {
   "projects.connections.orgWide": "Toda a organização",
   "projects.connections.usedBy": "{count} projetos",
   "projects.settings.title": "Projetos",
-  "projects.settings.description":
-    "Tudo que é escopado por projeto fica aqui: repositórios, conexões, relatório e quadro.",
   "projects.settings.searchPlaceholder": "Buscar projetos…",
   "projects.settings.open": "Abrir",
   "projects.settings.openSettings": "Configurações",
-  "projects.settings.orgScopeNote":
-    "Membros, cobrança, segurança e provedores de IA continuam sendo da organização.",
   "projects.settings.noResults": "Nenhum projeto corresponde a “{search}”",
 
   "projects.identity.storeUrlLabel": "URL da loja",

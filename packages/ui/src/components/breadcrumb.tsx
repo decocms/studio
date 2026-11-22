@@ -20,7 +20,7 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
     <ol
       data-slot="breadcrumb-list"
       className={cn(
-        "flex items-center gap-1.5 text-sm sm:gap-2 overflow-hidden text-muted-foreground",
+        "flex items-center gap-(--space-xxs) text-s sm:gap-(--space-xs) overflow-hidden text-muted-foreground",
         className,
       )}
       {...props}
@@ -32,7 +32,10 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
       data-slot="breadcrumb-item"
-      className={cn("inline-flex items-center gap-1.5 min-w-0", className)}
+      className={cn(
+        "inline-flex items-center gap-(--space-xxs) min-w-0",
+        className,
+      )}
       {...props}
     />
   );
@@ -51,7 +54,7 @@ function BreadcrumbLink({
     <Comp
       data-slot="breadcrumb-link"
       className={cn(
-        "hover:text-foreground transition-colors truncate",
+        "hover:text-foreground transition-colors duration-(--motion-duration) ease-motion truncate",
         className,
       )}
       {...props}
@@ -83,7 +86,7 @@ function BreadcrumbSeparator({
       role="presentation"
       aria-hidden="true"
       className={cn(
-        "[&>svg]:size-3.5 text-muted-foreground opacity-50 list-none shrink-0",
+        "[&>svg]:size-3.5 text-neutral-6 list-none shrink-0",
         className,
       )}
       {...props}
@@ -102,7 +105,10 @@ function BreadcrumbEllipsis({
       data-slot="breadcrumb-ellipsis"
       role="presentation"
       aria-hidden="true"
-      className={cn("flex size-10 items-center justify-center", className)}
+      className={cn(
+        "flex size-(--studio-control-height) items-center justify-center",
+        className,
+      )}
       {...props}
     >
       <DotsHorizontal className="size-4" />

@@ -39,11 +39,11 @@ export const settings = {
   "settings.jira.disconnected": "Jira desconectado",
   "settings.jira.disconnectTitle": "Desconectar o Jira?",
   "settings.jira.disconnectDescription":
-    "A sincronização para e as credenciais são apagadas. Os cards que já estão no quadro são mantidos — só deixam de atualizar.",
+    "A sincronização para e as credenciais são apagadas. Os cards que já estão no quadro são mantidos, só deixam de atualizar.",
   "settings.jira.cancel": "Cancelar",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
-    "O board que o Studio acompanha — um card entrando em uma de suas colunas é o que dispara a integração.",
+    "O board que o Studio acompanha, um card entrando em uma de suas colunas é o que dispara a integração.",
   "settings.jira.boardPlaceholder": "Selecione um board",
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
@@ -78,7 +78,7 @@ export const settings = {
   "settings.jira.addAutomation": "Adicionar automação",
   "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
   "settings.jira.promptHelp":
-    "Esta é a instrução inteira que o run recebe — não existe um padrão. Digite “/” para inserir uma skill (jira-execute para construir, jira-review para revisar); o texto dela é colado aqui para você manter, editar ou cortar. A descrição, os comentários, os links e os anexos da issue sempre vão junto.",
+    "Esta é a instrução inteira que o run recebe, não existe um padrão. Digite “/” para inserir uma skill (jira-execute para construir, jira-review para revisar); o texto dela é colado aqui para você manter, editar ou cortar. A descrição, os comentários, os links e os anexos da issue sempre vão junto.",
   "settings.jira.promptSave": "Salvar",
   "settings.jira.promptDiscard": "Descartar",
   "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
@@ -99,7 +99,7 @@ export const settings = {
   "settings.jira.testRunDescription":
     "Rode o agente em uma issue ou num lote agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
   "settings.jira.issueKeysPlaceholder":
-    "ABC-123, ou um link — um por linha, ou separados por vírgula",
+    "ABC-123, ou um link, um por linha, ou separados por vírgula",
   "settings.jira.issueKeysCount": "{count} issue(s)",
   "settings.jira.issueKeysUnreadable": "não consegui ler: {items}",
   "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
@@ -114,17 +114,15 @@ export const settings = {
   "settings.jira.continuePrRuleHelp":
     "Checado em todo card que entra neste status: quem já carrega um pull request aberto continua nele, quem não tem começa do zero. Deixe desligado num status de review.",
   "settings.jira.together":
-    "Um run só pra todas — o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
+    "Um run só pra todas, o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
   "settings.jira.togetherStarted": "Iniciado um run em",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
-  "settings.syncedRepos.pageDescription":
-    "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
   "settings.syncedRepos.cancel": "Cancelar",
   "settings.syncedRepos.create": "Criar",
   "settings.syncedRepos.creating": "Criando…",
   "settings.syncedRepos.created":
-    'Sincronização criada — sincronizando em "{volume}" em segundo plano',
+    'Sincronização criada, sincronizando em "{volume}" em segundo plano',
   "settings.syncedRepos.emptyTitle": "Nenhum repo sincronizado ainda",
   "settings.syncedRepos.emptyDescription":
     "Escolha um repositório e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
@@ -237,15 +235,15 @@ export const settings = {
   "settings.repositories.disconnect": "Desconectar",
   "settings.repositories.disconnectTitle": 'Desconectar "{login}"?',
   "settings.repositories.disconnectDescription":
-    "Os repositórios vinculados por esta conta continuam na lista, mas viram clones públicos anônimos — os privados deixarão de funcionar.",
+    "Os repositórios vinculados por esta conta continuam na lista, mas viram clones públicos anônimos, os privados deixarão de funcionar.",
   "settings.repositories.disconnected": "Conta desconectada",
   "settings.repositories.tokenDialogTitle": "Conectar o GitLab com um token",
   "settings.repositories.tokenDialogDescription":
-    "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api — os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
+    "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api, os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
   "settings.repositories.tokenDialogTitleBitbucket":
     "Conectar o Bitbucket com um token",
   "settings.repositories.tokenDialogDescriptionBitbucket":
-    "Use um token de acesso de workspace, de projeto ou de repositório com permissão de escrita em repositórios e pull requests — os agentes usam ele para dar push e abrir pull requests. Somente Bitbucket Cloud. É guardado criptografado e não é exibido novamente.",
+    "Use um token de acesso de workspace, de projeto ou de repositório com permissão de escrita em repositórios e pull requests, os agentes usam ele para dar push e abrir pull requests. Somente Bitbucket Cloud. É guardado criptografado e não é exibido novamente.",
   "settings.repositories.addAccount": "Adicionar conta",
   "settings.repositories.addAccountTitle": "Conectar uma conta git",
   "settings.repositories.addAccountDescription":
@@ -307,7 +305,6 @@ export const settings = {
   "settings.repositories.connect": "Conectar",
   "settings.repositories.connecting": "Conectando…",
   "settings.repositories.connected": 'Conectado como "{login}"',
-  "settings.repositories.reposTitle": "Repositórios",
   "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
   "settings.repositories.reposEmptyDescription":
     "Escolha um repositório de uma conta conectada do GitHub, GitLab ou Bitbucket.",
@@ -402,7 +399,7 @@ export const settings = {
   "settings.automations.noResultsTitle":
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
-  "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
+  "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es…",
   "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Importar skill",
   "settings.skills.importing": "Importando\u2026",
@@ -411,8 +408,8 @@ export const settings = {
   "settings.skills.importMissingSkillMd":
     "Essa pasta n\u00e3o tem um SKILL.md na raiz. Selecione a pasta da pr\u00f3pria skill.",
   "settings.skills.importNeedsFolder":
-    "Selecione uma pasta, não arquivos individuais — este navegador pode não suportar upload de pastas.",
-  "settings.skills.searchPlaceholder": "Pesquisar skills...",
+    "Selecione uma pasta, não arquivos individuais, este navegador pode não suportar upload de pastas.",
+  "settings.skills.searchPlaceholder": "Pesquisar skills…",
   "settings.skills.noDescription": "Sem descri\u00e7\u00e3o",
   "settings.skills.filterAll": "Todas",
   "settings.skills.emptyTitle": "Nenhuma skill ainda",
@@ -480,7 +477,6 @@ export const settings = {
   "settings.buckets.bucketLabel": "Bucket",
   "settings.buckets.bucketPlaceholder": "meu-bucket",
   "settings.buckets.bucketRemoved": 'Bucket "{name}" removido',
-  "settings.buckets.bucketsConfigured": "{count} bucket(s) configurado(s)",
   "settings.buckets.cancelButton": "Cancelar",
   "settings.buckets.credentialsEncryptedDescription":
     "As credenciais s\u00e3o criptografadas em repouso e nunca retornadas pela API. Para Cloudflare R2, Google Cloud Storage ou MinIO, defina um endpoint personalizado.",
@@ -561,14 +557,14 @@ export const settings = {
   "settings.connectClients.oauthDiscoveryDetails":
     "Detalhes de descoberta OAuth",
   "settings.connectClients.oauthKeyHint":
-    "Recomendado para seu laptop. O navegador abrirá no primeiro uso para você entrar — sem token para gerenciar.",
+    "Recomendado para seu laptop. O navegador abrirá no primeiro uso para você entrar, sem token para gerenciar.",
   "settings.connectClients.oauthMetadataHint":
     "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar a clientes",
   "settings.connectClients.snippetOneTimeWarning":
-    "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
+    "Copie este snippet agora, a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
   "settings.connectForms.apiKeyRequired": "A chave API é obrigatória",
   "settings.connectForms.baseUrlField": "URL Base",
@@ -592,7 +588,7 @@ export const settings = {
   "settings.connectForms.recommended": "recomendado",
   "settings.connectForms.saveConnection": "Salvar Conex\u00e3o",
   "settings.connectForms.saveKey": "Salvar Chave",
-  "settings.connectForms.saving": "Salvando...",
+  "settings.connectForms.saving": "Salvando…",
   "settings.connectForms.showApiKey": "Mostrar chave API",
   "settings.connectProviderDialog.backButton": "Voltar",
   "settings.connectProviderDialog.backButtonLabel": "Voltar",
@@ -665,7 +661,7 @@ export const settings = {
   "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
   "settings.planUsage.noPlan": "Nenhum plano ativo",
   "settings.planUsage.noPlanDescription":
-    "Esta organização não tem um plano ativo. Escolha um abaixo — o primeiro mês do Starter é grátis.",
+    "Esta organização não tem um plano ativo. Escolha um abaixo, o primeiro mês do Starter é grátis.",
   "settings.planUsage.creditsLeft": "restantes",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
   "settings.planUsage.portalFailed":
@@ -809,7 +805,7 @@ export const settings = {
     "deixe em branco para manter atual",
   "settings.editProviderDialog.providerUpdated": "Provedor atualizado",
   "settings.editProviderDialog.save": "Salvar",
-  "settings.editProviderDialog.saving": "Salvando...",
+  "settings.editProviderDialog.saving": "Salvando…",
   "settings.editProviderDialog.showApiKey": "Mostrar chave de API",
   "settings.joinRequestsSection.approve": "Aprovar",
   "settings.joinRequestsSection.approveFailed": "Falha ao aprovar",
@@ -820,7 +816,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.review.title": "Revisores e merge",
   "settings.review.description":
     "O Reviewer autom\u00e1tico roda no pull request de uma tarefa assim que ela entra em Revis\u00e3o (checks passando ou inexistentes). Ele aparece como uma sess\u00e3o no card da tarefa.",
@@ -910,7 +905,7 @@ export const settings = {
   "settings.orgRoleDetail.general": "Geral",
   "settings.orgRoleDetail.grantFullAccessToAllFeaturesBelow":
     "Conceder acesso completo a todos os recursos abaixo",
-  "settings.orgRoleDetail.loadingModels": "Carregando modelos...",
+  "settings.orgRoleDetail.loadingModels": "Carregando modelos…",
   "settings.orgRoleDetail.mcpPermissions": "Permiss\u00f5es MCP",
   "settings.orgRoleDetail.members": "Membros",
   "settings.orgRoleDetail.membersUpdatedSuccessfully":
@@ -943,12 +938,12 @@ export const settings = {
   "settings.orgRoleDetail.roleUpdatedSuccessfully":
     "Papel atualizado com sucesso!",
   "settings.orgRoleDetail.saveChanges": "Salvar Altera\u00e7\u00f5es",
-  "settings.orgRoleDetail.saving": "Salvando...",
-  "settings.orgRoleDetail.searchMcpServers": "Procurar servidores MCP...",
-  "settings.orgRoleDetail.searchMembers": "Procurar membros...",
-  "settings.orgRoleDetail.searchModels": "Procurar modelos...",
-  "settings.orgRoleDetail.searchPermissions": "Procurar permiss\u00f5es...",
-  "settings.orgRoleDetail.searchProjects": "Procurar projetos...",
+  "settings.orgRoleDetail.saving": "Salvando…",
+  "settings.orgRoleDetail.searchMcpServers": "Procurar servidores MCP…",
+  "settings.orgRoleDetail.searchMembers": "Procurar membros…",
+  "settings.orgRoleDetail.searchModels": "Procurar modelos…",
+  "settings.orgRoleDetail.searchPermissions": "Procurar permiss\u00f5es…",
+  "settings.orgRoleDetail.searchProjects": "Procurar projetos…",
   "settings.orgRoleDetail.selectMembersToAddToThisRole":
     "Selecione membros para adicionar a este papel.",
   "settings.orgRoleDetail.showMore": "Mostrar mais ({remaining} restantes)",
@@ -993,7 +988,7 @@ export const settings = {
   "settings.orgSso.issuerUrlLabel": "URL do Issuer",
   "settings.orgSso.issuerUrlPlaceholder":
     "https://login.microsoftonline.com/{tenant}/v2.0",
-  "settings.orgSso.loading": "Carregando...",
+  "settings.orgSso.loading": "Carregando…",
   "settings.orgSso.providerLabel": "Provedor",
   "settings.orgSso.removeButton": "Remover",
   "settings.orgSso.removeConfirmation":
@@ -1004,7 +999,7 @@ export const settings = {
     "Issuer, ID do Cliente e Dom\u00ednio s\u00e3o obrigat\u00f3rios",
   "settings.orgSso.saveSsoConfigError":
     "Falha ao salvar configura\u00e7\u00e3o SSO",
-  "settings.orgSso.savingButton": "Salvando...",
+  "settings.orgSso.savingButton": "Salvando…",
   "settings.orgSso.scopesLabel": "Escopos",
   "settings.orgSso.scopesPlaceholder": "openid email profile",
   "settings.orgSso.sectionTitle": "Single Sign-On",
@@ -1074,14 +1069,14 @@ export const settings = {
   "settings.roles.roleAdmin": "Administrador",
   "settings.roles.roleOwner": "Propriet\u00e1rio",
   "settings.roles.roleUser": "Usu\u00e1rio",
-  "settings.roles.searchPlaceholder": "Pesquisar fun\u00e7\u00f5es...",
+  "settings.roles.searchPlaceholder": "Pesquisar fun\u00e7\u00f5es…",
   "settings.apiKeys.cancelButton": "Cancelar",
   "settings.apiKeys.copied": "Copiado para a área de transferência",
   "settings.apiKeys.copyKey": "Copiar chave",
   "settings.apiKeys.createButton": "Criar chave",
   "settings.apiKeys.createdAt": "Criada em {date}",
   "settings.apiKeys.createdDescription":
-    "Copie esta chave agora — ela não será mostrada novamente.",
+    "Copie esta chave agora, ela não será mostrada novamente.",
   "settings.apiKeys.createdTitle": "Chave de API criada",
   "settings.apiKeys.creatingButton": "Criando…",
   "settings.apiKeys.deleteDescription":
@@ -1134,8 +1129,6 @@ export const settings = {
   "settings.secrets.scopePrivateDescription":
     "Privado \u2014 vis\u00edvel apenas para mim",
   "settings.secrets.secretCreated": 'Segredo "{name}" criado',
-  "settings.secrets.secretsCountSingular": "{count} segredo armazenado",
-  "settings.secrets.secretsCountPlural": "{count} segredos armazenados",
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",
   "settings.secrets.sectionPrivate": "Privado para mim",
   "settings.secrets.valueLabel": "Valor",
@@ -1231,13 +1224,14 @@ export const settings = {
   "settings.infraBilling.statusPending": "Pendente",
   "settings.gitCredentials.title": "Credenciais git",
   "settings.gitCredentials.description":
-    "Tokens de acesso pessoal para repositórios git privados dos quais seus projetos dependem mas que o sandbox não alcança sozinho — submódulos e dependências privadas resolvidas por pub, go, npm ou cargo. Usados por todos os sandboxes desta organização. Referencie um segredo de org/usuário por host; URLs SSH são reescritas para HTTPS para que o token se aplique.",
+    "Tokens de acesso pessoal para repositórios git privados dos quais seus projetos dependem mas que o sandbox não alcança sozinho, submódulos e dependências privadas resolvidas por pub, go, npm ou cargo. Usados por todos os sandboxes desta organização. Referencie um segredo de org/usuário por host; URLs SSH são reescritas para HTTPS para que o token se aplique.",
   "settings.gitCredentials.addCredential": "Adicionar credencial git",
+  "settings.gitCredentials.empty": "Nenhuma credencial git ainda",
   "settings.gitCredentials.cancel": "Cancelar",
   "settings.gitCredentials.createNewSecret": "Criar novo segredo",
   "settings.gitCredentials.createNewSecretAriaLabel": "Criar novo segredo",
   "settings.gitCredentials.createNewSecretDescription":
-    "Armazenado criptografado no cofre de credenciais. A credencial git fará referência ao novo segredo pelo id — seu valor nunca sai do servidor.",
+    "Armazenado criptografado no cofre de credenciais. A credencial git fará referência ao novo segredo pelo id, seu valor nunca sai do servidor.",
   "settings.gitCredentials.createNewSecretTitle": "Criar novo segredo",
   "settings.gitCredentials.descriptionLabel": "Descrição (opcional)",
   "settings.gitCredentials.descriptionPlaceholder":
@@ -1266,8 +1260,8 @@ export const settings = {
     "Segredo da credencial git {index}",
   "settings.gitCredentials.scopeLabel": "Escopo",
   "settings.gitCredentials.scopeOrganization":
-    "Organização — visível para todos os membros",
-  "settings.gitCredentials.scopePrivate": "Privado — visível apenas para mim",
+    "Organização, visível para todos os membros",
+  "settings.gitCredentials.scopePrivate": "Privado, visível apenas para mim",
   "settings.gitCredentials.secretSaved": 'Segredo "{name}" salvo',
   "settings.gitCredentials.tokenExposureWarning":
     "O token é instalado na configuração git do sandbox durante a sessão, então comandos e agentes executados lá podem usá-lo. Restrinja-o aos repositórios necessários.",

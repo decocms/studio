@@ -75,15 +75,13 @@ export function PageJsonDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[85vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
         <DialogHeader className="shrink-0 px-4 py-3 border-b flex-row items-center justify-between space-y-0">
-          <DialogTitle className="text-sm font-semibold">
-            {t("sectionsEditor.pageJsonDialog.title")}
-          </DialogTitle>
+          <DialogTitle>{t("sectionsEditor.pageJsonDialog.title")}</DialogTitle>
           <div className="flex items-center gap-2 mr-8">
             <Button
               variant="ghost"
               size="sm"
               onClick={handleCopy}
-              className="h-7 gap-1.5 text-xs"
+              className="gap-1.5"
             >
               {copied ? <CheckCircle size={12} /> : <Copy01 size={12} />}
               {copied

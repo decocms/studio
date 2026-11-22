@@ -99,7 +99,7 @@ function LogoCarousel() {
   return (
     <>
       <div
-        className="grid grid-cols-2 overflow-hidden rounded-xl sm:hidden"
+        className="grid grid-cols-2 overflow-hidden rounded-m sm:hidden"
         style={{ border: `1px solid ${DECK.border}` }}
       >
         {cols.map((logos, index) => (
@@ -113,7 +113,7 @@ function LogoCarousel() {
         ))}
       </div>
       <div
-        className="hidden overflow-hidden rounded-xl sm:flex"
+        className="hidden overflow-hidden rounded-m sm:flex"
         style={{ border: `1px solid ${DECK.border}` }}
       >
         {cols.map((logos, index) => (

@@ -251,7 +251,7 @@ export function PostEditor({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="px-2 text-muted-foreground"
+                  className="text-muted-foreground"
                   onClick={onToggleExpand}
                   title={
                     expanded
@@ -267,7 +267,7 @@ export function PostEditor({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="px-2 text-muted-foreground"
+                  className="text-muted-foreground"
                   onClick={onClose}
                   title={t("sandbox.postBoard.close")}
                 >
@@ -316,7 +316,7 @@ export function PostEditor({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="px-2 text-muted-foreground hover:text-destructive"
+                        className="text-muted-foreground hover:text-destructive"
                         aria-label={t("sandbox.postEditor.deletePost")}
                         onClick={() => setConfirmingDelete(true)}
                       >
@@ -361,7 +361,7 @@ export function PostEditor({
             </div>
 
             <TabsContent value="content">
-              <div className="rounded-xl border bg-card p-8 shadow-sm">
+              <div className="rounded-m border bg-card p-8 shadow-sm">
                 <BlockDocument
                   key={contentRevision}
                   value={asBlocks(post.sections)}
@@ -375,7 +375,7 @@ export function PostEditor({
             </TabsContent>
 
             <TabsContent value="settings">
-              <div className="rounded-xl border bg-card p-6 shadow-sm">
+              <div className="rounded-m border bg-card p-6 shadow-sm">
                 <PostSettings
                   post={post}
                   decofile={decofile}

@@ -249,9 +249,7 @@ export function ModelDetailsPanel({
               alt={model.title}
             />
           )}
-          <p className="text-lg font-semibold leading-snug tracking-tight">
-            {modelName}
-          </p>
+          <p className="text-lg font-semibold">{modelName}</p>
         </div>
         <p className="text-xs text-muted-foreground/50 font-mono">
           {model.modelId}

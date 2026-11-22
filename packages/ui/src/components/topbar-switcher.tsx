@@ -81,7 +81,10 @@ function TopbarSwitcherTrigger({
       </Button>
       <PopoverTrigger asChild>
         <Button size="icon" variant="ghost" className="w-6 h-6 p-0">
-          <ChevronSelectorVertical size={16} className="opacity-50" />
+          <ChevronSelectorVertical
+            size={16}
+            className="text-muted-foreground"
+          />
         </Button>
       </PopoverTrigger>
     </div>
@@ -99,7 +102,7 @@ function TopbarSwitcherCurrentItem<T extends TopbarSwitcherEntity>({
   fallback = "",
 }: TopbarSwitcherCurrentItemProps<T>) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-(--space-xs)">
       <Avatar
         url={item?.avatarUrl ?? ""}
         fallback={item?.name ?? fallback}
@@ -184,7 +187,7 @@ function TopbarSwitcherSearch({
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="rounded-none border-t-0 border-x-0 focus-visible:border-border focus-visible:ring-0"
+      className="rounded-none border-b border-border shadow-none hover:shadow-none"
     />
   );
 }
@@ -202,9 +205,9 @@ function TopbarSwitcherItems({
   const hasChildren = React.Children.count(children) > 0;
 
   return (
-    <div className="flex flex-col gap-0.5 p-1 max-h-44 overflow-y-auto">
+    <div className="flex flex-col gap-(--space-xxs) p-(--space-xxs) max-h-44 overflow-y-auto">
       {!hasChildren && (
-        <div className="text-muted-foreground text-sm px-1 py-8 text-center">
+        <div className="text-muted-foreground text-s px-(--space-xxs) py-(--space-xl) text-center">
           {emptyMessage}
         </div>
       )}
@@ -238,9 +241,9 @@ function TopbarSwitcherItem<T extends TopbarSwitcherEntity>({
     <Button
       onClick={() => onClick(item)}
       onMouseEnter={handleMouseEnter}
-      variant="ghost"
+      variant="menu"
       size="sm"
-      className="w-full justify-start font-normal"
+      className="h-auto px-(--space-xs) py-(--space-xxs) text-s"
     >
       {children || (
         <>
@@ -266,7 +269,9 @@ interface TopbarSwitcherActionsProps {
 }
 
 function TopbarSwitcherActions({ children }: TopbarSwitcherActionsProps) {
-  return <div className="px-1 pb-1 pt-0.5">{children}</div>;
+  return (
+    <div className="px-(--space-xxs) pb-(--space-xxs) pt-0.5">{children}</div>
+  );
 }
 
 // Action button
@@ -285,10 +290,10 @@ function TopbarSwitcherAction({
 }: TopbarSwitcherActionProps) {
   return (
     <Button
-      variant="ghost"
+      variant="menu"
       size="sm"
       className={cn(
-        "w-full justify-start font-normal",
+        "h-auto px-(--space-xs) py-(--space-xxs) text-s",
         variant === "muted" && "text-muted-foreground",
       )}
       onClick={onClick}

@@ -328,7 +328,7 @@ export function ProductPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:h-[560px] sm:max-w-[560px]">
         <DialogHeader className="border-b border-border px-4 py-3">
-          <DialogTitle className="text-sm font-medium">
+          <DialogTitle>
             {multiple
               ? t("sandbox.productPickerDialog.addProducts")
               : t("sandbox.productPickerDialog.chooseProduct")}

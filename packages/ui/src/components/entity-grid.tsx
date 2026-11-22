@@ -115,16 +115,13 @@ function EntityGridSkeleton({
   return (
     <EntityGridRoot columns={columns} gap={gap} className={className}>
       {Array.from({ length: count }).map((_, index) => (
-        <div
-          key={index}
-          className="bg-card hover:bg-accent transition-colors flex flex-col rounded-lg animate-pulse"
-        >
-          <div className="p-4 flex flex-col gap-4">
-            <div className="h-12 w-12 bg-muted rounded-lg" />
-            <div className="h-4 w-32 bg-muted rounded-lg" />
-            <div className="h-4 w-32 bg-muted rounded-lg" />
+        <div key={index} className="surface flex flex-col animate-pulse">
+          <div className="p-(--space-m) flex flex-col gap-(--space-m)">
+            <div className="h-12 w-12 bg-muted rounded-(--radius-s)" />
+            <div className="h-4 w-32 bg-muted rounded-(--radius-s)" />
+            <div className="h-4 w-32 bg-muted rounded-(--radius-s)" />
           </div>
-          <div className="p-4 border-t border-border flex items-center">
+          <div className="p-(--space-m) border-t border-border flex items-center">
             <div className="h-6 w-6 bg-muted rounded-full animate-pulse" />
             <div className="h-6 w-6 bg-muted rounded-full animate-pulse -ml-2" />
             <div className="h-6 w-6 bg-muted rounded-full animate-pulse -ml-2" />

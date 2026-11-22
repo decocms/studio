@@ -151,8 +151,8 @@ export function VoiceModeToggle() {
     <Button
       type="button"
       variant="ghost"
-      size="icon"
-      className="size-8 shrink-0"
+      size="icon-sm"
+      className="shrink-0"
       onClick={context.start}
       aria-label={t("chat.voice.start")}
       title={t("chat.voice.start")}

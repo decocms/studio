@@ -37,13 +37,13 @@ export const thread = {
   "thread.branchPicker.newChatHint":
     "A branch deste chat é fixa. Escolher ou criar uma branch abre um chat novo nela.",
   "thread.branchPicker.hiddenForkPrs":
-    "{count} PR(s) de forks ocultado(s) — abra em uma branch deste repositório",
+    "{count} PR(s) de forks ocultado(s), abra em uma branch deste repositório",
   "thread.branchPicker.last7Days": "Últimos 7 dias",
   "thread.branchPicker.loadMoreBranches": "Carregar mais branches",
   "thread.branchPicker.loadingMore": "Carregando mais…",
   "thread.branchPicker.loadingPullRequests": "Carregando pull requests…",
   "thread.branchPicker.moreMatches":
-    "Mais {count} resultado(s) — refine sua busca",
+    "Mais {count} resultado(s), refine sua busca",
   "thread.branchPicker.new": "Nova",
   "thread.branchPicker.noBranchesFound": "Nenhuma branch encontrada.",
   "thread.branchPicker.noPullRequestsFound":
@@ -113,7 +113,7 @@ export const thread = {
   "thread.headerActions.checkingOutTooltip": "Fazendo checkout de {branch}",
   "thread.headerActions.cloneFailed": "Clone falhou",
   "thread.headerActions.cloneFailedDefaultTooltip":
-    "git clone falhou — veja os logs de configuração",
+    "git clone falhou, veja os logs de configuração",
   "thread.headerActions.cloningRepo": "Clonando repositório…",
   "thread.headerActions.cloningRepoTooltip":
     "Clonando o repositório do projeto",
@@ -123,10 +123,10 @@ export const thread = {
   "thread.headerActions.failingChecksTooltip": "Falhando: {checks}",
   "thread.headerActions.fixChecks": "Corrigir checks",
   "thread.headerActions.githubConnectionRemoved":
-    "A conexão do GitHub foi removida — revincula o repositório em Configurações para salvar alterações",
+    "A conexão do GitHub foi removida, revincula o repositório em Configurações para salvar alterações",
   "thread.headerActions.installingPackages": "Instalando pacotes…",
   "thread.headerActions.installingPackagesTooltip":
-    "Instalando dependências — ainda não há nada para revisar ou publicar",
+    "Instalando dependências, ainda não há nada para revisar ou publicar",
   "thread.headerActions.loading": "Carregando…",
   "thread.headerActions.loadingBranch": "Carregando branch…",
   "thread.headerActions.loadingBranchTooltip":
@@ -152,7 +152,7 @@ export const thread = {
     "Squash-merge do PR #{prNumber} em {base}",
   "thread.headerActions.startingApp": "Iniciando app…",
   "thread.headerActions.startingAppTooltip":
-    "Iniciando o servidor de desenvolvimento — ainda não há trabalho commitado para revisar ou publicar",
+    "Iniciando o servidor de desenvolvimento, ainda não há trabalho commitado para revisar ou publicar",
   "thread.headerActions.startingSandbox": "Preparando sandbox…",
   "thread.headerActions.submitForReview": "Enviar para revisão",
   "thread.headerActions.switchingTo": "Mudando para {branch}…",
@@ -162,11 +162,11 @@ export const thread = {
   "thread.headerActions.waitingForApprovalsTooltip":
     "Aguardando aprovações obrigatórias",
   "thread.headerActions.waitingForBranchTooltip":
-    "Quase lá — terminando de preparar seu ambiente",
+    "Quase lá, terminando de preparar seu ambiente",
   "thread.headerActions.waitingForDaemonTooltip":
-    "Preparando seu ambiente — leva só um instante",
+    "Preparando seu ambiente, leva só um instante",
   "thread.headerActions.waitingForSandboxBranchTooltip":
-    "Preparando seu ambiente — leva só um instante",
+    "Preparando seu ambiente, leva só um instante",
   "thread.publishDialog.allChangesDiscarded":
     "Todas as alterações foram descartadas",
   "thread.publishDialog.branchLabel": "Branch:",
@@ -202,11 +202,11 @@ export const thread = {
   "thread.publishDialog.mergeFailed":
     "Alterações foram enviadas e PR #{prNumber} está aberto, mas a mesclagem falhou: {message}",
   "thread.mergeRefused.conflict":
-    "Conflita com a branch base — faça rebase e tente de novo.",
+    "Conflita com a branch base, faça rebase e tente de novo.",
   "thread.mergeRefused.blocked":
-    "O repositório recusou o merge — falta uma revisão obrigatória ou uma regra de branch.",
+    "O repositório recusou o merge, falta uma revisão obrigatória ou uma regra de branch.",
   "thread.mergeRefused.rateLimited":
-    "O provider está limitando as requisições — tente de novo em instantes.",
+    "O provider está limitando as requisições, tente de novo em instantes.",
   "thread.mergeRefused.notFound": "Não existe mais.",
   "thread.mergeRefused.error": "Falha ao fazer merge.",
   "thread.publishDialog.openingComparison": "Abrindo a comparação…",
@@ -303,7 +303,7 @@ export const thread = {
   "thread.publishCompare.mobile": "Celular",
   "thread.publishCompare.openDraft": "Abrir em nova aba",
   "thread.publishCompare.globalHint":
-    "Esta alteração pode aparecer em qualquer página. Mostrando a página inicial — digite outro endereço para comparar.",
+    "Esta alteração pode aparecer em qualquer página. Mostrando a página inicial, digite outro endereço para comparar.",
   "thread.publishCompare.dynamicHint":
     "O endereço desta página é um padrão ({template}). Digite um endereço real para comparar.",
   "thread.publishCompare.enterPath":

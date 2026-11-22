@@ -72,7 +72,7 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
               >
                 <SelectTrigger
                   aria-label={t("virtualMcp.layoutTabContent.mainView")}
-                  className="w-36 h-8 text-sm shrink-0 @min-xl/project-settings:w-44"
+                  className="w-36 h-8 shrink-0 @min-xl/project-settings:w-44"
                 >
                   <SelectValue
                     placeholder={t("virtualMcp.layoutTabContent.noMainView")}

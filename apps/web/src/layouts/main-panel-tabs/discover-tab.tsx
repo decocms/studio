@@ -224,8 +224,8 @@ function Band({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        <p className="max-w-prose text-sm text-muted-foreground">
+        <h2 className="text-m font-medium text-foreground">{title}</h2>
+        <p className="max-w-[60ch] text-s text-muted-foreground">
           {description}
         </p>
       </div>
@@ -242,110 +242,110 @@ export function DiscoverTab() {
   const outstanding = steps.filter((step) => !step.done);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 p-6 md:p-10">
-        <header className="flex flex-col gap-2">
-          <Page.Title>{t("discover.title")}</Page.Title>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            {t("discover.subtitle")}
-          </p>
-        </header>
-
-        <Band
-          title={t("discover.setup.title")}
-          description={
-            outstanding.length === 0
-              ? t("discover.setup.allDone")
-              : t("discover.setup.description")
-          }
-        >
-          <ul className="flex flex-col gap-2">
-            {steps.map((step) => (
-              <li
-                key={step.key}
-                className={cn(
-                  "flex items-start gap-3 rounded-xl border border-border bg-card p-4",
-                  step.done && "opacity-60",
-                )}
-              >
-                <span
+    <Page>
+      <Page.Title>{t("discover.title")}</Page.Title>
+      <Page.Content>
+        <Page.Container width="reading" className="flex flex-col gap-10">
+          <Band
+            title={t("discover.setup.title")}
+            description={
+              outstanding.length === 0
+                ? t("discover.setup.allDone")
+                : t("discover.setup.description")
+            }
+          >
+            <ul className="flex flex-col gap-2">
+              {steps.map((step) => (
+                <li
+                  key={step.key}
                   className={cn(
-                    "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
-                    step.done
-                      ? "bg-success/10 text-success"
-                      : "bg-muted text-muted-foreground",
+                    "flex items-start gap-3 rounded-m border border-border bg-card p-4",
+                    step.done && "opacity-60",
                   )}
                 >
-                  {step.done ? <Check size={18} /> : step.icon}
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-sm font-medium text-foreground">
-                    {step.title}
+                  <span
+                    className={cn(
+                      "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
+                      step.done
+                        ? "bg-success/10 text-success"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {step.done ? <Check size={18} /> : step.icon}
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {step.body}
-                  </span>
-                </div>
-                {!step.done && <div className="shrink-0">{step.action}</div>}
-              </li>
-            ))}
-          </ul>
-        </Band>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-sm font-medium text-foreground">
+                      {step.title}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {step.body}
+                    </span>
+                  </div>
+                  {!step.done && <div className="shrink-0">{step.action}</div>}
+                </li>
+              ))}
+            </ul>
+          </Band>
 
-        <Band
-          title={t("discover.capabilities.title")}
-          description={t("discover.capabilities.description")}
-        >
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {capabilities.map((capability) => (
-              <li
-                key={capability.key}
-                className="flex items-start gap-3 rounded-xl border border-border bg-card p-4"
-              >
-                <span
-                  className={cn(
-                    "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
-                    capability.satisfied
-                      ? "bg-success/10 text-success"
-                      : "bg-muted text-muted-foreground",
-                  )}
+          <Band
+            title={t("discover.capabilities.title")}
+            description={t("discover.capabilities.description")}
+          >
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {capabilities.map((capability) => (
+                <li
+                  key={capability.key}
+                  className="flex items-start gap-3 rounded-m border border-border bg-card p-4"
                 >
-                  {capability.satisfied ? <Check size={18} /> : capability.icon}
-                </span>
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-sm font-medium text-foreground">
-                    {capability.title}
+                  <span
+                    className={cn(
+                      "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
+                      capability.satisfied
+                        ? "bg-success/10 text-success"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {capability.satisfied ? (
+                      <Check size={18} />
+                    ) : (
+                      capability.icon
+                    )}
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {capability.satisfied
-                      ? t("discover.capabilities.ready")
-                      : capability.requirement}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Band>
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-sm font-medium text-foreground">
+                      {capability.title}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {capability.satisfied
+                        ? t("discover.capabilities.ready")
+                        : capability.requirement}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Band>
 
-        <Band
-          title={t("discover.catalog.title")}
-          description={t("discover.catalog.description")}
-        >
-          <div>
-            <Button asChild size="lg">
-              <Link
-                to="/$org/settings/connections"
-                params={{ org: org.slug }}
-                search={{ tab: "all" as const }}
-                onClick={() => track("discover_catalog_opened", {})}
-              >
-                {t("discover.catalog.action")}
-                <ArrowRight size={18} />
-              </Link>
-            </Button>
-          </div>
-        </Band>
-      </div>
-    </div>
+          <Band
+            title={t("discover.catalog.title")}
+            description={t("discover.catalog.description")}
+          >
+            <div>
+              <Button asChild size="lg">
+                <Link
+                  to="/$org/settings/connections"
+                  params={{ org: org.slug }}
+                  search={{ tab: "all" as const }}
+                  onClick={() => track("discover_catalog_opened", {})}
+                >
+                  {t("discover.catalog.action")}
+                  <ArrowRight size={18} />
+                </Link>
+              </Button>
+            </div>
+          </Band>
+        </Page.Container>
+      </Page.Content>
+    </Page>
   );
 }

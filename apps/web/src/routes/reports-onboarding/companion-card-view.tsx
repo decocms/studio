@@ -60,7 +60,7 @@ export function CompanionCardView({
         <div className="flex min-w-0 flex-col gap-1">
           <span className="text-sm font-medium text-foreground">{title}</span>
           {headline && (
-            <p className="hidden text-sm leading-5 text-muted-foreground sm:block">
+            <p className="hidden text-sm text-muted-foreground sm:block">
               {headline}
             </p>
           )}

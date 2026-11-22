@@ -341,7 +341,7 @@ function BuildLogsSheet({
             </div>
           ) : data?.text ? (
             <div className="flex flex-col gap-2">
-              <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+              <pre className="overflow-auto font-mono text-xs text-foreground/80 whitespace-pre-wrap break-words">
                 {data.text}
               </pre>
               {data.truncated && (

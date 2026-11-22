@@ -33,9 +33,7 @@ export function AgentHome({
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 px-6 text-center overflow-hidden">
         <AgentAvatar icon={icon} name={title} size="lg" />
         <div className="space-y-1.5">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            {title}
-          </h2>
+          <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
           {description ? (
             <p className="text-sm text-muted-foreground max-w-md text-balance">
               {description}

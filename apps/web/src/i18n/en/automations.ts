@@ -1,8 +1,8 @@
 export const automations = {
-  "automations.addStarterPopover.addStarter": "Add Starter",
+  "automations.addStarterPopover.addStarter": "Add starter",
   "automations.addStarterPopover.customCron": "Custom (cron)",
   "automations.addStarterPopover.event": "Event",
-  "automations.addStarterPopover.every": "Every...",
+  "automations.addStarterPopover.every": "Every…",
   "automations.addStarterPopover.everyUnit": "Every {unit}",
   "automations.addStarterPopover.failedAddStarter": "Failed to add starter",
   "automations.addStarterPopover.failedAddWebhookStarter":
@@ -27,7 +27,7 @@ export const automations = {
   "automations.automationConfig.otherTools": "Other tools",
   "automations.automationConfig.pickAgentFirst": "Pick a project first",
   "automations.automationConfig.pickModelPlaceholder": "Pick a model",
-  "automations.automationConfig.searchToolsPlaceholder": "Search tools...",
+  "automations.automationConfig.searchToolsPlaceholder": "Search tools…",
   "automations.automationConfig.selectAll": "Select all",
   "automations.automationConfig.specificModel": "Specific model",
   "automations.automationConfig.tierFast": "Fast",
@@ -42,31 +42,31 @@ export const automations = {
   "automations.automationConfig.toolAskUser": "Ask the user",
   "automations.automationConfig.toolAskUserDesc":
     "Pause to ask the user a clarifying question",
-  "automations.automationConfig.toolEditFile": "Edit File",
+  "automations.automationConfig.toolEditFile": "Edit file",
   "automations.automationConfig.toolEditFileDesc":
     "Make targeted edits to an existing file",
-  "automations.automationConfig.toolFindFiles": "Find Files",
+  "automations.automationConfig.toolFindFiles": "Find files",
   "automations.automationConfig.toolFindFilesDesc":
     "Find files by name pattern",
   "automations.automationConfig.toolGenerateImage": "Generate image",
   "automations.automationConfig.toolGenerateImageDesc":
     "Create images from a text prompt",
-  "automations.automationConfig.toolLoadSkill": "Load Skill",
+  "automations.automationConfig.toolLoadSkill": "Load skill",
   "automations.automationConfig.toolLoadSkillDesc":
     "Load a skill's full instructions (SKILL.md) by id",
-  "automations.automationConfig.toolReadFile": "Read File",
+  "automations.automationConfig.toolReadFile": "Read file",
   "automations.automationConfig.toolReadFileDesc":
     "Read a file from the workspace",
-  "automations.automationConfig.toolReadPrompt": "Read Prompt",
+  "automations.automationConfig.toolReadPrompt": "Read prompt",
   "automations.automationConfig.toolReadPromptDesc":
     "Read an MCP prompt definition",
-  "automations.automationConfig.toolReadResource": "Read Resource",
+  "automations.automationConfig.toolReadResource": "Read resource",
   "automations.automationConfig.toolReadResourceDesc":
     "Read an MCP resource by URI",
-  "automations.automationConfig.toolRunCommand": "Run Command",
+  "automations.automationConfig.toolRunCommand": "Run command",
   "automations.automationConfig.toolRunCommandDesc":
     "Run shell commands in the sandbox",
-  "automations.automationConfig.toolSearchContent": "Search Content",
+  "automations.automationConfig.toolSearchContent": "Search content",
   "automations.automationConfig.toolSearchContentDesc":
     "Search file contents by pattern",
   "automations.automationConfig.toolSubtask": "Subtask",
@@ -75,7 +75,7 @@ export const automations = {
   "automations.automationConfig.toolWebSearch": "Web search",
   "automations.automationConfig.toolWebSearchDesc":
     "Look up current information on the web",
-  "automations.automationConfig.toolWriteFile": "Write File",
+  "automations.automationConfig.toolWriteFile": "Write file",
   "automations.automationConfig.toolWriteFileDesc":
     "Create or overwrite a file",
   "automations.automationConfig.tools": "Tools",
@@ -94,7 +94,7 @@ export const automations = {
   "automations.automationDetail.instructionsPlaceholder":
     "What should this automation do?",
   "automations.automationDetail.invalid": "invalid",
-  "automations.automationDetail.loadingConnections": "Loading connections...",
+  "automations.automationDetail.loadingConnections": "Loading connections…",
   "automations.automationDetail.maxSteps": "Max steps",
   "automations.automationDetail.maxStepsPlaceholder": "{default} (default)",
   "automations.automationDetail.noInstructionsConfigured":
@@ -102,7 +102,7 @@ export const automations = {
   "automations.automationDetail.starter": "Starter",
   "automations.automationDetail.starterAdded": "Starter added",
   "automations.automationDetail.test": "Test",
-  "automations.automationDetail.testAutomation": "Test Automation",
+  "automations.automationDetail.testAutomation": "Test automation",
   "automations.automationDetail.toGetGoing": "to get going.",
   "automations.automationDetail.whenShouldRun":
     "When should this automation run?",
@@ -146,18 +146,18 @@ export const automations = {
   "automations.automationsList.noResultsDescription":
     'No automations match "{search}"',
   "automations.automationsList.noResultsTitle": "No automations found",
-  "automations.automationsList.searchPlaceholder": "Search automations...",
+  "automations.automationsList.searchPlaceholder": "Search automations…",
   "automations.automationsList.title": "Automations",
   "automations.eventTriggerForm.addTriggerButton": "Add trigger",
   "automations.eventTriggerForm.errorFailed": "Failed to add event trigger",
-  "automations.eventTriggerForm.loadingEvents": "Loading events...",
+  "automations.eventTriggerForm.loadingEvents": "Loading events…",
   "automations.eventTriggerForm.noConnectionsWithTrigger":
     "No connections with trigger support",
   "automations.eventTriggerForm.selectConnectionPlaceholder":
-    "Select connection...",
+    "Select connection…",
   "automations.eventTriggerForm.selectEventTypePlaceholder":
-    "Select event type...",
-  "automations.eventTriggerForm.selectParamPlaceholder": "Select {key}...",
+    "Select event type…",
+  "automations.eventTriggerForm.selectParamPlaceholder": "Select {key}…",
   "automations.eventTriggerForm.successAdded": "Event trigger added",
   "automations.eventTriggerForm.title": "Event trigger",
   "automations.triggerCard.cancel": "Cancel",
@@ -169,9 +169,9 @@ export const automations = {
   "automations.triggerCard.invalid": "invalid",
   "automations.triggerCard.newWebhookToken": "New webhook token",
   "automations.triggerCard.newWebhookTokenDescription":
-    "The previous token has been revoked. Copy the new token now — it will not be shown again.",
+    "The previous token has been revoked. Copy the new token now, it will not be shown again.",
   "automations.triggerCard.remove": "Remove",
-  "automations.triggerCard.removeStarter": "Remove Starter",
+  "automations.triggerCard.removeStarter": "Remove starter",
   "automations.triggerCard.rotate": "Rotate",
   "automations.triggerCard.rotateToken": "Rotate token",
   "automations.triggerCard.rotateWebhookToken": "Rotate webhook token",

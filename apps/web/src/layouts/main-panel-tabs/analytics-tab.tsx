@@ -80,6 +80,7 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { toast } from "sonner";
+import { Page } from "@/components/page";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
@@ -323,9 +324,9 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card overflow-hidden">
+    <section className="surface overflow-hidden">
       <header className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <h3 className="text-m font-medium text-foreground">{title}</h3>
         {action && <div className="ml-auto">{action}</div>}
       </header>
       <div className="p-4">{children}</div>
@@ -438,7 +439,7 @@ function Delta({ pct, goodDown }: { pct: number; goodDown?: boolean }) {
     <span
       className={cn(
         "text-xs font-medium tabular-nums",
-        good ? "text-[var(--chart-2,#16a34a)]" : "text-destructive",
+        good ? "text-success" : "text-destructive",
       )}
     >
       {up ? "↑" : "↓"}
@@ -458,11 +459,8 @@ function KpiTiles({ row }: { row: Record<string, unknown> }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {entries.map(([k, v]) => (
-        <div
-          key={k}
-          className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4"
-        >
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <div key={k} className="flex flex-col gap-1.5 surface p-4">
+          <span className="text-xs font-medium text-muted-foreground">
             {humanize(k)}
           </span>
           <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
@@ -536,7 +534,7 @@ function AreaTrend({
           dataKey="label"
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "var(--muted-foreground)", opacity: 0.7 }}
+          tick={{ fontSize: 12, fill: "var(--muted-foreground)", opacity: 0.7 }}
           tickMargin={8}
           minTickGap={40}
           interval="preserveStartEnd"
@@ -546,7 +544,7 @@ function AreaTrend({
           orientation="right"
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "var(--muted-foreground)", opacity: 0.7 }}
+          tick={{ fontSize: 12, fill: "var(--muted-foreground)", opacity: 0.7 }}
           tickFormatter={formatAxisValue}
           width={40}
           tickCount={5}
@@ -595,7 +593,7 @@ function BarList({
     rows.reduce((sum, r) => sum + (Number(r[valueKey]) || 0), 0) || 1;
   return (
     <div className="flex flex-col">
-      <div className="flex items-center justify-between px-2.5 pb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center justify-between px-2.5 pb-2 text-xs font-medium text-muted-foreground">
         <span>{humanize(labelKey)}</span>
         <span>{humanize(valueKey)}</span>
       </div>
@@ -699,7 +697,7 @@ function DataTable({ rows }: { rows: Array<Record<string, unknown>> }) {
               <TableHead
                 key={c}
                 className={cn(
-                  "h-8 whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+                  "h-8 whitespace-nowrap text-muted-foreground",
                   numeric.has(c) && "text-right",
                 )}
               >
@@ -948,7 +946,7 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
               disabled={!canChart}
               onClick={() => canChart && setSelected(k)}
               className={cn(
-                "flex flex-col gap-1.5 rounded-xl border p-4 text-left transition-colors",
+                "flex flex-col gap-1.5 rounded-m border p-4 text-left transition-colors",
                 active
                   ? "border-[var(--chart-1)] bg-[var(--chart-1)]/5"
                   : "border-border bg-card",
@@ -957,7 +955,7 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
                   : "cursor-default",
               )}
             >
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="text-xs font-medium text-muted-foreground">
                 {label}
               </span>
               <span className="flex items-baseline gap-2">
@@ -1026,11 +1024,8 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cards.map(([k, label]) => (
-          <div
-            key={k}
-            className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4"
-          >
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <div key={k} className="flex flex-col gap-1.5 surface p-4">
+            <span className="text-xs font-medium text-muted-foreground">
               {label}
             </span>
             <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
@@ -1175,9 +1170,9 @@ function QuotaBanner({
   const fmt = (n: number) => n.toLocaleString();
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+    <div className="flex flex-col gap-2 surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground">
           {t("mainPanelTabs.analyticsTab.monthlyQuota")}
         </span>
         <span className="font-mono text-sm tabular-nums text-foreground">
@@ -1225,7 +1220,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
         </p>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-xs font-medium text-muted-foreground">
             {t("mainPanelTabs.analyticsTab.installHostTitle")}
           </span>
           <p className="text-xs text-muted-foreground">
@@ -1234,7 +1229,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-xs font-medium text-muted-foreground">
             {t("mainPanelTabs.analyticsTab.installKeyTitle")}
           </span>
           {token && (
@@ -1322,9 +1317,9 @@ function RegistrationResult({
   const hasKey = Boolean(result.key);
   if (!hasKey && !result.snippet && notes.length === 0) return null;
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+    <section className="flex flex-col gap-3 rounded-m border border-primary/30 bg-primary/5 p-4">
       <div className="flex items-start justify-between gap-4">
-        <h3 className="text-sm font-medium text-foreground">
+        <h3 className="text-m font-medium text-foreground">
           {hasKey
             ? t("mainPanelTabs.analyticsTab.tokenTitle")
             : t("mainPanelTabs.analyticsTab.registeredOk")}
@@ -2062,7 +2057,7 @@ function RegisteredView({
 
       {/* A naturally-closed row documenting the client API, mirroring the admin
           UI's install text — collapsed by default so it doesn't crowd the data. */}
-      <details className="group rounded-xl border border-border bg-card">
+      <details className="group surface">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/40">
           <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
           Send custom events from your code
@@ -2188,37 +2183,41 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const status = (statusQuery.data ?? {}) as AnalyticsStatus;
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <BarChartSquare02 className="size-[18px] text-muted-foreground" />
-            <h2 className="text-base font-semibold text-foreground">
-              {t("mainPanelTabs.analyticsTab.title")}
-            </h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t("mainPanelTabs.analyticsTab.subtitle", { site: siteSlug })}
-          </p>
-        </div>
+    <Page>
+      <Page.Content>
+        <Page.Container width="wide" className="flex flex-col gap-6">
 
-        {registered && (
-          <RegistrationResult
-            result={registered}
-            onDismiss={() => setRegistered(null)}
-          />
-        )}
+          {registered && (
+            <RegistrationResult
+              result={registered}
+              onDismiss={() => setRegistered(null)}
+            />
+          )}
 
-        {statusQuery.isLoading ? (
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-40 w-full" />
-          </div>
-        ) : statusQuery.error ? (
-          isNotConfigured(statusQuery.error) ? (
-            // A 503 "not configured" is a deployment state, not a load failure —
-            // show the backend-not-configured copy, matching the `configured:false`
-            // branch below.
+          {statusQuery.isLoading ? (
+            <div className="flex flex-col gap-3">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : statusQuery.error ? (
+            isNotConfigured(statusQuery.error) ? (
+              // A 503 "not configured" is a deployment state, not a load failure.
+              <EmptyState
+                icon={<BarChartSquare02 className="size-5" />}
+                title={t(
+                  "mainPanelTabs.analyticsTab.backendNotConfiguredTitle",
+                )}
+                description={t(
+                  "mainPanelTabs.analyticsTab.backendNotConfiguredDescription",
+                )}
+              />
+            ) : (
+              <EmptyState
+                icon={<BarChartSquare02 className="size-5" />}
+                title={t("mainPanelTabs.analyticsTab.statusError")}
+              />
+            )
+          ) : status.configured === false ? (
             <EmptyState
               icon={<BarChartSquare02 className="size-5" />}
               title={t("mainPanelTabs.analyticsTab.backendNotConfiguredTitle")}
@@ -2226,37 +2225,24 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
                 "mainPanelTabs.analyticsTab.backendNotConfiguredDescription",
               )}
             />
-          ) : (
-            <EmptyState
-              icon={<BarChartSquare02 className="size-5" />}
-              title={t("mainPanelTabs.analyticsTab.statusError")}
+          ) : status.registered ? (
+            <RegisteredView
+              base={base}
+              orgSlug={org.slug}
+              site={siteSlug}
+              status={status}
             />
-          )
-        ) : status.configured === false ? (
-          <EmptyState
-            icon={<BarChartSquare02 className="size-5" />}
-            title={t("mainPanelTabs.analyticsTab.backendNotConfiguredTitle")}
-            description={t(
-              "mainPanelTabs.analyticsTab.backendNotConfiguredDescription",
-            )}
-          />
-        ) : status.registered ? (
-          <RegisteredView
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            status={status}
-          />
-        ) : (
-          <RegisterCard
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            host={status.host ?? null}
-            onRegistered={setRegistered}
-          />
-        )}
-      </div>
-    </div>
+          ) : (
+            <RegisterCard
+              base={base}
+              orgSlug={org.slug}
+              site={siteSlug}
+              host={status.host ?? null}
+              onRegistered={setRegistered}
+            />
+          )}
+        </Page.Container>
+      </Page.Content>
+    </Page>
   );
 }

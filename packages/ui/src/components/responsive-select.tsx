@@ -84,7 +84,12 @@ const ResponsiveSelectContent = ({
         <drawer.DrawerTitle>{title}</drawer.DrawerTitle>
         {headerActions}
       </drawer.DrawerHeader>
-      <div className={cn("flex flex-col gap-2 p-2 py-4", className)}>
+      <div
+        className={cn(
+          "flex flex-col gap-(--space-xxs) p-(--space-xs) py-(--space-m)",
+          className,
+        )}
+      >
         {children}
       </div>
     </drawer.DrawerContent>

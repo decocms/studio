@@ -113,12 +113,15 @@ export function TimeRangePicker({
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className={cn("gap-1.5 min-w-[160px] justify-between", className)}
+          className={cn(
+            "gap-(--space-xs) min-w-[160px] justify-between",
+            className,
+          )}
           disabled={disabled}
         >
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-(--space-xs)">
             <Clock className="size-4 text-muted-foreground" />
-            <span className="text-sm">{displayText}</span>
+            <span>{displayText}</span>
           </div>
           <ChevronDown className="size-4 text-muted-foreground" />
         </Button>
@@ -135,14 +138,14 @@ export function TimeRangePicker({
       >
         <div className="flex">
           {/* Left: Absolute time range */}
-          <div className="flex-1 p-4 border-r">
-            <h4 className="text-sm font-medium mb-4">
+          <div className="flex-1 p-(--space-m) border-r border-border">
+            <h4 className="text-s font-medium mb-(--space-m)">
               {absoluteTimeRangeLabel}
             </h4>
 
-            <div className="space-y-4">
+            <div className="space-y-(--space-m)">
               <div>
-                <label className="text-xs text-muted-foreground mb-1.5 block">
+                <label className="text-s text-muted-foreground mb-(--space-xxs) block">
                   {fromLabel}
                 </label>
                 <DateTimeInput
@@ -153,7 +156,7 @@ export function TimeRangePicker({
               </div>
 
               <div>
-                <label className="text-xs text-muted-foreground mb-1.5 block">
+                <label className="text-s text-muted-foreground mb-(--space-xxs) block">
                   {toLabel}
                 </label>
                 <DateTimeInput
@@ -164,7 +167,7 @@ export function TimeRangePicker({
               </div>
 
               {validationError && (
-                <p className="text-xs text-destructive">{validationError}</p>
+                <p className="text-s text-destructive">{validationError}</p>
               )}
 
               <Button onClick={handleApply} className="w-full" size="sm">
@@ -176,7 +179,7 @@ export function TimeRangePicker({
           {/* Right: Quick ranges */}
           <div className="w-[200px]">
             <ScrollArea className="h-[280px]">
-              <div className="p-2">
+              <div className="p-(--space-xs)">
                 {quickRanges.map((range) => {
                   const isSelected = isQuickRangeSelected(range);
                   return (
@@ -185,10 +188,9 @@ export function TimeRangePicker({
                       type="button"
                       onClick={() => handleQuickRangeSelect(range)}
                       className={cn(
-                        "w-full text-left px-3 py-2 text-sm rounded-lg transition-colors",
+                        "w-full text-left px-(--space-s) py-(--space-xs) text-s font-regular rounded-(--radius-s) transition-colors duration-(--motion-duration) ease-motion focus-ring",
                         "hover:bg-accent hover:text-accent-foreground",
-                        isSelected &&
-                          "bg-accent text-accent-foreground font-medium",
+                        isSelected && "bg-accent text-accent-foreground",
                       )}
                     >
                       {range.label}

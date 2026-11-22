@@ -13,7 +13,7 @@ function RadioGroup({
   return (
     <RadioGroupPrimitive.Root
       data-slot="radio-group"
-      className={cn("grid gap-3", className)}
+      className={cn("grid gap-(--space-s)", className)}
       {...props}
     />
   );
@@ -27,16 +27,19 @@ function RadioGroupItem({
     <RadioGroupPrimitive.Item
       data-slot="radio-group-item"
       className={cn(
-        "border-input text-primary focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 aspect-square size-4 shrink-0 rounded-full border shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[2px] disabled:opacity-50",
+        "aspect-square size-4 shrink-0 rounded-full bg-neutral-1 shadow-[inset_0_0_0_var(--border-s)_var(--neutral-5)] transition-[background-color,box-shadow] duration-(--motion-duration) ease-motion focus-ring",
+        "enabled:hover:shadow-[inset_0_0_0_var(--border-s)_var(--neutral-7)] data-[state=checked]:shadow-[inset_0_0_0_var(--border-s)_var(--primary)]",
+        "aria-invalid:shadow-[0_0_0_var(--border-s)_var(--error)]",
+        "disabled:bg-neutral-3 disabled:shadow-[inset_0_0_0_var(--border-s)_var(--neutral-4)] disabled:data-[state=checked]:shadow-[inset_0_0_0_var(--border-s)_var(--neutral-4)]",
         className,
       )}
       {...props}
     >
       <RadioGroupPrimitive.Indicator
         data-slot="radio-group-indicator"
-        className="relative flex items-center justify-center"
+        className="relative flex items-center justify-center text-primary data-[disabled]:text-neutral-6"
       >
-        <Circle className="fill-primary absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2" />
+        <Circle className="fill-current absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2" />
       </RadioGroupPrimitive.Indicator>
     </RadioGroupPrimitive.Item>
   );

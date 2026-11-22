@@ -24,10 +24,8 @@ const SECTION_CONTAINER_CLASS =
 
 function SectionIntro() {
   const t = useT();
-  // Matches the onboarding title scale (CommerceHeader / auth screen use the
-  // same text-2xl font-medium leading-8).
   return (
-    <h1 className="text-lg font-medium leading-6 text-foreground lg:text-xl lg:leading-7">
+    <h1 className="text-lg font-medium text-foreground lg:text-l">
       {t("routes.reportsOnboarding.companionSection.title")}
     </h1>
   );

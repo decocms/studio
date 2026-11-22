@@ -598,7 +598,7 @@ function CmsPublishContent({
     if (changes.length === 0) return null;
     return (
       <div className="space-y-1.5">
-        <div className="px-0.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        <div className="px-0.5 text-xs font-medium text-muted-foreground">
           {label}
         </div>
         {changes.map((change) => {
@@ -665,7 +665,7 @@ function CmsPublishContent({
       <>
         <button
           type="button"
-          className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+          className="ml-auto shrink-0 text-xs text-muted-foreground transition-colors hover:text-destructive disabled:text-neutral-6"
           onClick={() => setDiscardAllConfirm(true)}
           disabled={isPublishing || isDiscarding}
         >
@@ -725,7 +725,7 @@ function CmsPublishContent({
   ) : (
     <PublishListRegion>
       {changedFilesTruncated ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t("thread.publishPopover.showingFirst", {
             shown: summary.count,
             total: changedFilesTotal,
@@ -736,7 +736,7 @@ function CmsPublishContent({
       {renderGroup(t("thread.publishPopover.blocksGroup"), summary.blocks)}
       {renderGroup(t("thread.publishPopover.otherGroup"), summary.other)}
       {bodiesFailed ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t("thread.publishPopover.detailsUnavailable")}
         </p>
       ) : null}
@@ -780,7 +780,7 @@ function CmsPublishContent({
           note={
             summary.count === 0 ? null : (
               <>
-                <span className="text-[13px] font-medium">
+                <span className="text-s font-medium">
                   {isReview
                     ? t("thread.publishPopover.reviewNote")
                     : t("thread.publishPopover.versionNote")}
@@ -794,7 +794,7 @@ function CmsPublishContent({
                       : t("thread.publishPopover.versionNotePlaceholder")
                   }
                   rows={2}
-                  className="resize-none text-[13px]"
+                  className="resize-none text-s"
                   disabled={isPublishing}
                 />
               </>

@@ -49,7 +49,12 @@ const ResponsiveDropdownContent = ({
       <drawer.DrawerHeader className="hidden">
         <drawer.DrawerTitle>{title}</drawer.DrawerTitle>
       </drawer.DrawerHeader>
-      <div className={cn("flex flex-col gap-2 p-2 py-4", className)}>
+      <div
+        className={cn(
+          "flex flex-col gap-(--space-xxs) p-(--space-xs) py-(--space-m)",
+          className,
+        )}
+      >
         {children}
       </div>
     </drawer.DrawerContent>
@@ -77,7 +82,7 @@ const ResponsiveDropdownItem = ({
         onClick?.(e);
       }}
       className={cn(
-        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-error-transparent data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-(--space-xs) rounded-xs px-(--space-xs) py-(--space-xxs) min-h-(--studio-control-height-sm) text-s font-regular outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:text-neutral-6 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
     >

@@ -67,7 +67,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.dnsActiveHint":
     "A Deco está servindo este redirecionamento (o DNS está apontando para cá).",
   "mainPanelTabs.hostingTab.dnsAwaitingHint":
-    "Ainda não resolve para a Deco — adicione os registros abaixo; mudanças de DNS podem levar até algumas horas para propagar.",
+    "Ainda não resolve para a Deco, adicione os registros abaixo; mudanças de DNS podem levar até algumas horas para propagar.",
   "mainPanelTabs.hostingTab.dnsColType": "Tipo",
   "mainPanelTabs.hostingTab.dnsColName": "Nome",
   "mainPanelTabs.hostingTab.dnsColValue": "Valor",
@@ -124,7 +124,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.secretScopeRuntimeHint":
     "Injetado em tempo de execução (o ambiente de runtime do site).",
   "mainPanelTabs.hostingTab.secretScopeBuildHint":
-    "Montado apenas no build (ex.: token de registry privado) — nunca exposto em runtime.",
+    "Montado apenas no build (ex.: token de registry privado), nunca exposto em runtime.",
   "mainPanelTabs.hostingTab.deleteSecret": "Excluir segredo",
   "mainPanelTabs.hostingTab.confirmDeleteSecretTitle": "Excluir segredo?",
   "mainPanelTabs.hostingTab.confirmDeleteSecretDescription":
@@ -182,7 +182,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.buildLogsEmpty":
     "Nenhum log de build disponível para este commit.",
   "mainPanelTabs.hostingTab.buildLogsTruncated":
-    "Saída truncada — abra o log completo para ver tudo.",
+    "Saída truncada, abra o log completo para ver tudo.",
   "mainPanelTabs.hostingTab.buildLogsOpenFull": "Abrir log completo",
   "mainPanelTabs.hostingTab.domains": "Domínios",
   "mainPanelTabs.hostingTab.domainsError": "Falha ao carregar domínios",
@@ -197,7 +197,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.statusPending": "Pendente",
   "mainPanelTabs.hostingTab.statusActionRequired": "Ação necessária",
   "mainPanelTabs.hostingTab.detailZoneNotOnboarded":
-    "Este domínio ainda não está totalmente configurado — fale com a gente para concluir a conexão.",
+    "Este domínio ainda não está totalmente configurado, fale com a gente para concluir a conexão.",
   "mainPanelTabs.hostingTab.deleteDomain": "Remover domínio",
   "mainPanelTabs.hostingTab.confirmDeleteDomainTitle": "Remover este domínio?",
   "mainPanelTabs.hostingTab.confirmDeleteDomainDescription":
@@ -211,8 +211,6 @@ export const mainPanelTabs = {
     "{count} variáveis declaradas no código",
   "mainPanelTabs.hostingTab.showDetails": "Mostrar detalhes",
   "mainPanelTabs.hostingTab.hideDetails": "Ocultar detalhes",
-  "mainPanelTabs.e2eTab.title": "E2E",
-  "mainPanelTabs.e2eTab.subtitle": "Verificações ponta a ponta de {site}",
   "mainPanelTabs.e2eTab.helpTitle": "Como funcionam os testes E2E",
   "mainPanelTabs.e2eTab.helpIntro":
     "Os testes E2E rodam verificações ponta a ponta automatizadas na URL de produção do seu site, num navegador real.",
@@ -234,7 +232,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.runsError": "Falha ao carregar as execuções E2E",
   "mainPanelTabs.e2eTab.checksSection": "Checks",
   "mainPanelTabs.e2eTab.noChecks":
-    "Nenhum check ainda. Rode um teste acima — ele aparece aqui como pendente enquanto executa.",
+    "Nenhum check ainda. Rode um teste acima, ele aparece aqui como pendente enquanto executa.",
   "mainPanelTabs.e2eTab.checksError": "Falha ao carregar os checks E2E",
   "mainPanelTabs.e2eTab.colSchedule": "Agendamento",
   "mainPanelTabs.e2eTab.colUpdated": "Atualizado",
@@ -254,6 +252,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.scheduleOnce": "Não recorrente (roda agora)",
   "mainPanelTabs.e2eTab.scheduleLabel": "Agendamento",
   "mainPanelTabs.e2eTab.scheduleHourly": "De hora em hora",
+  "mainPanelTabs.experimentsTab.rolePlaceholder": "Função…",
   "mainPanelTabs.e2eTab.scheduleDaily": "Diariamente às 08:00 UTC",
   "mainPanelTabs.e2eTab.scheduleWeekly": "Semanal (seg 08:00 UTC)",
   "mainPanelTabs.e2eTab.noSiteTitle": "Nenhum site vinculado",
@@ -312,8 +311,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.noArtifacts": "Nenhum artefato para esta execução.",
   "mainPanelTabs.e2eTab.openArtifact": "Abrir",
   "mainPanelTabs.e2eTab.viewScreenshot": "Ver captura de tela",
-  "mainPanelTabs.analyticsTab.title": "Deco Analytics",
-  "mainPanelTabs.analyticsTab.subtitle": "Tráfego e uso de {site}",
   "mainPanelTabs.analyticsTab.noSiteTitle": "Nenhum site vinculado",
   "mainPanelTabs.analyticsTab.noSiteDescription":
     "Este projeto ainda não está vinculado a um site hospedado.",
@@ -349,9 +346,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.hostLabel": "Nome do host",
   "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
   "mainPanelTabs.analyticsTab.hostHint":
-    "Este site não tem domínio de produção registrado — informe o host para coletar.",
+    "Este site não tem domínio de produção registrado, informe o host para coletar.",
   "mainPanelTabs.analyticsTab.registerInstallHint":
-    "Depois de habilitar, o tráfego é coletado automaticamente — nada de código pra adicionar.",
+    "Depois de habilitar, o tráfego é coletado automaticamente, nada de código pra adicionar.",
   "mainPanelTabs.analyticsTab.enableAnalytics": "Habilitar análises",
   "mainPanelTabs.analyticsTab.enabling": "Habilitando…",
   "mainPanelTabs.analyticsTab.toastRegistered": "Análises habilitadas",
@@ -386,7 +383,7 @@ export const mainPanelTabs = {
   // Uso
   "mainPanelTabs.analyticsTab.installTitle": "Rastreamento",
   "mainPanelTabs.analyticsTab.installAuto":
-    "As análises estão ativas neste site — são adicionadas automaticamente, nada pra colar.",
+    "As análises estão ativas neste site, são adicionadas automaticamente, nada pra colar.",
   "mainPanelTabs.analyticsTab.installTrackPrefix":
     "Envie eventos personalizados do seu código via ",
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
@@ -412,7 +409,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.dataLoadError":
     "Não foi possível carregar esta visão.",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
-    "A superfície de dados de analytics ainda não está ligada a este ambiente — a configuração abaixo continua funcionando.",
+    "A superfície de dados de analytics ainda não está ligada a este ambiente, a configuração abaixo continua funcionando.",
   // Registro por token (chave)
   "mainPanelTabs.analyticsTab.registerByKey":
     "Registrar por token (site fora do nosso CDN)",
@@ -423,9 +420,9 @@ export const mainPanelTabs = {
     "loja.com.br, staging.loja.com.br",
   "mainPanelTabs.analyticsTab.domainsHint":
     "Domínios que o collector aceita (checagem de Origin); o primeiro é o principal. Obrigatório para um token.",
-  "mainPanelTabs.analyticsTab.tokenTitle": "Token criado — copie agora",
+  "mainPanelTabs.analyticsTab.tokenTitle": "Token criado, copie agora",
   "mainPanelTabs.analyticsTab.tokenOnce":
-    "Mostrado uma vez. É público (vai no script), então identifica mas nunca autentica — os eventos não são faturáveis.",
+    "Mostrado uma vez. É público (vai no script), então identifica mas nunca autentica, os eventos não são faturáveis.",
   "mainPanelTabs.analyticsTab.registeredOk": "Registrado",
   "mainPanelTabs.analyticsTab.copy": "Copiar",
   "mainPanelTabs.analyticsTab.copied": "Copiado",
@@ -443,7 +440,6 @@ export const mainPanelTabs = {
     "Nenhum visitante nos últimos minutos.",
   "mainPanelTabs.analyticsTab.emptyView":
     "Nada coletado para este período ainda.",
-  "mainPanelTabs.cdnTab.title": "Monitor",
   "mainPanelTabs.cdnTab.noSiteTitle": "Nenhum site vinculado",
   "mainPanelTabs.cdnTab.noSiteBody":
     "Este projeto não está vinculado a um site, então não há tráfego de CDN para mostrar.",

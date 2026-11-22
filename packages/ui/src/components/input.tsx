@@ -8,9 +8,12 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       type={type}
       data-slot="input"
       className={cn(
-        "file:text-foreground text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-[var(--studio-control-height,2.25rem)] w-full min-w-0 rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] px-3 py-1 text-sm transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:opacity-50 card-shadow",
-        "focus-visible:border-ring focus-visible:ring-ring/20 focus-visible:ring-[2px]",
-        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+        "file:text-foreground text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground flex h-(--studio-control-height) w-full min-w-0 rounded-(--studio-control-radius) bg-[var(--studio-input-background)] px-(--space-s) py-(--space-xs) text-s font-regular shadow-(--edge) transition-[background-color,box-shadow,color] duration-(--motion-duration) ease-motion file:inline-flex file:h-full file:border-0 file:bg-transparent file:text-s file:font-medium",
+        "hover:shadow-[0_0_0_var(--border-s)_var(--neutral-5)] focus-ring",
+        /* `[readonly]` rather than `read-only:`, which also matches disabled inputs. */
+        "[&[readonly]:not(:disabled)]:bg-neutral-2 [&[readonly]:not(:disabled)]:text-neutral-8",
+        "disabled:pointer-events-none disabled:bg-neutral-3 disabled:text-neutral-6 disabled:shadow-[0_0_0_var(--border-s)_var(--neutral-4-transparent)]",
+        "aria-invalid:shadow-[0_0_0_var(--border-s)_var(--error)]",
         className,
       )}
       {...props}

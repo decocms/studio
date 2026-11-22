@@ -14,14 +14,18 @@ function Checkbox({
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer border-foreground dark:bg-input/30 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:data-[state=checked]:bg-primary data-[state=checked]:border-primary focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[2px] disabled:opacity-50",
+        "peer size-4 shrink-0 rounded-xs bg-neutral-1 shadow-(--edge-inset) transition-[background-color,box-shadow] duration-(--motion-duration) ease-motion focus-ring",
+        "enabled:hover:shadow-[inset_0_0_0_var(--border-s)_var(--neutral-5)]",
+        "data-[state=checked]:bg-primary data-[state=checked]:shadow-none data-[state=indeterminate]:bg-primary data-[state=indeterminate]:shadow-none",
+        "aria-invalid:shadow-[0_0_0_var(--border-s)_var(--error)]",
+        "disabled:bg-neutral-3 disabled:data-[state=checked]:bg-neutral-3 disabled:data-[state=indeterminate]:bg-neutral-3",
         className,
       )}
       {...props}
     >
       <CheckboxPrimitive.Indicator
         data-slot="checkbox-indicator"
-        className="flex items-center justify-center text-primary-foreground transition-none"
+        className="flex items-center justify-center text-primary-foreground transition-none data-[disabled]:text-neutral-6"
       >
         <Check className="size-3.5" />
       </CheckboxPrimitive.Indicator>

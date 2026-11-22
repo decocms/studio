@@ -375,7 +375,7 @@ export function AuthEntry({
     if (!desktopError) return form;
     return (
       <div className="grid gap-4">
-        <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
+        <div className="rounded-m bg-destructive/10 p-3 text-sm text-destructive text-center">
           {desktopError}
         </div>
         {form}

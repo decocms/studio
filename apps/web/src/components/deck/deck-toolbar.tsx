@@ -93,7 +93,7 @@ export function DeckToolbar({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1 text-xs"
+              className="gap-1"
               onClick={editor.reload}
             >
               <RefreshCw01 size={12} />

@@ -28,7 +28,7 @@ export function OrgGeneralPage() {
       <Page.Content>
         <Page.Container>
           <SettingsPage>
-            <Page.Title>{t("settings.orgGeneral.organization")}</Page.Title>
+            <Page.Title>{t("settings.nav.general")}</Page.Title>
             {granted && (
               <>
                 <OrganizationForm />

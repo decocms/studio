@@ -66,7 +66,7 @@ function UserMenuItem({
       ) : (
         <button
           type="button"
-          className="flex items-center gap-2 text-sm w-full cursor-pointer"
+          className="flex w-full cursor-pointer items-center gap-(--space-xs) text-s"
           onClick={onClick}
         >
           {children}

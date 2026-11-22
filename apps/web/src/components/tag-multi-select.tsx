@@ -142,13 +142,13 @@ export function TagMultiSelect({
                 <Badge
                   key={tag.id}
                   variant="secondary"
-                  className="text-xs px-1.5 py-0 h-5"
+                  className="px-1.5 py-0 h-5"
                 >
                   {tag.name}
                 </Badge>
               ))}
               {memberTags.length > maxDisplay && (
-                <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+                <Badge variant="secondary" className="px-1.5 py-0 h-5">
                   +{memberTags.length - maxDisplay}
                 </Badge>
               )}

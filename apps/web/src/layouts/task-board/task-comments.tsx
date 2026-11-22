@@ -238,7 +238,7 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
       // cursor-pointer: the composer around it sets cursor-text, which would
       // otherwise inherit onto the button.
-      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:text-neutral-6"
     >
       <ArrowUp size={16} />
     </button>
@@ -288,7 +288,7 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
         e.stopPropagation();
         ref.current?.attach(Array.from(e.dataTransfer.files));
       }}
-      className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
+      className="relative flex cursor-text flex-col gap-1 rounded-m bg-card p-3 card-shadow"
     >
       {textarea}
       <div className="flex items-center justify-between gap-2">
@@ -303,7 +303,7 @@ function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
       </div>
       {dragging && !sending && (
         // Visual only: the drop itself lands on the text or the card beneath.
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/40 bg-muted text-sm font-medium text-primary/70">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-m border-2 border-dashed border-primary/40 bg-muted text-sm font-medium text-primary/70">
           <Upload01 size={16} />
           {t("taskBoard.taskDialog.commentDropToAttach")}
         </div>

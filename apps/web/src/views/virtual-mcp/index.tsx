@@ -1051,7 +1051,7 @@ function VirtualMcpDetailViewWithData({
               {section === "general" && (
                 <section className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-sm font-medium text-foreground">
+                    <h2 className="text-m font-medium text-foreground">
                       {t("virtualMcp.virtualMcp.instructions")}
                     </h2>
                     {sectionInstructionsActions}
@@ -1060,7 +1060,7 @@ function VirtualMcpDetailViewWithData({
                     name="metadata.instructions"
                     control={form.control}
                     render={({ field }) => (
-                      <div className="relative rounded-xl card-shadow bg-card focus-within:ring-1 focus-within:ring-ring">
+                      <div className="relative rounded-m card-shadow bg-card focus-within:ring-1 focus-within:ring-ring">
                         <Textarea
                           {...field}
                           value={field.value ?? ""}
@@ -1074,7 +1074,7 @@ function VirtualMcpDetailViewWithData({
                           placeholder={t(
                             "virtualMcp.virtualMcp.instructionsPlaceholder",
                           )}
-                          className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
+                          className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-s text-muted-foreground placeholder:text-muted-foreground/40 border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
                           style={{ boxShadow: "none" }}
                         />
                         <Tooltip delayDuration={0}>
@@ -1082,8 +1082,8 @@ function VirtualMcpDetailViewWithData({
                             <Button
                               type="button"
                               variant="ghost"
-                              size="icon"
-                              className="absolute top-2 right-2 h-7 w-7 text-muted-foreground"
+                              size="icon-sm"
+                              className="absolute top-2 right-2 text-muted-foreground"
                               onClick={() => setInstructionsFullscreen(true)}
                               aria-label={t(
                                 "virtualMcp.virtualMcp.openFullscreenEditor",
@@ -1111,7 +1111,7 @@ function VirtualMcpDetailViewWithData({
                   <Suspense
                     fallback={
                       <section className="flex flex-col gap-3">
-                        <h2 className="text-sm font-medium text-foreground">
+                        <h2 className="text-m font-medium text-foreground">
                           {t("virtualMcp.virtualMcp.subAgents")}
                         </h2>
                         <div className="h-16 rounded-lg border border-dashed border-border animate-pulse" />
@@ -1330,7 +1330,7 @@ function VirtualMcpDetailViewWithData({
                   placeholder={t(
                     "virtualMcp.virtualMcp.instructionsPlaceholder",
                   )}
-                  className="w-full h-full resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed rounded-xl card-shadow px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 bg-card border-0"
+                  className="w-full h-full resize-none text-s text-muted-foreground placeholder:text-muted-foreground/40 rounded-m card-shadow px-4 py-3 bg-card border-0 focus-ring"
                   style={{ boxShadow: "none" }}
                 />
               )}

@@ -73,7 +73,7 @@ function BannerShell({
       {/* pl steps up to clear the decorative page once it appears at sm. */}
       <div className="relative flex min-h-28 items-center gap-4 px-5 py-5 sm:h-36 sm:gap-6 sm:pr-6 sm:pl-52">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-base font-medium leading-6 text-foreground sm:text-lg">
+          <span className="text-base font-medium text-foreground sm:text-lg">
             {generating
               ? t("reports.banner.generatingTitle")
               : t("reports.banner.readyTitle")}

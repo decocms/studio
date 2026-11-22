@@ -76,7 +76,7 @@ function SkillPreviewContent({
           <Zap size={18} />
         </div>
         {variant === "dialog" ? (
-          <DialogTitle className="flex-1 truncate text-base font-medium text-foreground">
+          <DialogTitle className="flex-1 truncate text-foreground">
             {titleText}
           </DialogTitle>
         ) : (
@@ -86,15 +86,15 @@ function SkillPreviewContent({
         )}
         {variant === "dialog" ? (
           <DialogClose asChild>
-            <Button variant="ghost" size="icon" className="size-8 shrink-0">
+            <Button variant="ghost" size="icon-sm" className="shrink-0">
               <X size={16} />
             </Button>
           </DialogClose>
         ) : (
           <Button
             variant="ghost"
-            size="icon"
-            className="size-8 shrink-0"
+            size="icon-sm"
+            className="shrink-0"
             onClick={onClose}
           >
             <X size={16} />

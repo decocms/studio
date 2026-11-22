@@ -13,7 +13,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { AlertTriangle, Building02, User01 } from "@untitledui/icons";
+import { AlertTriangle } from "@untitledui/icons";
 import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
@@ -32,8 +32,9 @@ import {
   memoryTemplate,
 } from "@decocms/shared/memory";
 import { Page } from "@/components/page";
+import { SettingsSection } from "@/components/settings/settings-section";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
-import { EmptyState } from "@/components/empty-state.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
@@ -139,7 +140,7 @@ function PromptBudget({ length }: { length: number }) {
 
 function EditorSkeleton() {
   return (
-    <Card className="gap-3 px-6 py-5">
+    <Card className="gap-3 p-4">
       <div className="flex min-h-[320px] flex-col gap-3">
         <Skeleton className="h-5 w-1/3" />
         <Skeleton className="h-4 w-full" />
@@ -250,12 +251,13 @@ function MemoryDocument({
 
   if (!shown && (stat.isError || text.isError)) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <Card>
         <EmptyState
-          image={<AlertTriangle size={48} className="text-muted-foreground" />}
+          size="sm"
+          icon={<AlertTriangle />}
           title={t("settings.memory.errorTitle")}
           description={t("settings.memory.errorDescription")}
-          actions={
+          buttonComponent={
             <Button
               size="sm"
               variant="outline"
@@ -268,7 +270,7 @@ function MemoryDocument({
             </Button>
           }
         />
-      </div>
+      </Card>
     );
   }
 
@@ -301,7 +303,7 @@ function MemoryDocument({
         </Alert>
       )}
 
-      <Card className="gap-0 px-6 py-5">
+      <Card className="gap-0 p-4">
         <textarea
           key={shown.generation}
           defaultValue={value}
@@ -316,11 +318,11 @@ function MemoryDocument({
             setLength(e.target.value.trim().length);
             saver.change(e.target.value, shown);
           }}
-          className="field-sizing-content min-h-[320px] w-full resize-none bg-transparent font-mono text-[13px] leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+          className="field-sizing-content min-h-[320px] w-full resize-none bg-transparent text-s text-foreground outline-none placeholder:text-muted-foreground"
         />
       </Card>
 
-      <div className="flex min-h-5 items-center justify-between gap-3 text-meta">
+      <div className="flex min-h-5 items-center justify-between gap-3 px-4 text-meta">
         <span
           className={cn(
             "inline-flex items-center gap-1.5",
@@ -345,7 +347,6 @@ export default function SettingsMemoryPage() {
   const scope: MemoryScope = search.scope === "user" ? "user" : "organization";
   const { data: session } = authClient.useSession();
   const userId = session?.user.id;
-  const ScopeIcon = scope === "organization" ? Building02 : User01;
   const heading =
     scope === "organization"
       ? t("settings.memory.orgHeading", { org: org.name })
@@ -354,7 +355,7 @@ export default function SettingsMemoryPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Container width="reading">
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <Page.Title>{t("settings.memory.pageTitle")}</Page.Title>
             <CollectionTabs
@@ -373,22 +374,14 @@ export default function SettingsMemoryPage() {
                 })
               }
             />
-            <div className="flex flex-col gap-4">
-              <div className="flex items-start gap-3">
-                <span className="surface-inset flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground">
-                  <ScopeIcon size={16} />
-                </span>
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <p className="text-sm font-medium text-foreground">
-                    {heading}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {scope === "organization"
-                      ? t("settings.memory.orgDescription")
-                      : t("settings.memory.userDescription")}
-                  </p>
-                </div>
-              </div>
+            <SettingsSection
+              title={heading}
+              description={
+                scope === "organization"
+                  ? t("settings.memory.orgDescription")
+                  : t("settings.memory.userDescription")
+              }
+            >
               {userId ? (
                 <MemoryDocument
                   key={scope}
@@ -399,7 +392,7 @@ export default function SettingsMemoryPage() {
               ) : (
                 <EditorSkeleton />
               )}
-            </div>
+            </SettingsSection>
           </div>
         </Page.Container>
       </Page.Content>

@@ -1065,6 +1065,7 @@ const taskBoardAnalyticsRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/taskboard-analytics",
   staticData: {
+    pageTitle: "taskBoard.analytics.title",
     defaultMain: "board",
     mainView: "board",
   },
@@ -1080,6 +1081,7 @@ const threadAnalyticsRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/thread-analytics",
   staticData: {
+    pageTitle: "thread.analytics.title",
     defaultMain: "board",
     mainView: "board",
   },
@@ -1271,7 +1273,7 @@ const collectionDetailRoute = createRoute({
 
 // Operations: Monitor
 const monitoringRoute = createRoute({
-  staticData: { pageTitle: "orgs.monitoring.title" },
+  staticData: { pageTitle: "settings.nav.monitor" },
   getParentRoute: () => settingsRoute,
   path: "/monitor",
   component: lazyRouteComponent(
@@ -1434,7 +1436,7 @@ const settingsTasksRoute = createRoute({
 
 /** Settings › Projects — the index into per-project settings. */
 const settingsProjectsRoute = createRoute({
-  staticData: { pageTitle: "projects.settings.title" },
+  staticData: { pageTitle: "settings.nav.agents" },
   getParentRoute: () => settingsRoute,
   path: "/projects",
   component: lazyRouteComponent(

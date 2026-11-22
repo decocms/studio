@@ -2,13 +2,13 @@ export const settings = {
   "settings.voice.title": "Voice mode",
   "settings.voice.description":
     "Let members talk to agents in chats. Requires ElevenLabs to be configured on this Studio deployment.",
-  "settings.title": "Profile & Preferences",
+  "settings.title": "Profile & preferences",
   "settings.nav.organization": "Organization",
   "settings.nav.build": "Build",
   "settings.nav.manage": "Manage",
   "settings.nav.general": "General",
   "settings.nav.connect": "Connect",
-  "settings.nav.aiProviders": "AI Providers",
+  "settings.nav.aiProviders": "AI providers",
   "settings.nav.secrets": "Secrets",
   "settings.nav.billing": "Billing & AI",
   "settings.nav.buckets": "Buckets",
@@ -37,11 +37,11 @@ export const settings = {
   "settings.jira.disconnected": "Jira disconnected",
   "settings.jira.disconnectTitle": "Disconnect Jira?",
   "settings.jira.disconnectDescription":
-    "The sync stops and the credentials are deleted. Cards already on the board are kept — they just stop updating.",
+    "The sync stops and the credentials are deleted. Cards already on the board are kept, they just stop updating.",
   "settings.jira.cancel": "Cancel",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
-    "The board Studio watches — a card entering one of its columns is what sets the integration off.",
+    "The board Studio watches, a card entering one of its columns is what sets the integration off.",
   "settings.jira.boardPlaceholder": "Select a board",
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
@@ -74,7 +74,7 @@ export const settings = {
   "settings.jira.addAutomation": "Add automation",
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
   "settings.jira.promptHelp":
-    "This is the whole instruction the run gets — there is no default. Type “/” to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
+    "This is the whole instruction the run gets, there is no default. Type “/” to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
   "settings.jira.promptSave": "Save",
   "settings.jira.promptDiscard": "Discard",
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
@@ -94,7 +94,7 @@ export const settings = {
   "settings.jira.testRunDescription":
     "Run the agent on one issue or a batch now, without a rule and without enabling the integration \u2014 so you can see what a prompt does before it runs on every issue entering a status.",
   "settings.jira.issueKeysPlaceholder":
-    "ABC-123, or a link — one per line, or comma-separated",
+    "ABC-123, or a link, one per line, or comma-separated",
   "settings.jira.issueKeysCount": "{count} issue(s)",
   "settings.jira.issueKeysUnreadable": "could not read: {items}",
   "settings.jira.testRunIssueAriaLabel": "Jira issue key or link",
@@ -109,17 +109,15 @@ export const settings = {
   "settings.jira.continuePrRuleHelp":
     "Checked on every card that enters this status: one that already carries an open pull request continues it, one with none starts fresh. Leave it off on a review status.",
   "settings.jira.together":
-    "One run for all of them — the agent sees every issue and works them as a batch, instead of one run per issue",
+    "One run for all of them, the agent sees every issue and works them as a batch, instead of one run per issue",
   "settings.jira.togetherStarted": "Started one run on",
   "settings.jira.testRunWatch": "Watch runs in Monitor",
-  "settings.syncedRepos.pageDescription":
-    "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",
   "settings.syncedRepos.cancel": "Cancel",
   "settings.syncedRepos.create": "Create",
   "settings.syncedRepos.creating": "Creating…",
   "settings.syncedRepos.created":
-    'Sync created — syncing into "{volume}" in the background',
+    'Sync created, syncing into "{volume}" in the background',
   "settings.syncedRepos.emptyTitle": "No synced repos yet",
   "settings.syncedRepos.emptyDescription":
     "Pick a repository and it will appear in the library as a read-only folder, kept in sync automatically.",
@@ -229,15 +227,15 @@ export const settings = {
   "settings.repositories.disconnect": "Disconnect",
   "settings.repositories.disconnectTitle": 'Disconnect "{login}"?',
   "settings.repositories.disconnectDescription":
-    "Repositories linked through this account stay listed, but become anonymous public clones — private ones will stop working.",
+    "Repositories linked through this account stay listed, but become anonymous public clones, private ones will stop working.",
   "settings.repositories.disconnected": "Account disconnected",
   "settings.repositories.tokenDialogTitle": "Connect GitLab with a token",
   "settings.repositories.tokenDialogDescription":
-    "Use a personal, project or group access token with the api scope — agents push branches and open merge requests with it. Stored encrypted and never shown again.",
+    "Use a personal, project or group access token with the api scope, agents push branches and open merge requests with it. Stored encrypted and never shown again.",
   "settings.repositories.tokenDialogTitleBitbucket":
     "Connect Bitbucket with a token",
   "settings.repositories.tokenDialogDescriptionBitbucket":
-    "Use a workspace, project or repository access token that can write repositories and pull requests — agents push branches and open pull requests with it. Bitbucket Cloud only. Stored encrypted and never shown again.",
+    "Use a workspace, project or repository access token that can write repositories and pull requests, agents push branches and open pull requests with it. Bitbucket Cloud only. Stored encrypted and never shown again.",
   "settings.repositories.addAccount": "Add account",
   "settings.repositories.addAccountTitle": "Connect a git account",
   "settings.repositories.addAccountDescription":
@@ -298,7 +296,6 @@ export const settings = {
   "settings.repositories.connect": "Connect",
   "settings.repositories.connecting": "Connecting…",
   "settings.repositories.connected": 'Connected as "{login}"',
-  "settings.repositories.reposTitle": "Repositories",
   "settings.repositories.reposEmptyTitle": "No repositories yet",
   "settings.repositories.reposEmptyDescription":
     "Choose a repository from a connected GitHub, GitLab or Bitbucket account.",
@@ -332,9 +329,9 @@ export const settings = {
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
-  "settings.nav.profile": "Profile & Preferences",
+  "settings.nav.profile": "Profile & preferences",
   "settings.nav.backToHome": "Back to home",
-  "settings.nav.signOut": "Sign Out",
+  "settings.nav.signOut": "Sign out",
   "settings.profile.avatar": "Avatar",
   "settings.profile.displayName": "Display name",
   "settings.profile.displayNamePlaceholder": "Your name",
@@ -373,7 +370,7 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Play sounds for agent actions and notifications.",
   "settings.preferences.soundsPreview": "Preview notification sound",
-  "settings.preferences.toolApproval": "Tool Approval",
+  "settings.preferences.toolApproval": "Tool approval",
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",
   "settings.preferences.toolApprovalAsk": "Ask before edit",
@@ -392,7 +389,7 @@ export const settings = {
     'No automations match "{search}"',
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
-  "settings.automations.searchPlaceholder": "Search automations...",
+  "settings.automations.searchPlaceholder": "Search automations…",
   "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
   "settings.skills.importing": "Importing…",
@@ -401,8 +398,8 @@ export const settings = {
   "settings.skills.importMissingSkillMd":
     "That folder has no SKILL.md at its root. Pick the skill's own folder.",
   "settings.skills.importNeedsFolder":
-    "Pick a folder, not individual files — this browser may not support folder upload.",
-  "settings.skills.searchPlaceholder": "Search skills...",
+    "Pick a folder, not individual files, this browser may not support folder upload.",
+  "settings.skills.searchPlaceholder": "Search skills…",
   "settings.skills.noDescription": "No description",
   "settings.skills.filterAll": "All",
   "settings.skills.emptyTitle": "No skills yet",
@@ -468,7 +465,6 @@ export const settings = {
   "settings.buckets.bucketLabel": "Bucket",
   "settings.buckets.bucketPlaceholder": "my-bucket",
   "settings.buckets.bucketRemoved": 'Bucket "{name}" removed',
-  "settings.buckets.bucketsConfigured": "{count} bucket(s) configured",
   "settings.buckets.cancelButton": "Cancel",
   "settings.buckets.credentialsEncryptedDescription":
     "Credentials are encrypted at rest and never returned over the API. For Cloudflare R2, Google Cloud Storage, or MinIO, set a custom endpoint.",
@@ -544,15 +540,15 @@ export const settings = {
   "settings.connectClients.keyCreated": "Key created",
   "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
-    "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
+    "Recommended for your laptop. Browser will open on first use to sign in, no token to manage.",
   "settings.connectClients.oauthMetadataHint":
     "OAuth 2.1 Protected Resource Metadata is advertised on 401:",
   "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect to clients",
   "settings.connectClients.snippetOneTimeWarning":
-    "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
-  "settings.connectForms.apiKeyField": "API Key",
+    "Copy this snippet now, the key won't be shown again. You can revoke it later from the list below.",
+  "settings.connectForms.apiKeyField": "API key",
   "settings.connectForms.apiKeyRequired": "API key is required",
   "settings.connectForms.baseUrlField": "Base URL",
   "settings.connectForms.baseUrlPlaceholder": "http://localhost:4000/v1",
@@ -574,9 +570,9 @@ export const settings = {
     "e.g. {name} prod, {name} dev",
   "settings.connectForms.optional": "optional",
   "settings.connectForms.recommended": "recommended",
-  "settings.connectForms.saveConnection": "Save Connection",
-  "settings.connectForms.saveKey": "Save Key",
-  "settings.connectForms.saving": "Saving...",
+  "settings.connectForms.saveConnection": "Save connection",
+  "settings.connectForms.saveKey": "Save key",
+  "settings.connectForms.saving": "Saving…",
   "settings.connectForms.showApiKey": "Show API key",
   "settings.connectProviderDialog.backButton": "Back",
   "settings.connectProviderDialog.backButtonLabel": "Back",
@@ -585,7 +581,7 @@ export const settings = {
   "settings.connectProviderDialog.defaultProviderName": "Provider",
   "settings.connectProviderDialog.defaultTitle": "Connect an AI provider",
   "settings.connectProviderDialog.gridDescription":
-    "Pick a provider — we'll handle the rest.",
+    "Pick a provider, we'll handle the rest.",
   "settings.connectProviderDialog.oauthFailedMessage":
     "OAuth connection failed: {error}",
   "settings.connectProviderDialog.oauthPendingMessage":
@@ -647,7 +643,7 @@ export const settings = {
   "settings.planUsage.noAiIncluded": "No AI usage included.",
   "settings.planUsage.noPlan": "No active plan",
   "settings.planUsage.noPlanDescription":
-    "This organization has no active plan. Pick one below — Starter's first month is free.",
+    "This organization has no active plan. Pick one below, Starter's first month is free.",
   "settings.planUsage.creditsLeft": "left",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
@@ -658,7 +654,7 @@ export const settings = {
   "settings.planUsage.feature.cms": "CMS",
   "settings.planUsage.feature.chat": "Superagent chat",
   "settings.planUsage.feature.monitoring": "Site analytics",
-  "settings.planUsage.feature.kanban": "Agentic Kanban",
+  "settings.planUsage.feature.kanban": "Agentic kanban",
   "settings.planUsage.feature.model_choice": "Choose your model",
   "settings.planUsage.feature.credits": "Extra credits",
   "settings.planUsage.feature.diagnostic": "Deco Score",
@@ -713,10 +709,10 @@ export const settings = {
   "settings.decoNudgeCard.connecting": "Connecting…",
   "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
   "settings.decoNudgeCard.description":
-    "100+ models, one connection — pay as you go, no API keys to juggle.",
+    "100+ models, one connection, pay as you go, no API keys to juggle.",
   "settings.decoNudgeCard.recommended": "Recommended",
   "settings.deleteOrganizationSection.cancel": "Cancel",
-  "settings.deleteOrganizationSection.dangerZone": "Danger Zone",
+  "settings.deleteOrganizationSection.dangerZone": "Danger zone",
   "settings.deleteOrganizationSection.deleteButton": "Delete",
   "settings.deleteOrganizationSection.deleteOrganizationAction":
     "Delete organization",
@@ -760,7 +756,7 @@ export const settings = {
   "settings.domainSettings.joinModeHelpAuto":
     "Anyone with a verified @{domain} email joins automatically.",
   "settings.domainSettings.joinModeHelpOff":
-    "Not discoverable — no one can find or join through this domain.",
+    "Not discoverable, no one can find or join through this domain.",
   "settings.domainSettings.joinModeHelpRequest":
     "People with a verified @{domain} email can request to join; an admin approves.",
   "settings.domainSettings.joinModeOff": "Off",
@@ -770,7 +766,7 @@ export const settings = {
   "settings.domainSettings.remove": "Remove",
   "settings.domainSettings.txt": "TXT",
   "settings.domainSettings.txtRecordNotFound":
-    "TXT record not found yet — DNS can take a few minutes.",
+    "TXT record not found yet, DNS can take a few minutes.",
   "settings.domainSettings.value": "value",
   "settings.domainSettings.verified": "Verified",
   "settings.domainSettings.verify": "Verify",
@@ -789,7 +785,7 @@ export const settings = {
   "settings.editProviderDialog.leaveBlankHint": "leave blank to keep current",
   "settings.editProviderDialog.providerUpdated": "Provider updated",
   "settings.editProviderDialog.save": "Save",
-  "settings.editProviderDialog.saving": "Saving...",
+  "settings.editProviderDialog.saving": "Saving…",
   "settings.editProviderDialog.showApiKey": "Show API key",
   "settings.joinRequestsSection.approve": "Approve",
   "settings.joinRequestsSection.approveFailed": "Failed to approve",
@@ -800,17 +796,16 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
-  "settings.orgGeneral.organization": "Organization",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
     "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
-  "settings.review.reviewerTitle": "Enable Reviewer",
+  "settings.review.reviewerTitle": "Enable reviewer",
   "settings.review.reviewerDescription":
-    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview — and hands the task to you when it can't settle something itself.",
+    "Reviews the code with the repository's own review skills, fixes what it finds on the pull request's branch, then exercises the change on the deploy preview, and hands the task to you when it can't settle something itself.",
   "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
   "settings.review.cheapReviewerModelDescription":
     "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
-  "settings.review.autoMergeTitle": "Enable Auto-merge",
+  "settings.review.autoMergeTitle": "Enable auto-merge",
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
   "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
@@ -859,11 +854,11 @@ export const settings = {
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
-    "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
-  "settings.orgRoleDetail.addMember": "Add Member",
+    "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected, an existing chat keeps the runtime it started on.",
+  "settings.orgRoleDetail.addMember": "Add member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",
-  "settings.orgRoleDetail.addMembersToRole": "Add Members to Role",
+  "settings.orgRoleDetail.addMembersToRole": "Add members to role",
   "settings.orgRoleDetail.addWithCount": "Add ({count})",
   "settings.orgRoleDetail.added": "Added",
   "settings.orgRoleDetail.allModels": "All models",
@@ -874,14 +869,14 @@ export const settings = {
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Built-in role permissions cannot be changed",
   "settings.orgRoleDetail.cancel": "Cancel",
-  "settings.orgRoleDetail.createRole": "Create Role",
+  "settings.orgRoleDetail.createRole": "Create role",
   "settings.orgRoleDetail.enabledCount": "{enabledCount}/{total} enabled",
   "settings.orgRoleDetail.failedToSaveRole": "Failed to save role",
   "settings.orgRoleDetail.general": "General",
   "settings.orgRoleDetail.grantFullAccessToAllFeaturesBelow":
     "Grant full access to all features below",
-  "settings.orgRoleDetail.loadingModels": "Loading models...",
-  "settings.orgRoleDetail.mcpPermissions": "MCP Permissions",
+  "settings.orgRoleDetail.loadingModels": "Loading models…",
+  "settings.orgRoleDetail.mcpPermissions": "MCP permissions",
   "settings.orgRoleDetail.members": "Members",
   "settings.orgRoleDetail.membersUpdatedSuccessfully":
     "Members updated successfully!",
@@ -896,7 +891,7 @@ export const settings = {
     'No permissions match "{searchQuery}"',
   "settings.orgRoleDetail.noProjectsAvailable": "No projects available",
   "settings.orgRoleDetail.noProjectsMatch": 'No projects match "{searchQuery}"',
-  "settings.orgRoleDetail.organizationPermissions": "Organization Permissions",
+  "settings.orgRoleDetail.organizationPermissions": "Organization permissions",
   "settings.orgRoleDetail.owner": "Owner",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "Owner membership cannot be changed",
@@ -908,25 +903,25 @@ export const settings = {
   "settings.orgRoleDetail.roleNameIsRequired": "Role name is required",
   "settings.orgRoleDetail.roleUpdatedSuccessfully":
     "Role updated successfully!",
-  "settings.orgRoleDetail.saveChanges": "Save Changes",
-  "settings.orgRoleDetail.saving": "Saving...",
-  "settings.orgRoleDetail.searchMcpServers": "Search MCP servers...",
-  "settings.orgRoleDetail.searchMembers": "Search members...",
-  "settings.orgRoleDetail.searchModels": "Search models...",
-  "settings.orgRoleDetail.searchPermissions": "Search permissions...",
-  "settings.orgRoleDetail.searchProjects": "Search projects...",
+  "settings.orgRoleDetail.saveChanges": "Save changes",
+  "settings.orgRoleDetail.saving": "Saving…",
+  "settings.orgRoleDetail.searchMcpServers": "Search MCP servers…",
+  "settings.orgRoleDetail.searchMembers": "Search members…",
+  "settings.orgRoleDetail.searchModels": "Search models…",
+  "settings.orgRoleDetail.searchPermissions": "Search permissions…",
+  "settings.orgRoleDetail.searchProjects": "Search projects…",
   "settings.orgRoleDetail.selectMembersToAddToThisRole":
     "Select members to add to this role.",
   "settings.orgRoleDetail.showMore": "Show more ({remaining} remaining)",
   "settings.orgRoleDetail.somethingWentWrong": "Something went wrong",
   "settings.orgRoleDetail.unknown": "Unknown",
   "settings.orgRoleDetail.userIsDefaultRoleMessage":
-    "User is the default role — members can't be removed from it; assign another role to change their access",
+    "User is the default role, members can't be removed from it; assign another role to change their access",
   "settings.orgSso.cancelButton": "Cancel",
   "settings.orgSso.clientIdLabel": "Client ID",
   "settings.orgSso.clientIdPlaceholder": "your-client-id",
   "settings.orgSso.clientSecretEditDescription": "Leave empty to keep current",
-  "settings.orgSso.clientSecretLabel": "Client Secret",
+  "settings.orgSso.clientSecretLabel": "Client secret",
   "settings.orgSso.clientSecretPlaceholder": "your-client-secret",
   "settings.orgSso.clientSecretRequiredError":
     "Client Secret is required for initial setup",
@@ -934,14 +929,14 @@ export const settings = {
   "settings.orgSso.configurationSavedSuccess": "SSO configuration saved",
   "settings.orgSso.configureSsoButton": "Configure SSO",
   "settings.orgSso.discoveryEndpointDescription":
-    "Optional — auto-detected from issuer if omitted.",
-  "settings.orgSso.discoveryEndpointLabel": "Discovery Endpoint",
+    "Optional, auto-detected from issuer if omitted.",
+  "settings.orgSso.discoveryEndpointLabel": "Discovery endpoint",
   "settings.orgSso.discoveryEndpointPlaceholder": "Auto-detected from issuer",
   "settings.orgSso.domainLabel": "Domain",
   "settings.orgSso.editConfigButton": "Edit configuration",
   "settings.orgSso.emailDomainDescription":
     "The email domain this SSO provider covers.",
-  "settings.orgSso.emailDomainLabel": "Email Domain",
+  "settings.orgSso.emailDomainLabel": "Email domain",
   "settings.orgSso.emailDomainPlaceholder": "company.com",
   "settings.orgSso.enforceSsoDescription":
     "Require all members to authenticate via SSO",
@@ -953,7 +948,7 @@ export const settings = {
   "settings.orgSso.issuerUrlLabel": "Issuer URL",
   "settings.orgSso.issuerUrlPlaceholder":
     "https://login.microsoftonline.com/{tenant}/v2.0",
-  "settings.orgSso.loading": "Loading...",
+  "settings.orgSso.loading": "Loading…",
   "settings.orgSso.providerLabel": "Provider",
   "settings.orgSso.removeButton": "Remove",
   "settings.orgSso.removeConfirmation":
@@ -962,10 +957,10 @@ export const settings = {
   "settings.orgSso.requiredFieldsError":
     "Issuer, Client ID, and Domain are required",
   "settings.orgSso.saveSsoConfigError": "Failed to save SSO config",
-  "settings.orgSso.savingButton": "Saving...",
+  "settings.orgSso.savingButton": "Saving…",
   "settings.orgSso.scopesLabel": "Scopes",
   "settings.orgSso.scopesPlaceholder": "openid email profile",
-  "settings.orgSso.sectionTitle": "Single Sign-On",
+  "settings.orgSso.sectionTitle": "Single sign-on",
   "settings.orgSso.securityTitle": "Security",
   "settings.orgSso.testSsoButton": "Test SSO",
   "settings.orgSso.toggleEnforcementError": "Failed to toggle SSO enforcement",
@@ -984,7 +979,7 @@ export const settings = {
     "Organization updated successfully",
   "settings.organizationForm.uploadLogoLabel": "Upload organization logo",
   "settings.organizationForm.urlDescription":
-    "Can't be changed — it's used in URLs and API integrations.",
+    "Can't be changed, it's used in URLs and API integrations.",
   "settings.organizationForm.urlTitle": "URL",
   "settings.providerKeyRow.addedTimeAgo": "{label} · added {time} ago",
   "settings.providerKeyRow.cancel": "Cancel",
@@ -1005,13 +1000,13 @@ export const settings = {
   "settings.roles.columnRole": "Role",
   "settings.roles.columnType": "Type",
   "settings.roles.connectionCount": "{count} connection(s)",
-  "settings.roles.createRole": "Create Role",
+  "settings.roles.createRole": "Create role",
   "settings.roles.createRoleGetStarted": "Create a role to get started.",
   "settings.roles.custom": "Custom",
   "settings.roles.delete": "Delete",
   "settings.roles.deleteRoleConfirm":
     'Are you sure you want to delete the "{role}" role? This action cannot be undone.',
-  "settings.roles.deleteRoleTitle": "Delete Role",
+  "settings.roles.deleteRoleTitle": "Delete role",
   "settings.roles.deletedSuccessfully": "Role deleted successfully!",
   "settings.roles.failedToLoad": "Failed to load roles",
   "settings.roles.fullAccess": "Full access",
@@ -1025,14 +1020,14 @@ export const settings = {
   "settings.roles.roleAdmin": "Admin",
   "settings.roles.roleOwner": "Owner",
   "settings.roles.roleUser": "User",
-  "settings.roles.searchPlaceholder": "Search roles...",
+  "settings.roles.searchPlaceholder": "Search roles…",
   "settings.apiKeys.cancelButton": "Cancel",
   "settings.apiKeys.copied": "Copied to clipboard",
   "settings.apiKeys.copyKey": "Copy key",
   "settings.apiKeys.createButton": "Create key",
   "settings.apiKeys.createdAt": "Created {date}",
   "settings.apiKeys.createdDescription":
-    "Copy this key now — it won't be shown again.",
+    "Copy this key now, it won't be shown again.",
   "settings.apiKeys.createdTitle": "API key created",
   "settings.apiKeys.creatingButton": "Creating…",
   "settings.apiKeys.deleteDescription":
@@ -1078,12 +1073,10 @@ export const settings = {
   "settings.secrets.scopeLabel": "Scope",
   "settings.secrets.scopeOrganization": "Organization",
   "settings.secrets.scopeOrganizationDescription":
-    "Organization — visible to all members",
+    "Organization, visible to all members",
   "settings.secrets.scopePrivate": "Private",
-  "settings.secrets.scopePrivateDescription": "Private — only visible to me",
+  "settings.secrets.scopePrivateDescription": "Private, only visible to me",
   "settings.secrets.secretCreated": 'Secret "{name}" created',
-  "settings.secrets.secretsCountSingular": "{count} secret stored",
-  "settings.secrets.secretsCountPlural": "{count} secrets stored",
   "settings.secrets.sectionOrganization": "Organization",
   "settings.secrets.sectionPrivate": "Private to me",
   "settings.secrets.valueLabel": "Value",
@@ -1112,8 +1105,7 @@ export const settings = {
   "settings.simpleModeSection.tierWebSearch": "Web search",
   "settings.simpleModeSection.tierWebSearchDesc":
     "Quick, up-to-date answers from the web",
-  "settings.aiProviders.recommended":
-    "Recommended — 100+ models, pay as you go",
+  "settings.aiProviders.recommended": "Recommended, 100+ models, pay as you go",
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
@@ -1177,13 +1169,14 @@ export const settings = {
   "settings.infraBilling.statusPending": "Pending",
   "settings.gitCredentials.title": "Git credentials",
   "settings.gitCredentials.description":
-    "Personal access tokens for private git repositories your projects pull from but a sandbox cannot otherwise reach — submodules, and private dependencies resolved by pub, go, npm or cargo. Used by every sandbox in this organization. Reference an org/user secret per host; SSH URLs are rewritten to HTTPS so the token applies.",
+    "Personal access tokens for private git repositories your projects pull from but a sandbox cannot otherwise reach, submodules, and private dependencies resolved by pub, go, npm or cargo. Used by every sandbox in this organization. Reference an org/user secret per host; SSH URLs are rewritten to HTTPS so the token applies.",
   "settings.gitCredentials.addCredential": "Add git credential",
+  "settings.gitCredentials.empty": "No git credentials yet",
   "settings.gitCredentials.cancel": "Cancel",
   "settings.gitCredentials.createNewSecret": "Create new secret",
   "settings.gitCredentials.createNewSecretAriaLabel": "Create new secret",
   "settings.gitCredentials.createNewSecretDescription":
-    "Stored encrypted in the credential vault. The git credential will reference the new secret by id — its value never leaves the server.",
+    "Stored encrypted in the credential vault. The git credential will reference the new secret by id, its value never leaves the server.",
   "settings.gitCredentials.createNewSecretTitle": "Create new secret",
   "settings.gitCredentials.descriptionLabel": "Description (optional)",
   "settings.gitCredentials.descriptionPlaceholder":
@@ -1211,8 +1204,8 @@ export const settings = {
   "settings.gitCredentials.secretAriaLabel": "Git credential {index} secret",
   "settings.gitCredentials.scopeLabel": "Scope",
   "settings.gitCredentials.scopeOrganization":
-    "Organization — visible to all members",
-  "settings.gitCredentials.scopePrivate": "Private — only visible to me",
+    "Organization, visible to all members",
+  "settings.gitCredentials.scopePrivate": "Private, only visible to me",
   "settings.gitCredentials.secretSaved": 'Saved secret "{name}"',
   "settings.gitCredentials.tokenExposureWarning":
     "The token is installed in the sandbox's git config for the session, so commands and agents running there can use it. Scope it to the repositories it needs.",

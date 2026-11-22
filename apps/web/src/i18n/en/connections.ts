@@ -6,10 +6,9 @@ export const connections = {
   "connections.createConnectionDialog.cancelButton": "Cancel",
   "connections.createConnectionDialog.closeButton": "Close",
   "connections.createConnectionDialog.commandLabel": "Command *",
-  "connections.createConnectionDialog.commandPlaceholder":
-    "node, bun, python...",
-  "connections.createConnectionDialog.createButton": "Create Connection",
-  "connections.createConnectionDialog.customCommandType": "Custom Command",
+  "connections.createConnectionDialog.commandPlaceholder": "node, bun, python…",
+  "connections.createConnectionDialog.createButton": "Create connection",
+  "connections.createConnectionDialog.customCommandType": "Custom command",
   "connections.createConnectionDialog.description":
     "Create a custom connection in your organization. Fill in the details below.",
   "connections.createConnectionDialog.descriptionLabel": "Description",
@@ -21,16 +20,16 @@ export const connections = {
     "Failed to create connection",
   "connections.createConnectionDialog.httpType": "HTTP",
   "connections.createConnectionDialog.nameLabel": "Name *",
-  "connections.createConnectionDialog.namePlaceholder": "My Connection",
-  "connections.createConnectionDialog.npmPackageLabel": "NPM Package *",
+  "connections.createConnectionDialog.namePlaceholder": "My connection",
+  "connections.createConnectionDialog.npmPackageLabel": "NPM package *",
   "connections.createConnectionDialog.npmPackagePlaceholder":
     "@perplexity-ai/mcp-server",
-  "connections.createConnectionDialog.npxPackageType": "NPX Package",
+  "connections.createConnectionDialog.npxPackageType": "NPX package",
   "connections.createConnectionDialog.openGitHubPatSettings":
     "Open GitHub PAT settings",
-  "connections.createConnectionDialog.saving": "Saving...",
+  "connections.createConnectionDialog.saving": "Saving…",
   "connections.createConnectionDialog.sseType": "SSE",
-  "connections.createConnectionDialog.title": "Create Connection",
+  "connections.createConnectionDialog.title": "Create connection",
   "connections.createConnectionDialog.tokenLabelDefault": "Token (optional)",
   "connections.createConnectionDialog.tokenPlaceholderDefault":
     "Bearer token or API key",

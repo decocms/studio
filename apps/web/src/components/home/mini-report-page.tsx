@@ -19,7 +19,7 @@ export function MiniReportPage({
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none rounded-xl border border-border bg-background shadow-lg",
+        "pointer-events-none rounded-m border border-border bg-background shadow-lg",
         className,
       )}
     >

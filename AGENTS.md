@@ -18,6 +18,10 @@ from the repository root:
 | MCP bindings | [packages/bindings/README.md](packages/bindings/README.md) |
 | Tests | [TESTING.md](TESTING.md); for E2E, also [packages/e2e/README.md](packages/e2e/README.md) |
 
+For UI work, follow [GUI.md](GUI.md) and use the `graphical-ui`,
+`graphical-convert`, or `graphical-audit` skills in `.agents/skills/` as
+appropriate.
+
 ## Working locally
 
 Use `bun run dev` for the API and web app. Workspace READMEs own setup and

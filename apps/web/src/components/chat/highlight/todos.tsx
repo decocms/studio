@@ -39,7 +39,7 @@ function TodoRow({ todo }: { todo: Todo }) {
       <TodoCheckbox status={todo.status} />
       <span
         className={cn(
-          "relative text-sm leading-snug pt-px select-none",
+          "relative text-sm pt-px select-none",
           isCompleted && "text-muted-foreground",
         )}
       >

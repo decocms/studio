@@ -102,7 +102,7 @@ export function BrandComponentsPreview({ tokensUrl }: { tokensUrl?: string }) {
   if (tokensUrl && tokens.isPending) {
     return (
       <div className="flex h-full w-full items-center justify-center p-6">
-        <Skeleton className="h-full w-full rounded-xl" />
+        <Skeleton className="h-full w-full rounded-m" />
       </div>
     );
   }

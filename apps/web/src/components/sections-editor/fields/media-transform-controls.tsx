@@ -49,7 +49,7 @@ export function MediaTransformControls({
           type="button"
           variant="outline"
           size="sm"
-          className="h-9 shrink-0"
+          className="shrink-0"
           aria-label={t(
             "sectionsEditor.mediaTransformControls.mediaOptionsLabel",
           )}
@@ -60,7 +60,7 @@ export function MediaTransformControls({
       <PopoverContent align="end" className="w-auto min-w-52 p-3">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">
+            <Label className="text-muted-foreground">
               {t("sectionsEditor.mediaTransformControls.qualityLabel")}
             </Label>
             <ToggleGroup
@@ -78,7 +78,7 @@ export function MediaTransformControls({
                 <ToggleGroupItem
                   key={opt}
                   value={opt}
-                  className="h-8 px-3 text-xs capitalize"
+                  className="h-8 px-3 capitalize"
                 >
                   {opt}
                 </ToggleGroupItem>
@@ -88,10 +88,7 @@ export function MediaTransformControls({
 
           {showMuted && (
             <div className="flex items-center justify-between gap-3">
-              <Label
-                htmlFor={mutedId}
-                className="text-xs text-muted-foreground"
-              >
+              <Label htmlFor={mutedId} className="text-muted-foreground">
                 {t("sectionsEditor.mediaTransformControls.mutedLabel")}
               </Label>
               <Switch

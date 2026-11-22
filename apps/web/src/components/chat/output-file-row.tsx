@@ -24,7 +24,7 @@ export function OutputFileRow({ file }: { file: ThreadOutput }) {
       <button
         type="button"
         onClick={open}
-        className="min-w-0 flex-1 truncate text-left text-[13px] font-medium text-foreground hover:underline"
+        className="min-w-0 flex-1 truncate text-left text-s font-medium text-foreground hover:underline"
         title={file.filename}
       >
         {file.filename}
@@ -40,12 +40,7 @@ export function OutputFileRow({ file }: { file: ThreadOutput }) {
       >
         <Download01 className="size-3.5" />
       </a>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 shrink-0 px-2.5 text-xs"
-        onClick={open}
-      >
+      <Button variant="outline" size="sm" className="shrink-0" onClick={open}>
         {t("chat.outputFileRow.open")}
       </Button>
     </div>

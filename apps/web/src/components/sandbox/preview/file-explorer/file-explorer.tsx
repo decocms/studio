@@ -1036,7 +1036,7 @@ export function FileExplorer({
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t("sandbox.fileExplorer.searchFilesPlaceholder")}
               aria-label={t("sandbox.fileExplorer.searchFilesLabel")}
-              className="w-full rounded-md border border-input bg-transparent pl-7 pr-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+              className="w-full rounded-(--studio-control-radius) bg-transparent shadow-(--edge) pl-7 pr-2 py-1.5 text-s outline-none focus-visible:[outline:var(--focus-ring-outline)] placeholder:text-muted-foreground"
             />
           </div>
           <Tooltip>
@@ -1044,8 +1044,8 @@ export function FileExplorer({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                className="size-7 shrink-0"
+                size="icon-sm"
+                className="shrink-0"
                 aria-label={t("sandbox.fileExplorer.newFileLabel")}
                 onClick={() => openCreateDialog("new-file")}
               >
@@ -1061,8 +1061,8 @@ export function FileExplorer({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                className="size-7 shrink-0"
+                size="icon-sm"
+                className="shrink-0"
                 aria-label={t("sandbox.fileExplorer.newFolderLabel")}
                 onClick={() => openCreateDialog("new-folder")}
               >
@@ -1145,10 +1145,10 @@ export function FileExplorer({
             {/* Filename matches (whole repo, independent of tree expansion) */}
             {search && (
               <>
-                <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-xxs font-medium text-muted-foreground">
                   <span>{t("sandbox.fileExplorer.files")}</span>
                   {fileNameMatchCount > 0 && (
-                    <span className="normal-case tracking-normal text-muted-foreground/70">
+                    <span className="text-muted-foreground/70">
                       {fileNameMatchCount}
                       {fileNameMatchCount >= FILENAME_MATCH_LIMIT ? "+" : ""}
                     </span>
@@ -1191,10 +1191,10 @@ export function FileExplorer({
             {/* Content matches (ripgrep over the whole repo) */}
             {search && (
               <div className="mt-1 border-t pt-1">
-                <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-xxs font-medium text-muted-foreground">
                   <span>{t("sandbox.fileExplorer.inFiles")}</span>
                   {contentMatchCount > 0 && (
-                    <span className="text-muted-foreground/70 normal-case tracking-normal">
+                    <span className="text-muted-foreground/70">
                       {contentMatchCount}
                       {contentSearchTruncated ? "+" : ""}
                     </span>
@@ -1301,7 +1301,7 @@ export function FileExplorer({
             style={{ width: "360px" }}
           >
             <form
-              className="flex w-full items-center gap-1.5 rounded-xl border border-border bg-background/95 px-3 py-1.5 shadow-lg backdrop-blur"
+              className="flex w-full items-center gap-1.5 rounded-m bg-background/95 px-3 py-1.5 shadow-(--popup-shadow) backdrop-blur"
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
@@ -1410,7 +1410,7 @@ export function FileExplorer({
 
         {/* Status bar */}
         {selectedFile && (
-          <div className="flex items-center justify-between px-3 py-1 border-t text-[11px] text-muted-foreground shrink-0">
+          <div className="flex items-center justify-between px-3 py-1 border-t text-xs text-muted-foreground shrink-0">
             <span className="truncate">{selectedFile}</span>
             <span>
               {isDirty

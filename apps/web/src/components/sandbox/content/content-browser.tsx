@@ -1622,7 +1622,7 @@ function ItemList({
                     <GroupHeader icon={Globe01} label="Saved sections" />
                     {savedSectionGroups.map((group) => (
                       <div key={group.label} className="flex flex-col gap-1">
-                        <div className="px-2.5 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+                        <div className="px-2.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground/60">
                           {group.label}
                         </div>
                         {group.sections.map((section) => {
@@ -1722,7 +1722,7 @@ function ItemList({
                     active={isActive}
                     trailing={
                       entry.installed ? (
-                        <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
+                        <span className="shrink-0 rounded-xs bg-success/15 px-1.5 py-0.5 text-xxs font-medium text-success">
                           Installed
                         </span>
                       ) : undefined

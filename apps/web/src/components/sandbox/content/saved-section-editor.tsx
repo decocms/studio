@@ -175,8 +175,8 @@ export function SavedSectionEditor({
               <TooltipTrigger asChild>
                 <Button
                   variant={jsonOpen ? "default" : "ghost"}
-                  size="icon"
-                  className="size-8 shrink-0"
+                  size="icon-sm"
+                  className="shrink-0"
                   onClick={toggleJson}
                   aria-label={
                     jsonOpen
@@ -195,7 +195,7 @@ export function SavedSectionEditor({
               </TooltipContent>
             </Tooltip>
           </div>
-          <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-muted-foreground">
+          <p className="mt-1.5 py-1 pl-1 text-sm text-muted-foreground">
             {t("sandbox.savedSectionEditor.globalSectionDescription")}
           </p>
         </div>

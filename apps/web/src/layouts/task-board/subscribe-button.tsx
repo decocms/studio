@@ -77,7 +77,7 @@ export function SubscribeToggle({
             />
           ))}
           {overflow > 0 && (
-            <span className="-ml-2 inline-flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-2 ring-background">
+            <span className="-ml-2 inline-flex size-6 items-center justify-center rounded-full bg-muted text-xxs font-medium text-muted-foreground ring-2 ring-background">
               +{overflow}
             </span>
           )}

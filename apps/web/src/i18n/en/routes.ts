@@ -1,9 +1,8 @@
 export const routes = {
-  "routes.agentsList.agentsHeading": "Projects",
   "routes.agentsList.askAdminToCreate":
     "Ask an organization admin to create one.",
   "routes.agentsList.cancelButton": "Cancel",
-  "routes.agentsList.createAgent": "Create Project",
+  "routes.agentsList.createAgent": "Create project",
   "routes.agentsList.createAgentToGetStarted":
     "Create a project to get started.",
   "routes.agentsList.deleteAgentDescription":
@@ -14,7 +13,7 @@ export const routes = {
   "routes.agentsList.noAgentsFound": "No projects found",
   "routes.agentsList.noAgentsMatchSearch": 'No projects match "{search}"',
   "routes.agentsList.noAgentsYet": "No projects yet",
-  "routes.agentsList.searchPlaceholder": "Search for a project...",
+  "routes.agentsList.searchPlaceholder": "Search for a project…",
   "routes.agentsList.title": "Projects",
   "routes.reportsOnboarding.authCopy.accountExists":
     "An account with this email already exists. Try signing in instead.",
@@ -26,7 +25,7 @@ export const routes = {
   "routes.reportsOnboarding.authCopy.codeSentTo": "Code sent to {email}",
   "routes.reportsOnboarding.authCopy.continue": "Continue",
   "routes.reportsOnboarding.authCopy.continueWith": "Continue with {provider}",
-  "routes.reportsOnboarding.authCopy.creatingAccount": "Creating account...",
+  "routes.reportsOnboarding.authCopy.creatingAccount": "Creating account…",
   "routes.reportsOnboarding.authCopy.defaultSubtitle":
     "Sign in or create a new account",
   "routes.reportsOnboarding.authCopy.divider": "or",
@@ -59,7 +58,7 @@ export const routes = {
   "routes.reportsOnboarding.authCopy.resetPasswordTitle": "Reset your password",
   "routes.reportsOnboarding.authCopy.sendCode": "Send code",
   "routes.reportsOnboarding.authCopy.sendResetLink": "Send reset link",
-  "routes.reportsOnboarding.authCopy.sending": "Sending...",
+  "routes.reportsOnboarding.authCopy.sending": "Sending…",
   "routes.reportsOnboarding.authCopy.signIn": "Sign in",
   "routes.reportsOnboarding.authCopy.signInFailed": "Sign in failed",
   "routes.reportsOnboarding.authCopy.signInWithEmailCode":
@@ -68,7 +67,7 @@ export const routes = {
     "Sign in with password",
   "routes.reportsOnboarding.authCopy.signUp": "Create account",
   "routes.reportsOnboarding.authCopy.signUpFailed": "Sign up failed",
-  "routes.reportsOnboarding.authCopy.signingIn": "Signing in...",
+  "routes.reportsOnboarding.authCopy.signingIn": "Signing in…",
   "routes.reportsOnboarding.authCopy.tooManyAttempts":
     "Too many attempts. Wait a moment and try again.",
   "routes.reportsOnboarding.authCopy.useDifferentEmail":
@@ -78,7 +77,7 @@ export const routes = {
   "routes.reportsOnboarding.authCopy.verificationCodeTitle":
     "Enter verification code",
   "routes.reportsOnboarding.authCopy.verify": "Verify",
-  "routes.reportsOnboarding.authCopy.verifying": "Verifying...",
+  "routes.reportsOnboarding.authCopy.verifying": "Verifying…",
   "routes.reportsOnboarding.authCopy.welcomeTitle": "Welcome to deco",
   "routes.reportsOnboarding.chooseOrg": "Choose an organization",
   "routes.reportsOnboarding.commerceDiagnostic": "Deco Score",
@@ -120,8 +119,8 @@ export const routes = {
   "routes.reportsOnboarding.siteUrlPlaceholder": "https://example.com",
   "routes.reportsOnboarding.unlockDiagnostic": "Unlock your full Deco Score",
   "routes.reportsOnboarding.loading.preparingWorkspace":
-    "Preparing your commerce workspace...",
-  "routes.reportsOnboarding.loading.preparing": "Preparing...",
+    "Preparing your commerce workspace…",
+  "routes.reportsOnboarding.loading.preparing": "Preparing…",
   "routes.reportsOnboarding.scheduleMeeting.headline": "Need help? Talk to us",
   "routes.reportsOnboarding.scheduleMeeting.body":
     "Schedule a call and we'll help you connect your tools.",
@@ -137,21 +136,19 @@ export const routes = {
     "Could not generate the Deco Score for this site. Reload the page and try again.",
   "routes.reportsOnboarding.connectModal.somethingWentWrong":
     "Something went wrong generating your Deco Score. Try again in a moment.",
-  "routes.reportsOnboarding.connectModal.openingReport":
-    "Opening Deco Score...",
+  "routes.reportsOnboarding.connectModal.openingReport": "Opening Deco Score…",
   "routes.reportsOnboarding.connectModal.viewDiagnostic": "View Deco Score",
   "routes.reportsOnboarding.connectModal.skip": "Skip",
   "routes.reportsOnboarding.connectModal.close": "Close",
   "routes.reportsOnboarding.connectModal.quote":
-    "I was grinning ear to ear, because we had already spotted all of it, we just didn't know what to do next... you brought a really meaningful perspective on the next steps.",
+    "I was grinning ear to ear, because we had already spotted all of it, we just didn't know what to do next… you brought a really meaningful perspective on the next steps.",
   "routes.reportsOnboarding.connectModal.quoteAuthor": "Ágata Esteves",
   "routes.reportsOnboarding.connectModal.trustRevoke": "Revoke anytime",
   "routes.reportsOnboarding.connectModal.trustEncrypted": "Encrypted",
   "routes.reportsOnboarding.connectModal.trustNeverSold": "Never sold",
-  "routes.reportsOnboarding.connectSourcesTab.title": "Connect data sources",
   "routes.reportsOnboarding.connectSourcesTab.refresh": "Refresh Deco Score",
   "routes.reportsOnboarding.connectSourcesTab.refreshing":
-    "Refreshing Deco Score...",
+    "Refreshing Deco Score…",
   "routes.reportsOnboarding.companionSection.title":
     "Connect your tools to see the full Deco Score",
   "routes.reportsOnboarding.companionSection.loadError":
@@ -160,30 +157,28 @@ export const routes = {
     "Something went wrong loading your integrations.",
   "routes.reportsOnboarding.companionSection.retry": "Try again",
   "routes.reportsOnboarding.companionSection.statusUnavailable":
-    "We couldn't verify your Google connections right now — sources you already connected may show as disconnected. You can still continue.",
+    "We couldn't verify your Google connections right now, sources you already connected may show as disconnected. You can still continue.",
   "routes.oauthCallback.authenticationComplete": "Authentication complete.",
   "routes.oauthCallback.authenticationFailed": "MCP authentication failed",
-  "routes.oauthCallback.authenticationFailedTitle": "Authentication Failed",
+  "routes.oauthCallback.authenticationFailedTitle": "Authentication failed",
   "routes.oauthCallback.authenticationInProgressTitle":
-    "Authentication in progress...",
+    "Authentication in progress…",
   "routes.oauthCallback.authenticationSuccessfulTitle":
     "Authentication Successful",
   "routes.oauthCallback.errorOccurred":
     "An error occurred during authentication:",
-  "routes.oauthCallback.processingAuthentication":
-    "Processing authentication...",
+  "routes.oauthCallback.processingAuthentication": "Processing authentication…",
   "routes.oauthCallback.windowClosingAutomatically":
     "This window will close automatically.",
   "routes.oauthCallbackAiProvider.authCompleteCloseAuto":
     "Authentication complete. This window will close automatically.",
-  "routes.oauthCallbackAiProvider.authFailed": "Authentication Failed",
+  "routes.oauthCallbackAiProvider.authFailed": "Authentication failed",
   "routes.oauthCallbackAiProvider.authInProgress":
-    "Authentication in progress...",
-  "routes.oauthCallbackAiProvider.authSuccess": "Authentication Successful",
+    "Authentication in progress…",
+  "routes.oauthCallbackAiProvider.authSuccess": "Authentication successful",
   "routes.oauthCallbackAiProvider.errorOccurred":
     "An error occurred during authentication:",
-  "routes.oauthCallbackAiProvider.processingAuth":
-    "Processing authentication...",
+  "routes.oauthCallbackAiProvider.processingAuth": "Processing authentication…",
   "routes.oauthCallbackAiProvider.windowCloseAuto":
     "This window will close automatically.",
   "routes.onboarding.accessMultiple":
@@ -194,10 +189,10 @@ export const routes = {
     "Anyone with a verified @{domain} email can join this org",
   "routes.onboarding.checkFailed":
     "Couldn't check {domain} for an existing organization.",
-  "routes.onboarding.checking": "Checking {domain}...",
+  "routes.onboarding.checking": "Checking {domain}…",
   "routes.onboarding.continue": "Continue",
   "routes.onboarding.createNewOrg": "Create a new organization instead",
-  "routes.onboarding.creating": "Creating...",
+  "routes.onboarding.creating": "Creating…",
   "routes.onboarding.emailMatchesOrg":
     "Your email domain matches an existing organization.",
   "routes.onboarding.emailMatchesOrgApproval":
@@ -206,7 +201,7 @@ export const routes = {
   "routes.onboarding.failedReadImage": "Failed to read image",
   "routes.onboarding.gettingReady": "Getting everything ready from {domain}",
   "routes.onboarding.imageTooLarge": "Image must be smaller than 2MB",
-  "routes.onboarding.myOrganizationPlaceholder": "My Organization",
+  "routes.onboarding.myOrganizationPlaceholder": "My organization",
   "routes.onboarding.optional": "Optional",
   "routes.onboarding.orgAvatar": "Organization avatar",
   "routes.onboarding.orgName": "Organization name",
@@ -240,7 +235,7 @@ export const routes = {
   "routes.resetPassword.newPasswordLabel": "New password",
   "routes.resetPassword.confirmPasswordLabel": "Confirm password",
   "routes.resetPassword.passwordsDoNotMatch": "Passwords do not match",
-  "routes.resetPassword.resetting": "Resetting...",
+  "routes.resetPassword.resetting": "Resetting…",
   "routes.resetPassword.resetPassword": "Reset password",
   "routes.resetPassword.backToSignIn": "Back to sign in",
 } as const;

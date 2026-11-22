@@ -87,9 +87,7 @@ export function FieldLabel({
       <div className="space-y-0.5">
         {labelBody}
         {description && (
-          <p className="text-xs leading-normal text-muted-foreground">
-            {description}
-          </p>
+          <p className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
     );

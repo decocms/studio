@@ -119,9 +119,9 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             {provider ? (
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 aria-label={t("settings.providerKeyRow.editProviderKey")}
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground"
                 onClick={() => setEditOpen(true)}
               >
                 <Edit01 size={14} />
@@ -129,9 +129,9 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             ) : null}
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label={t("settings.providerKeyRow.deleteProviderKey")}
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              className="text-muted-foreground hover:text-destructive"
               disabled={isDeleting}
               onClick={() => setConfirmDelete(true)}
             >

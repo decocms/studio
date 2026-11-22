@@ -120,7 +120,7 @@ function ScanScreen({
       style={{
         background: DECK.bg,
         color: DECK.ink,
-        fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
+        fontFamily: "var(--font-ui)",
         WebkitFontSmoothing: "antialiased",
       }}
     >
@@ -182,7 +182,7 @@ function ScanScreen({
 
             {/* Delivery address, or the sign-in that becomes one */}
             <div
-              className="mt-4 sm:mt-5 rounded-xl sm:rounded-2xl px-4 sm:px-5 py-4 sm:py-5"
+              className="mt-4 sm:mt-5 rounded-m sm:rounded-2xl px-4 sm:px-5 py-4 sm:py-5"
               style={{ background: "#F2F1EF" }}
             >
               <p
@@ -204,7 +204,7 @@ function ScanScreen({
 
             {/* Tracker */}
             <div
-              className="mt-5 sm:mt-7 rounded-xl sm:rounded-2xl overflow-hidden"
+              className="mt-5 sm:mt-7 rounded-m sm:rounded-2xl overflow-hidden"
               style={{ border: `1px solid ${DECK.border}` }}
             >
               {STAGES.map((s, i) => {
@@ -331,7 +331,7 @@ function ScanScreen({
             </p>
             <a
               href="https://decocms.com/diagnostico"
-              className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-medium transition-transform active:scale-[0.98]"
+              className="mt-5 inline-flex items-center gap-2 rounded-m px-4 py-2.5 text-[14px] font-medium transition-transform active:scale-[0.98]"
               style={{ background: DECK.primary, color: DECK.primaryFg }}
             >
               {t("reports.scanGate.tryAnother")}
@@ -426,7 +426,7 @@ function NotificationEmail({ email }: { email: string }) {
   const t = useT();
   return (
     <div
-      className="flex min-w-0 items-center gap-3 rounded-xl px-4 py-3"
+      className="flex min-w-0 items-center gap-3 rounded-m px-4 py-3"
       style={{ background: DECK.limeTint }}
     >
       <div

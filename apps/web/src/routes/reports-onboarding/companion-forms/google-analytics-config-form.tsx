@@ -155,7 +155,7 @@ export function GoogleAnalyticsConfigForm({
             type="button"
             onClick={onDisconnect}
             disabled={isPending}
-            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive disabled:opacity-50"
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive disabled:text-neutral-6"
           >
             Desconectar conta
           </button>

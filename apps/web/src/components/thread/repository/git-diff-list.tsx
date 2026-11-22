@@ -61,7 +61,7 @@ function DiffLoadingGhost({ height }: { height: string }) {
           />
         </div>
       ))}
-      <div className="flex items-center justify-center pt-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-center pt-1 text-xs text-muted-foreground">
         {t("thread.publishDialog.openingComparison")}
       </div>
     </div>
@@ -234,7 +234,6 @@ export function GitDiffList({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs"
                     onClick={() => setDiscardConfirmFile(null)}
                   >
                     Cancel
@@ -242,7 +241,7 @@ export function GitDiffList({
                   <Button
                     type="button"
                     size="sm"
-                    className="h-7 bg-destructive px-2 text-xs text-destructive-foreground hover:bg-destructive/90"
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     onClick={() => {
                       setDiscardConfirmFile(null);
                       void onDiscardFile(filepath);

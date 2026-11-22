@@ -163,7 +163,7 @@ export function ToolCallShell({
         {/* Label */}
         <span
           className={cn(
-            "shrink-0 text-[14px] font-normal",
+            "shrink-0 text-s font-normal",
             isError ? "text-warning/80" : "text-foreground",
           )}
         >
@@ -173,7 +173,7 @@ export function ToolCallShell({
         {/* Inline summary — pill with subtle bg */}
         {summary ? (
           <span className="min-w-0 flex-1 truncate">
-            <span className="text-[12px] text-muted-foreground/60 bg-muted/50 rounded-[3px] px-1 py-px leading-none">
+            <span className="text-xs text-muted-foreground/60 bg-muted/50 rounded-xs px-1 py-px leading-none">
               {summary}
             </span>
           </span>
@@ -202,7 +202,7 @@ export function ToolCallShell({
               >
                 <p
                   ref={detailStick.contentRef}
-                  className="text-xs text-muted-foreground/70 whitespace-pre-wrap leading-relaxed wrap-break-word"
+                  className="text-xs text-muted-foreground/70 whitespace-pre-wrap wrap-break-word"
                 >
                   {detail}
                 </p>
@@ -260,7 +260,7 @@ export type { ToolCallMetrics } from "./utils.tsx";
 export function LatencyLabel({ latency }: { latency?: number }) {
   if (latency == null || latency <= 0) return null;
   return (
-    <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+    <span className="text-xs font-mono tabular-nums text-muted-foreground">
       {formatDuration(latency)}
     </span>
   );
@@ -284,7 +284,7 @@ export function SeeAllRow({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+      className="group flex w-full items-center justify-center gap-1.5 rounded-lg bg-card card-shadow px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
     >
       {t("common.seeAll", { count, noun })}
       <ArrowRight

@@ -208,7 +208,7 @@ export function EnvVarsEditor({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-10 w-10 shrink-0 text-muted-foreground hover:text-destructive"
+              className="shrink-0 text-muted-foreground hover:text-destructive"
               onClick={() => handleRemove(index)}
             >
               <Trash01 size={16} />
@@ -220,7 +220,7 @@ export function EnvVarsEditor({
           type="button"
           variant="outline"
           size="sm"
-          className="w-full h-9 text-muted-foreground"
+          className="w-full text-muted-foreground"
           onClick={handleAdd}
         >
           <Plus size={16} className="mr-1" />

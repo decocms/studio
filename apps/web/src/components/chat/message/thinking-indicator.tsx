@@ -160,7 +160,7 @@ export function ThinkingState({ startedAt }: { startedAt: number | null }) {
     <div className="flex flex-col gap-0.5">
       <RunStatusIndicator startedAt={startedAt} />
       {isSlow && stream?.stop && (
-        <div className="flex items-center gap-2 pb-1 text-[13px] text-muted-foreground/60">
+        <div className="flex items-center gap-2 pb-1 text-s text-muted-foreground/60">
           <span>{t("chat.thinkingIndicator.takingLonger")}</span>
           <button
             type="button"

@@ -47,7 +47,7 @@ export function SettingsIconButton() {
   const { scopeId, orgLink, open } = useSettingsTarget();
   const label = t("sidebar.navDestinations.settings");
   const className =
-    "relative flex size-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground";
+    "relative flex size-(--studio-control-height-sm) shrink-0 items-center justify-center rounded-(--studio-control-radius) text-sidebar-foreground/60 [&_svg]:size-4 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground";
 
   if (scopeId) {
     return (

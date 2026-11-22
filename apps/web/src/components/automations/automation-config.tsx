@@ -505,9 +505,9 @@ function ToolRow({
       <Checkbox checked={checked} className="pointer-events-none mt-0.5" />
       {leading && <span className="mt-px shrink-0">{leading}</span>}
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-sm leading-tight">{title}</span>
+        <span className="truncate text-s">{title}</span>
         {description && (
-          <span className="line-clamp-2 text-xs leading-snug text-muted-foreground">
+          <span className="line-clamp-2 text-xs text-muted-foreground">
             {description}
           </span>
         )}
@@ -548,7 +548,7 @@ function GroupHeading({
         {conn?.title ?? label ?? t("automations.automationConfig.otherTools")}
       </span>
       <span className="ml-auto flex items-center gap-2">
-        <span className="text-[11px] font-normal tabular-nums text-muted-foreground/70">
+        <span className="text-xs font-normal tabular-nums text-muted-foreground/70">
           {on}/{total}
         </span>
         <button
@@ -557,7 +557,7 @@ function GroupHeading({
             e.stopPropagation();
             onToggle();
           }}
-          className="text-[11px] font-medium text-primary hover:underline"
+          className="text-xs font-medium text-primary hover:underline"
         >
           {allOn
             ? t("automations.automationConfig.none")
@@ -656,7 +656,7 @@ function ToolsPicker({
           {!allSelected && (
             <Badge
               variant="secondary"
-              className="ml-0.5 h-5 px-1.5 text-[11px] tabular-nums"
+              className="ml-0.5 h-5 px-1.5 tabular-nums"
             >
               {selected.size}/{allNames.length}
             </Badge>
@@ -687,7 +687,7 @@ function ToolsPicker({
                 type="button"
                 onClick={() => onChange(null)}
                 disabled={allSelected}
-                className="text-xs font-medium text-primary hover:underline disabled:cursor-default disabled:opacity-40 disabled:no-underline"
+                className="text-xs font-medium text-primary hover:underline disabled:cursor-default disabled:text-neutral-6 disabled:no-underline"
               >
                 {t("automations.automationConfig.selectAll")}
               </button>
@@ -696,7 +696,7 @@ function ToolsPicker({
                 type="button"
                 onClick={() => onChange([])}
                 disabled={selected.size === 0}
-                className="text-xs font-medium text-muted-foreground hover:underline disabled:cursor-default disabled:opacity-40 disabled:no-underline"
+                className="text-xs font-medium text-muted-foreground hover:underline disabled:cursor-default disabled:text-neutral-6 disabled:no-underline"
               >
                 {t("automations.automationConfig.clear")}
               </button>

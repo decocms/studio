@@ -54,11 +54,11 @@ export function ReportsIndex() {
       <Page.Content>
         <div className="flex min-h-full w-full justify-center px-6 py-16">
           <div className="flex w-full max-w-sm flex-col items-center">
-            <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground">
+            <span className="flex size-11 items-center justify-center rounded-m border border-border bg-card text-muted-foreground">
               <BarChartSquare02 width={20} height={20} aria-hidden />
             </span>
 
-            <h1 className="mt-5 text-xl font-medium tracking-tight text-foreground">
+            <h1 className="mt-5 text-l font-medium text-foreground">
               {t("projects.reports.chooserTitle")}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">

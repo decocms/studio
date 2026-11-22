@@ -79,7 +79,7 @@ function AvatarUpload({ url, fallback }: { url?: string; fallback: string }) {
         onClick={() => setOpen(true)}
         aria-label={t("settings.profile.avatarUpload")}
         title={t("settings.profile.avatarUpload")}
-        className="rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-full transition-opacity hover:opacity-80 focus-ring"
       >
         <Avatar url={url} fallback={fallback} shape="circle" size="base" />
       </button>
@@ -275,7 +275,7 @@ function PreferencesSection() {
                 }));
               }}
             >
-              <SelectTrigger className="w-44 h-7 text-xs">
+              <SelectTrigger className="w-44 h-7">
                 <span>
                   {
                     LANGUAGE_OPTIONS.find(
@@ -383,7 +383,7 @@ function PreferencesSection() {
                 }));
               }}
             >
-              <SelectTrigger className="w-36 h-7 text-xs">
+              <SelectTrigger className="w-36 h-7">
                 <span>
                   {{
                     readonly: t("settings.preferences.toolApprovalAsk"),

@@ -151,7 +151,7 @@ export default function AdminPromptsPage() {
               <Label htmlFor="prompt-source">{selected.path}</Label>
               <Textarea
                 id="prompt-source"
-                className="min-h-[420px] font-mono text-xs"
+                className="min-h-[420px] font-mono"
                 spellCheck={false}
                 value={value}
                 disabled={selected.content === null}

@@ -174,7 +174,7 @@ export function TriggerCard({
                 if (e.key === "Escape") setCount(interval.count);
               }}
               disabled={isSaving}
-              className="w-12 text-center text-sm h-7 border border-border rounded-md bg-background px-1 focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-12 text-center text-sm h-7 border border-border rounded-md bg-background px-1 focus-ring"
             />
             <span className="text-sm">{unitLabel(interval.unit, count)}</span>
           </>
@@ -230,8 +230,8 @@ export function TriggerCard({
           {isCron && !interval && !isEditing && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={() => {
                 setEditValue(trigger.cron_expression ?? "");
                 setIsEditing(true);
@@ -243,8 +243,8 @@ export function TriggerCard({
           {isWebhook && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
               title={t("automations.triggerCard.rotateToken")}
               onClick={() => setConfirmRotate(true)}
             >
@@ -253,8 +253,8 @@ export function TriggerCard({
           )}
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            size="icon-sm"
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => setConfirmDelete(true)}
           >
             <XClose size={13} className="text-muted-foreground" />

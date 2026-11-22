@@ -82,17 +82,17 @@ export function ConnectApiKeyForm({
       className="space-y-3"
     >
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
+        <label className="text-s font-medium">
           {t("settings.connectForms.labelField")}
         </label>
         <Input
           placeholder={t("settings.connectForms.labelPlaceholder")}
           {...register("label")}
-          className="h-8 text-sm"
+          className="h-8"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
+        <label className="text-s font-medium">
           {t("settings.connectForms.apiKeyField")}
         </label>
         <div className="relative">
@@ -100,7 +100,7 @@ export function ConnectApiKeyForm({
             type={showKey ? "text" : "password"}
             placeholder="sk-..."
             {...register("apiKey")}
-            className="ph-no-capture h-8 text-sm pr-8"
+            className="ph-no-capture h-8 pr-8"
           />
           <button
             type="button"
@@ -226,27 +226,27 @@ export function ConnectOpenAICompatibleForm({
       className="space-y-3"
     >
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
+        <label className="text-s font-medium">
           {t("settings.connectForms.labelField")}
         </label>
         <Input
           placeholder={labelPlaceholder}
           {...register("label")}
-          className="h-8 text-sm"
+          className="h-8"
         />
       </div>
       {preset?.defaultBaseUrl ? (
         <input type="hidden" {...register("baseUrl")} />
       ) : (
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">
+          <label className="text-s font-medium">
             {t("settings.connectForms.baseUrlField")}
           </label>
           <Input
             type="url"
             placeholder={baseUrlPlaceholder}
             {...register("baseUrl")}
-            className="h-8 text-sm"
+            className="h-8"
           />
           {errors.baseUrl && (
             <p className="text-xs text-destructive">{errors.baseUrl.message}</p>
@@ -254,7 +254,7 @@ export function ConnectOpenAICompatibleForm({
         </div>
       )}
       <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
+        <label className="text-s font-medium">
           {t("settings.connectForms.apiKeyField")}{" "}
           <span className="text-muted-foreground/60">
             (
@@ -269,7 +269,7 @@ export function ConnectOpenAICompatibleForm({
             type={showKey ? "text" : "password"}
             placeholder="sk-..."
             {...register("apiKey")}
-            className="ph-no-capture h-8 text-sm pr-8"
+            className="ph-no-capture h-8 pr-8"
           />
           <button
             type="button"

@@ -7,14 +7,14 @@
 import { Link } from "@tanstack/react-router";
 import {
   BarChartSquare02,
-  BezierCurve02,
+  Beaker02,
+  CheckDone01,
   FileSearch02,
-  FlipBackward,
+  Globe02,
   Image01,
-  LayoutAlt01,
+  Lightning01,
+  Monitor01,
   Server01,
-  Speedometer02,
-  Zap,
 } from "@untitledui/icons";
 import { useState, type ComponentType, type ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
@@ -53,7 +53,7 @@ const APPS: Record<
     captionKey: TranslationKey;
     Icon: ComponentType<{ size?: number }>;
     to: string;
-    /** Tile tint, from the design system's categorical palette. */
+    /** Tile tint from the categorical palette; the glyph is the hue pulled toward the ink so lime and green stay legible on their own tint. */
     tone: string;
   }
 > = {
@@ -62,63 +62,63 @@ const APPS: Record<
     captionKey: "projects.apps.reportsCaption",
     Icon: FileSearch02,
     to: PROJECT_ROUTE.reports,
-    tone: "bg-chart-2/15 text-chart-2",
+    tone: "bg-chart-2/15 text-[color-mix(in_srgb,var(--chart-2)_60%,var(--foreground))]",
   },
   "site-editor": {
     labelKey: "projects.apps.siteEditor",
     captionKey: "projects.apps.siteEditorCaption",
-    Icon: LayoutAlt01,
+    Icon: Monitor01,
     to: PROJECT_ROUTE.siteEditor,
-    tone: "bg-chart-1/15 text-chart-1",
+    tone: "bg-chart-1/15 text-[color-mix(in_srgb,var(--chart-1)_60%,var(--foreground))]",
   },
   assets: {
     labelKey: "projects.apps.assets",
     captionKey: "projects.apps.assetsCaption",
     Icon: Image01,
     to: PROJECT_ROUTE.assets,
-    tone: "bg-chart-2/15 text-chart-2",
+    tone: "bg-chart-2/15 text-[color-mix(in_srgb,var(--chart-2)_60%,var(--foreground))]",
   },
   hosting: {
     labelKey: "projects.apps.hosting",
     captionKey: "projects.apps.hostingCaption",
     Icon: Server01,
     to: PROJECT_ROUTE.hosting,
-    tone: "bg-chart-3/15 text-chart-3",
+    tone: "bg-chart-3/15 text-[color-mix(in_srgb,var(--chart-3)_60%,var(--foreground))]",
   },
   e2e: {
     labelKey: "projects.apps.e2e",
     captionKey: "projects.apps.e2eCaption",
-    Icon: FlipBackward,
+    Icon: CheckDone01,
     to: PROJECT_ROUTE.e2e,
-    tone: "bg-chart-4/15 text-chart-4",
+    tone: "bg-chart-4/15 text-[color-mix(in_srgb,var(--chart-4)_60%,var(--foreground))]",
   },
   analytics: {
     labelKey: "projects.apps.analytics",
     captionKey: "projects.apps.analyticsCaption",
     Icon: BarChartSquare02,
     to: PROJECT_ROUTE.analytics,
-    tone: "bg-chart-5/15 text-chart-5",
+    tone: "bg-chart-3/15 text-[color-mix(in_srgb,var(--chart-3)_60%,var(--foreground))]",
   },
   cdn: {
     labelKey: "projects.apps.cdn",
     captionKey: "projects.apps.cdnCaption",
-    Icon: Speedometer02,
+    Icon: Globe02,
     to: PROJECT_ROUTE.monitor,
-    tone: "bg-chart-2/15 text-chart-2",
+    tone: "bg-chart-2/15 text-[color-mix(in_srgb,var(--chart-2)_60%,var(--foreground))]",
   },
   automations: {
     labelKey: "projects.apps.automations",
     captionKey: "projects.apps.automationsCaption",
-    Icon: Zap,
+    Icon: Lightning01,
     to: PROJECT_ROUTE.automations,
-    tone: "bg-chart-4/15 text-chart-4",
+    tone: "bg-chart-4/15 text-[color-mix(in_srgb,var(--chart-4)_60%,var(--foreground))]",
   },
   experiments: {
     labelKey: "projects.apps.experiments",
     captionKey: "projects.apps.experimentsCaption",
-    Icon: BezierCurve02,
+    Icon: Beaker02,
     to: PROJECT_ROUTE.experiments,
-    tone: "bg-chart-1/15 text-chart-1",
+    tone: "bg-chart-1/15 text-[color-mix(in_srgb,var(--chart-1)_60%,var(--foreground))]",
   },
 };
 
@@ -187,7 +187,7 @@ function AppTile({
       onClick={onClick}
       title={title}
       style={order === undefined ? undefined : { order }}
-      className="group flex shrink-0 flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
+      className="group flex shrink-0 flex-col items-center gap-2.5 rounded-m p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
     >
       {face}
       <span className="flex w-full flex-col">
@@ -427,11 +427,9 @@ function AppsSection({
      and a tile row is not a list. */
   if (oneLine) {
     return (
-      <section className="hidden flex-col overflow-hidden rounded-2xl bg-card card-shadow has-[a]:flex">
+      <section className="surface hidden flex-col overflow-hidden has-[a]:flex">
         <div className="flex h-12 items-center justify-between gap-3 border-b border-border/70 px-5">
-          <h2 className="text-[0.9rem] font-medium tracking-tight text-foreground">
-            {title}
-          </h2>
+          <h2 className="text-m font-medium text-foreground">{title}</h2>
           {seeAll}
         </div>
         <div className="px-5 py-3">{row}</div>

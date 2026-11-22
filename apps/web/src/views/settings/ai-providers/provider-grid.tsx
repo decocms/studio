@@ -1,6 +1,6 @@
 import type { AiProviderInfo } from "@/sdk";
+import { useState } from "react";
 import { ChevronRight } from "@untitledui/icons";
-import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -41,22 +41,33 @@ function ProviderTile({
   description: string;
   onClick: () => void;
 }) {
+  // Keyed by src so a new logo gets a fresh attempt without an effect.
+  const [failedLogo, setFailedLogo] = useState<string | null>(null);
+  const showLogo = logo && failedLogo !== logo;
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join("");
+
   return (
     <SettingsCardItem
       onClick={onClick}
       icon={
-        logo ? (
-          <img
-            src={logo}
-            alt={name}
-            className="size-8 rounded-md object-contain dark:bg-white dark:p-0.5"
-          />
-        ) : (
-          <Avatar
-            fallback={name.charAt(0)}
-            className="size-8 bg-primary/10 text-primary"
-          />
-        )
+        // Logos are drawn for light backgrounds, so the tile is white in both modes.
+        <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-(--radius-s) bg-white p-1 text-xs font-medium text-black shadow-(--edge)">
+          {showLogo ? (
+            <img
+              src={logo}
+              alt={name}
+              className="size-full object-contain"
+              onError={() => setFailedLogo(logo)}
+            />
+          ) : (
+            <span aria-hidden="true">{initials}</span>
+          )}
+        </span>
       }
       title={name}
       description={description}
@@ -160,8 +171,8 @@ export function ProviderGrid({
     <div className="flex flex-col gap-6">
       {deco && (
         <SettingsSection>
-          <div className="relative rounded-xl border border-violet-400/30 bg-gradient-to-br from-violet-50/50 via-transparent to-lime-50/30 dark:from-violet-950/20 dark:to-lime-950/10 p-1.5">
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-400/5 to-lime-400/5 pointer-events-none" />
+          <div className="relative rounded-m border border-special/30 bg-gradient-to-br from-special/5 via-transparent to-palette-1/10 p-1.5">
+            <div className="absolute inset-0 rounded-m bg-gradient-to-br from-special/5 to-palette-1/5 pointer-events-none" />
             <p className="text-xs font-medium text-special mb-1.5 px-2 pt-2 relative">
               {t("settings.aiProviders.recommended")}
             </p>

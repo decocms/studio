@@ -212,7 +212,7 @@ function MentionNodeView(props: NodeViewProps) {
         isAgent
           ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
           : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-        isSelected && "outline-2 outline-blue-300 outline-offset-0",
+        isSelected && "outline-2 outline-ring outline-offset-0",
         isClickable && "hover:brightness-95",
         // Task titles are full sentences — render them verbatim (no title-case)
         // and clamp the width so a long title stays a compact chip.

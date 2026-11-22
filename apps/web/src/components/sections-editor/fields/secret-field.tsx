@@ -190,9 +190,9 @@ function EncryptedSecretInput({
           className="h-10"
         />
         <Button
+          size="lg"
           type="button"
           variant="outline"
-          className="h-10"
           disabled={!draft || status === "encrypting"}
           onClick={() => void commit()}
         >

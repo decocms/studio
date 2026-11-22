@@ -3,7 +3,8 @@ import { Plus, Zap } from "@untitledui/icons";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Page } from "@/components/page";
-import { EmptyState } from "@/components/empty-state.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { SettingsPage } from "@/components/settings/settings-section";
 import { useAutomations } from "@/hooks/use-automations";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { AutomationListRow } from "@/views/automations/automation-list-row";
@@ -57,7 +58,7 @@ function SettingsAutomationsPage() {
     <Page>
       <Page.Content>
         <Page.Container>
-          <div className="flex flex-col gap-6">
+          <SettingsPage className="gap-6">
             <Page.Title>{t("settings.automations.pageTitle")}</Page.Title>
             {automations.length > 0 && (
               <SearchInput
@@ -67,44 +68,44 @@ function SettingsAutomationsPage() {
                 className="w-full md:w-[375px]"
               />
             )}
-          </div>
 
-          {automations.length === 0 ? (
-            <div className="flex items-center justify-center py-20">
+            {automations.length === 0 ? (
               <EmptyState
-                image={<Zap size={48} className="text-muted-foreground" />}
+                icon={<Zap />}
                 title={t("settings.automations.emptyTitle")}
                 description={t("settings.automations.emptyDescription")}
-                actions={
+                buttonComponent={
                   <Button size="sm" onClick={handleBrowseAgents}>
                     <Plus size={14} />
                     {t("settings.automations.browseAgentsButton")}
                   </Button>
                 }
               />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-20">
-              <EmptyState
-                image={<Zap size={48} className="text-muted-foreground" />}
-                title={t("settings.automations.noResultsTitle")}
-                description={t("settings.automations.noResultsDescription", {
-                  search,
-                })}
-              />
-            </div>
-          ) : (
-            <div className="mt-6 rounded-xl border border-border overflow-hidden">
-              {filtered.map((a) => (
-                <AutomationListRow
-                  key={a.id}
-                  automation={a}
-                  showAgent
-                  onClick={() => handleRowClick(a.id, a.virtual_mcp_id)}
-                />
-              ))}
-            </div>
-          )}
+            ) : (
+              // Rows draw their own bottom rule; the card drops the last one.
+              <div className="surface overflow-hidden [&>*:last-child]:border-b-0">
+                {filtered.length === 0 ? (
+                  <EmptyState
+                    size="sm"
+                    title={t("settings.automations.noResultsTitle")}
+                    description={t(
+                      "settings.automations.noResultsDescription",
+                      { search },
+                    )}
+                  />
+                ) : (
+                  filtered.map((a) => (
+                    <AutomationListRow
+                      key={a.id}
+                      automation={a}
+                      showAgent
+                      onClick={() => handleRowClick(a.id, a.virtual_mcp_id)}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </SettingsPage>
         </Page.Container>
       </Page.Content>
     </Page>

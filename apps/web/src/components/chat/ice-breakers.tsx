@@ -65,7 +65,7 @@ const PILL_BASE =
   "inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-muted text-muted-foreground text-sm font-medium transition-colors cursor-pointer";
 
 const CARD_BASE =
-  "flex flex-col gap-1.5 p-4 rounded-xl bg-accent/40 text-sm leading-snug transition-colors cursor-pointer text-left";
+  "flex flex-col gap-1.5 p-4 rounded-m bg-accent/40 text-sm transition-colors cursor-pointer text-left";
 
 function PromptCard({
   item,

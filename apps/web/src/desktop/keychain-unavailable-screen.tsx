@@ -17,7 +17,7 @@ export function KeychainUnavailableScreen({ auth }: { auth: DesktopAuth }) {
     <AuthSplitLayout>
       <div className="flex max-w-md flex-col items-center gap-4 text-center">
         <div className="space-y-2">
-          <h1 className="text-xl font-semibold">
+          <h1 className="text-l font-semibold">
             {t("common.desktopKeychainUnavailable.title")}
           </h1>
           <p className="text-sm text-muted-foreground">

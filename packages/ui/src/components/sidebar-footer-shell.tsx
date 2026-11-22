@@ -16,7 +16,7 @@ export function SidebarFooterShell({
   className,
 }: SidebarFooterShellProps) {
   return (
-    <SidebarFooterInner className={cn("bg-sidebar pt-4", className)}>
+    <SidebarFooterInner className={cn("bg-sidebar pt-(--space-m)", className)}>
       <SidebarMenu>
         <SidebarMenuItem>{children}</SidebarMenuItem>
       </SidebarMenu>
@@ -27,11 +27,11 @@ export function SidebarFooterShell({
 // Skeleton for sidebar footer
 SidebarFooterShell.Skeleton = function SidebarFooterShellSkeleton() {
   return (
-    <SidebarFooterInner className="bg-sidebar pt-4">
+    <SidebarFooterInner className="bg-sidebar pt-(--space-m)">
       <SidebarMenu>
         <SidebarMenuItem>
-          <div className="flex items-center justify-center gap-2 p-2">
-            <div className="w-24 h-8 bg-muted rounded-md animate-pulse" />
+          <div className="flex items-center justify-center gap-(--space-xs) p-(--space-xs)">
+            <div className="w-24 h-8 bg-muted rounded-(--radius-s) animate-pulse" />
           </div>
         </SidebarMenuItem>
       </SidebarMenu>

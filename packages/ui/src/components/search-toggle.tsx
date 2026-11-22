@@ -66,10 +66,10 @@ function SearchToggle({
   return (
     <div
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 overflow-hidden rounded-full bg-card text-card-foreground card-shadow",
+        "inline-flex shrink-0 items-center gap-(--space-xs) overflow-hidden rounded-(--studio-control-radius) bg-[var(--studio-input-background)] font-regular text-foreground shadow-(--edge) [&:has(input:focus-visible)]:[outline:var(--focus-ring-outline)] [&:has(input:focus-visible)]:outline-offset-2",
         expanded
-          ? "h-10 w-full px-3"
-          : "h-7 w-32 animate-search-expand px-2.5 sm:w-44",
+          ? "h-(--studio-control-height) w-full px-(--space-s) text-s"
+          : "h-(--studio-control-height-sm) w-32 animate-search-expand px-(--space-xs) text-s sm:w-44",
         className,
       )}
     >
@@ -89,10 +89,7 @@ function SearchToggle({
         }}
         placeholder={placeholder}
         aria-label={placeholder}
-        className={cn(
-          "w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground",
-          expanded ? "text-sm" : "text-xs",
-        )}
+        className="w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground"
       />
       {value !== "" && (
         <button
@@ -103,7 +100,7 @@ function SearchToggle({
             onChange("");
             if (!expanded) setOpen(false);
           }}
-          className="shrink-0 text-muted-foreground hover:text-foreground"
+          className="shrink-0 rounded-xs text-muted-foreground transition-colors duration-(--motion-duration) ease-motion hover:text-foreground focus-ring"
         >
           <X className="size-3.5" />
         </button>

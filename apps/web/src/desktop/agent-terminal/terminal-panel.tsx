@@ -196,16 +196,16 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
       red: terminalColor(["--destructive"], "#ef4444"),
       green: terminalColor(["--success"], "#22c55e"),
       yellow: terminalColor(["--warning"], "#eab308"),
-      blue: terminalColor(["--chart-1"], "#3b82f6"),
-      magenta: terminalColor(["--chart-3"], "#d946ef"),
+      blue: terminalColor(["--notice"], "#3b82f6"),
+      magenta: terminalColor(["--special"], "#d946ef"),
       cyan: terminalColor(["--chart-5"], "#06b6d4"),
       white: terminalColor(["--foreground"], "#d4d4d4"),
       brightBlack: terminalColor(["--muted-foreground"], "#737373"),
       brightRed: terminalColor(["--destructive"], "#ef4444"),
       brightGreen: terminalColor(["--success"], "#22c55e"),
       brightYellow: terminalColor(["--warning"], "#eab308"),
-      brightBlue: terminalColor(["--chart-1"], "#3b82f6"),
-      brightMagenta: terminalColor(["--chart-3"], "#d946ef"),
+      brightBlue: terminalColor(["--notice"], "#3b82f6"),
+      brightMagenta: terminalColor(["--special"], "#d946ef"),
       brightCyan: terminalColor(["--chart-5"], "#06b6d4"),
       brightWhite: terminalColor(["--foreground"], "#d4d4d4"),
     });
@@ -469,7 +469,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
           >
             <div
               aria-hidden="true"
-              className="flex items-center justify-between gap-4 text-[10px] text-muted-foreground"
+              className="flex items-center justify-between gap-4 text-xxs text-muted-foreground"
             >
               <span className="flex min-w-0 items-center gap-2">
                 {AgentIcon && (
@@ -493,7 +493,7 @@ function NativeXterm({ readOnly }: { readOnly: boolean }) {
                   className="inline-block h-4 w-1.5 animate-pulse bg-foreground motion-reduce:animate-none"
                 />
               </div>
-              <p className="ml-4 mt-2 text-[10px] text-muted-foreground">
+              <p className="ml-4 mt-2 text-xxs text-muted-foreground">
                 {t("chat.nativeTerminal.waitingForTerminalDraw")}
               </p>
             </div>

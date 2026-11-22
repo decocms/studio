@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertCircle, Copy01, Key01, Plus, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,29 +85,6 @@ function ApiKeyRow({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  const t = useT();
-  return (
-    <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
-      <div className="size-12 rounded-full bg-muted flex items-center justify-center">
-        <Key01 size={20} className="text-muted-foreground" />
-      </div>
-      <div>
-        <p className="font-medium text-sm">
-          {t("settings.apiKeys.emptyTitle")}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          {t("settings.apiKeys.emptyDescription")}
-        </p>
-      </div>
-      <Button onClick={onCreate} size="sm" className="mt-2">
-        <Plus size={14} />
-        {t("settings.apiKeys.newKey")}
-      </Button>
-    </div>
-  );
-}
-
 function CreatedKeyDialog({
   createdKey,
   onClose,
@@ -125,11 +103,7 @@ function CreatedKeyDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">
-          <Input
-            readOnly
-            value={createdKey?.key ?? ""}
-            className="font-mono text-xs"
-          />
+          <Input readOnly value={createdKey?.key ?? ""} className="font-mono" />
           <Button
             type="button"
             variant="outline"
@@ -242,9 +216,6 @@ function CreateApiKeyDialog({
 /**
  * API keys — the whole feature as one section, so it can sit under the clients
  * it authenticates on the Connect page and still be all of `/settings/api-keys`.
- *
- * `headerClassName="px-0"` matches the Connect page's full-bleed cards: the
- * heading aligns with the page, the card is the section's only surface.
  */
 export function ApiKeysSection() {
   const t = useT();
@@ -275,7 +246,6 @@ export function ApiKeysSection() {
 
   return (
     <SettingsSection
-      headerClassName="px-0"
       title={t("settings.apiKeys.sectionTitle")}
       description={t("settings.apiKeys.sectionDescription")}
       actions={
@@ -300,7 +270,20 @@ export function ApiKeysSection() {
       error && apiKeys.length === 0 ? (
         <ErrorFallback error={error} />
       ) : apiKeys.length === 0 ? (
-        <EmptyState onCreate={() => setCreateOpen(true)} />
+        <EmptyState
+          icon={<Key01 />}
+          title={t("settings.apiKeys.emptyTitle")}
+          description={t("settings.apiKeys.emptyDescription")}
+          buttonProps={{
+            onClick: () => setCreateOpen(true),
+            children: (
+              <>
+                <Plus />
+                {t("settings.apiKeys.newKey")}
+              </>
+            ),
+          }}
+        />
       ) : (
         <Card className="gap-0 overflow-hidden p-0">
           <ul className="divide-y divide-border">

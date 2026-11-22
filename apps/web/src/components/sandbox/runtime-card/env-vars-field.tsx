@@ -92,7 +92,7 @@ export function EnvVarsField<T extends FieldValues>({
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
-        <Label className="font-normal text-foreground">
+        <Label className="text-foreground">
           {t("sandbox.envVarsField.title")}
         </Label>
       </div>
@@ -531,7 +531,7 @@ function EnvRow<T extends FieldValues>({
                   }}
                 />
                 {invalid ? (
-                  <p className="text-[11px] text-destructive">
+                  <p className="text-xs text-destructive">
                     {t("sandbox.envVarsField.invalidKeyMessage")}
                   </p>
                 ) : null}

@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Plus, SearchMd } from "@untitledui/icons";
+import { AlertTriangle, Bell01, Plus, SearchMd } from "@untitledui/icons";
+import { Button } from "./button.tsx";
 import { EmptyState } from "./empty-state.tsx";
 import { ConnectionsIllustration } from "./empty-state-illustrations.tsx";
 
@@ -19,7 +20,7 @@ export const Default: Story = {};
 
 export const WithIcon: Story = {
   args: {
-    icon: <SearchMd className="size-5" />,
+    icon: <SearchMd />,
     title: "No results found",
     description: "Try adjusting your search or filters.",
   },
@@ -33,7 +34,7 @@ export const WithIllustration: Story = {
 
 export const WithAction: Story = {
   args: {
-    illustration: <ConnectionsIllustration />,
+    icon: <Plus />,
     buttonProps: {
       children: (
         <>
@@ -42,5 +43,40 @@ export const WithAction: Story = {
       ),
       onClick: () => {},
     },
+  },
+};
+
+export const WithTwoActions: Story = {
+  args: {
+    icon: <SearchMd />,
+    title: "Site not found",
+    description: "This site isn't linked to any project you can open.",
+    buttonComponent: (
+      <>
+        <Button variant="outline" size="sm">
+          Retry
+        </Button>
+        <Button size="sm">Back to Studio</Button>
+      </>
+    ),
+  },
+};
+
+export const Destructive: Story = {
+  args: {
+    tone: "destructive",
+    icon: <AlertTriangle />,
+    title: "Couldn't start",
+    description: "The sandbox failed to boot. Retry to start it again.",
+    buttonProps: { variant: "outline", children: "Retry" },
+  },
+};
+
+export const Small: Story = {
+  args: {
+    size: "sm",
+    icon: <Bell01 />,
+    title: "You're all caught up",
+    description: "Updates on your tasks show up here.",
   },
 };

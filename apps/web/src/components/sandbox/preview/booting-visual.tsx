@@ -78,11 +78,11 @@ export function BootingVisual({ progress, claimPhase }: BootingVisualProps) {
 
   return (
     <div className="relative flex w-full flex-col items-center justify-center gap-12 select-none [clip-path:inset(-24px_0_-200px_0)]">
-      <div className="flex items-center gap-2 rounded-full border border-foreground/10 bg-background px-3.5 py-1.5 shadow-[0_4px_20px_-4px_rgb(0_0_0_/_0.12)]">
+      <div className="flex items-center gap-2 rounded-full bg-background px-3.5 py-1.5 shadow-(--popup-shadow)">
         <GridLoader />
         <span
           key={`${progress.step}-${headline}`}
-          className="animate-in fade-in text-[13px] font-medium text-foreground/85 duration-500"
+          className="animate-in fade-in text-s font-medium text-foreground/85 duration-500"
         >
           {headline}…
         </span>
@@ -146,7 +146,7 @@ function PhaseCard({
     <div
       aria-hidden={!isActive}
       className={cn(
-        "absolute inset-0 overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-[0_20px_60px_-20px_rgb(0_0_0_/_0.35)] transition-all ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "absolute inset-0 overflow-hidden rounded-m border border-foreground/10 bg-background shadow-[0_20px_60px_-20px_rgb(0_0_0_/_0.35)] transition-all ease-[cubic-bezier(0.22,1,0.36,1)]",
       )}
       style={{
         transform: `translateY(${translateY}px) scale(${scale})`,

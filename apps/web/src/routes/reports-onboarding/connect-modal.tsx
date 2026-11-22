@@ -256,7 +256,7 @@ function ReportsConnectModalContent({
       footer={
         <>
           {runError ? (
-            <p className="text-sm leading-5 text-destructive" role="alert">
+            <p className="text-sm text-destructive" role="alert">
               {runError}
             </p>
           ) : null}
@@ -282,7 +282,7 @@ function ReportsConnectModalContent({
                 type="button"
                 variant="secondary"
                 size="lg"
-                className="h-auto min-h-12 shrink-0 py-3 text-base font-medium leading-tight"
+                className="h-auto min-h-12 shrink-0 py-3"
                 disabled={runMutation.isPending}
                 onClick={() => void openReport()}
               >

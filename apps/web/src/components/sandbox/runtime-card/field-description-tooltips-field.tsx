@@ -26,7 +26,7 @@ export function FieldDescriptionTooltipsField<T extends FieldValues>({
           <div className="space-y-0.5 min-w-0">
             <Label
               htmlFor="field-description-tooltips"
-              className="font-normal text-foreground"
+              className="text-foreground"
             >
               {t("sandbox.fieldDescriptionTooltipsField.label")}
             </Label>

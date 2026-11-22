@@ -168,7 +168,7 @@ export function NewTaskComposer() {
         event.preventDefault();
         submit();
       }}
-      className="card-shadow flex flex-col rounded-xl bg-card px-4 pt-4 pb-3"
+      className="card-shadow flex flex-col rounded-m bg-card px-4 pt-4 pb-3"
     >
       {/* Three groups, spaced by what they are rather than evenly: the
           breadcrumb labels the form, the two fields are ONE thing you are
@@ -193,7 +193,7 @@ export function NewTaskComposer() {
         aria-label={t("home.newTask.placeholder")}
         /* The placeholder keeps the title's weight — dropping to normal made
            the empty form two identical grey lines with no hierarchy at all. */
-        className="w-full bg-transparent text-lg leading-snug font-semibold text-foreground outline-none placeholder:text-muted-foreground/70"
+        className="w-full bg-transparent text-lg font-semibold text-foreground outline-none placeholder:text-muted-foreground/70"
       />
 
       <textarea
@@ -202,7 +202,7 @@ export function NewTaskComposer() {
         placeholder={t("home.newTask.descriptionPlaceholder")}
         aria-label={t("home.newTask.descriptionPlaceholder")}
         rows={2}
-        className="mt-1.5 w-full resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+        className="mt-1.5 w-full resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
       />
 
       <div className="-mx-4 mt-4 flex flex-wrap items-center gap-1.5 border-t border-border px-4 pt-3">
@@ -292,7 +292,7 @@ export function NewTaskComposer() {
           type="submit"
           size="sm"
           disabled={!canSubmit}
-          className="ml-auto h-7"
+          className="ml-auto"
         >
           {t("home.newTask.submit")}
         </Button>

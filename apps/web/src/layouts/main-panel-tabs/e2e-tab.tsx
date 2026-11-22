@@ -61,6 +61,7 @@ import {
 } from "@decocms/ui/components/table.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { toast } from "sonner";
+import { Page } from "@/components/page";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
@@ -277,9 +278,9 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card overflow-hidden">
+    <section className="rounded-m border border-border bg-card overflow-hidden">
       <header className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <h3 className="text-m font-medium text-foreground">{title}</h3>
         {typeof count === "number" && count > 0 && (
           <Badge variant="secondary" className="tabular-nums">
             {count}
@@ -501,7 +502,7 @@ function E2eHelp() {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-m border border-border bg-card">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -788,99 +789,96 @@ export function E2eTab({ virtualMcpId }: { virtualMcpId: string }) {
   const runs = list<E2eRun>(runsQuery.data, "items");
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <CheckDone01 className="size-[18px] text-muted-foreground" />
-              <h2 className="text-base font-semibold text-foreground">
-                {t("mainPanelTabs.e2eTab.title")}
-              </h2>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t("mainPanelTabs.e2eTab.subtitle", { site: siteSlug })}
-            </p>
-          </div>
-          <RunTestButton base={base} orgSlug={org.slug} site={siteSlug} />
-        </div>
+    <Page>
+      <Page.Actions>
+        <RunTestButton base={base} orgSlug={org.slug} site={siteSlug} />
+      </Page.Actions>
+      <Page.Content>
+        <Page.Container width="standard" className="flex flex-col gap-6">
 
-        <E2eHelp />
+          <E2eHelp />
 
-        <ChecksSection
-          base={base}
-          orgSlug={org.slug}
-          site={siteSlug}
-          enabled={enabled}
-        />
+          <ChecksSection
+            base={base}
+            orgSlug={org.slug}
+            site={siteSlug}
+            enabled={enabled}
+          />
 
-        <Section title={t("mainPanelTabs.e2eTab.runs")} count={runs.length}>
-          {runsQuery.isLoading ? (
-            <RowsSkeleton cols={5} />
-          ) : runsQuery.error ? (
-            <Muted>{t("mainPanelTabs.e2eTab.runsError")}</Muted>
-          ) : runs.length === 0 ? (
-            <EmptyState
-              icon={<CheckDone01 className="size-5" />}
-              title={t("mainPanelTabs.e2eTab.noRuns")}
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colRun")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colStatus")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colCommand")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colStarted")}</TableHead>
-                  <TableHead>{t("mainPanelTabs.e2eTab.colSummary")}</TableHead>
-                  <TableHead className="w-[1%]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.map((r) => (
-                  <TableRow
-                    key={r.runId}
-                    className="cursor-pointer"
-                    onClick={() => setSelectedRun(r)}
-                  >
-                    <TableCell className="font-mono text-xs">
-                      {r.runId}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant(r.status)}>
-                        {statusLabel(r.status, t)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {r.summary?.command ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {timeAgo(r.startedAt)}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                      {summaryLabel(r, t)}
-                    </TableCell>
-                    <TableCell className="text-right align-middle">
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={t("mainPanelTabs.e2eTab.deleteRun")}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteTarget(r);
-                        }}
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash01 className="size-4" />
-                      </Button>
-                    </TableCell>
+          <Section title={t("mainPanelTabs.e2eTab.runs")} count={runs.length}>
+            {runsQuery.isLoading ? (
+              <RowsSkeleton cols={5} />
+            ) : runsQuery.error ? (
+              <Muted>{t("mainPanelTabs.e2eTab.runsError")}</Muted>
+            ) : runs.length === 0 ? (
+              <EmptyState
+                icon={<CheckDone01 className="size-5" />}
+                title={t("mainPanelTabs.e2eTab.noRuns")}
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("mainPanelTabs.e2eTab.colRun")}</TableHead>
+                    <TableHead>{t("mainPanelTabs.e2eTab.colStatus")}</TableHead>
+                    <TableHead>
+                      {t("mainPanelTabs.e2eTab.colCommand")}
+                    </TableHead>
+                    <TableHead>
+                      {t("mainPanelTabs.e2eTab.colStarted")}
+                    </TableHead>
+                    <TableHead>
+                      {t("mainPanelTabs.e2eTab.colSummary")}
+                    </TableHead>
+                    <TableHead className="w-[1%]" />
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </Section>
-      </div>
+                </TableHeader>
+                <TableBody>
+                  {runs.map((r) => (
+                    <TableRow
+                      key={r.runId}
+                      className="cursor-pointer"
+                      onClick={() => setSelectedRun(r)}
+                    >
+                      <TableCell className="font-mono text-xs">
+                        {r.runId}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(r.status)}>
+                          {statusLabel(r.status, t)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {r.summary?.command ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {timeAgo(r.startedAt)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                        {summaryLabel(r, t)}
+                      </TableCell>
+                      <TableCell className="text-right align-middle">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={t("mainPanelTabs.e2eTab.deleteRun")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(r);
+                          }}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash01 className="size-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Section>
+        </Page.Container>
+      </Page.Content>
 
       {/* Rich run detail (right-side sheet) */}
       <E2eRunDetail
@@ -928,6 +926,6 @@ export function E2eTab({ virtualMcpId }: { virtualMcpId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Page>
   );
 }

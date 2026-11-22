@@ -97,7 +97,7 @@ export function DevAgentSetup({
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-foreground">
+      <h2 className="text-m font-medium text-foreground">
         {t("devAgent.devAgentSetup.title")}
       </h2>
       <Card className="p-6 gap-4">

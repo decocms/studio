@@ -15,7 +15,7 @@ export const admin = {
   "admin.orgs.notice": "Aviso",
   "admin.orgs.noticeFor": "Aviso de cobrança de {org}",
   "admin.orgs.noticeDescription":
-    "Um aviso aparece como banner na org. Um bloqueio substitui a UI da org por este texto e recusa escritas até ser removido — o faturamento continua acessível.",
+    "Um aviso aparece como banner na org. Um bloqueio substitui a UI da org por este texto e recusa escritas até ser removido, o faturamento continua acessível.",
   "admin.orgs.noticeSeverity": "Severidade",
   "admin.orgs.noticeSeverityWarn": "Aviso",
   "admin.orgs.noticeSeverityBlock": "Bloqueio",
@@ -29,7 +29,7 @@ export const admin = {
   "admin.orgs.noticeCtaIncomplete":
     "Preencha o texto e o link do botão, ou nenhum dos dois.",
   "admin.orgs.noticeSave": "Salvar aviso",
-  "admin.orgs.noticeSaving": "Salvando...",
+  "admin.orgs.noticeSaving": "Salvando…",
   "admin.orgs.noticeClear": "Remover aviso",
   "admin.orgs.noticeSaved": "Aviso salvo para {org}",
   "admin.orgs.noticeCleared": "Aviso removido de {org}",
@@ -37,7 +37,7 @@ export const admin = {
   "admin.orgs.failedClearNotice": "Falha ao remover o aviso",
   "admin.orgs.addMember": "Adicionar membro",
   "admin.orgs.addMemberTo": "Adicionar membro para {org}",
-  "admin.orgs.adding": "Adicionando...",
+  "admin.orgs.adding": "Adicionando…",
   "admin.orgs.cancel": "Cancelar",
   "admin.orgs.created": "Criado",
   "admin.orgs.email": "E-mail",
@@ -67,7 +67,7 @@ export const admin = {
   "admin.orgs.invalidStoredValue":
     "Esta org tem uma flag cujo valor salvo não é true/false. Corrija na visão JSON antes de salvar.",
   "admin.orgs.invalidJson":
-    "JSON inválido — esperado chaves snake_case mapeadas para valores booleanos.",
+    "JSON inválido, esperado chaves snake_case mapeadas para valores booleanos.",
   "admin.orgs.jsonReplaceHint":
     "Isto substitui o objeto de flags inteiro. Remover uma chave a desdefine.",
   "admin.orgs.failedLoadOrgsDescription":
@@ -80,8 +80,8 @@ export const admin = {
   "admin.orgs.noOrgsYet": "Nenhuma organização existe ainda.",
   "admin.orgs.organization": "Organização",
   "admin.orgs.save": "Salvar",
-  "admin.orgs.saving": "Salvando...",
-  "admin.orgs.searchPlaceholder": "Procure organizações por nome ou slug...",
+  "admin.orgs.saving": "Salvando…",
+  "admin.orgs.searchPlaceholder": "Procure organizações por nome ou slug…",
   "admin.orgs.anotherOrg": "outra organização",
   "admin.orgs.analyticsOwnSite": "Próprio site ({slug})",
   "admin.orgs.analyticsSiteCleared":
@@ -97,7 +97,7 @@ export const admin = {
     "Falha ao atualizar o site de analytics",
   "admin.orgs.invalidSiteSlug":
     "Use letras minúsculas, dígitos e hifens (ex.: meu-site)",
-  "admin.orgs.loading": "Carregando...",
+  "admin.orgs.loading": "Carregando…",
   "admin.orgs.noProjects": "Esta organização não tem projetos de site.",
   "admin.orgs.noSites": "Esta organização não é dona de nenhum site.",
   "admin.orgs.projectAnalytics": "Analytics dos projetos",
@@ -121,9 +121,9 @@ export const admin = {
     "Verifique se o GitHub está conectado na sua organização ativa e tente novamente.",
   "admin.prompts.failedToLoadTitle": "Falha ao carregar os prompts",
   "admin.prompts.markerMissing":
-    'Os marcadores prompt-region de "{id}" não estão neste arquivo — corrija os marcadores no repositório antes de editar aqui.',
+    'Os marcadores prompt-region de "{id}" não estão neste arquivo, corrija os marcadores no repositório antes de editar aqui.',
   "admin.prompts.openPr": "Abrir pull request ({count})",
-  "admin.prompts.opening": "Abrindo...",
+  "admin.prompts.opening": "Abrindo…",
   "admin.prompts.prFailed": "Falha ao abrir o pull request",
   "admin.prompts.prOpened": "Pull request #{number} aberto",
   "admin.prompts.prTitleLabel": "Título do pull request",
@@ -142,7 +142,7 @@ export const admin = {
   "admin.users.noUsersFoundTitle": "Nenhum usuário encontrado",
   "admin.users.noUsersMatchSearch": 'Nenhum usuário corresponde a "{search}"',
   "admin.users.noUsersYet": "Nenhum usuário ainda.",
-  "admin.users.searchPlaceholder": "Pesquise usuários por e-mail ou nome...",
+  "admin.users.searchPlaceholder": "Pesquise usuários por e-mail ou nome…",
   "admin.users.unknown": "Desconhecido",
   "admin.users.unverified": "Não verificado",
   "admin.users.verified": "Verificado",

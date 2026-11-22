@@ -53,13 +53,12 @@ export function ConnectPill({ dense = true }: { dense?: boolean }) {
       to="/$org/settings/connect"
       params={{ org: org.slug }}
       onClick={() => track("connect_clients_opened", { source: "org_home" })}
-      /* Dense matches Button `sm` (h-7) so the pill and "New project" beside
-         it read as one row of controls; at that height it must not wrap. */
+      /* Dense matches the outline Button at `sm`, so it and "New project" read as one row. */
       className={cn(
-        "group hidden max-w-full md:inline-flex items-center justify-center rounded-full border border-border bg-card text-sm transition-colors hover:bg-accent/60",
+        "group hidden max-w-full md:inline-flex items-center justify-center rounded-(--studio-button-radius) shadow-[inset_0_0_0_var(--border-s)_var(--border)] text-s transition-colors duration-(--motion-duration) ease-motion hover:bg-neutral-3-transparent focus-ring",
         dense
-          ? "h-7 shrink-0 gap-x-2 whitespace-nowrap pl-3 pr-1.5"
-          : "flex-wrap gap-x-3 gap-y-2 py-1.5 pl-4 pr-2.5",
+          ? "h-(--studio-control-height-sm) shrink-0 gap-x-(--space-xs) whitespace-nowrap pl-(--space-s) pr-(--space-xs)"
+          : "flex-wrap gap-x-(--space-s) gap-y-(--space-xs) py-(--space-xs) pl-(--space-m) pr-(--space-s)",
       )}
     >
       <span className="font-medium text-foreground">

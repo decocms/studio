@@ -117,7 +117,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
               />
             </div>
           ) : (
-            <div className="mt-6 rounded-xl border border-border overflow-hidden">
+            <div className="mt-6 rounded-m border border-border overflow-hidden">
               {filtered.map((a) => (
                 <AutomationListRow
                   key={a.id}

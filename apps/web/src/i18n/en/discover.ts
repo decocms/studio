@@ -1,7 +1,5 @@
 export const discover = {
   "discover.title": "Discover",
-  "discover.subtitle":
-    "What this workspace doesn't have yet — what's left to set up, what you can turn on, and what you can add.",
 
   "discover.setup.title": "Finish setting up",
   "discover.setup.description":
@@ -9,7 +7,7 @@ export const discover = {
   "discover.setup.allDone": "Everything here is done. Nice.",
   "discover.setup.connectTitle": "Connect a data source",
   "discover.setup.connectBody":
-    "Analytics, your store, a database — anything Studio should be able to read.",
+    "Analytics, your store, a database, anything Studio should be able to read.",
   "discover.setup.connectAction": "Browse",
   "discover.setup.githubTitle": "Connect GitHub",
   "discover.setup.githubBody":
@@ -17,7 +15,7 @@ export const discover = {
   "discover.setup.githubAction": "Connect",
   "discover.setup.projectTitle": "Create a project",
   "discover.setup.projectBody":
-    "A project holds one codebase — its preview, its content and its files.",
+    "A project holds one codebase, its preview, its content and its files.",
   "discover.setup.projectAction": "Create",
   "discover.setup.inviteTitle": "Invite a teammate",
   "discover.setup.inviteBody":

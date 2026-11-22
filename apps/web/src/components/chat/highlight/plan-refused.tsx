@@ -50,7 +50,6 @@ export function PlanRefusedHighlight({
       footerRight={
         <Button
           size="sm"
-          className="h-7 text-xs"
           onClick={() => {
             // The plan picker, not a Stripe checkout: which plan to buy is the
             // org's choice, and the same place `FeaturePaywall` sends them.

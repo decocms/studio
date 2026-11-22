@@ -301,8 +301,8 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
+            size="icon-xs"
+            className="shrink-0"
             onClick={handleCopy}
           >
             {copied ? (
@@ -360,8 +360,8 @@ function EnvVarsBlock({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
+          size="icon-xs"
+          className="shrink-0"
           onClick={handleCopy}
         >
           {copied ? (
@@ -511,8 +511,8 @@ function ChatBridgeSectionInner({
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
+            size="icon-xs"
+            className="shrink-0"
             onClick={handleCopy}
           >
             {copied ? (
@@ -599,7 +599,7 @@ export function VirtualMCPShareModal({
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent>
           <div className="flex-1 overflow-y-auto px-4 pb-6 [touch-action:pan-y]">
-            <DrawerTitle className="mt-4 mb-4 text-base font-semibold">
+            <DrawerTitle className="mt-4 mb-4">
               {t("virtualMcp.virtualMcpShareModal.connect")}
             </DrawerTitle>
             {content}

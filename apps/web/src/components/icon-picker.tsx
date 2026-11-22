@@ -471,7 +471,7 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
         <Button
           variant="outline"
           size="sm"
-          className="h-8 px-3 text-xs shrink-0"
+          className="shrink-0"
           onClick={handleApplyUrl}
           disabled={!pasteUrl.trim()}
         >

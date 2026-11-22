@@ -45,7 +45,7 @@ function Swatch({
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <div
-        className={`h-20 rounded-xl ${className}`}
+        className={`h-20 rounded-m ${className}`}
         style={{ boxShadow: "var(--card-ring)" }}
       />
       <div className="flex flex-col gap-0.5">
@@ -75,32 +75,32 @@ function System() {
 
       <Section
         title="Surfaces"
-        rule="A white sheet of work resting inside a quiet shell. The page and sidebar step off white just enough that a card reads as laid on them; the card itself is the only pure white."
+        rule="deco's neutral ramp carries every surface. Page and card share neutral-1 and a card is told apart by its edge; the sidebar steps to neutral-2 and wells to neutral-3."
       >
         <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
           <Swatch
             name="background"
-            value="page · near-white"
+            value="neutral-1"
             className="bg-background"
-            note="The shell — sidebar, rail, gutter"
+            note="The page"
           />
           <Swatch
             name="card"
-            value="#ffffff"
-            className="bg-card"
-            note="The sheet — main panel and cards"
+            value="neutral-1"
+            className="bg-card shadow-(--edge)"
+            note="Cards and panels, edged"
           />
           <Swatch
             name="muted"
-            value="a step down"
+            value="neutral-3"
             className="bg-muted"
             note="A well, recessed into a sheet"
           />
           <Swatch
             name="foreground"
-            value="ink"
+            value="neutral-10"
             className="bg-foreground"
-            note="Never pure black"
+            note="Ink, and the primary fill"
           />
         </div>
       </Section>
@@ -114,7 +114,7 @@ function System() {
             name="brand · lime"
             value="#d0ec1a"
             className="bg-brand"
-            note="Fill only — forest text on it"
+            note="color-1 · fill only, black text on it"
           />
           <Swatch
             name="brand-green-dark"
@@ -139,14 +139,14 @@ function System() {
 
       <Section
         title="Radius by role"
-        rule="A component picks the radius that matches what it IS, never a size that looks about right. Three values, and the whole product is built from them."
+        rule="A component picks the radius that matches what it IS, never a size that looks about right. Buttons and controls take deco's S corner, surfaces its M corner."
       >
         <div className="flex flex-wrap items-end gap-8">
           <div className="flex flex-col gap-3">
-            <div className="flex h-11 w-40 items-center justify-center rounded-full bg-foreground text-sm text-background">
+            <div className="flex h-11 w-40 items-center justify-center rounded-[var(--studio-button-radius)] bg-foreground text-sm text-background">
               Button
             </div>
-            <span className="text-meta">button · pill, always</span>
+            <span className="text-meta">button · radius S</span>
           </div>
           <div className="flex flex-col gap-3">
             <div
@@ -158,32 +158,30 @@ function System() {
             >
               Input
             </div>
-            <span className="text-meta">control · 10px</span>
+            <span className="text-meta">control · radius S</span>
           </div>
           <div className="flex flex-col gap-3">
             <div className="surface flex h-28 w-52 items-center justify-center text-sm text-muted-foreground">
               Card
             </div>
-            <span className="text-meta">surface · 14px</span>
+            <span className="text-meta">surface · radius M</span>
           </div>
         </div>
       </Section>
 
       <Section
         title="One voice"
-        rule="Switzer sets the whole product — headline, prose and caption. Mono is not a second voice: it is reserved for strings you copy or compare character by character, which is code and identifiers, and nothing on a dashboard. An earlier cut gave captions to mono on the theory that machine-written facts deserved their own face; it made every caption read as log output, because 'failed' and '2d ago' are language."
+        rule="Geist sets the whole product — headline, prose and caption. Mono is not a second voice: it is reserved for strings you copy or compare character by character, which is code and identifiers, and nothing on a dashboard. An earlier cut gave captions to mono on the theory that machine-written facts deserved their own face; it made every caption read as log output, because 'failed' and '2d ago' are language."
       >
         <div className="flex flex-col gap-4">
           <div className="surface flex flex-col gap-2 p-6">
-            <span className="text-meta">
-              display · Switzer 640 · tracking −0.03em
-            </span>
+            <span className="text-meta">display · Geist · heavy</span>
             <p className="font-display text-4xl text-foreground">
               Fourteen changes shipped overnight.
             </p>
           </div>
           <div className="surface flex flex-col gap-2 p-6">
-            <span className="text-meta">interface · Switzer · 11–17px</span>
+            <span className="text-meta">interface · Geist · text XS to M</span>
             <p className="max-w-[60ch] text-base text-foreground">
               Three of them are waiting on your review, and the storefront
               diagnostic finished clean for the first time this week.
@@ -191,7 +189,7 @@ function System() {
           </div>
           <div className="surface flex flex-col gap-2 p-6">
             <span className="text-meta">
-              caption · Switzer · 12px · lining figures
+              caption · Geist · 12px · lining figures
             </span>
             <div className="flex flex-wrap gap-x-6 gap-y-1">
               <span className="text-meta">edited 4m ago</span>
@@ -203,7 +201,7 @@ function System() {
 
           <div className="surface flex flex-col gap-2 p-6">
             <span className="text-meta">
-              mono · Commit Mono · identifiers and code only
+              mono · Geist Mono · identifiers and code only
             </span>
             <div className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-xs text-foreground">
               <span>8f2c1a9</span>
@@ -230,7 +228,7 @@ function System() {
             <span className="text-sm text-foreground">2 agents running</span>
           </div>
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl bg-foreground ring-2 ring-brand ring-offset-2 ring-offset-background" />
+            <div className="size-9 rounded-m bg-foreground ring-2 ring-brand ring-offset-2 ring-offset-background" />
             <span className="text-sm text-muted-foreground">
               The org you are in
             </span>
@@ -250,7 +248,7 @@ function System() {
             <span className="text-meta">hover me</span>
           </div>
           <div
-            className="flex h-28 items-center justify-center rounded-xl bg-popover"
+            className="flex h-28 items-center justify-center rounded-m bg-popover"
             style={{ boxShadow: "var(--shadow-lg)" }}
           >
             <span className="text-meta">popover</span>

@@ -80,9 +80,9 @@ export const HIGHLIGHT_COLLAPSED_HEIGHT_PX = 44;
 const VARIANT_OVERLAY: Record<HighlightVariant, string> = {
   default: "",
   error:
-    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-destructive/5 after:pointer-events-none after:-z-10",
+    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-m after:bg-destructive/5 after:pointer-events-none after:-z-10",
   warning:
-    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-warning/5 after:pointer-events-none after:-z-10",
+    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-m after:bg-warning/5 after:pointer-events-none after:-z-10",
 };
 
 const VARIANT_BORDER: Record<HighlightVariant, string> = {
@@ -125,7 +125,7 @@ export function CollapsibleHighlight({
       data-testid="collapsible-highlight"
       data-variant={variant}
       className={cn(
-        "relative flex flex-col rounded-xl bg-background border shadow-md",
+        "relative flex flex-col rounded-m bg-background border shadow-md",
         "w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2",
         VARIANT_BORDER[variant],
         VARIANT_OVERLAY[variant],
@@ -138,9 +138,9 @@ export function CollapsibleHighlight({
         onClick={() => setExpanded((prev) => !prev)}
         className={cn(
           "flex items-center gap-2 w-full px-3 py-2 text-sm text-left",
-          "hover:bg-accent/50 transition-colors rounded-t-xl",
+          "hover:bg-accent/50 transition-colors rounded-t-m",
           expanded && "rounded-b-none",
-          !expanded && "rounded-b-xl",
+          !expanded && "rounded-b-m",
         )}
       >
         <span className={cn("shrink-0", VARIANT_ICON_COLOR[variant])}>

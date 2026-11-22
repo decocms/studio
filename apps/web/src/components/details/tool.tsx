@@ -438,7 +438,7 @@ function ToolDetailsAuthenticated({
   const parametersSection = (
     <div className="flex flex-col p-6 gap-4 overflow-auto">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+        <h2 className="text-sm font-semibold text-foreground">
           {t("details.tool.parameters")}
         </h2>
         {tool?.inputSchema?.required &&
@@ -468,13 +468,13 @@ function ToolDetailsAuthenticated({
                 </span>
               </div>
               {prop.description && (
-                <p className="text-xs text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground">
                   {prop.description}
                 </p>
               )}
               {prop.type === "object" || prop.type === "array" ? (
                 <Textarea
-                  className="font-mono text-xs"
+                  className="font-mono"
                   value={
                     hasEditedKey(key)
                       ? ((editedParams[key] as string) ?? "")
@@ -520,7 +520,7 @@ function ToolDetailsAuthenticated({
               {t("details.tool.rawJsonInput")}
             </label>
             <Textarea
-              className="font-mono text-xs min-h-[120px]"
+              className="font-mono min-h-[120px]"
               value={rawJsonText}
               onChange={(e) => setRawJsonText(e.target.value)}
               placeholder={t("details.tool.rawJsonExample")}
@@ -541,7 +541,7 @@ function ToolDetailsAuthenticated({
           <Button
             size="sm"
             variant="destructive"
-            className="h-8 gap-2"
+            className="gap-2"
             onClick={handleClear}
           >
             <StopCircle className="h-3.5 w-3.5" />
@@ -551,7 +551,7 @@ function ToolDetailsAuthenticated({
           <Button
             size="sm"
             variant="default"
-            className="h-8 gap-2"
+            className="gap-2"
             onClick={handleExecute}
           >
             <Play className="h-3.5 w-3.5 fill-current" />
@@ -566,7 +566,7 @@ function ToolDetailsAuthenticated({
     <div className="flex flex-col @3xl:h-full @3xl:overflow-hidden">
       {/* Results Header */}
       <div className="flex items-center justify-between px-4 h-14 border-b border-border bg-background">
-        <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
+        <h2 className="text-m font-medium text-foreground">
           {t("details.tool.result")}
         </h2>
 
@@ -612,9 +612,8 @@ function ToolDetailsAuthenticated({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      size="icon"
+                      size="icon-sm"
                       variant={resultView === "ui" ? "secondary" : "ghost"}
-                      className="h-8 w-8"
                       onClick={() => setResultView("ui")}
                     >
                       <LayersTwo01 size={14} />
@@ -627,9 +626,8 @@ function ToolDetailsAuthenticated({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      size="icon"
+                      size="icon-sm"
                       variant={resultView === "json" ? "secondary" : "ghost"}
-                      className="h-8 w-8"
                       onClick={() => setResultView("json")}
                     >
                       <Code01 size={14} />
@@ -654,7 +652,7 @@ function ToolDetailsAuthenticated({
                   {t("details.tool.executionFailed")}
                 </AlertTitle>
               </div>
-              <AlertDescription className="text-xs text-destructive">
+              <AlertDescription className="text-destructive">
                 {executionError}
               </AlertDescription>
             </div>
@@ -709,9 +707,9 @@ function ToolDetailsAuthenticated({
               readOnly
             />
             <Button
-              size="icon"
+              size="icon-sm"
               variant="ghost"
-              className="absolute top-4 right-4 h-8 w-8 bg-background/80 hover:bg-background border border-border shadow-sm"
+              className="absolute top-4 right-4 bg-background/80 hover:bg-background shadow-(--edge)"
               onClick={() => {
                 navigator.clipboard.writeText(
                   JSON.stringify(executionResult, null, 2),
@@ -773,7 +771,7 @@ function ToolDetailsAuthenticated({
             </div>
           </div>
           {/* Row 2: description */}
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-sm text-muted-foreground">
             {tool?.description || "No description available"}
           </p>
         </div>

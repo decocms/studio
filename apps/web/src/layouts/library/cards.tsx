@@ -143,8 +143,8 @@ export function EntryActionsMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
+          size="icon-xs"
+          className="shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
           onClick={(e) => e.stopPropagation()}
           aria-label={t("library.cards.actionsFor", { label })}
         >
@@ -267,7 +267,7 @@ function CardHeader({
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <div className="flex items-start gap-3">
           <span
-            className="min-w-0 flex-1 truncate text-[13px] text-foreground"
+            className="min-w-0 flex-1 truncate text-s text-foreground"
             title={name}
           >
             {name}
@@ -457,7 +457,7 @@ export function SkillCard({
         }
         t={t}
       />
-      <p className="line-clamp-2 min-h-8 text-xs leading-4 text-muted-foreground">
+      <p className="line-clamp-2 min-h-8 text-xs text-muted-foreground">
         {meta?.description ?? ""}
       </p>
     </CardShell>

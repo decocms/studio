@@ -19,6 +19,7 @@ import {
   repoToolTarget,
 } from "@/lib/repository-binding.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { GitBranch01, LinkExternal01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";
@@ -66,23 +67,24 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
    */
   if (!repository || !hasRepoCredential(target)) {
     return (
-      <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
-        {t("thread.gitTab.notLinkedToGithub")}
-      </div>
+      <EmptyState
+        size="sm"
+        className="h-full"
+        icon={<GitBranch01 />}
+        title={t("thread.gitTab.notLinkedToGithub")}
+      />
     );
   }
 
   if (!branch) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-sm">
-        <GitBranch01 className="h-6 w-6 text-muted-foreground" />
-        <div className="text-muted-foreground">
-          {t("thread.gitTab.noBranchSelected")}
-        </div>
-        <div className="text-xs text-muted-foreground">
-          {t("thread.gitTab.pickBranchForPrStatus")}
-        </div>
-      </div>
+      <EmptyState
+        size="sm"
+        className="h-full"
+        icon={<GitBranch01 />}
+        title={t("thread.gitTab.noBranchSelected")}
+        description={t("thread.gitTab.pickBranchForPrStatus")}
+      />
     );
   }
 

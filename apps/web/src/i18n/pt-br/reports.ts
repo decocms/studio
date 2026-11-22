@@ -19,14 +19,14 @@ export const reports = {
   "reports.authGate.networkError": "Erro de conexão. Tente novamente.",
   "reports.authGate.otpSendFailed": "Não foi possível enviar o código",
   "reports.authGate.sendCode": "Continuar",
-  "reports.authGate.sending": "Enviando...",
+  "reports.authGate.sending": "Enviando…",
   "reports.authGate.tooManyAttempts":
     "Muitas tentativas. Aguarde um momento e tente novamente.",
   "reports.authGate.useDifferentEmail": "Usar outro email",
   "reports.authGate.verificationCodeLabel": "Código de verificação",
   "reports.authGate.verificationCodeTitle": "Digite o código",
   "reports.authGate.verify": "Entrar",
-  "reports.authGate.verifying": "Verificando...",
+  "reports.authGate.verifying": "Verificando…",
   "reports.scanGate.anonymousHelp":
     "Mandamos o link por e-mail quando ficar pronto.",
   "reports.scanGate.anonymousLabel":
@@ -48,7 +48,7 @@ export const reports = {
   "reports.scanGate.stageNow": "agora",
   "reports.scanGate.stageReady": "Deco Score pronto",
   "reports.scanGate.subtitle":
-    "Você pode acompanhar por aqui — leva alguns minutos.",
+    "Você pode acompanhar por aqui, leva alguns minutos.",
   "reports.scanGate.tryAnother": "Tentar outra loja",
   "reports.socialProof.alreadyReceived": "Já receberam",
   "reports.banner.storeDefault": "sua loja",
@@ -63,7 +63,7 @@ export const reports = {
   "reports.emptyState.siteUrlLabel": "URL da loja",
   "reports.emptyState.siteUrlPlaceholder": "sualoja.com.br",
   "reports.emptyState.start": "Gerar Deco Score",
-  "reports.emptyState.starting": "Iniciando...",
+  "reports.emptyState.starting": "Iniciando…",
   "reports.emptyState.checkPerformance": "Performance",
   "reports.emptyState.checkSeo": "SEO",
   "reports.emptyState.checkFunnel": "Funil de conversão",
@@ -102,7 +102,7 @@ export const reports = {
   "reports.onePager.areasTitle": "Notas por área",
   "reports.onePager.areaInsufficient": "amostra insuficiente",
   "reports.onePager.areaMeasured": "{count} medidas",
-  "reports.onePager.bucketCritical": "Crítico — resolver agora",
+  "reports.onePager.bucketCritical": "Crítico, resolver agora",
   "reports.onePager.bucketImportant": "Importante",
   "reports.onePager.bucketWorth": "Vale fazer",
   "reports.onePager.noFailures":

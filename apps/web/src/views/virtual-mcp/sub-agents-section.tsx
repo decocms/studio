@@ -92,7 +92,7 @@ export function SubAgentsSection({
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-medium text-foreground">
+          <h2 className="text-m font-medium text-foreground">
             {t("virtualMcp.subAgentsSection.title")}
           </h2>
           {mode === "all" && (
@@ -145,7 +145,7 @@ export function SubAgentsSection({
             selectedAgents.map((agent) => (
               <div
                 key={agent.id}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-background"
+                className="flex items-center gap-3 px-4 py-3 rounded-m border bg-background"
               >
                 <IntegrationIcon
                   icon={agent.icon}

@@ -84,7 +84,7 @@ function PageTitle({
             className,
           )}
         >
-          <h1 className="min-w-0 text-xl font-medium">{children}</h1>
+          <h1 className="min-w-0 text-l font-medium">{children}</h1>
         </div>
       )}
       {actions && <PageActions>{actions}</PageActions>}

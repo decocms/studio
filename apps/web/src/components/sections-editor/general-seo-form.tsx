@@ -136,7 +136,7 @@ export function GeneralSeoForm({
                 />
                 <Label
                   htmlFor={`seo-use-default-${key}`}
-                  className="text-xs font-normal text-muted-foreground"
+                  className="text-muted-foreground"
                 >
                   {t("sectionsEditor.generalSeoForm.useDefault")}
                 </Label>

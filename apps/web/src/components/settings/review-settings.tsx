@@ -290,7 +290,7 @@ function OrgMcpExclusionList() {
           </Button>
         </div>
 
-        <div className="max-h-64 overflow-y-auto rounded-xl border border-border divide-y divide-border">
+        <div className="max-h-64 overflow-y-auto rounded-m border border-border divide-y divide-border">
           {mountable.length === 0 ? (
             <p className="p-3 text-xs text-muted-foreground">
               {t("settings.agentTools.orgMcpsPickEmpty")}
@@ -310,9 +310,7 @@ function OrgMcpExclusionList() {
                   <div className="flex min-w-0 items-center gap-2.5">
                     <McpAvatar icon={connection.icon} title={label} />
                     <div className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm leading-tight">
-                        {label}
-                      </span>
+                      <span className="truncate text-s">{label}</span>
                       {connection.slug && (
                         <span className="truncate text-xs text-muted-foreground">
                           {connection.slug}
@@ -375,7 +373,7 @@ function McpAvatar({ icon, title }: { icon: string | null; title: string }) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <span className="text-[10px] font-semibold text-muted-foreground">
+        <span className="text-xxs font-semibold text-muted-foreground">
           {title.charAt(0).toUpperCase()}
         </span>
       )}

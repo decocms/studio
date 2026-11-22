@@ -500,9 +500,9 @@ export function ToolSetSelector({
             <div className="md:hidden border-b border-border p-4 flex items-center gap-3">
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon-sm"
                 onClick={handleMobileBack}
-                className="h-8 w-8 p-0 shrink-0"
+                className="shrink-0"
               >
                 <ArrowLeft size={20} />
               </Button>

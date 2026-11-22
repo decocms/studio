@@ -85,7 +85,7 @@ export default function ResetPasswordRoute() {
           {/* Invalid / expired token */}
           {(hasTokenError || (!token && !success)) && (
             <>
-              <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
+              <div className="rounded-m bg-destructive/10 p-3 text-sm text-destructive text-center">
                 {t("routes.resetPassword.invalidOrExpiredLink")}
               </div>
               <Button
@@ -100,7 +100,7 @@ export default function ResetPasswordRoute() {
 
           {/* Error from API */}
           {error && (
-            <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
+            <div className="rounded-m bg-destructive/10 p-3 text-sm text-destructive text-center">
               {error.message || t("routes.resetPassword.failedToReset")}
             </div>
           )}
@@ -108,7 +108,7 @@ export default function ResetPasswordRoute() {
           {/* Success state */}
           {success && (
             <>
-              <div className="rounded-xl bg-success/10 p-3 text-sm text-success text-center">
+              <div className="rounded-m bg-success/10 p-3 text-sm text-success text-center">
                 {t("routes.resetPassword.passwordResetDescription")}
               </div>
               <Button
@@ -161,7 +161,7 @@ export default function ResetPasswordRoute() {
               <Button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className="w-full font-semibold"
+                className="w-full"
                 size="lg"
               >
                 {isLoading

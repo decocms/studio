@@ -58,6 +58,7 @@ import {
   useMCPClientNonBlocking,
   useProjectContext,
 } from "@/sdk";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 /** Mirrors GLOBAL_SEARCH's discriminated union, narrowed to what we render. */
 type SearchHit =
@@ -206,11 +207,16 @@ export function CommandPalette({
   const resultHits = hits.filter((hit) => hit.type !== "connection");
 
   const orgParams = { org: org.slug };
+  const projectFirstNav = useProjectFirstNav();
 
   const destinations = [
     {
       key: "home",
-      label: t("sidebar.navDestinations.home"),
+      label: t(
+        projectFirstNav
+          ? "sidebar.navDestinations.today"
+          : "sidebar.navDestinations.home",
+      ),
       icon: <Home02 aria-hidden="true" />,
       to: DESTINATION_ROUTE.home,
       params: orgParams,
@@ -224,7 +230,11 @@ export function CommandPalette({
     },
     {
       key: "tasks",
-      label: t("sidebar.navDestinations.tasks"),
+      label: t(
+        projectFirstNav
+          ? "sidebar.navDestinations.spineTasks"
+          : "sidebar.navDestinations.tasks",
+      ),
       icon: <Columns03 aria-hidden="true" />,
       to: DESTINATION_ROUTE.tasks,
       params: { org: org.slug, taskKey: undefined },

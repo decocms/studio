@@ -39,8 +39,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Page } from "@/components/page";
 import { useVirtualMCP } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -76,19 +78,11 @@ export function AssetsTab({ virtualMcpId }: { virtualMcpId: string }) {
 function NoBucketState() {
   const t = useT();
   return (
-    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 p-10 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-        <Package size={20} className="text-muted-foreground" />
-      </div>
-      <div>
-        <p className="text-sm font-medium">
-          {t("assets.browser.noBucketTitle")}
-        </p>
-        <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-          {t("assets.browser.noBucketDescription")}
-        </p>
-      </div>
-    </div>
+    <EmptyState
+      icon={<Package size={20} />}
+      title={t("assets.browser.noBucketTitle")}
+      description={t("assets.browser.noBucketDescription")}
+    />
   );
 }
 
@@ -186,155 +180,137 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
     (objectsQuery.isFetching && !objectsQuery.isFetchingNextPage);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{t("assets.browser.title")}</h2>
-          <p className="truncate text-xs text-muted-foreground">
-            {t("assets.browser.bucketLabel", { name: config.name })}
-          </p>
-        </div>
+    <Page>
+      <Page.Actions>
         <Button
           type="button"
           size="sm"
           disabled={upload.isPending}
           onClick={() => fileInputRef.current?.click()}
         >
-          {upload.isPending ? (
-            <Spinner className="size-3.5" />
-          ) : (
-            <Upload01 size={14} />
-          )}
+          {upload.isPending ? <Spinner className="size-4" /> : <Upload01 />}
           {upload.isPending
             ? t("filePicker.filePickerDialog.uploading")
-            : t("filePicker.filePickerDialog.dropFilesOrClick")}
+            : t("library.library.uploadFile")}
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            // Copy refs out before reset: e.target.files is live and clears.
-            const files = Array.from(e.target.files ?? []);
-            e.target.value = "";
-            handleFiles(files);
-          }}
-        />
-      </div>
+      </Page.Actions>
+      <Page.Content>
+        <Page.Container width="wide" className="flex flex-col gap-3">
+          <p className="max-w-[60ch] truncate text-s text-muted-foreground">
+            {t("assets.browser.bucketLabel", { name: config.name })}
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              // Copy refs out before reset: e.target.files is live and clears.
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              handleFiles(files);
+            }}
+          />
 
-      <SearchInput
-        value={search}
-        onChange={setSearch}
-        isSearching={isSearching}
-        placeholder={t("filePicker.filePickerDialog.searchFilesPlaceholder")}
-        className="shrink-0"
-      />
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            isSearching={isSearching}
+            placeholder={t(
+              "filePicker.filePickerDialog.searchFilesPlaceholder",
+            )}
+          />
 
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        className={cn(
-          "flex shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border/60 p-4 text-center transition-colors",
-          isDragging && "border-primary bg-primary/5",
-          upload.isPending && "pointer-events-none opacity-60",
-        )}
-      >
-        <Upload01 size={16} className="text-muted-foreground" />
-        <p className="text-xs text-muted-foreground">
-          {t("filePicker.filePickerDialog.dropFilesOrClick")}{" "}
-          {t("filePicker.filePickerDialog.uploadSizeLimit")}
-        </p>
-      </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            className={cn(
+              "flex shrink-0 flex-col items-center justify-center gap-1 rounded-m border border-dashed border-border/60 p-4 text-center transition-colors",
+              isDragging && "border-primary bg-primary/5",
+              upload.isPending && "pointer-events-none opacity-60",
+            )}
+          >
+            <Upload01 size={16} className="text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">
+              {t("filePicker.filePickerDialog.dropFilesOrClick")}{" "}
+              {t("filePicker.filePickerDialog.uploadSizeLimit")}
+            </p>
+          </button>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {items.length === 0 ? (
-          activeSearch ? (
-            <EmptyNote
-              title={t("filePicker.filePickerDialog.noMatches", {
-                query: activeSearch,
-              })}
-              description={t(
-                "filePicker.filePickerDialog.tryDifferentSearchOrLoadMore",
-              )}
-            />
-          ) : (
-            <EmptyNote
-              title={t("filePicker.filePickerDialog.noFilesYet")}
-              description={t(
-                "filePicker.filePickerDialog.dropFileToGetStarted",
-              )}
-            />
-          )
-        ) : (
-          <div ref={gridRef} className="flex items-start gap-3">
-            {columns.map((column, columnIndex) => (
-              <div
-                // Column buckets are positional, so the index is the identity.
-                key={columnIndex}
-                className="flex min-w-0 flex-1 flex-col gap-3"
-              >
-                {column.map((item) => (
-                  <AssetCard
-                    key={item.key}
-                    item={item}
-                    onDelete={() => setPendingDelete(item)}
-                  />
+          <div>
+            {items.length === 0 ? (
+              activeSearch ? (
+                <EmptyState
+                  icon={<Image01 size={20} />}
+                  title={t("filePicker.filePickerDialog.noMatches", {
+                    query: activeSearch,
+                  })}
+                  description={t(
+                    "filePicker.filePickerDialog.tryDifferentSearchOrLoadMore",
+                  )}
+                />
+              ) : (
+                <EmptyState
+                  icon={<Image01 size={20} />}
+                  title={t("filePicker.filePickerDialog.noFilesYet")}
+                  description={t(
+                    "filePicker.filePickerDialog.dropFileToGetStarted",
+                  )}
+                />
+              )
+            ) : (
+              <div ref={gridRef} className="flex items-start gap-3">
+                {columns.map((column, columnIndex) => (
+                  <div
+                    // Column buckets are positional, so the index is the identity.
+                    key={columnIndex}
+                    className="flex min-w-0 flex-1 flex-col gap-3"
+                  >
+                    {column.map((item) => (
+                      <AssetCard
+                        key={item.key}
+                        item={item}
+                        onDelete={() => setPendingDelete(item)}
+                      />
+                    ))}
+                  </div>
                 ))}
               </div>
-            ))}
+            )}
+
+            {objectsQuery.hasNextPage && (
+              <div className="flex justify-center py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={objectsQuery.isFetchingNextPage}
+                  onClick={() => objectsQuery.fetchNextPage()}
+                >
+                  {objectsQuery.isFetchingNextPage ? (
+                    <>
+                      <Spinner className="size-3.5" />
+                      {t("filePicker.filePickerDialog.loading")}
+                    </>
+                  ) : (
+                    t("filePicker.filePickerDialog.loadMore")
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
-        )}
 
-        {objectsQuery.hasNextPage && (
-          <div className="flex justify-center py-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={objectsQuery.isFetchingNextPage}
-              onClick={() => objectsQuery.fetchNextPage()}
-            >
-              {objectsQuery.isFetchingNextPage ? (
-                <>
-                  <Spinner className="size-3.5" />
-                  {t("filePicker.filePickerDialog.loading")}
-                </>
-              ) : (
-                t("filePicker.filePickerDialog.loadMore")
-              )}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <DeleteAssetDialog
-        configId={config.id}
-        item={pendingDelete}
-        onClose={() => setPendingDelete(null)}
-      />
-    </div>
-  );
-}
-
-function EmptyNote({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 py-8 text-center">
-      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-        <Image01 size={18} className="text-muted-foreground" />
-      </div>
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </div>
+          <DeleteAssetDialog
+            configId={config.id}
+            item={pendingDelete}
+            onClose={() => setPendingDelete(null)}
+          />
+        </Page.Container>
+      </Page.Content>
+    </Page>
   );
 }
 
@@ -377,7 +353,7 @@ function AssetCard({
           <p className="truncate text-xs font-medium" title={item.key}>
             {basename(item.key)}
           </p>
-          <p className="text-[10px] uppercase text-muted-foreground">
+          <p className="text-xxs uppercase text-muted-foreground">
             {ext} · {formatSize(item.size)}
           </p>
         </div>
@@ -413,8 +389,8 @@ function AssetCardMenu({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="size-7 shrink-0"
+          size="icon-sm"
+          className="shrink-0"
           aria-label={t("filePicker.filePickerDialog.assetActions")}
         >
           <DotsVertical size={14} />

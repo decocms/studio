@@ -8,8 +8,7 @@ export const connections = {
   "connections.createConnectionDialog.cancelButton": "Cancelar",
   "connections.createConnectionDialog.closeButton": "Fechar",
   "connections.createConnectionDialog.commandLabel": "Comando *",
-  "connections.createConnectionDialog.commandPlaceholder":
-    "node, bun, python...",
+  "connections.createConnectionDialog.commandPlaceholder": "node, bun, python…",
   "connections.createConnectionDialog.createButton": "Criar Conexão",
   "connections.createConnectionDialog.customCommandType":
     "Comando Personalizado",
@@ -31,7 +30,7 @@ export const connections = {
   "connections.createConnectionDialog.npxPackageType": "Pacote NPX",
   "connections.createConnectionDialog.openGitHubPatSettings":
     "Abrir configurações de PAT do GitHub",
-  "connections.createConnectionDialog.saving": "Salvando...",
+  "connections.createConnectionDialog.saving": "Salvando…",
   "connections.createConnectionDialog.sseType": "SSE",
   "connections.createConnectionDialog.title": "Criar Conexão",
   "connections.createConnectionDialog.tokenLabelDefault": "Token (opcional)",

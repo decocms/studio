@@ -251,7 +251,7 @@ export function RunnableBlockEditor({
             <Button
               size="sm"
               variant="outline"
-              className="h-8 shrink-0 gap-1.5"
+              className="shrink-0 gap-1.5"
               onClick={handleRun}
               disabled={run.isPending}
               aria-label={t("sandbox.runnableBlockEditor.runAriaLabel", {
@@ -270,8 +270,8 @@ export function RunnableBlockEditor({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="icon"
-                  className="size-8 shrink-0"
+                  size="icon-sm"
+                  className="shrink-0"
                   disabled={isCreating}
                   onClick={() => setSaveOpen(true)}
                   aria-label={t(
@@ -295,8 +295,8 @@ export function RunnableBlockEditor({
             <TooltipTrigger asChild>
               <Button
                 variant={jsonOpen ? "default" : "ghost"}
-                size="icon"
-                className="size-8 shrink-0"
+                size="icon-sm"
+                className="shrink-0"
                 onClick={toggleJson}
                 aria-label={
                   jsonOpen
@@ -315,7 +315,7 @@ export function RunnableBlockEditor({
             </TooltipContent>
           </Tooltip>
         </div>
-        <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-muted-foreground">
+        <p className="mt-1.5 py-1 pl-1 text-sm text-muted-foreground">
           {target.mode === "saved"
             ? t("sandbox.runnableBlockEditor.savedModeDescription", {
                 singular,
@@ -339,7 +339,7 @@ export function RunnableBlockEditor({
             <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
               <div className="mx-auto max-w-2xl">
                 {inferredSchema && schema === inferredSchema && (
-                  <p className="mb-3 rounded-md bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
+                  <p className="mb-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                     {t("sandbox.runnableBlockEditor.inferredSchemaNotice", {
                       singular,
                     })}
@@ -476,8 +476,7 @@ function RunResultPanel({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-7"
+                  size="icon-sm"
                   onClick={onOpenInNewTab}
                   aria-label={t(
                     "sandbox.runnableBlockEditor.openResultInNewTabAriaLabel",
@@ -497,8 +496,7 @@ function RunResultPanel({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="size-7"
+                size="icon-sm"
                 onClick={onToggleExpand}
                 aria-label={
                   expanded
@@ -518,8 +516,7 @@ function RunResultPanel({
           </Tooltip>
           <Button
             variant="ghost"
-            size="icon"
-            className="size-7"
+            size="icon-sm"
             onClick={onClose}
             aria-label={t("sandbox.runnableBlockEditor.closeResult")}
           >

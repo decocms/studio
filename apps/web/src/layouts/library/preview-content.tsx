@@ -142,7 +142,7 @@ export function LibraryFilePreview({
         <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
           <FileTypeIcon filename={filename} className="h-4.5 w-3.5 shrink-0" />
           {isDialog ? (
-            <DialogTitle className="truncate text-xs font-medium text-foreground">
+            <DialogTitle className="truncate text-foreground">
               {filename}
             </DialogTitle>
           ) : (

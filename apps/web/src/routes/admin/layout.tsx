@@ -71,7 +71,7 @@ function AdminGate() {
   return (
     <Panel variant="plain" className="h-dvh">
       <div className="shrink-0 px-4 pt-6 md:px-10">
-        <h1 className="pb-4 text-xl font-medium">
+        <h1 className="pb-4 text-m font-medium">
           {t("admin.layout.adminDashboard")}
         </h1>
       </div>

@@ -78,16 +78,14 @@ export function ThreadHtmlPreviews() {
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
-      <div className="text-[12px] text-muted-foreground/70 uppercase tracking-wide">
-        {heading}
-      </div>
+      <div className="text-xs text-muted-foreground/70">{heading}</div>
       <div className="flex flex-wrap gap-2">
         {chips.map((chip) => (
           <button
             type="button"
             key={chip.tabId}
             onClick={() => openPanel(chip.tabId)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 text-[13px] transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 text-s transition-colors"
           >
             {chip.kind === "deck" ? (
               <Monitor01 className="size-3.5 shrink-0 text-muted-foreground" />

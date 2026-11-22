@@ -86,10 +86,10 @@ export function CreditsExhaustedBanner({
               className="size-9 rounded-lg object-contain dark:bg-white dark:p-0.5"
             />
             <div>
-              <DialogTitle className="text-xl font-semibold tracking-tight">
+              <DialogTitle>
                 {t("chat.creditsExhaustedBanner.title")}
               </DialogTitle>
-              <DialogDescription className="mt-1.5 text-sm leading-relaxed">
+              <DialogDescription className="mt-1.5">
                 {t("chat.creditsExhaustedBanner.description")}
               </DialogDescription>
             </div>
@@ -99,12 +99,12 @@ export function CreditsExhaustedBanner({
         {/* Amount selection */}
         {decoKeyId && (
           <div className="px-8 pt-5 pb-6">
-            <div className="rounded-xl border border-border p-5">
+            <div className="rounded-m border border-border p-5">
               <TopUpAmounts source="exhausted_banner" onDone={onDismiss} />
             </div>
 
             {/* Benefits */}
-            <div className="mt-5 rounded-xl bg-muted/25 border border-border/50 p-4 space-y-3">
+            <div className="mt-5 rounded-m bg-muted/25 border border-border/50 p-4 space-y-3">
               {BENEFITS_KEYS.map((key) => (
                 <div key={key} className="flex items-center gap-3">
                   <div className="flex items-center justify-center size-5 rounded-full bg-success/15 shrink-0">

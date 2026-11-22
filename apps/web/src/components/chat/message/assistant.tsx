@@ -465,7 +465,7 @@ function EmptyAssistantState({
             className="text-muted-foreground shrink-0 animate-pulse"
             size={14}
           />
-          <span className="text-[14px] text-muted-foreground shimmer">
+          <span className="text-s text-muted-foreground shimmer">
             {t("chat.assistant.resumingTask")}
           </span>
         </span>
@@ -474,7 +474,7 @@ function EmptyAssistantState({
   }
 
   return (
-    <div className="text-[14px] text-muted-foreground/60 py-2">
+    <div className="text-s text-muted-foreground/60 py-2">
       {t("chat.assistant.noResponseGenerated")}
     </div>
   );
@@ -495,7 +495,7 @@ function Container({
       )}
     >
       <div className="flex flex-col min-w-0 w-full items-start">
-        <div className="w-full min-w-0 not-only:rounded-2xl text-[14px] wrap-break-word overflow-wrap-anywhere bg-transparent">
+        <div className="w-full min-w-0 not-only:rounded-2xl text-s wrap-break-word overflow-wrap-anywhere bg-transparent">
           {children}
         </div>
       </div>
@@ -614,7 +614,7 @@ export function MessageAssistant({
       {hasVisibleContent ? (
         <div className="flex flex-col gap-3 sm:gap-2">
           {message!.metadata?.resumedFromBackground && (
-            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/60 select-none">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60 select-none">
               <RefreshCw01 className="size-3 shrink-0" />
               <span>{t("chat.assistant.resumedBackgroundTask")}</span>
             </div>

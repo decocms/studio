@@ -77,7 +77,7 @@ function ReportLoadError({ retry }: { retry: () => void }) {
       className="fixed inset-0 overflow-y-auto"
       style={{
         background: DECK.bg,
-        fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
+        fontFamily: "var(--font-ui)",
       }}
     >
       <div className="relative z-10 flex min-h-full items-center justify-center px-4 py-10">
@@ -89,10 +89,10 @@ function ReportLoadError({ retry }: { retry: () => void }) {
           className="w-full max-w-[440px] rounded-3xl px-7 py-8 card-shadow"
           style={{ background: DECK.surface, color: DECK.ink }}
         >
-          <h1 className="text-xl font-medium leading-7">
+          <h1 className="text-m font-medium">
             {t("routes.reports.failedToLoadReportTitle")}
           </h1>
-          <p className="mt-2 text-sm leading-6" style={{ color: DECK.muted }}>
+          <p className="mt-2 text-sm" style={{ color: DECK.muted }}>
             {t("routes.reports.failedToLoadReportDescription")}
           </p>
           <button

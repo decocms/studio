@@ -25,7 +25,7 @@ export function ConnectQuotePanel() {
         alt="Monte Carlo"
         className="h-14 w-[112px] shrink-0 self-start object-contain object-left brightness-0 invert"
       />
-      <blockquote className="text-lg font-medium leading-[1.45] lg:text-xl">
+      <blockquote className="text-m font-medium lg:text-l">
         “{t("routes.reportsOnboarding.connectModal.quote")}”
       </blockquote>
       <figcaption className="flex items-center gap-2.5">
@@ -75,7 +75,7 @@ export function ConnectTrustSignals() {
         {items.map(({ Icon, label }) => (
           <li
             key={label}
-            className="flex items-center gap-2.5 text-[13px] leading-tight text-white/70"
+            className="flex items-center gap-2.5 text-s text-white/70"
           >
             <Icon className="size-4 shrink-0 opacity-85" />
             {label}

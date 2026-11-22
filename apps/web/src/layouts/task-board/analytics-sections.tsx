@@ -25,6 +25,7 @@ import {
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import type { AnalyticsSection } from "@/hooks/use-task-board-analytics";
 import { useT } from "@/i18n/use-t";
+import { Figure, StatCard as SharedStatCard } from "@/components/stat-card";
 
 /** Fixed order, never cycled — a series keeps its hue as the set changes. */
 const SERIES_COLORS = [
@@ -60,12 +61,9 @@ function StatCard({
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
       {section.values.map((v) => (
-        <div key={v.label} className="rounded-lg border border-border p-4">
-          <div className="text-sm text-muted-foreground">{v.label}</div>
-          <div className="mt-1 text-2xl font-medium text-foreground tabular-nums">
-            {formatValue(v.value, v.unit)}
-          </div>
-        </div>
+        <SharedStatCard key={v.label} label={v.label}>
+          <Figure value={formatValue(v.value, v.unit)} />
+        </SharedStatCard>
       ))}
     </div>
   );
@@ -132,14 +130,14 @@ function SeriesCard({
           dataKey="label"
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+          tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
           interval="preserveStartEnd"
           tickMargin={8}
         />
         <YAxis
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+          tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
           tickFormatter={(v: number) =>
             section.unit === "s" ? formatDuration(v) : String(v)
           }

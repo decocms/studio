@@ -62,7 +62,7 @@ export function AutomationListRow({
         tabIndex={0}
         onClick={onClick}
         onKeyDown={handleKeyDown}
-        className="group w-full flex items-center gap-3 px-4 py-3 border-b border-border text-left hover:bg-muted/50 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group w-full flex items-center gap-3 px-4 py-3 border-b border-border text-left hover:bg-muted/50 transition-colors cursor-pointer focus-ring"
       >
         <span
           className={cn(
@@ -116,8 +116,8 @@ export function AutomationListRow({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+                size="icon-sm"
+                className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity"
               >
                 <DotsVertical size={16} />
               </Button>

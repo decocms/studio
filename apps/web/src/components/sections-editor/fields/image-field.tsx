@@ -115,8 +115,8 @@ export function ImageField({
       <div
         {...dropProps}
         className={cn(
-          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/60 bg-muted/30 transition",
-          isDragging && "border-primary ring-2 ring-primary/30",
+          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] card-shadow bg-muted/30 transition",
+          isDragging && "shadow-[0_0_0_var(--border-l)_var(--primary)]",
           isPending && "pointer-events-none opacity-60",
         )}
       >
@@ -166,7 +166,7 @@ export function ImageField({
                   {fileName}
                 </span>
                 {ext && (
-                  <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                  <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-xxs font-medium uppercase text-muted-foreground">
                     {ext}
                   </span>
                 )}

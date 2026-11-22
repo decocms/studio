@@ -59,10 +59,7 @@ export function PublishPolicyField<T extends FieldValues>({
         return (
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5 min-w-0">
-              <Label
-                htmlFor="publish-policy"
-                className="font-normal text-foreground"
-              >
+              <Label htmlFor="publish-policy" className="text-foreground">
                 {t("virtualMcp.virtualMcp.publishing")}
               </Label>
               <p className="text-xs text-muted-foreground">
@@ -76,10 +73,7 @@ export function PublishPolicyField<T extends FieldValues>({
                 onCommit();
               }}
             >
-              <SelectTrigger
-                id="publish-policy"
-                className="w-44 shrink-0 text-sm"
-              >
+              <SelectTrigger id="publish-policy" className="w-44 shrink-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-w-80">

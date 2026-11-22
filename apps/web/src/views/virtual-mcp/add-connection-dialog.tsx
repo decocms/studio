@@ -290,7 +290,7 @@ export function AddConnectionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-5xl h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden w-[95vw]">
         <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
-          <DialogTitle className="text-base font-semibold">
+          <DialogTitle>
             {mode === "browse"
               ? t("virtualMcp.addConnectionDialog.connectionsTitle")
               : t("virtualMcp.addConnectionDialog.addConnectionTitle")}

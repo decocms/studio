@@ -127,7 +127,7 @@ function ConnectSourcesTabContent({
       footer={
         <>
           {runError ? (
-            <p className="text-sm leading-5 text-destructive" role="alert">
+            <p className="text-sm text-destructive" role="alert">
               {runError}
             </p>
           ) : null}
@@ -144,10 +144,8 @@ function ConnectSourcesTabContent({
         </>
       }
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto">
-        <h2 className="text-xl font-medium leading-tight text-foreground">
-          {t("routes.reportsOnboarding.connectSourcesTab.title")}
-        </h2>
+      {/* The companion section owns the one heading, same as the onboarding modal. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <CompanionMcpsSection
           org={org}
           cdConnectionId={connectionId}

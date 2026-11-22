@@ -20,7 +20,7 @@ interface CollectionSearchProps {
  * - Full width with border-bottom
  * - Height: 48px (h-12)
  * - Icon: search-md (16px)
- * - Input: text-sm, muted-foreground placeholder
+ * - Input: text-s, muted-foreground placeholder
  */
 export function CollectionSearch({
   value,
@@ -37,8 +37,10 @@ export function CollectionSearch({
     >
       <label
         className={cn(
-          "flex items-center gap-2.5 h-12 px-4",
-          disabled ? "cursor-not-allowed opacity-50" : "cursor-text",
+          "flex items-center gap-(--space-xs) h-12 px-(--space-m) text-s font-regular",
+          disabled
+            ? "cursor-not-allowed text-neutral-6"
+            : "cursor-text text-foreground",
         )}
       >
         {isSearching ? (
@@ -53,7 +55,7 @@ export function CollectionSearch({
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}
-          className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
+          className="flex-1 min-w-0 bg-transparent placeholder:text-muted-foreground outline-none"
         />
       </label>
     </div>

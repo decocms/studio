@@ -14,7 +14,7 @@ export const virtualMcp = {
   "virtualMcp.addConnectionDialog.mcpServerConnectionError":
     "Este servidor MCP não pode ser conectado: nenhum método de conexão disponível",
   "virtualMcp.addConnectionDialog.searchConnectionsPlaceholder":
-    "Pesquisar conexões...",
+    "Pesquisar conexões…",
   "virtualMcp.addConnectionDialog.signInFailedDescription":
     "Foi adicionada ao seu projeto, mas sua configuração de login parece estar errada. Você pode tentar autenticar novamente mais tarde nas configurações da conexão. ({error})",
   "virtualMcp.addConnectionDialog.signInFailedTitle":
@@ -103,8 +103,8 @@ export const virtualMcp = {
     "Nenhum arquivo ou skill ainda. Adicione um ou arraste e solte aqui.",
   "virtualMcp.filesSection.noSkillsFound": "Nenhum skill encontrado.",
   "virtualMcp.filesSection.removeAriaLabel": "Remover {name}",
-  "virtualMcp.filesSection.searchFilesPlaceholder": "Pesquisar arquivos...",
-  "virtualMcp.filesSection.searchSkillsPlaceholder": "Pesquisar skills...",
+  "virtualMcp.filesSection.searchFilesPlaceholder": "Pesquisar arquivos…",
+  "virtualMcp.filesSection.searchSkillsPlaceholder": "Pesquisar skills…",
   "virtualMcp.filesSection.selectFileOrFolder": "Selecionar arquivo ou pasta",
   "virtualMcp.filesSection.selectSkill": "Selecionar skill",
   "virtualMcp.filesSection.uploadFile": "Enviar arquivo",
@@ -148,10 +148,10 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.canOnlyDelegateToItself":
     "Pode delegar apenas para uma cópia fresca de si mesmo, nenhum outro projeto.",
   "virtualMcp.subAgentsSection.emptyStateMessage":
-    "Nenhum sub-projeto selecionado ainda. Adicione um — até então, este projeto pode delegar apenas para si mesmo.",
+    "Nenhum sub-projeto selecionado ainda. Adicione um, até então, este projeto pode delegar apenas para si mesmo.",
   "virtualMcp.subAgentsSection.noAgentsFound": "Nenhum projeto encontrado.",
   "virtualMcp.subAgentsSection.onlyItself": "Apenas si mesmo",
-  "virtualMcp.subAgentsSection.searchPlaceholder": "Pesquisar projetos...",
+  "virtualMcp.subAgentsSection.searchPlaceholder": "Pesquisar projetos…",
   "virtualMcp.subAgentsSection.specificAgents": "Projetos específicos",
   "virtualMcp.subAgentsSection.title": "Sub-projetos",
   "virtualMcp.virtualMcp.addConnection": "Adicionar conexão",
@@ -173,7 +173,7 @@ export const virtualMcp = {
     "Esta ação não pode ser desfeita. Isto excluirá permanentemente {title}.",
   "virtualMcp.virtualMcp.deleteAgentDescription":
     "Exclua permanentemente este projeto e todos os seus dados.",
-  "virtualMcp.virtualMcp.descriptionPlaceholder": "Adicionar uma descrição...",
+  "virtualMcp.virtualMcp.descriptionPlaceholder": "Adicionar uma descrição…",
   "virtualMcp.virtualMcp.failedToCreateInstance": "Falha ao criar instância",
   "virtualMcp.virtualMcp.fullscreen": "Tela cheia",
   "virtualMcp.virtualMcp.improve": "Melhorar",
@@ -181,7 +181,7 @@ export const virtualMcp = {
     "Esta instância já foi adicionada ao projeto",
   "virtualMcp.virtualMcp.instructions": "Instruções",
   "virtualMcp.virtualMcp.instructionsPlaceholder":
-    "Defina como este agente deve se comportar, qual tom usar, qualquer restrição ou diretriz...",
+    "Defina como este agente deve se comportar, qual tom usar, qualquer restrição ou diretriz…",
   "virtualMcp.virtualMcp.lastUsed": "Último uso {time}",
   "virtualMcp.virtualMcp.neverUsed": "Nunca foi usado",
   "virtualMcp.virtualMcp.newInstanceCreated": "Nova instância criada",
@@ -263,11 +263,11 @@ Defina passo a passo como o agente deve tratar as solicitações.
   "virtualMcp.virtualMcpShareModal.installOnClaudeCode":
     "Instalar no Claude Code",
   "virtualMcp.virtualMcpShareModal.installOnCursor": "Instalar no Cursor",
-  "virtualMcp.virtualMcpShareModal.openingCursor": "Abrindo Cursor...",
+  "virtualMcp.virtualMcpShareModal.openingCursor": "Abrindo Cursor…",
   "virtualMcp.virtualMcpShareModal.runtimeVariables":
     "Variáveis de tempo de execução",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
-    "Armazene esta chave com segurança — ela não será exibida novamente.",
+    "Armazene esta chave com segurança, ela não será exibida novamente.",
   "virtualMcp.settings.general.description":
     "Instruções, arquivos anexados e para quem este projeto pode delegar.",
   "virtualMcp.settings.site.description":

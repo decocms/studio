@@ -21,6 +21,7 @@ import {
   runsToday,
 } from "@/components/org-home/daily-pulse";
 import { formatUsd } from "@/components/org-home/brief-stats";
+import { Figure, StatCard } from "@/components/stat-card";
 import { useAutomations } from "@/hooks/use-automations";
 import {
   DESTINATION_ROUTE,
@@ -54,17 +55,6 @@ function nextRun(iso: string | null, locale: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <section className="flex min-w-[168px] flex-1 flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2">
-      <h3 className="truncate text-muted-foreground text-xs">{label}</h3>
-      <p className="font-semibold text-base text-foreground leading-none tabular-nums">
-        {value}
-      </p>
-    </section>
-  );
 }
 
 function LiveRuns({ orgSlug, t }: { orgSlug: string; t: TFunction }) {
@@ -207,13 +197,18 @@ function AgentsBody({ orgSlug, locale }: { orgSlug: string; locale: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap gap-2">
-        <Tile label={t("agents.tiles.running")} value={String(runs.live)} />
-        <Tile label={t("agents.tiles.runsToday")} value={String(runs.runs)} />
-        <Tile
-          label={t("agents.tiles.cost")}
-          value={formatUsd(monthlyCost(index, tasks).total)}
-        />
+      <div className="@container">
+        <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-3">
+          <StatCard label={t("agents.tiles.running")}>
+            <Figure value={String(runs.live)} />
+          </StatCard>
+          <StatCard label={t("agents.tiles.runsToday")}>
+            <Figure value={String(runs.runs)} />
+          </StatCard>
+          <StatCard label={t("agents.tiles.cost")}>
+            <Figure value={formatUsd(monthlyCost(index, tasks).total)} />
+          </StatCard>
+        </div>
       </div>
       <LiveRuns orgSlug={orgSlug} t={t} />
       <Schedules orgSlug={orgSlug} locale={locale} t={t} />
@@ -233,14 +228,6 @@ export function AgentsPage() {
       <Page.Title>{t("agents.title")}</Page.Title>
       <Page.Content>
         <Page.Container width="wide" className="flex flex-col gap-6">
-          <div className="flex flex-col gap-1">
-            <h1 className="font-semibold text-foreground text-xl tracking-tight">
-              {t("agents.title")}
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {t("agents.subtitle")}
-            </p>
-          </div>
           <Suspense
             fallback={
               <div className="flex min-h-64 items-center justify-center">

@@ -164,7 +164,7 @@ export function PlanCatalog() {
         <div className="grid gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton
-            <Skeleton key={i} className="h-80 w-full rounded-xl" />
+            <Skeleton key={i} className="h-80 w-full rounded-m" />
           ))}
         </div>
       ) : isError || !plans ? (
@@ -271,12 +271,12 @@ function PlanCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-3">
-          <h3 className="text-base font-medium leading-tight">{plan.name}</h3>
+          <h3 className="text-base font-medium">{plan.name}</h3>
           {/* While the prices load, EVERY card omits the line, so the row
               stays aligned and no card shows a number that is about to move. */}
           {price !== undefined && (
             <div className="flex flex-col gap-1">
-              <span className="text-2xl font-semibold leading-none tracking-tight tabular-nums">
+              <span className="text-2xl font-semibold leading-none tabular-nums">
                 {formatPlanPrice(price, preferences.language)}
               </span>
               <span className="text-sm text-muted-foreground">
@@ -364,7 +364,7 @@ function CustomPlanCard({ index }: { index: number }) {
     <Card className="p-6 gap-6">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-3">
-          <h3 className="text-base font-medium leading-tight">
+          <h3 className="text-base font-medium">
             {t("settings.plans.custom.name")}
           </h3>
           <span className="text-sm text-muted-foreground">

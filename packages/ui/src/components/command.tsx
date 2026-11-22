@@ -22,7 +22,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md",
+        "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-m text-s font-regular",
         className,
       )}
       {...props}
@@ -70,7 +70,7 @@ function CommandDialog({
         <Command
           filter={filter}
           shouldFilter={shouldFilter}
-          className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg:not([class*='size-'])]:h-5 [&_[cmdk-item]_svg:not([class*='size-'])]:w-5"
+          className="[&_[cmdk-group-heading]]:text-neutral-6 **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-(--space-xs) [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-(--space-xs) [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input]]:h-12"
         >
           {children}
         </Command>
@@ -101,18 +101,22 @@ function CommandInput({
   /** Trailing control on the search row, e.g. a way out to a fuller picker. */
   action?: React.ReactNode;
 }) {
-  const height = size === "sm" ? "h-9" : "h-10";
+  const height =
+    size === "sm"
+      ? "h-(--studio-control-height-sm)"
+      : "h-(--studio-control-height)";
   const boxed = variant === "boxed";
   return (
     <div
       data-slot="command-input-wrapper"
       data-variant={variant}
       className={cn(
-        "flex items-center gap-2 px-3",
+        "flex items-center gap-(--space-xs) px-(--space-s)",
         height,
+        /* The boxed field takes the input's edge and focus outline, drawn inside: `Command` clips overflow, which cut an outer ring down to its bottom edge. */
         boxed
-          ? "rounded-xl border border-input bg-transparent focus-within:border-ring"
-          : "border-b",
+          ? "rounded-(--studio-control-radius) bg-[var(--studio-input-background)] shadow-(--edge-inset) transition-shadow duration-(--motion-duration) ease-motion hover:shadow-[inset_0_0_0_var(--border-s)_var(--neutral-5)] focus-within:[outline:var(--focus-ring-outline)] focus-within:-outline-offset-2"
+          : "border-b border-border",
       )}
     >
       {/* The boxed field carries its own frame, so the magnifier would be a
@@ -121,7 +125,7 @@ function CommandInput({
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          "placeholder:text-muted-foreground flex w-full rounded-md bg-transparent text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+          "placeholder:text-muted-foreground flex w-full rounded-xs bg-transparent text-s font-regular outline-hidden disabled:cursor-not-allowed disabled:text-neutral-6",
           height,
           className,
         )}
@@ -140,7 +144,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto",
+        "max-h-[300px] scroll-py-(--space-xxs) overflow-x-hidden overflow-y-auto",
         className,
       )}
       {...props}
@@ -154,7 +158,7 @@ function CommandEmpty({
   return (
     <CommandPrimitive.Empty
       data-slot="command-empty"
-      className="text-muted-foreground px-4 py-4 text-center text-sm"
+      className="text-muted-foreground p-(--space-m) text-center text-s"
       {...props}
     />
   );
@@ -168,7 +172,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "text-foreground [&_[cmdk-group-heading]]:text-muted-foreground overflow-hidden p-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium",
+        "text-foreground [&_[cmdk-group-heading]]:text-neutral-6 overflow-hidden p-(--space-xxs) [&_[cmdk-group-heading]]:px-(--space-xs) [&_[cmdk-group-heading]]:py-(--space-xxs) [&_[cmdk-group-heading]]:text-s [&_[cmdk-group-heading]]:font-medium",
         className,
       )}
       {...props}
@@ -183,7 +187,7 @@ function CommandSeparator({
   return (
     <CommandPrimitive.Separator
       data-slot="command-separator"
-      className={cn("bg-border -mx-1 h-px", className)}
+      className={cn("bg-border -mx-(--space-xxs) h-px", className)}
       {...props}
     />
   );
@@ -191,9 +195,8 @@ function CommandSeparator({
 
 /** The menu-row recipe, exported so a row OUTSIDE a `Command` is the same row. */
 const commandItemVariants = cva(
-  // `min-h-8` is a stated control height, not one derived from font metrics, and
-  // a row whose content wraps still grows past it.
-  "[&_svg:not([class*='text-'])]:text-muted-foreground relative flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  // One menu-row height for every menu; a row whose content wraps still grows.
+  "[&_svg:not([class*='text-'])]:text-muted-foreground relative flex min-h-(--studio-control-height-sm) cursor-pointer items-center gap-(--space-xs) rounded-xs px-(--space-xs) py-(--space-xxs) text-s font-regular outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:text-neutral-6 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       highlight: {
@@ -207,7 +210,7 @@ const commandItemVariants = cva(
         // A palette row, dense because the list is long.
         default: "",
         // A chooser row, where the list IS the page.
-        lg: "min-h-11 gap-3 rounded-lg px-2.5 py-2",
+        lg: "min-h-11 gap-(--space-s) rounded-(--radius-s) px-(--space-s) py-(--space-xs)",
       },
     },
     defaultVariants: { highlight: "selected", size: "default" },
@@ -236,10 +239,7 @@ function CommandShortcut({
   return (
     <span
       data-slot="command-shortcut"
-      className={cn(
-        "text-muted-foreground ml-auto text-xs tracking-widest",
-        className,
-      )}
+      className={cn("text-muted-foreground ml-auto text-s", className)}
       {...props}
     />
   );

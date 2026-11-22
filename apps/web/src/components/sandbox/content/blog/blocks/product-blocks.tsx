@@ -56,7 +56,7 @@ const HEADING_LEVEL_CLASS: Record<HeadingLevel, string> = {
   normal: "text-lg font-semibold",
   h1: "text-3xl font-bold",
   h2: "text-2xl font-bold",
-  h3: "text-xl font-semibold",
+  h3: "text-l font-semibold",
 };
 
 /** Title editor with a Normal/H1/H2/H3 selector that wraps the stored string. */
@@ -207,13 +207,13 @@ function SortableProductCard({
         </button>
       </div>
       <div className="flex flex-col gap-0.5 p-2">
-        <p className="line-clamp-2 text-xs leading-tight text-foreground">
+        <p className="line-clamp-2 text-xs text-foreground">
           {option?.label ??
             (loading
               ? t("sandbox.productBlocks.loadingEllipsis")
               : t("sandbox.productBlocks.productWithId", { id }))}
         </p>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t("sandbox.productBlocks.idLabel", { id })}
         </p>
       </div>
@@ -308,7 +308,7 @@ function ProductIdsEditor({
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs text-muted-foreground">
+      <Label className="text-muted-foreground">
         {t("sandbox.productBlocks.vtexProductIds")}
       </Label>
       {ids.length === 0 && (
@@ -362,7 +362,7 @@ export function ProductShelfBlock({
     });
 
   return (
-    <div className="space-y-4 rounded-lg border bg-card p-4">
+    <div className="space-y-4 surface p-4">
       <ShelfTitle
         value={str(block.title)}
         onChange={(title) => onChange({ ...block, title })}
@@ -475,15 +475,12 @@ export function ProductCardBlock({
     });
 
   return (
-    <div className="space-y-4 rounded-lg border bg-card p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="space-y-4 surface p-4">
+      <div className="text-xs font-semibold text-muted-foreground">
         {t("sandbox.productBlocks.productCardLabel")}
       </div>
       <div className="space-y-2">
-        <Label
-          htmlFor="product-card-cta"
-          className="text-xs text-muted-foreground"
-        >
+        <Label htmlFor="product-card-cta" className="text-muted-foreground">
           {t("sandbox.productBlocks.ctaLabelField")}
         </Label>
         <input
@@ -495,10 +492,7 @@ export function ProductCardBlock({
         />
       </div>
       <div className="space-y-2">
-        <Label
-          htmlFor="product-card-slug"
-          className="text-xs text-muted-foreground"
-        >
+        <Label htmlFor="product-card-slug" className="text-muted-foreground">
           {t("sandbox.productBlocks.productSlugField")}
         </Label>
         <input
@@ -511,7 +505,7 @@ export function ProductCardBlock({
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <Label className="text-xs text-muted-foreground">
+          <Label className="text-muted-foreground">
             {t("sandbox.productBlocks.productField")}
           </Label>
           {sandboxRef && productId && (

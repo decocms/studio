@@ -54,7 +54,7 @@ export function SubscriptionLimitHighlight({
       onClose={onDismiss}
       footerRight={
         kind === "trial_exhausted" ? (
-          <Button size="sm" onClick={onSubscribe} className="h-7 text-xs">
+          <Button size="sm" onClick={onSubscribe}>
             {t("chat.subscriptionLimit.subscribeButton")}
           </Button>
         ) : undefined

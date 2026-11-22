@@ -279,13 +279,13 @@ function FiltersPopover({
             <>
               <Badge
                 variant="default"
-                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 leading-none"
               >
                 {activeFiltersCount}
               </Badge>
               <Badge
                 variant="default"
-                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
+                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center"
               >
                 {activeFiltersCount}
               </Badge>
@@ -303,10 +303,7 @@ function FiltersPopover({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label
-                htmlFor="hide-system-calls"
-                className="text-xs font-medium text-muted-foreground cursor-pointer"
-              >
+              <Label htmlFor="hide-system-calls" className="cursor-pointer">
                 {t("orgs.monitoring.hideSystemCalls")}
               </Label>
               <Switch
@@ -319,7 +316,7 @@ function FiltersPopover({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.monitoring.connections")}
               </label>
               <MultiSelect
@@ -337,7 +334,7 @@ function FiltersPopover({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.monitoring.agents")}
               </label>
               <MultiSelect
@@ -355,7 +352,7 @@ function FiltersPopover({
 
             {showMemberFilter && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label className="text-s font-medium mb-1.5 block">
                   {t("orgs.monitoring.members")}
                 </label>
                 <MultiSelect
@@ -367,14 +364,14 @@ function FiltersPopover({
                   className="w-full"
                   maxCount={2}
                 />
-                <p className="text-[11px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {t("orgs.monitoring.filtersAiUsageOnly")}
                 </p>
               </div>
             )}
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.monitoring.toolName")}
               </label>
               <Input
@@ -399,7 +396,7 @@ function FiltersPopover({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.monitoring.status")}
               </label>
               <Select
@@ -429,17 +426,12 @@ function FiltersPopover({
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium text-muted-foreground">
+                <label className="text-s font-medium">
                   {t("orgs.monitoring.propertyFilters")}
                 </label>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={toggleMode}
-                    >
+                    <Button variant="ghost" size="icon-xs" onClick={toggleMode}>
                       {propertyFilterMode === "raw" ? (
                         <Grid01 size={14} />
                       ) : (
@@ -498,8 +490,8 @@ function FiltersPopover({
                         </span>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          size="icon-xs"
+                          className="text-muted-foreground hover:text-destructive"
                           onClick={() => removePropertyFilter(index)}
                         >
                           <Trash01 size={12} />

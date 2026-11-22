@@ -1,7 +1,5 @@
 export const agents = {
   "agents.title": "Agents",
-  "agents.subtitle":
-    "What is running right now, and what runs without being asked.",
   "agents.tiles.running": "Running now",
   "agents.tiles.runsToday": "Runs today",
   "agents.tiles.cost": "Agent cost · this month",

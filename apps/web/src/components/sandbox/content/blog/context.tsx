@@ -649,7 +649,7 @@ export function BlogContext({
           </div>
         ) : (
           <div className="grid grid-cols-[240px_1fr] gap-8 px-8 py-6">
-            <nav className="sticky top-0 h-fit space-y-0.5 rounded-xl border bg-card p-1.5">
+            <nav className="sticky top-0 h-fit space-y-0.5 rounded-m border bg-card p-1.5">
               {CONTEXT_SECTIONS.map((entry) => (
                 <button
                   key={entry.id}

@@ -83,16 +83,14 @@ function HomeSearch() {
         track("command_palette_opened", { source: "org_home_search" });
         openCommandPalette();
       }}
-      /* `card-shadow`, not a border: the ring IS the card's border in this
-         system, drawn as a shadow so it can carry the drop under it. The
-         width comes from the page's column now. */
-      className="card-shadow flex w-full items-center gap-2 rounded-xl bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent/60"
+      /* The input treatment, at the large control height. */
+      className="flex h-(--studio-control-height-lg) w-full items-center gap-(--space-xs) rounded-(--studio-control-radius) bg-[var(--studio-input-background)] px-(--space-s) text-left shadow-(--edge) transition-colors duration-(--motion-duration) ease-motion hover:bg-neutral-3-transparent focus-ring"
     >
       <SearchLg className="size-4 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+      <span className="min-w-0 flex-1 truncate text-s text-muted-foreground">
         {t("home.orgHome.searchPlaceholder")}
       </span>
-      <kbd className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+      <kbd className="shrink-0 rounded-xs bg-muted px-(--space-xxs) text-xs font-medium text-muted-foreground">
         ⌘K
       </kbd>
     </button>
@@ -215,7 +213,7 @@ export function OrgAgentsTab() {
             {/* Greeting and search are one unit; the pill is a separate offer,
                 so the space between them is larger than the space within. */}
             <div className="flex w-full flex-col items-center gap-5">
-              <h2 className="text-3xl font-medium tracking-tight text-foreground">
+              <h2 className="text-3xl font-medium text-foreground">
                 {name ? t(greeting.named, { name }) : t(greeting.bare)}
               </h2>
               {taskIntakeEnabled ? (

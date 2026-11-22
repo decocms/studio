@@ -87,7 +87,7 @@ const FilterChipTrigger = forwardRef<
       variant="ghost"
       size="sm"
       className={cn(
-        "h-7 gap-1 px-1.5 text-xs",
+        "gap-1",
         active ? "text-foreground" : "text-muted-foreground",
         className,
       )}
@@ -407,8 +407,7 @@ export function PostSelectionToolbar({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="h-7 w-7"
+              size="icon-sm"
               disabled={count === 0}
               onClick={onArchive}
               aria-label={t("sandbox.postToolbar.archiveSelectedPosts")}
@@ -425,8 +424,7 @@ export function PostSelectionToolbar({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="h-7 w-7"
+              size="icon-sm"
               onClick={onExit}
               aria-label={t("sandbox.postToolbar.exitSelection")}
             >

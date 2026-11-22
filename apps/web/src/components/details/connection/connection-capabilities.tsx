@@ -123,7 +123,7 @@ export function ConnectionCapabilities({
 
   if (totalItems === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-m border border-border bg-card p-5">
         <h3 className="text-sm font-semibold text-foreground mb-1">
           {t("details.connectionCapabilities.capabilities")}
         </h3>
@@ -135,7 +135,7 @@ export function ConnectionCapabilities({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="rounded-m border border-border bg-card overflow-hidden">
       <Tabs defaultValue="tools" variant="underline">
         <div className="px-5 flex items-center justify-between border-b border-border">
           <TabsList variant="underline" className="gap-1">
@@ -176,7 +176,7 @@ export function ConnectionCapabilities({
                       {humanizeName(tool.name)}
                     </div>
                     {tool.description && (
-                      <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
+                      <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                         {tool.description}
                       </div>
                     )}
@@ -219,7 +219,7 @@ export function ConnectionCapabilities({
                       {humanizeName(prompt.name)}
                     </div>
                     {prompt.description && (
-                      <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
+                      <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                         {prompt.description}
                       </div>
                     )}
@@ -248,7 +248,7 @@ export function ConnectionCapabilities({
                       {resource.name}
                     </div>
                     {resource.description && (
-                      <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
+                      <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                         {resource.description}
                       </div>
                     )}

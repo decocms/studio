@@ -26,7 +26,7 @@ function getOrgColorStyle(name: string): {
 }
 
 const ORG_ICON_SIZES = {
-  xs: { box: "size-5", text: "text-[9px]" },
+  xs: { box: "size-5", text: "text-xxs" },
   sm: { box: "size-6", text: "text-xs" },
   lg: { box: "size-9", text: "text-sm" },
 } as const;
@@ -39,7 +39,7 @@ export function OrgIcon({
   org: { name: string; logo?: string | null };
   size?: keyof typeof ORG_ICON_SIZES;
   /** The rail wants a rounder mark than the picker's list rows. */
-  rounded?: "rounded-md" | "rounded-xl";
+  rounded?: "rounded-md" | "rounded-m";
 }) {
   const { box: sizeClass, text: textClass } = ORG_ICON_SIZES[size];
   /**
@@ -167,19 +167,13 @@ export function InvitationRow({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <Button
-          size="sm"
-          variant="default"
-          className="h-7 text-xs"
-          onClick={accept}
-          disabled={busy}
-        >
+        <Button size="sm" variant="default" onClick={accept} disabled={busy}>
           {t("header.orgSwitcher.accept")}
         </Button>
         <Button
-          size="icon"
+          size="icon-sm"
           variant="ghost"
-          className="size-7 text-muted-foreground"
+          className="text-muted-foreground"
           onClick={decline}
           disabled={busy}
           aria-label={t("header.orgSwitcher.declineInvitationTo", { name })}

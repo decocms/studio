@@ -2,8 +2,6 @@ import type { discover as en } from "../en/discover";
 
 export const discover = {
   "discover.title": "Descobrir",
-  "discover.subtitle":
-    "O que este workspace ainda não tem — o que falta configurar, o que dá para ativar e o que dá para adicionar.",
 
   "discover.setup.title": "Terminar a configuração",
   "discover.setup.description":
@@ -11,7 +9,7 @@ export const discover = {
   "discover.setup.allDone": "Tudo pronto por aqui.",
   "discover.setup.connectTitle": "Conecte uma fonte de dados",
   "discover.setup.connectBody":
-    "Analytics, sua loja, um banco de dados — qualquer coisa que o Studio deva conseguir ler.",
+    "Analytics, sua loja, um banco de dados, qualquer coisa que o Studio deva conseguir ler.",
   "discover.setup.connectAction": "Explorar",
   "discover.setup.githubTitle": "Conecte o GitHub",
   "discover.setup.githubBody":
@@ -19,7 +17,7 @@ export const discover = {
   "discover.setup.githubAction": "Conectar",
   "discover.setup.projectTitle": "Crie um projeto",
   "discover.setup.projectBody":
-    "Um projeto guarda uma base de código — seu preview, seu conteúdo e seus arquivos.",
+    "Um projeto guarda uma base de código, seu preview, seu conteúdo e seus arquivos.",
   "discover.setup.projectAction": "Criar",
   "discover.setup.inviteTitle": "Convide alguém do time",
   "discover.setup.inviteBody":

@@ -83,7 +83,7 @@ function InstallCommand({ copiedLabel }: { copiedLabel: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <code className="block rounded-md border bg-muted px-3 py-2.5 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
+      <code className="block rounded-md border bg-muted px-3 py-2.5 font-mono text-xs break-all whitespace-pre-wrap select-all">
         {command}
       </code>
       <Button

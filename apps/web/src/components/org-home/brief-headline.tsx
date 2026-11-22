@@ -96,7 +96,7 @@ export function BriefHeadline({
           comes from size and tracking, not from borrowing a second family —
           see the `font-display` utility. Smaller on a phone, where the
           display size turned one sentence into six lines. */}
-      <h1 className="font-display max-w-[40ch] text-2xl leading-[1.22] text-foreground sm:text-[2.125rem] sm:leading-[1.18]">
+      <h1 className="font-display max-w-[40ch] text-l text-foreground sm:text-xl">
         {leadSentence(t, pulse, waiting, greeting ?? null)}
       </h1>
       {children}

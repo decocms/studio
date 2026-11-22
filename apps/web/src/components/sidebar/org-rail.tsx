@@ -65,14 +65,14 @@ function RailOrgButton({
             aria-current={active || undefined}
             onClick={active ? undefined : onSelect}
             className={cn(
-              "flex shrink-0 items-center justify-center rounded-xl focus-ring",
+              "flex shrink-0 items-center justify-center rounded-m focus-ring",
               "transition-[opacity,transform] duration-150 ease-out",
               active
                 ? "opacity-100"
                 : "cursor-pointer opacity-60 hover:scale-105 hover:opacity-100",
             )}
           >
-            <OrgIcon org={org} size="lg" rounded="rounded-xl" />
+            <OrgIcon org={org} size="lg" rounded="rounded-m" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="right">{org.name}</TooltipContent>
@@ -108,12 +108,10 @@ function RailAppButton({
             aria-current={active || undefined}
             onClick={() => track("org_rail_recent_app_opened")}
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-xl focus-ring",
-              "transition-[opacity,transform] duration-150 ease-out",
+              "flex size-9 shrink-0 items-center justify-center rounded-m focus-ring",
+              "transition-transform duration-150 ease-out",
               app.tone,
-              active
-                ? "opacity-100"
-                : "opacity-60 hover:scale-105 hover:opacity-100",
+              !active && "hover:scale-105",
             )}
           >
             <app.Icon size={18} />
@@ -210,7 +208,7 @@ export function OrgRail() {
                 type="button"
                 aria-label={t("sidebar.picker.newOrganization")}
                 onClick={() => setCreatingOrg(true)}
-                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-m text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
               >
                 <Plus size={18} />
               </button>

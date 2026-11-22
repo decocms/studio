@@ -133,7 +133,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
-      <div className="mt-2 overflow-hidden rounded-xl border-[0.5px] border-border bg-card p-2.5">
+      <div className="surface mt-2 overflow-hidden p-2.5">
         <div
           ref={cardRef}
           className="relative overflow-hidden rounded-lg bg-accent/25 p-2"
@@ -203,7 +203,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
 
             {agent.description && (
               <div className="px-2 pt-1 pr-16">
-                <p className="text-sm leading-snug text-muted-foreground line-clamp-2">
+                <p className="text-sm text-muted-foreground line-clamp-2">
                   {agent.description}
                 </p>
               </div>
@@ -235,7 +235,6 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
             <div className="flex items-center gap-2 shrink-0">
               <Button
                 size="sm"
-                className="h-7"
                 onClick={() => navigateToAgent(agent.id)}
                 aria-label={t("chat.agentCreate.seeAgentLabel", {
                   name: agent.title,

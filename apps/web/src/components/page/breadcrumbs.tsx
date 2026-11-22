@@ -41,8 +41,8 @@ function BreadcrumbMenu({ items }: { items: readonly BreadcrumbItem[] }) {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon-sm"
-          className="size-6 shrink-0"
+          size="icon-xs"
+          className="shrink-0"
           aria-label={t("page.breadcrumbMenu")}
         >
           <DotsHorizontal aria-hidden="true" className="size-4" />
@@ -99,7 +99,7 @@ function BreadcrumbSegment({
     );
   }
   const className =
-    "block max-w-40 truncate rounded-lg hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "block max-w-40 truncate rounded-lg hover:text-foreground focus-ring";
   if (item.onSelect) {
     return (
       <button

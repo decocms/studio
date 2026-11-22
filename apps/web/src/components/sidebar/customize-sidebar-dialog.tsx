@@ -191,7 +191,7 @@ export function CustomizeSidebarDialog({
             </DropdownMenu>
           )}
         </div>
-        <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+        <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-m border border-border bg-card">
           {list.length === 0 ? (
             <li className="flex h-11 items-center px-3 text-sm text-muted-foreground">
               {t("sidebar.customize.empty")}

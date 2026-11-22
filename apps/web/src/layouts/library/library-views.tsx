@@ -15,11 +15,13 @@ import {
   Folder,
   Grid01,
   List,
+  SearchMd,
   Stars01,
   Upload01,
   Zap,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   HOME_MOUNT_PATH,
@@ -241,7 +243,7 @@ function SectionHead({
 }) {
   return (
     <div className="flex h-7 items-center justify-between gap-3">
-      <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
+      <h2 className="flex items-baseline gap-2 text-m font-medium text-foreground">
         {label}
         {count !== undefined && count > 0 && (
           <span className="text-xs tabular-nums text-muted-foreground">
@@ -307,8 +309,8 @@ function ListingSkeleton({ layout }: { layout: LibraryLayout }) {
   return layout === "grid" ? <GridSkeleton rows={2} /> : <ListSkeleton />;
 }
 
-function EmptyNote({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-muted-foreground">{children}</p>;
+function EmptyNote({ title, icon }: { title: string; icon?: React.ReactNode }) {
+  return <EmptyState size="sm" icon={icon ?? <Folder />} title={title} />;
 }
 
 /** One file, in whichever presentation the Files section is in. The grid
@@ -521,7 +523,10 @@ export function SearchResultsView({
   );
   if (results.length === 0) {
     return (
-      <EmptyNote>{t("library.libraryViews.noFilesMatch", { query })}</EmptyNote>
+      <EmptyNote
+        icon={<SearchMd />}
+        title={t("library.libraryViews.noFilesMatch", { query })}
+      />
     );
   }
   /** Sorting loses which volume a hit came from — two volumes can hold the
@@ -662,9 +667,10 @@ export function PublicSetsView({
   const sets = publicSets.data ?? [];
   if (sets.length === 0) {
     return (
-      <EmptyNote>
-        {t("library.libraryViews.noPublicSkillSetsConfigured")}
-      </EmptyNote>
+      <EmptyNote
+        icon={<Stars01 />}
+        title={t("library.libraryViews.noPublicSkillSetsConfigured")}
+      />
     );
   }
   return (
@@ -778,11 +784,13 @@ export function VolumeView({
   // An empty root still has the pinned folders and the recent feed to show.
   if (entries.length === 0 && !isDriveRoot) {
     return (
-      <EmptyNote>
-        {location.readOnly
-          ? t("library.libraryViews.emptyReadOnlySet")
-          : t("library.libraryViews.emptyFolder")}
-      </EmptyNote>
+      <EmptyNote
+        title={
+          location.readOnly
+            ? t("library.libraryViews.emptyReadOnlySet")
+            : t("library.libraryViews.emptyFolder")
+        }
+      />
     );
   }
 
@@ -953,7 +961,7 @@ export function VolumeView({
         </FilesSection>
       )}
       {view.fileView !== "all" && files.length === 0 && (
-        <EmptyNote>{t("library.library.noFilesInView")}</EmptyNote>
+        <EmptyNote title={t("library.library.noFilesInView")} />
       )}
       {isDriveRoot && (
         <RecentlyAdded

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta name="theme-color" content="#f6f4ed" />
+    <meta name="theme-color" content="#fafafa" />
     <script>
       // Reload once on modulepreload 404 (rolling deployment — old pod missing new chunk).
       // Shares the cooldown key with ChunkErrorBoundary to prevent double-reload loops.
@@ -30,10 +30,9 @@
             document.documentElement.classList.add("dark");
             // Also pre-set <meta name="theme-color"> so the mobile browser
             // chrome doesn't flash light before the React runtime syncs it
-            // from --sidebar. Value approximates dark --sidebar:
-            // oklch(0.155 0.005 60).
+            // from --sidebar. Value matches the dark --sidebar.
             var meta = document.querySelector('meta[name="theme-color"]');
-            if (meta) meta.setAttribute("content", "#272524");
+            if (meta) meta.setAttribute("content", "#0e0e0e");
           }
         } catch(e) {}
       })();

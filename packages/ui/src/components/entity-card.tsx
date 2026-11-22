@@ -31,9 +31,10 @@ function EntityCardRoot({
   return (
     <Card
       className={cn(
-        "group transition-all flex flex-col gap-0",
+        "group flex flex-col gap-0",
         onNavigate && "cursor-pointer",
-        showHoverRing && "hover:ring-2 hover:ring-primary",
+        /* A ring box-shadow would erase the card's edge, so it lifts instead. */
+        showHoverRing && "surface-interactive",
         className,
       )}
       onClick={handleClick}
@@ -65,17 +66,23 @@ function EntityCardAvatar({
 
 function EntityCardHeader({ children, className }: EntityCardContentProps) {
   return (
-    <div className={cn("p-4 flex flex-col gap-4", className)}>{children}</div>
+    <div
+      className={cn("p-(--space-m) flex flex-col gap-(--space-m)", className)}
+    >
+      {children}
+    </div>
   );
 }
 
 function EntityCardTitle({ children, className }: EntityCardContentProps) {
-  return <p className={cn("font-medium truncate", className)}>{children}</p>;
+  return (
+    <p className={cn("text-s font-medium truncate", className)}>{children}</p>
+  );
 }
 
 function EntityCardSubtitle({ children, className }: EntityCardContentProps) {
   return (
-    <h3 className={cn("text-sm text-muted-foreground truncate", className)}>
+    <h3 className={cn("text-s text-muted-foreground truncate", className)}>
       {children}
     </h3>
   );
@@ -102,7 +109,7 @@ function EntityCardFooter({ children, className }: EntityCardContentProps) {
   return (
     <div
       className={cn(
-        "p-4 border-t border-border flex justify-between items-center",
+        "p-(--space-m) border-t border-border flex justify-between items-center",
         className,
       )}
     >
@@ -126,17 +133,17 @@ function EntityCardBadge({ children, className }: EntityCardContentProps) {
 
 function EntityCardSkeleton() {
   return (
-    <Card className="group transition-colors flex flex-col">
-      <div className="p-4 flex flex-col gap-4">
+    <Card className="group flex flex-col gap-0">
+      <div className="p-(--space-m) flex flex-col gap-(--space-m)">
         <div className="flex justify-between items-start">
-          <div className="h-12 w-12 bg-muted rounded-lg animate-pulse" />
+          <div className="h-12 w-12 bg-muted rounded-(--radius-s) animate-pulse" />
         </div>
         <div className="flex flex-col gap-[2px]">
-          <div className="h-4 w-32 bg-muted rounded-lg animate-pulse" />
-          <div className="h-4 w-40 bg-muted rounded-lg animate-pulse" />
+          <div className="h-4 w-32 bg-muted rounded-(--radius-s) animate-pulse" />
+          <div className="h-4 w-40 bg-muted rounded-(--radius-s) animate-pulse" />
         </div>
       </div>
-      <div className="p-4 border-t border-border flex justify-between items-center">
+      <div className="p-(--space-m) border-t border-border flex justify-between items-center">
         <div className="h-6 w-6 bg-muted rounded-full animate-pulse" />
         <div className="h-6 w-6 bg-muted rounded-full animate-pulse -ml-2" />
       </div>

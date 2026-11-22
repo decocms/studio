@@ -134,14 +134,15 @@ export function MultiSelect({
           {...(asChild ? {} : { variant: "outline" })}
           onClick={handleTogglePopover}
           className={cn(
-            "border-input data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full max-w-xs items-center justify-between gap-2 border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[2px] disabled:cursor-not-allowed disabled:opacity-50 h-10 min-h-10",
+            /* The input treatment, so the trigger reads as a field, not a button. */
+            "data-[placeholder]:text-muted-foreground flex h-(--studio-control-height) min-h-(--studio-control-height) w-full max-w-xs items-center justify-between gap-(--space-xs) rounded-(--studio-control-radius) bg-[var(--studio-input-background)] px-(--space-s) py-(--space-xs) text-s font-regular text-foreground shadow-(--edge) hover:bg-[var(--studio-input-background)] hover:shadow-[0_0_0_var(--border-s)_var(--neutral-5)] aria-invalid:shadow-[0_0_0_var(--border-s)_var(--error)] disabled:cursor-not-allowed disabled:bg-neutral-3 disabled:text-neutral-6 disabled:shadow-[0_0_0_var(--border-s)_var(--neutral-4-transparent)]",
             className,
           )}
           disabled={disabled}
         >
           {selectedValues.length > 0 ? (
             <div className="flex items-center justify-between w-full min-w-0">
-              <div className="flex items-center gap-1 min-w-0 flex-1">
+              <div className="flex items-center gap-(--space-xxs) min-w-0 flex-1">
                 {selectedValues.slice(0, maxCount).map((value) => {
                   const option = options.find((o) => o.value === value);
                   const IconComponent = option?.icon;
@@ -169,33 +170,39 @@ export function MultiSelect({
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center shrink-0 ml-2">
-                <ChevronDown size={20} className="shrink-0 opacity-50" />
+              <div className="flex items-center shrink-0 ml-(--space-xs)">
+                <ChevronDown
+                  size={20}
+                  className="shrink-0 text-muted-foreground"
+                />
               </div>
             </div>
           ) : (
             <div className="flex items-center justify-between w-full">
-              <span className="text-sm text-muted-foreground">
+              <span className="text-s text-muted-foreground">
                 {placeholder}
               </span>
-              <ChevronDown size={20} className="shrink-0 opacity-50" />
+              <ChevronDown
+                size={20}
+                className="shrink-0 text-muted-foreground"
+              />
             </div>
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-auto p-0 max-w-xs rounded-xl"
+        className="w-auto p-0 max-w-xs rounded-m"
         align="start"
         onEscapeKeyDown={() => setIsPopoverOpen(false)}
       >
-        <Command shouldFilter={!onSearchChange} className="rounded-xl">
+        <Command shouldFilter={!onSearchChange} className="rounded-m">
           <CommandInput
             placeholder="Search..."
             onKeyDown={handleInputKeyDown}
             onValueChange={onSearchChange}
-            className="rounded-t-xl"
+            className="rounded-t-s"
           />
-          <CommandList className="rounded-b-xl">
+          <CommandList className="rounded-b-s">
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup>
               <CommandItem
@@ -218,7 +225,7 @@ export function MultiSelect({
                       options.length > 0
                     }
                     onCheckedChange={toggleAll}
-                    className="mr-2 [&_svg]:!text-primary-foreground"
+                    className="mr-(--space-xs) [&_svg]:!text-primary-foreground"
                     onClick={(e) => e.stopPropagation()}
                   />
                   <span>(Select All)</span>
@@ -246,11 +253,11 @@ export function MultiSelect({
                         onCheckedChange={() => {
                           toggleOption(option);
                         }}
-                        className="mr-2 [&_svg]:!text-primary-foreground"
+                        className="mr-(--space-xs) [&_svg]:!text-primary-foreground"
                         onClick={(e) => e.stopPropagation()}
                       />
                       {option.icon && (
-                        <option.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+                        <option.icon className="mr-(--space-xs) size-4 text-muted-foreground" />
                       )}
                       <span>{option.label}</span>
                     </div>

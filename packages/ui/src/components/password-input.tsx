@@ -49,12 +49,12 @@ function PasswordInput({
         className={cn("pr-20", className)}
         {...props}
       />
-      <div className="absolute right-1 top-1 flex items-center gap-1 h-8">
+      <div className="absolute inset-y-0 right-(--space-xxs) flex items-center gap-(--space-xxs)">
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 w-8 p-0"
+          className="size-(--studio-control-height-xs) p-0"
           onClick={togglePasswordVisibility}
           title={showPassword ? "Hide password" : "Show password"}
         >
@@ -64,7 +64,7 @@ function PasswordInput({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 w-8 p-0"
+          className="size-(--studio-control-height-xs) p-0"
           onClick={handleCopy}
           disabled={!value}
           title={copySuccess ? "Copied!" : "Copy token"}

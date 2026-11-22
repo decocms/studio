@@ -112,8 +112,8 @@ export function MultivariateFieldWrapper({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+              size="icon-xs"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
               aria-label={t(
                 "sectionsEditor.multivariateFieldWrapper.addVariant",
               )}
@@ -387,7 +387,7 @@ export function MultivariateFieldWrapper({
 
       <div className="space-y-4 px-2 pt-3">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">
+          <Label className="text-muted-foreground">
             {t("sectionsEditor.multivariateFieldWrapper.ruleLabel")}
           </Label>
           <VariantRuleEditor

@@ -91,7 +91,7 @@ interface UnifiedAuthFormProps {
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
 
 const VIEW_TOGGLE_LINK_CLASS =
-  "font-medium text-[#8CAA25] hover:underline disabled:opacity-50";
+  "font-medium text-brand-soft hover:underline disabled:text-neutral-6";
 
 export interface UnifiedAuthFormCopy {
   signUpFailed: string;
@@ -618,19 +618,12 @@ export function UnifiedAuthForm({
 
       {/* Header */}
       <div className="space-y-2">
-        <h1
-          className={cn(
-            "font-medium",
-            compact ? "text-xl leading-7" : "text-2xl leading-8",
-          )}
-        >
-          {headerTitle}
-        </h1>
+        <h1 className="font-medium text-l">{headerTitle}</h1>
         {headerSubtitle && (
           <p
             className={cn(
               "text-muted-foreground",
-              compact ? "text-sm leading-5" : "text-base leading-6",
+              compact ? "text-s" : "text-m",
             )}
           >
             {headerSubtitle}
@@ -642,7 +635,7 @@ export function UnifiedAuthForm({
       {displayError && (
         <div
           role="alert"
-          className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center"
+          className="rounded-m bg-destructive/10 p-3 text-sm text-destructive text-center"
         >
           {getErrorMessage(displayError)}
         </div>
@@ -652,7 +645,7 @@ export function UnifiedAuthForm({
       {resetEmailSent && (
         <div
           role="status"
-          className="rounded-xl bg-success/10 p-3 text-sm text-success text-center"
+          className="rounded-m bg-success/10 p-3 text-sm text-success text-center"
         >
           {copy.resetEmailSent}
         </div>
@@ -670,7 +663,7 @@ export function UnifiedAuthForm({
               disabled={isLoading}
               onClick={() => void handleSocialSignIn(provider.name)}
               className={cn(
-                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50 rounded-lg",
+                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:bg-neutral-3 disabled:text-neutral-6",
                 compact ? "h-11" : "h-12",
               )}
             >
@@ -873,7 +866,7 @@ export function UnifiedAuthForm({
           <Button
             type="submit"
             disabled={isLoading || !canSubmit}
-            className="w-full font-semibold"
+            className="w-full"
             size="xl"
           >
             {isLoading ? copy.sending : copy.sendResetLink}
@@ -979,7 +972,7 @@ export function UnifiedAuthForm({
               <Button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className={cn("w-full font-semibold")}
+                className={cn("w-full")}
                 size="xl"
                 aria-hidden={!canSubmit}
               >

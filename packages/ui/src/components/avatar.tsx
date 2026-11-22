@@ -46,7 +46,7 @@ function AvatarFallback({
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       className={cn(
-        "bg-muted flex size-full items-center justify-center rounded-full",
+        "bg-neutral-3 text-neutral-8 font-medium flex size-full items-center justify-center rounded-full",
         className,
       )}
       {...props}
@@ -56,28 +56,17 @@ function AvatarFallback({
 
 // Enhanced Avatar with color generation, shapes, sizes, and icon support
 
-// Predefined color palette for avatar backgrounds with gradients and shadows
+// Identity colours: a tint of each theme hue with the hue pulled toward the ink, so the pair holds in both modes.
 const AVATAR_COLORS = [
-  "drop-shadow-lg bg-gradient-to-br from-red-100 to-red-300 text-red-800 shadow-lg shadow-red-300/40 ring-1 ring-red-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-lime-100 to-lime-300 text-lime-800 shadow-lg shadow-lime-300/40 ring-1 ring-lime-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-emerald-100 to-emerald-300 text-emerald-800 shadow-lg shadow-emerald-300/40 ring-1 ring-emerald-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-orange-100 to-orange-300 text-orange-800 shadow-lg shadow-orange-300/40 ring-1 ring-orange-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-amber-100 to-amber-300 text-amber-800 shadow-lg shadow-amber-300/40 ring-1 ring-amber-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-yellow-100 to-yellow-300 text-yellow-800 shadow-lg shadow-yellow-300/40 ring-1 ring-yellow-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-green-100 to-green-300 text-green-800 shadow-lg shadow-green-300/40 ring-1 ring-green-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-teal-100 to-teal-300 text-teal-800 shadow-lg shadow-teal-300/40 ring-1 ring-teal-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-cyan-100 to-cyan-300 text-cyan-800 shadow-lg shadow-cyan-300/40 ring-1 ring-cyan-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-sky-100 to-sky-300 text-sky-800 shadow-lg shadow-sky-300/40 ring-1 ring-sky-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-blue-100 to-blue-300 text-blue-800 shadow-lg shadow-blue-300/40 ring-1 ring-blue-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-indigo-100 to-indigo-300 text-indigo-800 shadow-lg shadow-indigo-300/40 ring-1 ring-indigo-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-violet-100 to-violet-300 text-violet-800 shadow-lg shadow-violet-300/40 ring-1 ring-violet-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-purple-100 to-purple-300 text-purple-800 shadow-lg shadow-purple-300/40 ring-1 ring-purple-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-fuchsia-100 to-fuchsia-300 text-fuchsia-800 shadow-lg shadow-fuchsia-300/40 ring-1 ring-fuchsia-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-pink-100 to-pink-300 text-pink-800 shadow-lg shadow-pink-300/40 ring-1 ring-pink-300/30",
-  "drop-shadow-lg bg-gradient-to-br from-rose-100 to-rose-300 text-rose-800 shadow-lg shadow-rose-300/40 ring-1 ring-rose-300/30",
+  "bg-chart-1/20 text-[color-mix(in_srgb,var(--chart-1)_55%,var(--foreground))]",
+  "bg-chart-2/25 text-[color-mix(in_srgb,var(--chart-2)_55%,var(--foreground))]",
+  "bg-chart-3/20 text-[color-mix(in_srgb,var(--chart-3)_55%,var(--foreground))]",
+  "bg-chart-4/25 text-[color-mix(in_srgb,var(--chart-4)_55%,var(--foreground))]",
+  "bg-warning/20 text-[color-mix(in_srgb,var(--warning)_55%,var(--foreground))]",
+  "bg-destructive/20 text-[color-mix(in_srgb,var(--destructive)_55%,var(--foreground))]",
 ];
 
-const MUTED_COLOR = "drop-shadow-lg text-muted-foreground bg-muted shadow-lg";
+const MUTED_COLOR = "bg-neutral-3 text-neutral-8";
 
 /**
  * Generate a deterministic color from a string
@@ -92,33 +81,33 @@ function getColorFromString(input: string): string {
 }
 
 // Unified avatar variants with shape and size
-const avatarVariants = cva("border border-border", {
+const avatarVariants = cva("font-medium", {
   variants: {
     shape: {
       circle: "rounded-full",
       square: "",
     },
     size: {
-      "3xs": "w-3 h-3 text-[7px] font-semibold",
-      "2xs": "w-4 h-4 text-[9px] font-semibold",
-      xs: "w-6 h-6 text-sm font-semibold",
-      sm: "w-8 h-8 text-lg font-semibold",
-      base: "w-10 h-10 text-2xl font-semibold",
-      lg: "w-12 h-12 text-3xl font-semibold",
-      xl: "w-16 h-16 text-4xl font-semibold",
-      "2xl": "w-20 h-20 text-5xl font-semibold",
-      "3xl": "w-32 h-32 text-7xl font-semibold",
+      "3xs": "w-3 h-3 text-xxs",
+      "2xs": "w-4 h-4 text-xxs",
+      xs: "w-6 h-6 text-xxs",
+      sm: "w-8 h-8 text-s",
+      base: "w-10 h-10 text-m",
+      lg: "w-12 h-12 text-l",
+      xl: "w-16 h-16 text-l",
+      "2xl": "w-20 h-20 text-xl",
+      "3xl": "w-32 h-32 text-xxl",
     },
   },
   compoundVariants: [
     // Square avatar roundedness based on size
-    { shape: "square", size: "xs", class: "rounded-lg" },
-    { shape: "square", size: "sm", class: "rounded-xl" },
-    { shape: "square", size: "base", class: "rounded-xl" },
-    { shape: "square", size: "lg", class: "rounded-xl" },
-    { shape: "square", size: "xl", class: "rounded-2xl" },
-    { shape: "square", size: "2xl", class: "rounded-3xl" },
-    { shape: "square", size: "3xl", class: "rounded-[40px]" },
+    { shape: "square", size: "xs", class: "rounded-(--radius-s)" },
+    { shape: "square", size: "sm", class: "rounded-m" },
+    { shape: "square", size: "base", class: "rounded-m" },
+    { shape: "square", size: "lg", class: "rounded-m" },
+    { shape: "square", size: "xl", class: "rounded-(--radius-l)" },
+    { shape: "square", size: "2xl", class: "rounded-(--radius-l)" },
+    { shape: "square", size: "3xl", class: "rounded-xl" },
   ],
   defaultVariants: {
     shape: "square",
@@ -305,7 +294,7 @@ Avatar.Skeleton = function AvatarSkeleton({
     <div
       className={cn(
         avatarVariants({ shape, size }),
-        "bg-muted animate-pulse",
+        "bg-neutral-3 animate-pulse",
         className,
       )}
     />

@@ -145,7 +145,7 @@ export function ImageUploadDialog({
   const [offset, setOffset] = useState<Offset>({ x: 0, y: 0 });
   const [busy, setBusy] = useState(false);
 
-  const rounded = shape === "circle" ? "rounded-full" : "rounded-xl";
+  const rounded = shape === "circle" ? "rounded-full" : "rounded-m";
 
   function discardImage() {
     if (image) URL.revokeObjectURL(image.url);
@@ -294,7 +294,7 @@ export function ImageUploadDialog({
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-10 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex flex-col items-center justify-center gap-2 rounded-m border border-dashed border-border py-10 text-sm text-muted-foreground transition-colors hover:bg-muted focus-ring"
             >
               <Upload01 className="size-5" />
               {t("imageUpload.choose")}

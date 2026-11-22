@@ -19,9 +19,9 @@ export function HomeCard({
   children: ReactNode;
 }) {
   return (
-    <section className="@container flex flex-col overflow-hidden rounded-2xl bg-card card-shadow">
+    <section className="surface @container flex flex-col overflow-hidden">
       <div className="flex h-12 items-center justify-between gap-3 border-b border-border/70 px-5">
-        <h2 className="flex items-baseline gap-2 text-[0.9rem] font-medium tracking-tight text-foreground">
+        <h2 className="flex items-baseline gap-2 text-m font-medium text-foreground">
           {label}
           {count !== undefined && count > 0 && (
             <span className="text-xs tabular-nums text-muted-foreground">

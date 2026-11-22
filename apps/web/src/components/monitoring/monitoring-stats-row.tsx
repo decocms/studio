@@ -263,8 +263,8 @@ function KPITooltipContent({
       : value.toLocaleString();
 
   return (
-    <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
-      <div className="text-[11px] text-muted-foreground mb-1">{label}</div>
+    <div className="rounded-m bg-popover px-3 py-2 shadow-(--popup-shadow)">
+      <div className="text-xs text-muted-foreground mb-1">{label}</div>
       <div className="flex items-center gap-1.5">
         <div
           className="size-2 shrink-0 rounded-full"
@@ -319,7 +319,7 @@ export function KPIChart({
             axisLine={false}
             tickLine={false}
             tick={{
-              fontSize: 11,
+              fontSize: 12,
               fill: "var(--muted-foreground)",
               opacity: 0.7,
             }}
@@ -331,7 +331,7 @@ export function KPIChart({
             axisLine={false}
             tickLine={false}
             tick={{
-              fontSize: 11,
+              fontSize: 12,
               fill: "var(--muted-foreground)",
               opacity: 0.7,
             }}
@@ -390,7 +390,7 @@ export function KPIChart({
           axisLine={false}
           tickLine={false}
           tick={{
-            fontSize: 11,
+            fontSize: 12,
             fill: "var(--muted-foreground)",
             opacity: 0.7,
           }}
@@ -402,7 +402,7 @@ export function KPIChart({
           axisLine={false}
           tickLine={false}
           tick={{
-            fontSize: 11,
+            fontSize: 12,
             fill: "var(--muted-foreground)",
             opacity: 0.7,
           }}

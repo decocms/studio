@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
@@ -34,7 +35,10 @@ import {
 } from "@decocms/shared/organization/schema";
 import { useT } from "@/i18n/use-t.ts";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { SettingsSection } from "@/components/settings/settings-section";
+import {
+  SettingsCard,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 import {
   SECRET_NAME_RE,
   ScopeIcon,
@@ -71,21 +75,43 @@ import {
 export function GitCredentialsSection() {
   const t = useT();
   return (
+    <ErrorBoundary
+      fallback={({ error }) => (
+        <GitCredentialsShell>
+          <div className="rounded-md bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            {error?.message ?? t("settings.gitCredentials.failedToLoadSecrets")}
+          </div>
+        </GitCredentialsShell>
+      )}
+    >
+      <Suspense
+        fallback={
+          <GitCredentialsShell>
+            <Skeleton className="h-9 w-full" />
+          </GitCredentialsShell>
+        }
+      >
+        <GitCredentialsEditor />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function GitCredentialsShell({
+  actions,
+  children,
+}: {
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  const t = useT();
+  return (
     <SettingsSection
       title={t("settings.gitCredentials.title")}
       description={t("settings.gitCredentials.description")}
+      actions={actions}
     >
-      <ErrorBoundary
-        fallback={({ error }) => (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {error?.message ?? t("settings.gitCredentials.failedToLoadSecrets")}
-          </div>
-        )}
-      >
-        <Suspense fallback={<Skeleton className="h-9 w-full" />}>
-          <GitCredentialsEditor />
-        </Suspense>
-      </ErrorBoundary>
+      {children}
     </SettingsSection>
   );
 }
@@ -147,15 +173,28 @@ function GitCredentialsEditor() {
     rows.map((r, i) => (i === index ? row : r));
 
   return (
-    <div className="space-y-2">
-      <ul className="space-y-2">
-        {rows.map((row, index) => (
-          <li
-            // Positional: a credential row carries no id of its own.
-            key={index}
-            className="rounded-md border border-border bg-background"
-          >
+    <GitCredentialsShell
+      actions={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={rows.length >= GIT_CREDENTIALS_MAX}
+          onClick={() => setDraft([...rows, { host: "", secretId: "" }])}
+        >
+          <Plus size={16} />
+          {t("settings.gitCredentials.addCredential")}
+        </Button>
+      }
+    >
+      <SettingsCard>
+        {rows.length === 0 ? (
+          <EmptyState size="sm" title={t("settings.gitCredentials.empty")} />
+        ) : (
+          rows.map((row, index) => (
             <GitCredentialRow
+              // Positional: a credential row carries no id of its own.
+              key={index}
               index={index}
               row={row}
               secrets={secrets}
@@ -168,35 +207,23 @@ function GitCredentialsEditor() {
               onCreateNewSecret={() => setDialogIndex(index)}
               onRemove={() => void removeAt(index)}
             />
-          </li>
-        ))}
-      </ul>
+          ))
+        )}
+      </SettingsCard>
 
       {rows.length > 0 ? (
-        <p className="text-xs text-warning">
+        <p className="px-4 text-xs text-warning">
           {t("settings.gitCredentials.tokenExposureWarning")}
         </p>
       ) : null}
 
       {rows.length >= GIT_CREDENTIALS_MAX ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="px-4 text-xs text-muted-foreground">
           {t("settings.gitCredentials.maxReached", {
             max: GIT_CREDENTIALS_MAX,
           })}
         </p>
       ) : null}
-
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={rows.length >= GIT_CREDENTIALS_MAX}
-        onClick={() => setDraft([...rows, { host: "", secretId: "" }])}
-        className="w-full"
-      >
-        <Plus className="size-3.5" />
-        {t("settings.gitCredentials.addCredential")}
-      </Button>
 
       {dialogIndex !== null ? (
         <CreateSecretDialog
@@ -208,7 +235,7 @@ function GitCredentialsEditor() {
           }}
         />
       ) : null}
-    </div>
+    </GitCredentialsShell>
   );
 }
 
@@ -240,7 +267,7 @@ function GitCredentialRow({
   const invalid = trimmed.length > 0 && !SUBMODULE_HOST_RE.test(trimmed);
 
   return (
-    <div className="flex flex-col gap-2 p-2 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
       <div className="flex-1 min-w-0">
         <div className="space-y-1">
           <Input
@@ -262,7 +289,7 @@ function GitCredentialRow({
             })}
           />
           {invalid ? (
-            <p className="text-[11px] text-destructive">
+            <p className="text-xs text-destructive">
               {t("settings.gitCredentials.hostInvalidMessage")}
             </p>
           ) : null}

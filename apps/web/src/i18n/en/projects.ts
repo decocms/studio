@@ -39,7 +39,7 @@ export const projects = {
   "projects.new.step.folder.title": "Name your project",
 
   // Reports index
-  "projects.reports.chooserTitle": "Continue to Reports",
+  "projects.reports.chooserTitle": "Continue to reports",
   "projects.reports.chooserSubtitle": "Choose a project to continue",
   "projects.reports.chooserSearch": "Find project\u2026",
   "projects.reports.chooserEmpty": "No project by that name.",
@@ -52,13 +52,9 @@ export const projects = {
   "projects.connections.usedBy": "{count} projects",
   // Settings › Projects
   "projects.settings.title": "Projects",
-  "projects.settings.description":
-    "Everything scoped to a project lives here: its repositories, connections, report and board.",
   "projects.settings.searchPlaceholder": "Search projects…",
   "projects.settings.open": "Open",
   "projects.settings.openSettings": "Settings",
-  "projects.settings.orgScopeNote":
-    "Members, billing, security and AI providers stay organization-wide.",
   "projects.settings.noResults": "No projects match “{search}”",
 
   // Project settings › identity

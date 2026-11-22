@@ -107,10 +107,10 @@ export function TopUpAmounts({
             if (v) setCurrency(v as "usd" | "brl");
           }}
         >
-          <ToggleGroupItem value="usd" className="h-8 px-3 text-xs">
+          <ToggleGroupItem value="usd" className="h-8 px-3">
             USD
           </ToggleGroupItem>
-          <ToggleGroupItem value="brl" className="h-8 px-3 text-xs">
+          <ToggleGroupItem value="brl" className="h-8 px-3">
             BRL
           </ToggleGroupItem>
         </ToggleGroup>
@@ -124,12 +124,12 @@ export function TopUpAmounts({
             disabled={isPending}
             onClick={() => buy(dollars * 100, TIER_SLUGS[labelKey] ?? "preset")}
             className={cn(
-              "relative flex flex-col items-center gap-1 py-5 rounded-xl border transition-all duration-150 cursor-pointer",
+              "relative flex flex-col items-center gap-1 py-5 rounded-m border transition-all duration-150 cursor-pointer",
               "disabled:opacity-50 disabled:cursor-wait",
               "border-border hover:border-foreground/20 hover:bg-muted/30",
             )}
           >
-            <span className="text-2xl font-semibold tabular-nums text-foreground">
+            <span className="text-l font-semibold tabular-nums text-foreground">
               {currencySymbol}
               {dollars}
             </span>
@@ -156,7 +156,7 @@ export function TopUpAmounts({
             />
           </div>
           <Button
-            className="h-10"
+            size="lg"
             disabled={!isCustomValid || isPending}
             onClick={() => buy(Math.round(customNum * 100), "custom")}
           >

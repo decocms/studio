@@ -263,7 +263,7 @@ describe("selectHeaderButton", () => {
         branch: ready({ aheadOfBase: 2 }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 
@@ -274,7 +274,7 @@ describe("selectHeaderButton", () => {
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 
@@ -285,7 +285,7 @@ describe("selectHeaderButton", () => {
         branch: ready({ aheadOfBase: 1, unpushed: 1 }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 
@@ -317,7 +317,7 @@ describe("selectHeaderButton", () => {
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
   });
 
   test("lifecycle.start-failed + ahead-of-base → Review & Publish", () => {
@@ -327,7 +327,7 @@ describe("selectHeaderButton", () => {
         branch: ready({ aheadOfBase: 3 }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
   });
 
   test("lifecycle.crashed + dirty branch → Review & Publish (push hotfix)", () => {
@@ -337,7 +337,7 @@ describe("selectHeaderButton", () => {
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
   });
 
   test("running with branch still unknown → Loading branch… (defensive)", () => {
@@ -376,7 +376,7 @@ describe("selectHeaderButton", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ workingTreeDirty: true }) }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(r.variant).toBe("brand");
     expect(r.disabled).toBeFalsy();
@@ -407,7 +407,7 @@ describe("selectHeaderButton", () => {
         noReviewableDiff: true,
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 
@@ -418,7 +418,7 @@ describe("selectHeaderButton", () => {
         noReviewableDiff: false,
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
   });
 
   test("dirty + open PR + behind base → menu also offers GitHub link and Get latest", () => {
@@ -428,7 +428,7 @@ describe("selectHeaderButton", () => {
         pr: pr(),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(menuKeys(r)).toEqual([
       "submit-for-review",
       "view-change-request",
@@ -440,7 +440,7 @@ describe("selectHeaderButton", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 2 }) }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(menuKeys(r)).toEqual(["submit-for-review"]);
   });
@@ -449,7 +449,7 @@ describe("selectHeaderButton", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 0 }) }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 
@@ -460,7 +460,7 @@ describe("selectHeaderButton", () => {
         pr: pr({ headSha: "remote888" }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(r.meta?.publishPolicyOverride).toBeUndefined();
   });
@@ -473,7 +473,7 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(r.variant).toBe("brand");
     // PR cleared every header gate — the dialog must not re-gate by content.
@@ -553,7 +553,7 @@ describe("selectHeaderButton", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ aheadOfBase: 3 }) }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(menuKeys(r)).toEqual(["submit-for-review"]);
   });
 
@@ -597,7 +597,7 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(r.disabled).toBeFalsy();
     expect(r.loading).toBeFalsy();
@@ -651,7 +651,7 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
     expect(r.variant).toBe("brand");
     expect(r.meta?.publishPolicyOverride).toBe("open");
@@ -668,7 +668,7 @@ describe("selectHeaderButton", () => {
         reviews: null,
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.action).toBe("publish");
   });
 
@@ -682,7 +682,7 @@ describe("selectHeaderButton", () => {
       }),
     );
     // Local-work state: menu has Submit for review, and no policy bypass.
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.meta?.publishPolicyOverride).toBeUndefined();
     expect(menuKeys(r)).toContain("submit-for-review");
   });
@@ -712,7 +712,7 @@ describe("selectHeaderButton", () => {
       }),
     );
     // Fast Preview rule: while anything runs, red isn't final — no Fix checks yet.
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Review & publish");
     expect(r.tooltip).toBe("Running checks 1 of 2 done");
   });
 });

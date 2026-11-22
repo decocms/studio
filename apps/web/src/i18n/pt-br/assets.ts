@@ -1,7 +1,6 @@
 import type { assets as enAssets } from "../en/assets.ts";
 
 export const assets = {
-  "assets.browser.title": "Assets",
   "assets.browser.bucketLabel": "Bucket: {name}",
   "assets.browser.noBucketTitle": "Nenhum bucket de assets para este site",
   "assets.browser.noBucketDescription":

@@ -57,8 +57,8 @@ export const library = {
   "library.cards.delete": "Delete",
   "library.cards.download": "Download",
   "library.cards.passwordProtected":
-    "Password-protected — link + password to view",
-  "library.cards.publicBadge": "Public — anyone with the link can view",
+    "Password-protected, link + password to view",
+  "library.cards.publicBadge": "Public, anyone with the link can view",
   "library.cards.share": "Share",
   "library.cards.sharedViaParent": "Shared via a parent folder",
   "library.cards.skill": "Skill",
@@ -113,7 +113,7 @@ export const library = {
   "library.library.folderCreated": 'Folder "{name}" created',
   "library.library.folderNamePlaceholder": "folder-name",
   "library.library.folderNameReserved":
-    '"{name}" is a system folder here — pick another name.',
+    '"{name}" is a system folder here, pick another name.',
   "library.library.newFolder": "New folder",
   "library.library.newFolderDescription": "Create a folder in {path}.",
   "library.library.newFolderTitle": "New folder",
@@ -129,13 +129,13 @@ export const library = {
   "library.library.uploading": "Uploading…",
   "library.libraryViews.brands": "Brands",
   "library.libraryViews.curatedSkillSetsReadOnly":
-    "Curated skill sets — read-only",
+    "Curated skill sets, read-only",
   "library.libraryViews.readOnly": "Read-only",
   "library.libraryViews.searchResults": "{count} result(s)",
   "library.libraryViews.emptyFolder":
-    "Empty folder — upload a file or create a folder to get started.",
+    "Empty folder, upload a file or create a folder to get started.",
   "library.libraryViews.emptyReadOnlySet":
-    "Empty — this read-only set syncs from its GitHub source.",
+    "Empty, this read-only set syncs from its GitHub source.",
   "library.libraryViews.failedToLoad": "Failed to load",
   "library.libraryViews.files": "Files",
   "library.libraryViews.filesCount": "{count} files",

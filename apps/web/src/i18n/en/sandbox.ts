@@ -7,13 +7,13 @@ export const sandbox = {
     "No editable schema found for this app.",
   "sandbox.availableSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.availableSectionEditor.localEditsHint":
-    "{typeLabel} — edits stay local until you save this as a global section.",
+    "{typeLabel}, edits stay local until you save this as a global section.",
   "sandbox.availableSectionEditor.noEditableFields":
     "No editable fields for this section.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Save as global section",
   "sandbox.autonomous.noAiProvider":
-    "This organization has no AI provider connected — connect one in Settings → AI Providers to use this",
+    "This organization has no AI provider connected, connect one in Settings → AI Providers to use this",
   "sandbox.blockDocument.addBlock": "Add block",
   "sandbox.blockPicker.blocksLabel": "Blocks",
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
@@ -34,12 +34,12 @@ export const sandbox = {
   "sandbox.blogBrand.competitorsNamePlaceholder": "Competitor name",
   "sandbox.blogBrand.descriptionLabel": "What the brand does",
   "sandbox.blogBrand.dontsBodyPlaceholder":
-    "What not to do, and why — e.g. never print prices in a text block, use a ProductCard",
+    "What not to do, and why, e.g. never print prices in a text block, use a ProductCard",
   "sandbox.blogBrand.dontsHint":
     "Banned words, claims, formats and topics. Each one gets a name and the rule itself.",
   "sandbox.blogBrand.dontsNamePlaceholder": "What this guardrail is about",
   "sandbox.blogBrand.dosBodyPlaceholder":
-    "The instruction itself — e.g. open with the customer's problem, never with the company",
+    "The instruction itself, e.g. open with the customer's problem, never with the company",
   "sandbox.blogBrand.dosHint":
     "Instructions every generated post must follow. Write instructions, not adjectives.",
   "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
@@ -48,11 +48,11 @@ export const sandbox = {
     "Could not read the brand from this site's content",
   "sandbox.blogBrand.extractFilled": "Filled {count} empty field(s)",
   "sandbox.blogBrand.extractHint":
-    "Reads {count} block(s) from this site — existing posts first, since that's the brand actually writing posts.",
+    "Reads {count} block(s) from this site, existing posts first, since that's the brand actually writing posts.",
   "sandbox.blogBrand.extractNoContent":
     "No content to read yet. Write a post, or fill the fields below by hand.",
   "sandbox.blogBrand.extractNothingEmpty":
-    "Nothing to fill — every field already has a value. Clear a field to refill it.",
+    "Nothing to fill, every field already has a value. Clear a field to refill it.",
   "sandbox.blogBrand.languageLabel": "Writing language",
   "sandbox.blogBrand.noCompetitorsFound":
     "No competitors found. Add them by hand, or configure a web search model for this organization.",
@@ -90,7 +90,7 @@ export const sandbox = {
   "sandbox.blogContext.soonDescription": "And a whole lot more…",
   "sandbox.blogContext.soonTitle": "Your brand context lands soon!",
   "sandbox.blogContext.subtitle":
-    "The brand context your blog is written from — voice, formats and the pillars it keeps returning to.",
+    "The brand context your blog is written from, voice, formats and the pillars it keeps returning to.",
   "sandbox.blogContext.tabAuthors": "Authors",
   "sandbox.blogContext.tabBrand": "Brand",
   "sandbox.blogContext.tabCategories": "Categories",
@@ -138,7 +138,7 @@ export const sandbox = {
   "sandbox.categoryEditor.setSlugTooltip":
     "Set a slug to add posts to this category",
   "sandbox.categoryEditor.slugDeduped":
-    "That slug was already taken — saved as \u201c{slug}\u201d.",
+    "That slug was already taken, saved as \u201c{slug}\u201d.",
   "sandbox.categoryEditor.slugLabel": "Slug",
   "sandbox.categoryEditor.slugPlaceholder": "my-category",
   "sandbox.categoryEditor.untitledCategory": "Untitled category",
@@ -214,7 +214,7 @@ export const sandbox = {
   "sandbox.envVarsField.pasteDotenv": "Paste .env",
   "sandbox.envVarsField.pasteDotenvAriaLabel": "Paste .env",
   "sandbox.envVarsField.pasteDotenvTooltip":
-    "Read a .env blob from the clipboard. Each pair is staged as a literal — save individual rows as secrets after.",
+    "Read a .env blob from the clipboard. Each pair is staged as a literal, save individual rows as secrets after.",
   "sandbox.envVarsField.pickSecretPlaceholder": "Pick a secret…",
   "sandbox.envVarsField.remove": "Remove",
   "sandbox.envVarsField.removeEnvVarAriaLabel": "Remove env var",
@@ -231,21 +231,21 @@ export const sandbox = {
   "sandbox.envVarsField.saveAsSecretAriaLabel": "Save value as secret",
   "sandbox.envVarsField.saveSecret": "Save secret",
   "sandbox.envVarsField.saveValueAsSecretDescription":
-    "Move this value into the encrypted vault. The env var will then reference the secret by id — its value never leaves the server.",
+    "Move this value into the encrypted vault. The env var will then reference the secret by id, its value never leaves the server.",
   "sandbox.envVarsField.saveValueAsSecretTitle": "Save value as secret",
   "sandbox.envVarsField.saving": "Saving…",
   "sandbox.envVarsField.secretAriaLabel": "Env var {index} secret",
   "sandbox.envVarsField.scopeLabel": "Scope",
   "sandbox.envVarsField.scopeOrganization":
-    "Organization — visible to all members",
-  "sandbox.envVarsField.scopePrivate": "Private — only visible to me",
+    "Organization, visible to all members",
+  "sandbox.envVarsField.scopePrivate": "Private, only visible to me",
   "sandbox.envVarsField.secret": "Secret",
   "sandbox.envVarsField.secretSaved": 'Saved secret "{name}"',
   "sandbox.envVarsField.secretValuePlaceholder": "secret value",
   "sandbox.envVarsField.title": "Environment variables",
   "sandbox.envVarsField.valueLabel": "Value",
   "sandbox.envVarsField.valuePlaceholder": "value",
-  "sandbox.fileExplorer.askTheAiPlaceholder": "Ask the AI...",
+  "sandbox.fileExplorer.askTheAiPlaceholder": "Ask the AI…",
   "sandbox.fileExplorer.deleteFailed": "Delete failed",
   "sandbox.fileExplorer.discardUnsavedChangesConfirm":
     "This file has unsaved changes. Close it anyway?",
@@ -257,11 +257,11 @@ export const sandbox = {
   "sandbox.fileExplorer.fileCreated": 'Created "{name}"',
   "sandbox.fileExplorer.fileDeleted": 'Deleted "{name}"',
   "sandbox.fileExplorer.fileListTruncated":
-    "File list truncated — some files may be hidden",
+    "File list truncated, some files may be hidden",
   "sandbox.fileExplorer.files": "Files",
   "sandbox.fileExplorer.folderCreated": 'Created folder "{name}"',
   "sandbox.fileExplorer.folderListingTruncated":
-    "Folder listing truncated — expand again to load more",
+    "Folder listing truncated, expand again to load more",
   "sandbox.fileExplorer.inFiles": "In files",
   "sandbox.fileExplorer.modified": "Modified",
   "sandbox.fileExplorer.newFile": "New file",
@@ -275,7 +275,7 @@ export const sandbox = {
   "sandbox.fileExplorer.renamedTo": 'Renamed to "{name}"',
   "sandbox.fileExplorer.saved": "Saved",
   "sandbox.fileExplorer.searchFilesLabel": "Search files",
-  "sandbox.fileExplorer.searchFilesPlaceholder": "Search files...",
+  "sandbox.fileExplorer.searchFilesPlaceholder": "Search files…",
   "sandbox.fileExplorer.selectFileToEdit": "Select a file to edit",
   "sandbox.fileExplorer.send": "Send",
   "sandbox.fileExplorer.textCopied": "{label} copied",
@@ -297,45 +297,45 @@ export const sandbox = {
     "Enter a name for the new file.",
   "sandbox.fileExplorerNameDialog.newFilePlaceholder": "filename.ts",
   "sandbox.fileExplorerNameDialog.newFileSubmit": "Create",
-  "sandbox.fileExplorerNameDialog.newFileTitle": "New File",
+  "sandbox.fileExplorerNameDialog.newFileTitle": "New file",
   "sandbox.fileExplorerNameDialog.newFolderDescription":
     "Enter a name for the new folder.",
   "sandbox.fileExplorerNameDialog.newFolderPlaceholder": "folder-name",
   "sandbox.fileExplorerNameDialog.newFolderSubmit": "Create",
-  "sandbox.fileExplorerNameDialog.newFolderTitle": "New Folder",
+  "sandbox.fileExplorerNameDialog.newFolderTitle": "New folder",
   "sandbox.fileExplorerNameDialog.renameDescription":
     "Enter a new name for this item.",
   "sandbox.fileExplorerNameDialog.renamePlaceholder": "new-name",
   "sandbox.fileExplorerNameDialog.renameSubmit": "Rename",
   "sandbox.fileExplorerNameDialog.renameTitle": "Rename",
   "sandbox.fileExplorerNameDialog.saving": "Saving…",
-  "sandbox.fileTreeRow.copyPath": "Copy Path",
-  "sandbox.fileTreeRow.copyRelativePath": "Copy Relative Path",
+  "sandbox.fileTreeRow.copyPath": "Copy path",
+  "sandbox.fileTreeRow.copyRelativePath": "Copy relative path",
   "sandbox.fileTreeRow.delete": "Delete",
-  "sandbox.fileTreeRow.newFile": "New File",
-  "sandbox.fileTreeRow.newFolder": "New Folder",
+  "sandbox.fileTreeRow.newFile": "New file",
+  "sandbox.fileTreeRow.newFolder": "New folder",
   "sandbox.fileTreeRow.rename": "Rename",
   "sandbox.formats.add": "New format",
   "sandbox.formats.bodyPlaceholder":
     "When to use it, how it opens and closes, roughly how long, and which sections carry it…",
   "sandbox.formats.hint":
-    "A format guides generation, it doesn't dictate it — describe the intent and let the model decide the order. Type @ to cite one of your sections.",
+    "A format guides generation, it doesn't dictate it, describe the intent and let the model decide the order. Type @ to cite one of your sections.",
   "sandbox.formats.mentionEmpty": "No matching section",
   "sandbox.formats.mentionHint": "Type @ to cite a section",
   "sandbox.formats.namePlaceholder": "The format, named by the job it does",
   "sandbox.formats.noNewFormats":
-    "Nothing new came back — every format proposed was already on the list.",
+    "Nothing new came back, every format proposed was already on the list.",
   "sandbox.formats.phaseReading": "Reading how your posts are built…",
   "sandbox.formats.phaseWriting": "Naming the formats…",
   "sandbox.formats.starterButton": "Use the standard format",
   "sandbox.formats.starterHint":
-    "Add a plain format built from the sections this site has — no AI, no credits",
+    "Add a plain format built from the sections this site has, no AI, no credits",
   "sandbox.formats.starterAdded":
     "No AI model is configured for this org, so a starter format was added for you to edit.",
   "sandbox.formats.starterBody":
     "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nSections that carry it: {sections}. How many of each, and in what order, depends on the theme.",
   "sandbox.formats.starterBodyNoSections":
-    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nThis site reports no post sections yet — once it does, cite them here with @.",
+    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nThis site reports no post sections yet, once it does, cite them here with @.",
   "sandbox.formats.starterName": "Standard post",
   "sandbox.formats.suggestButton": "Suggest formats",
   "sandbox.formats.suggestFailed": "Couldn't suggest formats",
@@ -347,9 +347,9 @@ export const sandbox = {
   "sandbox.generatePost.authorLabel": "Author",
   "sandbox.generatePost.back": "Back",
   "sandbox.generatePost.blockedBrand":
-    "Fill in {fields} on the Brand tab first — a post written without them reads like any other brand's.",
+    "Fill in {fields} on the Brand tab first, a post written without them reads like any other brand's.",
   "sandbox.generatePost.categoryLabel": "Category",
-  "sandbox.generatePost.done": 'Wrote "{title}" — ready for review',
+  "sandbox.generatePost.done": 'Wrote "{title}", ready for review',
   "sandbox.generatePost.extraLabel": "Anything else?",
   "sandbox.generatePost.extraPlaceholder":
     "What you want on top of everything else, in your words.",
@@ -369,7 +369,7 @@ export const sandbox = {
   "sandbox.generatePost.ideaHint":
     "One angle, specific enough to be a single post.",
   "sandbox.generatePost.ideaHintInPillar":
-    'One angle inside "{pillar}" — specific enough to be a single post, not the territory itself.',
+    'One angle inside "{pillar}", specific enough to be a single post, not the territory itself.',
   "sandbox.generatePost.ideaTitleLabel": "What is the post about?",
   "sandbox.generatePost.ideaTitlePlaceholder": "e.g. Why linen creases",
   "sandbox.generatePost.inferHint":
@@ -380,7 +380,7 @@ export const sandbox = {
   "sandbox.generatePost.stepFormat": "Format",
   "sandbox.generatePost.stepIdea": "Idea",
   "sandbox.generatePost.subtitle":
-    "An idea, the pillar it belongs to, the format it follows — then anything else you want to pin down.",
+    "An idea, the pillar it belongs to, the format it follows, then anything else you want to pin down.",
   "sandbox.generatePost.suggestFailed": "Could not suggest",
   "sandbox.generatePost.suggestIdeas": "Suggest ideas",
   "sandbox.generatePost.suggestIdeasHint":
@@ -475,9 +475,9 @@ export const sandbox = {
   "sandbox.pageFormDialog.titleDuplicate": "Duplicate page",
   "sandbox.pageFormDialog.titleRename": "Rename page",
   "sandbox.pathParamPickerChip.buttonTitle":
-    "Value for {paramLabel} — click to pick",
+    "Value for {paramLabel}, click to pick",
   "sandbox.pathParamPickerChip.couldNotLoad":
-    "Couldn't load — is the dev server running?",
+    "Couldn't load, is the dev server running?",
   "sandbox.pathParamPickerChip.kindCategoryHeading": "Categories",
   "sandbox.pathParamPickerChip.kindCategoryNoun": "category",
   "sandbox.pathParamPickerChip.kindProductHeading": "Products",
@@ -499,8 +499,8 @@ export const sandbox = {
   "sandbox.pillars.guidancePlaceholder":
     "e.g. focus on post-purchase education",
   "sandbox.pillars.hint":
-    "Pillars are the recurring territories your blog returns to — product updates, customer cases, market trends. Each can be written in several formats.",
-  "sandbox.pillars.namePlaceholder": "Name the territory — e.g. Customer cases",
+    "Pillars are the recurring territories your blog returns to, product updates, customer cases, market trends. Each can be written in several formats.",
+  "sandbox.pillars.namePlaceholder": "Name the territory, e.g. Customer cases",
   "sandbox.pillars.noNew": "No new pillars to add",
   "sandbox.pillars.phaseReading": "Reading your brand context…",
   "sandbox.pillars.phaseWriting": "Naming the territories…",
@@ -522,7 +522,7 @@ export const sandbox = {
   "sandbox.plainBlocks.numberedLabel": "Numbered",
   "sandbox.plainBlocks.quotePlaceholder": "Quote",
   "sandbox.postBoard.close": "Close",
-  "sandbox.postBoard.archived": "Moved to Archived",
+  "sandbox.postBoard.archived": "Moved to archived",
   "sandbox.postBoard.collapse": "Collapse to panel",
   "sandbox.postBoard.collapseLane": "Collapse {lane}",
   "sandbox.postBoard.delete": "Delete",
@@ -554,7 +554,7 @@ export const sandbox = {
   "sandbox.postBoard.lanePublished": "Published",
   "sandbox.postBoard.laneScheduled": "Scheduled",
   "sandbox.postBoard.moveBlocked":
-    "This post is missing required fields — open it to finish before scheduling.",
+    "This post is missing required fields, open it to finish before scheduling.",
   "sandbox.postBoard.moveFailed": "Could not move this post",
   "sandbox.postBoard.moveInFlight": "Still moving this post…",
   "sandbox.postBoard.moveNotATarget":
@@ -571,11 +571,11 @@ export const sandbox = {
     "Bring in HTML or Markdown you already wrote",
   "sandbox.postBoard.importTitle": "Import content",
   "sandbox.postBoard.importDescription":
-    "Paste HTML or Markdown you already wrote. It becomes an editable draft in your design system — no AI, no credits.",
+    "Paste HTML or Markdown you already wrote. It becomes an editable draft in your design system, no AI, no credits.",
   "sandbox.postBoard.importUpload": "Upload a file",
   "sandbox.postBoard.importRun": "Import",
-  "sandbox.postBoard.importEmpty": "Nothing to import — the content was empty.",
-  "sandbox.postBoard.imported": "Imported — review and publish.",
+  "sandbox.postBoard.importEmpty": "Nothing to import, the content was empty.",
+  "sandbox.postBoard.imported": "Imported, review and publish.",
   "sandbox.postBoard.readyToSchedule": "Ready to schedule",
   "sandbox.postBoard.selectPrompt": "Select a post to view it here.",
   "sandbox.postBoard.untitled": "Untitled post",
@@ -596,7 +596,7 @@ export const sandbox = {
   "sandbox.postCalendar.schedulePostOn": "Schedule a post on {date}",
   "sandbox.postCalendar.today": "Today",
   "sandbox.postCalendar.unscheduledHint":
-    "Dashed posts aren't scheduled — they sit on their display date, and nothing will publish them.",
+    "Dashed posts aren't scheduled, they sit on their display date, and nothing will publish them.",
   "sandbox.postCalendar.undatedEmpty": "Every post has a date.",
   "sandbox.postCalendar.undatedLabel": "No date · {count}",
   "sandbox.postEditor.addPropLabel": "Add prop",
@@ -626,9 +626,9 @@ export const sandbox = {
   "sandbox.postEditor.missingFieldPlural": "Missing required fields: {fields}",
   "sandbox.postEditor.missingFieldSingular": "Missing required field: {fields}",
   "sandbox.postEditor.noAuthorsYet":
-    "No authors yet — create some in the authors collection.",
+    "No authors yet, create some in the authors collection.",
   "sandbox.postEditor.noCategoriesYet":
-    "No categories yet — create some in the categories collection.",
+    "No categories yet, create some in the categories collection.",
   "sandbox.postEditor.noContentYet":
     "This post has no content yet. Use ⊕ to add your first block.",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
@@ -656,7 +656,7 @@ export const sandbox = {
   "sandbox.postEditor.settingsTab": "Settings",
   "sandbox.postEditor.statusLabel": "Status",
   "sandbox.postEditor.slugDeduped":
-    "That slug was already taken — saved as “{slug}”.",
+    "That slug was already taken, saved as “{slug}”.",
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "my-post",
   "sandbox.postEditor.valuePlaceholder": "value",
@@ -695,7 +695,7 @@ export const sandbox = {
   "sandbox.preview.expandTerminal": "Expand terminal",
   "sandbox.preview.resizeTerminal": "Resize terminal",
   "sandbox.preview.createNewPage": "Create new page",
-  "sandbox.preview.devServerPreviewTitle": "Dev Server Preview",
+  "sandbox.preview.devServerPreviewTitle": "Dev server preview",
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Mobile (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
@@ -717,10 +717,10 @@ export const sandbox = {
   "sandbox.preview.pageCreated": 'Page "{name}" created',
   "sandbox.preview.previewMetadataNotReady": "Preview metadata not ready yet",
   "sandbox.preview.refresh": "Refresh",
-  "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
+  "sandbox.preview.searchPagesAndComponents": "Search pages and components…",
   "sandbox.preview.startingPreview": "Starting your preview",
   "sandbox.preview.startingPreviewHint":
-    "Showing your published site. You can make changes now — they'll appear once the preview is ready.",
+    "Showing your published site. You can make changes now, they'll appear once the preview is ready.",
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.valueForParam": "Value for {label}",
@@ -761,12 +761,12 @@ export const sandbox = {
   "sandbox.productBlocks.vtexProductIds": "VTEX product IDs",
   "sandbox.productPickerDialog.addProducts": "Add products",
   "sandbox.productPickerDialog.categoryLabel": "Category: ",
-  "sandbox.productPickerDialog.change": " — change",
+  "sandbox.productPickerDialog.change": " · change",
   "sandbox.productPickerDialog.chooseProduct": "Choose a product",
   "sandbox.productPickerDialog.clusterIdPlaceholder":
     "Collection / cluster ID (e.g. 2140)",
   "sandbox.productPickerDialog.couldNotLoad":
-    "Couldn't load — is the dev server running?",
+    "Couldn't load, is the dev server running?",
   "sandbox.productPickerDialog.done": "Done",
   "sandbox.productPickerDialog.enterClusterPrompt":
     "Enter a collection or cluster ID.",
@@ -809,7 +809,7 @@ export const sandbox = {
   "sandbox.redirectEditor.fromPlaceholder": "/old-path",
   "sandbox.redirectEditor.title": "Redirect",
   "sandbox.redirectEditor.toDescription":
-    "The destination — a relative path or an absolute URL.",
+    "The destination, a relative path or an absolute URL.",
   "sandbox.redirectEditor.toLabel": "To",
   "sandbox.redirectEditor.toPlaceholder": "/new-path",
   "sandbox.redirectEditor.typeLabel": "Type",
@@ -828,7 +828,7 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Instant preview (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
-    "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
+    "Refresh edits in place, without waiting for a save, much faster, but only works on websites that have /live/previews route.",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "The Site Editor offers Content and opens Blocks beside Preview on desktop.",
@@ -853,7 +853,7 @@ export const sandbox = {
   "sandbox.repoRow.tooltipContent":
     "The connected GitHub repository for this project. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
-    "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
+    "{typeLabel}, edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",
   "sandbox.runnableBlockEditor.closeResult": "Close result",
   "sandbox.runnableBlockEditor.collapse": "Collapse",
@@ -865,9 +865,9 @@ export const sandbox = {
   "sandbox.runnableBlockEditor.freeformPropsEmptyState":
     "This {singular} doesn't publish a props schema. Edit its props as JSON, then run it.",
   "sandbox.runnableBlockEditor.inferredSchemaNotice":
-    "This {singular} doesn't publish a props schema — fields below are inferred from its saved values. Use the JSON editor to add props not shown here.",
+    "This {singular} doesn't publish a props schema, fields below are inferred from its saved values. Use the JSON editor to add props not shown here.",
   "sandbox.runnableBlockEditor.invalidJsonError":
-    "Invalid JSON — changes aren't saved until it parses.",
+    "Invalid JSON, changes aren't saved until it parses.",
   "sandbox.runnableBlockEditor.noInputEmptyState":
     "This {singular} takes no configurable input. Run it to see its output.",
   "sandbox.runnableBlockEditor.openInNewTabTooltip":
@@ -884,7 +884,7 @@ export const sandbox = {
   "sandbox.runnableBlockEditor.saveAsGlobalAriaLabel":
     "Save as global {singular}",
   "sandbox.runnableBlockEditor.savedModeDescription":
-    "Global {singular} — changes save automatically. Run to invoke it against the live preview.",
+    "Global {singular}, changes save automatically. Run to invoke it against the live preview.",
   "sandbox.runnableBlocksBrowser.emptyFolder": "This folder is empty.",
   "sandbox.runnableBlocksBrowser.emptyFolderNoManifest":
     "Start the preview dev server so its manifest loads.",
@@ -893,7 +893,7 @@ export const sandbox = {
   "sandbox.runnableBlocksBrowser.hideSaved": "Hide saved",
   "sandbox.runnableBlocksBrowser.noSearchResults": 'No {kind} match "{query}"',
   "sandbox.runnableBlocksBrowser.noSearchResultsDescription":
-    "Search covers every folder — try a different term.",
+    "Search covers every folder, try a different term.",
   "sandbox.runnableBlocksBrowser.savedBlockToast":
     'Saved {singular} "{blockId}"',
   "sandbox.runnableBlocksBrowser.savedCountLabel": "{count} saved",
@@ -915,9 +915,9 @@ export const sandbox = {
   "sandbox.saveStatus.saving": "Saving…",
   "sandbox.savedSectionEditor.editAsJson": "Edit as JSON",
   "sandbox.savedSectionEditor.globalSectionDescription":
-    "Global section — changes save automatically and apply everywhere it's used.",
+    "Global section, changes save automatically and apply everywhere it's used.",
   "sandbox.savedSectionEditor.invalidJsonError":
-    "Invalid JSON — changes aren't saved until it parses.",
+    "Invalid JSON, changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
@@ -945,7 +945,7 @@ export const sandbox = {
   "sandbox.tableBlock.addColumn": "Add column",
   "sandbox.tableBlock.addRow": "Add row",
   "sandbox.tableBlock.headerPlaceholder": "Header {n}",
-  "sandbox.tableBlock.noRowsYet": "No rows yet — add one below.",
+  "sandbox.tableBlock.noRowsYet": "No rows yet, add one below.",
   "sandbox.tableBlock.removeColumn": "Remove column {n}",
   "sandbox.tableBlock.removeRow": "Remove row {n}",
   "sandbox.toolbar.closeTab": "Close {tab}",
@@ -969,7 +969,7 @@ export const sandbox = {
   "sandbox.variantCalendar.dateMatcherInfo":
     "Variants gated by a date matcher appear here.",
   "sandbox.variantCalendar.hiddenOngoingVariants":
-    '{count} ongoing variant(s) hidden — enable "Show ongoing" to view.',
+    '{count} ongoing variant(s) hidden, enable "Show ongoing" to view.',
   "sandbox.variantCalendar.next": "Next",
   "sandbox.variantCalendar.noDatedVariants": "No dated variants in view.",
   "sandbox.variantCalendar.noScheduledVariants": "No scheduled variants.",
@@ -979,7 +979,7 @@ export const sandbox = {
   "sandbox.variantCalendar.timelineMode": "Timeline",
   "sandbox.variantCalendar.today": "Today",
   "sandbox.variantCalendar.todayLabel": "Today",
-  "sandbox.variantCalendar.variantBlock": "Variant / Block",
-  "sandbox.visualEditorPrompt.inputPlaceholder": "Ask the AI...",
+  "sandbox.variantCalendar.variantBlock": "Variant / block",
+  "sandbox.visualEditorPrompt.inputPlaceholder": "Ask the AI…",
   "sandbox.visualEditorPrompt.sendButton": "Send",
 } as const;

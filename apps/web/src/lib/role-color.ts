@@ -7,9 +7,9 @@ const ROLE_COLORS = [
 ] as const;
 
 const BUILTIN_ROLE_COLORS: Record<string, string> = {
-  owner: "bg-destructive",
-  admin: "bg-chart-1",
-  user: "bg-success",
+  owner: "bg-foreground",
+  admin: "bg-notice",
+  user: "bg-muted-foreground",
 };
 
 export function getRoleColor(roleName: string): string {

@@ -2,7 +2,6 @@ import type { agents as enAgents } from "../en/agents.ts";
 
 export const agents = {
   "agents.title": "Agentes",
-  "agents.subtitle": "O que está rodando agora, e o que roda sem pedir.",
   "agents.tiles.running": "Rodando agora",
   "agents.tiles.runsToday": "Runs hoje",
   "agents.tiles.cost": "Custo de agente · este mês",

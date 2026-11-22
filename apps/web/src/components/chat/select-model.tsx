@@ -69,7 +69,7 @@ export function ModelSelector({
       variant={variant === "borderless" ? "ghost" : "outline"}
       size="sm"
       className={cn(
-        "text-sm hover:bg-accent py-0.5 px-1 gap-1 shadow-none cursor-pointer border-0 group focus-visible:ring-0 focus-visible:ring-offset-0 min-w-0 shrink justify-start overflow-hidden",
+        "hover:bg-accent gap-1 shadow-none cursor-pointer border-0 group focus-visible:ring-0 focus-visible:ring-offset-0 min-w-0 shrink justify-start overflow-hidden",
         variant === "borderless" && "md:border-none",
         className,
       )}
@@ -123,7 +123,7 @@ export function ModelSelector({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{triggerButton}</DialogTrigger>
       <DialogContent
-        className="p-0 gap-0 sm:max-w-fit overflow-hidden h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[85vh] w-full max-w-full sm:max-w-fit rounded-none sm:rounded-xl border-0 sm:border"
+        className="p-0 gap-0 sm:max-w-fit overflow-hidden h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[85vh] w-full max-w-full sm:max-w-fit rounded-none sm:rounded-m border-0 sm:border"
         closeButtonClassName="top-3.5 right-3.5 z-20"
       >
         <DialogTitle className="sr-only">

@@ -21,7 +21,7 @@ export default function CliAuthSuccessRoute() {
   return (
     <AuthSplitLayout>
       <div className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight">
+        <h1 className="text-3xl font-semibold">
           You're logged in{email ? <> as {email}</> : ""}.
         </h1>
         <p className="text-muted-foreground">

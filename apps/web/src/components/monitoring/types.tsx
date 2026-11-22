@@ -544,15 +544,15 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
             {t("monitoring.types.requestId")}
           </div>
           <div className="flex items-center gap-1">
-            <code className="font-mono text-foreground text-[11px]">
+            <code className="font-mono text-foreground text-xs">
               {log.requestId}
             </code>
             <Button
-              size="icon"
+              size="icon-xs"
               variant="ghost"
               onClick={handleCopyRequestId}
               aria-label={t("monitoring.types.copyRequestId")}
-              className="h-5 w-5 text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground"
             >
               {copiedRequestId ? <Check size={12} /> : <Copy01 size={12} />}
             </Button>
@@ -583,7 +583,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   <PopoverTrigger asChild>
                     <Badge
                       variant="secondary"
-                      className="font-mono text-xs px-2 py-0.5 cursor-pointer hover:bg-secondary/80 transition-colors"
+                      className="font-mono px-2 py-0.5 cursor-pointer hover:bg-secondary/80 transition-colors"
                     >
                       {key}={value}
                     </Badge>
@@ -593,7 +593,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="justify-start focus-visible:ring-0 focus-visible:ring-offset-0"
                         onClick={() => {
                           const filter: PropertyFilter = {
                             key,
@@ -620,7 +620,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="justify-start focus-visible:ring-0 focus-visible:ring-offset-0"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(
@@ -638,7 +638,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="justify-start focus-visible:ring-0 focus-visible:ring-offset-0"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(key);
@@ -654,7 +654,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="justify-start h-8 px-2 text-xs font-normal focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="justify-start focus-visible:ring-0 focus-visible:ring-offset-0"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(value);
@@ -691,7 +691,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       {/* JSON viewers — stacked */}
       <div className="space-y-4">
         <div>
-          <div className="rounded-lg overflow-hidden border border-border">
+          <div className="rounded-m overflow-hidden shadow-(--edge)">
             <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground select-none">
@@ -709,11 +709,11 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        size="icon"
+                        size="icon-sm"
                         variant="ghost"
                         onClick={handleReplay}
                         aria-label={t("monitoring.types.replayToolCall")}
-                        className="text-muted-foreground hover:text-foreground h-8 w-8"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Play size={14} />
                       </Button>
@@ -763,7 +763,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
           </div>
         </div>
         <div>
-          <div className="rounded-lg overflow-hidden border border-border">
+          <div className="rounded-m overflow-hidden shadow-(--edge)">
             <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground select-none">

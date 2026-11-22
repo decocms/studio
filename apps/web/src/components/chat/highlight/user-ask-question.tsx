@@ -412,13 +412,7 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
 
   const footerRight = (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={handleSkip}
-        className="h-7"
-      >
+      <Button type="button" variant="outline" size="sm" onClick={handleSkip}>
         {t("chat.userAskQuestion.skip")}
       </Button>
       <PaginatedFormSubmitButton

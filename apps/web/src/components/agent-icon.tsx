@@ -310,7 +310,7 @@ const SIZES = {
     container: "w-12 h-12",
     icon: 24,
     iconClass: "size-6",
-    radius: "rounded-xl",
+    radius: "rounded-m",
   },
   lg: {
     container: "w-16 h-16",

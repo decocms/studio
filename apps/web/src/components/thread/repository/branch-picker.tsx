@@ -484,7 +484,7 @@ export function BranchPicker({
               type="button"
               onClick={() => void create()}
               disabled={atReleaseCap}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:text-neutral-6"
             >
               <Plus className="h-4 w-4 shrink-0" />
               {t("thread.branchPicker.newVersion")}
@@ -576,7 +576,7 @@ function RenameInput({
             onCancel();
           }
         }}
-        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus-ring"
       />
       <Button size="sm" onClick={onSave}>
         {t("thread.branchPicker.save")}
@@ -637,7 +637,7 @@ function ReleaseRow({
             </span>
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="font-mono text-xs">
+        <TooltipContent side="bottom" className="font-mono">
           {t("thread.branchPicker.branchTooltip", { branch })}
         </TooltipContent>
       </Tooltip>
@@ -645,9 +645,9 @@ function ReleaseRow({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-xs"
             aria-label={t("thread.branchPicker.moreActions")}
-            className="mr-1 h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+            className="mr-1 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
           >
             <DotsVertical className="h-4 w-4" />
           </Button>
@@ -715,9 +715,9 @@ function LocalRow({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-xs"
             aria-label={t("thread.branchPicker.moreActions")}
-            className="mr-1 h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+            className="mr-1 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
           >
             <DotsVertical className="h-4 w-4" />
           </Button>
@@ -840,13 +840,13 @@ function AdvancedPicker({
           className="h-auto w-fit justify-start gap-1 bg-accent p-1"
           variant="pill"
         >
-          <TabsTrigger value="branches" className="h-6 px-2.5 text-xs">
+          <TabsTrigger value="branches" className="h-6 px-2.5">
             {t("thread.branchPicker.branchesTab")}
           </TabsTrigger>
-          <TabsTrigger value="prs" className="h-6 px-2.5 text-xs">
+          <TabsTrigger value="prs" className="h-6 px-2.5">
             {t("thread.branchPicker.prsTab")}
           </TabsTrigger>
-          <TabsTrigger value="local" className="h-6 px-2.5 text-xs">
+          <TabsTrigger value="local" className="h-6 px-2.5">
             {t("thread.branchPicker.localTab")}
           </TabsTrigger>
         </TabsList>
@@ -913,7 +913,7 @@ function AdvancedPicker({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-full text-xs"
+                      className="w-full"
                       disabled={isFetchingMore}
                       onClick={fetchMore}
                     >
@@ -998,14 +998,14 @@ function LocalUrlForm({
         onKeyDown={(e) => {
           if (e.key === "Enter" && trimmed) submit();
         }}
-        className="h-8 w-full rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        className="h-8 w-full rounded-md border bg-transparent px-2 text-sm outline-none focus-ring"
       />
       <div className="flex items-center justify-between gap-2">
         {url ? (
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs text-destructive hover:text-destructive"
+            className="text-destructive hover:text-destructive"
             onClick={() => onSave(null)}
           >
             {t("thread.branchPicker.localTurnOff")}

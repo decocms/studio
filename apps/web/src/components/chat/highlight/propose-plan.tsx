@@ -38,7 +38,7 @@ function ProposePlanPrompt({
         type="button"
         variant="ghost"
         size="sm"
-        className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
+        className="text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
         onClick={onDismiss}
       >
         {t("chat.proposePlan.keepIterating")}
@@ -46,7 +46,7 @@ function ProposePlanPrompt({
       <Button
         type="button"
         size="sm"
-        className="h-7 px-2.5 text-xs bg-special hover:bg-special/90 text-special-foreground active:scale-[0.97] transition-transform"
+        className="bg-special hover:bg-special/90 text-special-foreground active:scale-[0.97] transition-transform"
         onClick={handleApprove}
       >
         {t("chat.proposePlan.letsGo")}

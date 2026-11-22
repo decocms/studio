@@ -61,9 +61,11 @@ export function ColumnRulesStrip({
   const automation = automations.data?.find((a) => a.columnKey === columnKey);
   const skillCount = scope?.skills.length ?? 0;
   const configured = !!automation || !!scope;
+  // Lanes without a rule keep the strip's height so every lane header lines up.
+  const anyLaneConfigured =
+    (automations.data?.length ?? 0) > 0 || (prompts.data?.length ?? 0) > 0;
   const summary =
-    automation?.prompt ||
-    scope?.prompt ||
+    (automation?.prompt || scope?.prompt)?.replace(/^\s*[-*]\s+/, "") ||
     (automation
       ? t("taskBoard.columnRules.defaultRun")
       : t("taskBoard.columnRules.skillsOnly", { count: skillCount }));
@@ -72,6 +74,9 @@ export function ColumnRulesStrip({
 
   return (
     <>
+      {!configured && anyLaneConfigured && (
+        <div aria-hidden="true" className="h-7" />
+      )}
       {configured && (
         <button
           type="button"

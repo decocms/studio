@@ -58,13 +58,13 @@ export function ThreadsFiltersPopover({
             <>
               <Badge
                 variant="default"
-                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none"
+                className="sm:hidden absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 leading-none"
               >
                 {activeFiltersCount}
               </Badge>
               <Badge
                 variant="default"
-                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center text-xs"
+                className="hidden sm:flex ml-1 h-5 w-5 rounded-full p-0 items-center justify-center"
               >
                 {activeFiltersCount}
               </Badge>
@@ -80,7 +80,7 @@ export function ThreadsFiltersPopover({
 
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.threadsFiltersPopover.agent")}
               </label>
               <MultiSelect
@@ -97,7 +97,7 @@ export function ThreadsFiltersPopover({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.threadsFiltersPopover.user")}
               </label>
               <MultiSelect
@@ -114,7 +114,7 @@ export function ThreadsFiltersPopover({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.threadsFiltersPopover.status")}
               </label>
               <Select
@@ -144,7 +144,7 @@ export function ThreadsFiltersPopover({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label className="text-s font-medium mb-1.5 block">
                 {t("orgs.threadsFiltersPopover.source")}
               </label>
               <Select

@@ -471,7 +471,6 @@ function PublishDialogBody({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-xs"
                   onClick={() => setDiscardAllConfirm(false)}
                 >
                   {t("thread.publishDialog.cancel")}
@@ -479,7 +478,7 @@ function PublishDialogBody({
                 <Button
                   type="button"
                   size="sm"
-                  className="h-7 bg-destructive px-2 text-xs text-destructive-foreground hover:bg-destructive/90"
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={handleDiscardAll}
                   disabled={isDiscardingAll}
                 >
@@ -491,17 +490,17 @@ function PublishDialogBody({
           ) : (
             <div className="flex items-center justify-between">
               <TabsList className="h-8 w-auto" variant="pill">
-                <TabsTrigger value="description" className="px-3 text-xs">
+                <TabsTrigger value="description" className="px-3">
                   {t("thread.publishDialog.description")}
                 </TabsTrigger>
-                <TabsTrigger value="changes" className="px-3 text-xs">
+                <TabsTrigger value="changes" className="px-3">
                   {t("thread.publishDialog.changesTab")}
                 </TabsTrigger>
               </TabsList>
               {diffCount > 0 && !openPrFromCommits && (
                 <button
                   type="button"
-                  className="text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+                  className="text-xs text-muted-foreground transition-colors hover:text-destructive disabled:text-neutral-6"
                   onClick={() => setDiscardAllConfirm(true)}
                   disabled={isPublishing || isDiscardingAll}
                 >
@@ -534,7 +533,7 @@ function PublishDialogBody({
                     </p>
                     <button
                       type="button"
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:text-neutral-6"
                       disabled={
                         isGeneratingSuggestion ||
                         isPublishing ||
@@ -631,7 +630,7 @@ function PublishDialogBody({
         <div className="shrink-0 border-t">
           <button
             type="button"
-            className="flex w-full items-center justify-between px-6 py-3.5 text-sm transition-colors hover:bg-muted/50 disabled:opacity-50"
+            className="flex w-full items-center justify-between px-6 py-3.5 text-sm transition-colors hover:bg-muted/50 disabled:text-neutral-6"
             onClick={() => {
               if (previewUrl) {
                 window.open(previewUrl, "_blank", "noopener,noreferrer");

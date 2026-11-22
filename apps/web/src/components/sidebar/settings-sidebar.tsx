@@ -50,7 +50,7 @@ function SettingsGroupHeading({
   className?: string;
 }) {
   const style = cn(
-    "text-xs font-medium text-muted-foreground/60 truncate",
+    "text-xs font-medium text-muted-foreground truncate",
     className,
   );
 

@@ -121,7 +121,7 @@ export function ConnectionFields({
         name="ui_type"
         render={({ field }) => (
           <FormItem className="flex flex-col gap-3">
-            <FormLabel className="text-xs text-muted-foreground font-medium">
+            <FormLabel className="text-muted-foreground">
               {t("details.connectionSidebar.connection")}
             </FormLabel>
             {/* Unified container for HTTP/SSE/Websocket */}
@@ -233,7 +233,7 @@ export function ConnectionFields({
           name="npx_package"
           render={({ field }) => (
             <FormItem className="flex flex-col gap-3">
-              <FormLabel className="text-xs text-muted-foreground font-medium">
+              <FormLabel className="text-muted-foreground">
                 {t("details.connectionSidebar.npmPackage")}
               </FormLabel>
               <FormControl>
@@ -261,7 +261,7 @@ export function ConnectionFields({
               name="stdio_command"
               render={({ field }) => (
                 <FormItem className="flex flex-col gap-3">
-                  <FormLabel className="text-xs text-muted-foreground font-medium">
+                  <FormLabel className="text-muted-foreground">
                     {t("details.connectionSidebar.command")}
                   </FormLabel>
                   <FormControl>
@@ -284,7 +284,7 @@ export function ConnectionFields({
               name="stdio_args"
               render={({ field }) => (
                 <FormItem className="flex flex-col gap-3">
-                  <FormLabel className="text-xs text-muted-foreground font-medium">
+                  <FormLabel className="text-muted-foreground">
                     {t("details.connectionSidebar.arguments")}
                   </FormLabel>
                   <FormControl>
@@ -311,7 +311,7 @@ export function ConnectionFields({
             name="stdio_cwd"
             render={({ field }) => (
               <FormItem className="flex flex-col gap-3">
-                <FormLabel className="text-xs text-muted-foreground font-medium">
+                <FormLabel className="text-muted-foreground">
                   {t("details.connectionSidebar.workingDirectory")}
                 </FormLabel>
                 <FormControl>
@@ -338,7 +338,7 @@ export function ConnectionFields({
           name="env_vars"
           render={({ field }) => (
             <FormItem className="flex flex-col gap-3">
-              <FormLabel className="text-xs text-muted-foreground font-medium">
+              <FormLabel className="text-muted-foreground">
                 {t("details.connectionSidebar.environmentVariables")}
               </FormLabel>
               <FormControl>
@@ -360,7 +360,7 @@ export function ConnectionFields({
           name="connection_token"
           render={({ field }) => (
             <FormItem className="flex flex-col gap-3">
-              <FormLabel className="text-xs text-muted-foreground font-medium">
+              <FormLabel className="text-muted-foreground">
                 {isGitHubCopilotMcp
                   ? t("details.connectionSidebar.githubPersonalAccessToken")
                   : t("details.connectionSidebar.token")}

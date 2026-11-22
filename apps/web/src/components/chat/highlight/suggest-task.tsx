@@ -34,7 +34,6 @@ export function SuggestTaskHighlight({
             type="button"
             size="sm"
             variant="outline"
-            className="h-7"
             disabled={isStreaming}
             onClick={() => onRespond(part, false)}
           >
@@ -43,7 +42,6 @@ export function SuggestTaskHighlight({
           <Button
             type="button"
             size="sm"
-            className="h-7"
             disabled={isStreaming}
             onClick={() => onRespond(part, true)}
           >
@@ -53,7 +51,7 @@ export function SuggestTaskHighlight({
       }
     >
       {input.summary ? (
-        <p className="px-4 pb-1 text-sm leading-snug text-muted-foreground whitespace-pre-wrap">
+        <p className="px-4 pb-1 text-sm text-muted-foreground whitespace-pre-wrap">
           {input.summary}
         </p>
       ) : null}

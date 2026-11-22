@@ -59,9 +59,9 @@ export const library = {
   "library.cards.delete": "Excluir",
   "library.cards.download": "Baixar",
   "library.cards.passwordProtected":
-    "Protegido por senha — link + senha para visualizar",
+    "Protegido por senha, link + senha para visualizar",
   "library.cards.publicBadge":
-    "Público — qualquer pessoa com o link pode visualizar",
+    "Público, qualquer pessoa com o link pode visualizar",
   "library.cards.share": "Compartilhar",
   "library.cards.sharedViaParent": "Compartilhado via pasta pai",
   "library.cards.skill": "Habilidade",
@@ -119,7 +119,7 @@ export const library = {
   "library.library.folderCreated": 'Pasta "{name}" criada',
   "library.library.folderNamePlaceholder": "nome-da-pasta",
   "library.library.folderNameReserved":
-    '"{name}" é uma pasta do sistema aqui — escolha outro nome.',
+    '"{name}" é uma pasta do sistema aqui, escolha outro nome.',
   "library.library.newFolder": "Nova pasta",
   "library.library.newFolderDescription": "Criar uma pasta em {path}.",
   "library.library.newFolderTitle": "Nova pasta",
@@ -135,13 +135,13 @@ export const library = {
   "library.library.uploading": "Enviando…",
   "library.libraryViews.brands": "Marcas",
   "library.libraryViews.curatedSkillSetsReadOnly":
-    "Conjuntos de skills curados — somente leitura",
+    "Conjuntos de skills curados, somente leitura",
   "library.libraryViews.readOnly": "Apenas leitura",
   "library.libraryViews.searchResults": "{count} resultado(s)",
   "library.libraryViews.emptyFolder":
-    "Pasta vazia — envie um arquivo ou crie uma pasta para começar.",
+    "Pasta vazia, envie um arquivo ou crie uma pasta para começar.",
   "library.libraryViews.emptyReadOnlySet":
-    "Vazio — este conjunto somente leitura sincroniza de sua fonte no GitHub.",
+    "Vazio, este conjunto somente leitura sincroniza de sua fonte no GitHub.",
   "library.libraryViews.failedToLoad": "Falha ao carregar",
   "library.libraryViews.files": "Arquivos",
   "library.libraryViews.filesCount": "{count} arquivo(s)",

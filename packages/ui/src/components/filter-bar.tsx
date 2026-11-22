@@ -204,7 +204,10 @@ export function FilterBar({
 
     return (
       <Command className="border-0">
-        <CommandInput placeholder="Search users..." className="h-9" />
+        <CommandInput
+          placeholder="Search users..."
+          className="h-(--studio-control-height)"
+        />
         <CommandList>
           <CommandEmpty>No users found.</CommandEmpty>
           <CommandGroup>
@@ -232,8 +235,8 @@ export function FilterBar({
     if (!selectedColumn) {
       return (
         <>
-          <div className="px-2 py-1.5">
-            <p className="text-xs text-muted-foreground uppercase font-mono">
+          <div className="px-(--space-xs) py-(--space-xxs)">
+            <p className="text-s font-medium text-neutral-6">
               Select to filter
             </p>
           </div>
@@ -258,11 +261,11 @@ export function FilterBar({
     if (!selectedOperator) {
       return (
         <>
-          <div className="px-2 py-1.5 flex items-center gap-2">
+          <div className="px-(--space-xs) py-(--space-xxs) flex items-center gap-(--space-xs)">
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6"
+              className="size-(--studio-control-height-xs)"
               onClick={() => {
                 setSelectedColumn(null);
                 setSelectedOperator(null);
@@ -270,7 +273,7 @@ export function FilterBar({
             >
               <ArrowLeft size={16} />
             </Button>
-            <p className="text-xs text-muted-foreground uppercase font-mono">
+            <p className="text-s font-medium text-neutral-6">
               {COLUMN_LABELS[selectedColumn]}
             </p>
           </div>
@@ -298,7 +301,7 @@ export function FilterBar({
       !renderUserFilter
     ) {
       return (
-        <div className="px-2 py-3 text-sm text-muted-foreground">
+        <div className="px-(--space-xs) py-(--space-s) text-s font-regular text-muted-foreground">
           No users available for filtering.
         </div>
       );
@@ -306,11 +309,11 @@ export function FilterBar({
 
     return (
       <>
-        <div className="px-2 py-1.5 flex items-center gap-2">
+        <div className="px-(--space-xs) py-(--space-xxs) flex items-center gap-(--space-xs)">
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6"
+            className="size-(--studio-control-height-xs)"
             onClick={() => {
               if (
                 selectedColumn === "name" ||
@@ -325,7 +328,7 @@ export function FilterBar({
           >
             <ArrowLeft size={16} />
           </Button>
-          <p className="text-xs text-muted-foreground uppercase font-mono">
+          <p className="text-s font-medium text-neutral-6">
             {selectedColumn === "name" || selectedColumn === "description"
               ? `${COLUMN_LABELS[selectedColumn]} ${getOperatorsForColumn(selectedColumn)[selectedOperator]}`
               : COLUMN_LABELS[selectedColumn]}
@@ -334,7 +337,7 @@ export function FilterBar({
         <DropdownMenuSeparator />
 
         {(selectedColumn === "name" || selectedColumn === "description") && (
-          <div className="p-2">
+          <div className="p-(--space-xs)">
             <Input
               autoFocus
               placeholder="Enter value..."
@@ -345,11 +348,10 @@ export function FilterBar({
                   addFilter(selectedColumn, selectedOperator, filterValue);
                 }
               }}
-              className="h-8"
             />
             <Button
               size="sm"
-              className="w-full mt-2"
+              className="w-full mt-(--space-xs)"
               onClick={() => {
                 if (filterValue) {
                   addFilter(selectedColumn, selectedOperator, filterValue);
@@ -384,7 +386,7 @@ export function FilterBar({
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-(--space-xs) flex-wrap">
       {filters.map((filter) => {
         const isUserFilter =
           (filter.column === "created_by" || filter.column === "updated_by") &&
@@ -405,7 +407,7 @@ export function FilterBar({
           >
             <DropdownMenuTrigger asChild>
               <div
-                className="group flex items-center gap-1 px-3 h-8 bg-accent rounded-lg text-sm cursor-pointer hover:bg-accent/80 transition-colors"
+                className="group flex h-(--studio-control-height-sm) cursor-pointer items-center gap-(--space-xxs) rounded-(--studio-control-radius) bg-(--chip) px-(--space-s) text-s font-medium text-(color:--chip-foreground) transition-colors duration-(--motion-duration) ease-motion hover:bg-neutral-4"
                 onClick={() => {
                   setEditingFilterId(filter.id);
                   setSelectedColumn(filter.column);
@@ -426,7 +428,7 @@ export function FilterBar({
                 }}
               >
                 {isUserFilter ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-(--space-xs)">
                     <span className="text-muted-foreground">
                       {COLUMN_LABELS[filter.column]}:
                     </span>
@@ -449,7 +451,7 @@ export function FilterBar({
                     e.stopPropagation();
                     removeFilter(filter.id);
                   }}
-                  className="flex items-center justify-center w-0 opacity-0 group-hover:w-4 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all overflow-hidden"
+                  className="flex items-center justify-center w-0 opacity-0 group-hover:w-4 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-[width,opacity,color] duration-(--motion-duration) ease-motion overflow-hidden"
                 >
                   <X size={16} />
                 </button>
@@ -478,7 +480,7 @@ export function FilterBar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground"
           >
             <Plus size={16} />
             Add filter

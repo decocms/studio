@@ -32,7 +32,7 @@ export function CardGroupBlock({
         {items.slice(0, 3).map((card, i) => (
           <div
             key={i}
-            className="group/item relative flex flex-col gap-2 rounded-lg border bg-card p-4"
+            className="group/item relative flex flex-col gap-2 surface p-4"
           >
             <div className="absolute right-1 top-1">
               <RemoveButton
@@ -50,7 +50,7 @@ export function CardGroupBlock({
               value={str(card.title)}
               onChange={(e) => set(i, { title: e.target.value })}
               placeholder={t("sandbox.listBlocks.cardTitle")}
-              className="border-0 bg-transparent p-0 text-[15px] font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+              className="border-0 bg-transparent p-0 text-m font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
             />
             <InlineText
               value={str(card.body)}
@@ -93,7 +93,7 @@ export function ChecklistBlock({
         value={title}
         onChange={(e) => onChange({ title: e.target.value, items })}
         placeholder={t("sandbox.listBlocks.checklistTitle")}
-        className="w-full border-0 bg-transparent p-0 text-lg font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+        className="w-full border-0 bg-transparent p-0 text-m font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
       />
       <ul>
         {list.map((item, i) => (
@@ -110,7 +110,7 @@ export function ChecklistBlock({
                 commit(list.map((x, idx) => (idx === i ? v : x)))
               }
               placeholder={t("sandbox.listBlocks.checklistItem")}
-              className="text-[15px] text-foreground"
+              className="text-m text-foreground"
             />
             <RemoveButton
               label={t("sandbox.listBlocks.removeItem")}
@@ -209,7 +209,7 @@ export function StepsBlock({
         value={title}
         onChange={(e) => onChange({ title: e.target.value, steps })}
         placeholder={t("sandbox.listBlocks.stepsTitle")}
-        className="w-full border-0 bg-transparent p-0 text-lg font-semibold uppercase tracking-wide outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+        className="w-full border-0 bg-transparent p-0 text-m font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
       />
       <ol className="space-y-3">
         {list.map((step, i) => (
@@ -222,7 +222,7 @@ export function StepsBlock({
                 value={str(step.title)}
                 onChange={(e) => set(i, { title: e.target.value })}
                 placeholder={t("sandbox.listBlocks.stepTitle")}
-                className="w-full border-0 bg-transparent p-0 text-[15px] font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+                className="w-full border-0 bg-transparent p-0 text-m font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
               />
               <InlineText
                 value={str(step.description)}
@@ -286,12 +286,12 @@ export function ComparisonBlock({
   const renderCol = (side: "left" | "right", col: Col, accent: string) => {
     const itemsList = col.items ?? [];
     return (
-      <div className="space-y-2 rounded-lg border p-4">
+      <div className="space-y-2 rounded-m p-4 shadow-(--edge)">
         <input
           value={str(col.title)}
           onChange={(e) => commit(side, { ...col, title: e.target.value })}
           placeholder={t("sandbox.listBlocks.columnTitle")}
-          className="w-full border-0 bg-transparent p-0 text-xs font-semibold uppercase tracking-wide outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+          className="w-full border-0 bg-transparent p-0 text-xs font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
         />
         <ul className="space-y-1.5">
           {itemsList.map((item, i) => (
@@ -336,8 +336,8 @@ export function ComparisonBlock({
 
   return (
     <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2")}>
-      {renderCol("left", cols.left, "oklch(0.65 0.17 150)")}
-      {renderCol("right", cols.right, "oklch(0.75 0.15 75)")}
+      {renderCol("left", cols.left, "var(--success)")}
+      {renderCol("right", cols.right, "var(--warning)")}
     </div>
   );
 }

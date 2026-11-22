@@ -107,12 +107,12 @@ export function InstallSnippet({
       type="button"
       onClick={() => handleCopy(snippet.code)}
       aria-labelledby={`${labelId} ${codeId}`}
-      className="group relative grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 rounded-lg p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 rounded-lg p-3 text-left transition-colors hover:bg-muted/40 focus-ring"
     >
       <span id={labelId} className="sr-only">
         {t("settings.connectClients.copy")}
       </span>
-      <span className="min-w-0 truncate font-mono text-[11px] leading-none text-muted-foreground">
+      <span className="min-w-0 truncate font-mono text-xs leading-none text-muted-foreground">
         {snippet.pathHint ?? snippet.language}
       </span>
       <span
@@ -126,7 +126,7 @@ export function InstallSnippet({
       >
         {copied ? <Check size={13} /> : <Copy01 size={13} />}
       </span>
-      <pre className="overflow-x-auto pt-2 font-mono text-xs leading-relaxed">
+      <pre className="overflow-x-auto pt-2 font-mono text-xs">
         <code id={codeId}>{snippet.code}</code>
       </pre>
     </button>

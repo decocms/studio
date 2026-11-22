@@ -57,7 +57,7 @@ export const sidebar = {
   "sidebar.projects.heading": "Projetos",
   "sidebar.scope.allProjects": "Todos os projetos",
   "sidebar.picker.ariaLabel": "Organiza\u00e7\u00e3o e projeto: {name}",
-  "sidebar.picker.projectInOrg": "{project} — {org}",
+  "sidebar.picker.projectInOrg": "{project} · {org}",
   "sidebar.picker.newOrganization": "Nova organização",
   "sidebar.picker.newProject": "Novo projeto",
   "sidebar.picker.noMatches": "Nada corresponde a \u201c{query}\u201d",

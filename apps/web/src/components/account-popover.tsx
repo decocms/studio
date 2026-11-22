@@ -111,7 +111,7 @@ function MenuItemButton({
 function ImpersonatingPill() {
   const t = useT();
   return (
-    <span className="shrink-0 inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+    <span className="shrink-0 inline-flex items-center rounded-xs bg-warning/10 px-2 py-0.5 text-xxs font-medium text-warning">
       {t("common.accountPopover.impersonating")}
     </span>
   );

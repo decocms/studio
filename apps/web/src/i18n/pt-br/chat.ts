@@ -63,12 +63,12 @@ export const chat = {
   "chat.approval.denyButton": "Negar",
   "chat.approval.needsApproval": "Aprovação necessária",
   "chat.approval.noInput": "Sem entrada",
-  "chat.approval.preparingRequest": "Preparando solicitação de aprovação...",
+  "chat.approval.preparingRequest": "Preparando solicitação de aprovação…",
   "chat.assistant.messagePlural": "{count} mensagem(ns)",
   "chat.assistant.noResponseGenerated": "Nenhuma resposta foi gerada",
   "chat.assistant.resumedBackgroundTask":
-    "Retomado — tarefa em segundo plano concluída",
-  "chat.assistant.resumingTask": "Retomando tarefa...",
+    "Retomado, tarefa em segundo plano concluída",
+  "chat.assistant.resumingTask": "Retomando tarefa…",
   "chat.assistant.toolCallPlural": "{count} chamada(s) de ferramenta",
   "chat.brandContext.brand": "Marca",
   "chat.brandContext.brandContextSet": "Contexto de marca definido",
@@ -108,7 +108,7 @@ export const chat = {
   "chat.chatContext.failedToSendEditedMessage":
     "Falha ao enviar mensagem editada",
   "chat.chatContext.stillSendingPreviousMessage":
-    "Ainda enviando sua mensagem anterior — tente novamente em alguns momentos",
+    "Ainda enviando sua mensagem anterior, tente novamente em alguns momentos",
   "chat.chatContext.useChatPrefsMissingContext":
     "useChatPrefs deve ser usado dentro de ChatContextProvider",
   "chat.chatContext.useChatStreamMissingContext":
@@ -176,8 +176,8 @@ export const chat = {
   "chat.decopilot.manageApiKeys": "Gerenciar chaves de API",
   "chat.decopilot.manageModels": "Gerenciar modelos",
   "chat.decopilot.retry": "Tentar novamente",
-  "chat.decopilot.searchAllModels": "Pesquisar todos os modelos...",
-  "chat.decopilot.searchForModel": "Procure um modelo...",
+  "chat.decopilot.searchAllModels": "Pesquisar todos os modelos…",
+  "chat.decopilot.searchForModel": "Procure um modelo…",
   "chat.decopilot.selectedCount": "{count} selecionado(s)",
   "chat.decopilot.tierCheaper": "Mais barato",
   "chat.decopilot.tierFaster": "Mais rápido",
@@ -186,7 +186,7 @@ export const chat = {
   "chat.decopilot.tryAnotherProviderOrRetry":
     "Tente outro provedor ou tente novamente.",
   "chat.dialogPromptArguments.cancel": "Cancelar",
-  "chat.dialogPromptArguments.loading": "Carregando...",
+  "chat.dialogPromptArguments.loading": "Carregando…",
   "chat.dialogPromptArguments.optional": "(opcional)",
   "chat.dialogPromptArguments.required": "Obrigatório",
   "chat.dialogPromptArguments.usePrompt": "Usar prompt",
@@ -196,23 +196,22 @@ export const chat = {
   "chat.generateImage.generatingImage": "Gerando imagem",
   "chat.generateImage.imageGeneration": "Geração de imagem",
   "chat.generateImage.imageQueuedGeneratingInBackground":
-    "Imagem na fila — gerando em segundo plano",
+    "Imagem na fila, gerando em segundo plano",
   "chat.generateImage.noImagesGenerated": "Nenhuma imagem gerada",
   "chat.generateImage.reference": "referência",
   "chat.generateImage.references": "referências:",
   "chat.generic.annotation.destructive": "Pode modificar ou excluir dados",
   "chat.generic.annotation.interactive": "Interativo",
   "chat.generic.annotation.openWorld": "Alcança fora deste sistema",
-  "chat.generic.annotation.readOnly":
-    "Somente leitura — sem efeitos colaterais",
+  "chat.generic.annotation.readOnly": "Somente leitura, sem efeitos colaterais",
   "chat.generic.cancelled": "Cancelado",
   "chat.generic.done": "Concluído",
   "chat.generic.dynamicTool": "Ferramenta Dinâmica",
   "chat.generic.failed": "Falhou",
   "chat.generic.failedToLoad": "Falha ao carregar app {toolName}",
-  "chat.generic.loadingApp": "Carregando app...",
+  "chat.generic.loadingApp": "Carregando app…",
   "chat.generic.openInPanel": "Abrir no painel",
-  "chat.generic.preparing": "Preparando...",
+  "chat.generic.preparing": "Preparando…",
   "chat.generic.runningFor": "Executando há {elapsed}",
   "chat.generic.waitingFor": "Aguardando {duration}",
   "chat.generic.wrappingUp": "Finalizando…",
@@ -261,7 +260,7 @@ export const chat = {
   "chat.iceBreakers.noPromptsMatch":
     'Nenhum prompt correspondente a "{search}"',
   "chat.iceBreakers.promptsLabel": "Prompts",
-  "chat.iceBreakers.searchPromptsPlaceholder": "Pesquisar prompts...",
+  "chat.iceBreakers.searchPromptsPlaceholder": "Pesquisar prompts…",
   "chat.imageLightbox.downloadImage": "Baixar imagem",
   "chat.imageLightbox.zoomIn": "Aumentar zoom",
   "chat.imageLightbox.zoomOut": "Diminuir zoom",
@@ -271,9 +270,9 @@ export const chat = {
   "chat.input.deepResearch": "Pesquisa profunda",
   "chat.input.dropFilesHere": "Solte {fileTypes} aqui",
   "chat.input.microphoneAccessDenied":
-    "Acesso ao microfone negado — clique para tentar novamente",
+    "Acesso ao microfone negado, clique para tentar novamente",
   "chat.input.modelCannotReadAttachments":
-    "Este modelo não consegue ler anexos — mude para um com suporte a visão ou arquivos",
+    "Este modelo não consegue ler anexos, mude para um com suporte a visão ou arquivos",
   "chat.input.planMode": "Modo de planejamento",
   "chat.input.codingAgentRequiresDesktop":
     "Continue este chat do agente de código no aplicativo Studio para desktop.",
@@ -292,13 +291,13 @@ export const chat = {
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":
-    "Ainda enviando sua mensagem anterior — tente novamente em um momento",
+    "Ainda enviando sua mensagem anterior, tente novamente em um momento",
   "chat.input.stopGenerating": "Parar de gerar",
   "chat.input.useTranscription": "Usar transcrição",
   "chat.input.voiceInput": "Entrada de voz",
   "chat.input.webSearch": "Busca na web",
   "chat.input.placeholder":
-    "Pergunte qualquer coisa, / para prompts & habilidades, @ para agentes & recursos...",
+    "Pergunte qualquer coisa, / para prompts & habilidades, @ para agentes & recursos…",
   "chat.markdown.copyAsCSV": "Copiar como CSV",
   "chat.markdown.copyCode": "Copiar código",
   "chat.markdown.image": "Imagem",
@@ -398,7 +397,7 @@ export const chat = {
   "chat.runStatus.startingSandboxDetail":
     "Ligando a m\u00e1quina e fazendo checkout do reposit\u00f3rio",
   "chat.runStatus.retryingProviderDetail":
-    "O provedor do modelo estava indisponível — tentando outro",
+    "O provedor do modelo estava indisponível, tentando outro",
   "chat.runStatus.retryingProviderLabel": "Aguardando o provedor do modelo",
   "chat.runStatus.startingSandboxLabel": "Iniciando o sandbox",
   "chat.runStatus.gatheringContextDetail":
@@ -417,7 +416,7 @@ export const chat = {
     "Configurando para trabalhar na sua mensagem",
   "chat.runStatus.startingRunLabel": "Começando",
   "chat.runStatus.waitingCapacityDetail":
-    "Todos os outros runners estão ocupados — este começa assim que um ficar livre",
+    "Todos os outros runners estão ocupados, este começa assim que um ficar livre",
   "chat.runStatus.waitingCapacityLabel": "Aguardando um runner livre",
   "chat.runStatus.waitingRunnerDetail":
     "Finalizando a mensagem anterior neste chat",
@@ -426,9 +425,9 @@ export const chat = {
   "chat.selectVirtualMcp.chooseAgentTooltip":
     "Escolha um projeto para conversar",
   "chat.selectVirtualMcp.createAgent": "Criar Projeto",
-  "chat.selectVirtualMcp.creating": "Criando...",
+  "chat.selectVirtualMcp.creating": "Criando…",
   "chat.selectVirtualMcp.noAgentsFound": "Nenhum projeto encontrado",
-  "chat.selectVirtualMcp.searchPlaceholder": "Pesquisar por um projeto...",
+  "chat.selectVirtualMcp.searchPlaceholder": "Pesquisar por um projeto…",
   "chat.selectVirtualMcp.selectAgent": "Selecionar Projeto",
   "chat.shared.approxWords": "~{wordCount} palavras",
   "chat.shared.capabilityImage": "Imagem",
@@ -463,7 +462,7 @@ export const chat = {
   "chat.shared.pricing": "Preços",
   "chat.shared.selectModel": "Selecionar modelo",
   "chat.shared.tokens": "tokens",
-  "chat.subtask.awaitingApproval": "Aguardando aprovação...",
+  "chat.subtask.awaitingApproval": "Aguardando aprovação…",
   "chat.subtask.completedNoOutput": "Subtarefa concluída (sem saída).",
   "chat.subtask.completedTitle": "Subtarefa concluída",
   "chat.subtask.errorLabel": "Erro",
@@ -474,13 +473,13 @@ export const chat = {
   "chat.subtask.noPromptProvided": "Nenhum prompt fornecido",
   "chat.subtask.resultLabel": "Resultado",
   "chat.subtask.running": "Executando…",
-  "chat.subtask.runningEllipsis": "Subtarefa em execução...",
+  "chat.subtask.runningEllipsis": "Subtarefa em execução…",
   "chat.subtask.runningInBackground": "Executando em background…",
-  "chat.subtask.startingEllipsis": "Iniciando subtarefa...",
+  "chat.subtask.startingEllipsis": "Iniciando subtarefa…",
   "chat.subtask.stepLimitNoOutput":
     "[A subtarefa atingiu o limite de etapas antes de produzir um relatório final. O subagente trabalhou, mas ficou sem etapas. Restrinja a tarefa ou aumente o orçamento.]",
   "chat.subtask.stepLimitPartial":
-    "[A subtarefa atingiu o limite de etapas — resultado parcial abaixo; considere restringir a tarefa.]",
+    "[A subtarefa atingiu o limite de etapas, resultado parcial abaixo; considere restringir a tarefa.]",
   "chat.subtask.subtaskNoun": "Subtarefa",
   "chat.subtask.taskLabel": "Tarefa",
   "chat.textPart.copyMessage": "Copiar mensagem",
@@ -490,7 +489,7 @@ export const chat = {
   "chat.thinkingIndicator.planningLabel": "Planejando os próximos passos",
   "chat.thinkingIndicator.takingLonger":
     "Isso está levando mais tempo que o usual.",
-  "chat.thinkingIndicator.thinking": "Pensando...",
+  "chat.thinkingIndicator.thinking": "Pensando…",
   "chat.thinkingIndicator.thinkingDetail": "Processando a próxima resposta",
   "chat.thinkingIndicator.thinkingLabel": "Pensando",
   "chat.thinkingIndicator.thought": "Pensou",
@@ -533,7 +532,7 @@ export const chat = {
   "chat.userAskQuestion.confirmationOptionsAriaLabel": "Opções de confirmação",
   "chat.userAskQuestion.customChoiceInputAriaLabel":
     "Entrada de escolha customizada",
-  "chat.userAskQuestion.preparingQuestion": "Preparando pergunta...",
+  "chat.userAskQuestion.preparingQuestion": "Preparando pergunta…",
   "chat.userAskQuestion.question": "Pergunta",
   "chat.userAskQuestion.questionCount": "{current} de {total}",
   "chat.userAskQuestion.questionPending": "Pergunta pendente",
@@ -541,12 +540,12 @@ export const chat = {
   "chat.userAskQuestion.skip": "Pular",
   "chat.userAskQuestion.skipMessage": "usuário pulou esta pergunta",
   "chat.userAskQuestion.skippedAnswer": "Pulado",
-  "chat.userAskQuestion.somethingElsePlaceholder": "Algo mais...",
+  "chat.userAskQuestion.somethingElsePlaceholder": "Algo mais…",
   "chat.userAskQuestion.textResponseInputAriaLabel":
     "Entrada de resposta em texto",
-  "chat.userAskQuestion.typeResponse": "Digite sua resposta...",
+  "chat.userAskQuestion.typeResponse": "Digite sua resposta…",
   "chat.webSearch.failed": "Falhou",
-  "chat.webSearch.researching": "Pesquisando...",
+  "chat.webSearch.researching": "Pesquisando…",
   "chat.webSearch.showLess": "mostrar menos",
   "chat.webSearch.showMore": "+{count} mais",
   "chat.webSearch.title": "Busca na web",

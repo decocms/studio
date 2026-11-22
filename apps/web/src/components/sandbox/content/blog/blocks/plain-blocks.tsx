@@ -22,7 +22,7 @@ const HEADING_LABEL_KEY = {
 const HEADING_CLASS: Record<string, string> = {
   "1": "text-3xl font-bold",
   "2": "text-2xl font-bold",
-  "3": "text-xl font-semibold",
+  "3": "text-l font-semibold",
   "4": "text-lg font-semibold",
   "5": "text-base font-semibold",
   "6": "text-sm font-semibold",
@@ -176,7 +176,7 @@ export function ListBlock({
       attributes: {
         // Markers styled by hand: `prose` is a no-op here (no typography plugin).
         class: cn(
-          "focus:outline-none text-[15px] leading-relaxed",
+          "focus:outline-none text-m",
           "[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-7 [&_ol]:pl-7",
           "[&_ul]:my-0 [&_ol]:my-0 [&_li]:pl-1.5 [&_li]:my-1 [&_p]:my-0",
           "marker:text-muted-foreground marker:tabular-nums",

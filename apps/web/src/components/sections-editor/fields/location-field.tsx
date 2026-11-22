@@ -56,11 +56,12 @@ function Combobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          size="lg"
           id={id}
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-10 w-full justify-between font-normal"
+          className="w-full justify-between"
         >
           {selected ? (
             <span className="truncate">{selected.label}</span>
@@ -161,9 +162,7 @@ export function LocationField({
 
       {/* Step 1 — country */}
       <div className="space-y-1.5">
-        <Label htmlFor={`${path}.country`} className="text-xs">
-          {countryLabel}
-        </Label>
+        <Label htmlFor={`${path}.country`}>{countryLabel}</Label>
         <Combobox
           id={`${path}.country`}
           options={COUNTRY_OPTIONS}
@@ -182,9 +181,7 @@ export function LocationField({
       {/* Step 2 — region (only once a country is chosen) */}
       {country && (
         <div className="space-y-1.5">
-          <Label htmlFor={`${path}.regionCode`} className="text-xs">
-            {regionLabel}
-          </Label>
+          <Label htmlFor={`${path}.regionCode`}>{regionLabel}</Label>
           {isBrazil ? (
             <div className="space-y-2">
               <BrazilMap
@@ -218,7 +215,7 @@ export function LocationField({
                 )}
                 onChange={(e) => emit({ regionCode: e.target.value })}
               />
-              <p className="text-xs leading-normal text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {t("sectionsEditor.locationField.regionCodeHelperText")}
               </p>
             </>
@@ -229,9 +226,7 @@ export function LocationField({
       {/* Step 3 — city (only once a country is chosen) */}
       {country && (
         <div className="space-y-1.5">
-          <Label htmlFor={`${path}.city`} className="text-xs">
-            {cityLabel}
-          </Label>
+          <Label htmlFor={`${path}.city`}>{cityLabel}</Label>
           <Input
             id={`${path}.city`}
             type="text"
@@ -245,7 +240,7 @@ export function LocationField({
             }
             onChange={(e) => emit({ city: e.target.value })}
           />
-          <p className="text-xs leading-normal text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t("sectionsEditor.locationField.cityHelperText")}
           </p>
         </div>

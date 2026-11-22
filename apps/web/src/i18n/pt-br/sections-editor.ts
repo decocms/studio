@@ -2,7 +2,7 @@ import type { sectionsEditor as sectionsEditorEn } from "../en/sections-editor.t
 
 export const sectionsEditor = {
   "sectionsEditor.addSectionModal.noSectionsFound": "Nenhuma seção encontrada.",
-  "sectionsEditor.addSectionModal.searchPlaceholder": "Pesquisar seções...",
+  "sectionsEditor.addSectionModal.searchPlaceholder": "Pesquisar seções…",
   "sectionsEditor.addSectionModal.title": "Adicionar seção",
   "sectionsEditor.anyOfField.configuration": "Configuração",
   "sectionsEditor.anyOfField.noSectionsFound": "Nenhuma seção encontrada.",
@@ -16,7 +16,7 @@ export const sectionsEditor = {
   "sectionsEditor.anyOfField.loaderActions": "Ações do carregador",
   "sectionsEditor.anyOfField.loaderConfiguration": "Configuração do carregador",
   "sectionsEditor.anyOfField.makeGlobal": "Tornar global",
-  "sectionsEditor.anyOfField.selectPlaceholder": "Selecionar...",
+  "sectionsEditor.anyOfField.selectPlaceholder": "Selecionar…",
   "sectionsEditor.arrayField.addItem": "Adicionar item",
   "sectionsEditor.arrayField.addSection": "Adicionar seção",
   "sectionsEditor.arrayField.delete": "Excluir",
@@ -28,7 +28,7 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.showItem": "Mostrar item",
   "sectionsEditor.arrayField.startPreviewServer":
     "Inicie o servidor dev de visualização para adicionar seções.",
-  "sectionsEditor.brazilMap.ariaLabel": "Mapa do Brasil — selecione um estado",
+  "sectionsEditor.brazilMap.ariaLabel": "Mapa do Brasil, selecione um estado",
   "sectionsEditor.createPageModal.cancelButton": "Cancelar",
   "sectionsEditor.createPageModal.createButton": "Criar",
   "sectionsEditor.createPageModal.creatingButton": "Criando…",
@@ -40,13 +40,13 @@ export const sectionsEditor = {
   "sectionsEditor.createPageModal.pathPlaceholder": "/caminho-exemplo",
   "sectionsEditor.createPageModal.templateLabel": "Modelo",
   "sectionsEditor.createPageModal.title": "Criar nova página",
-  "sectionsEditor.dynamicOptionsField.loading": "Carregando...",
+  "sectionsEditor.dynamicOptionsField.loading": "Carregando…",
   "sectionsEditor.dynamicOptionsField.noResults":
     "Nenhum resultado encontrado.",
-  "sectionsEditor.dynamicOptionsField.searchPlaceholder": "Pesquisar...",
-  "sectionsEditor.dynamicOptionsField.selectPlaceholder": "Selecionar...",
+  "sectionsEditor.dynamicOptionsField.searchPlaceholder": "Pesquisar…",
+  "sectionsEditor.dynamicOptionsField.selectPlaceholder": "Selecionar…",
   "sectionsEditor.dynamicOptionsField.useValue": 'Usar "{value}"',
-  "sectionsEditor.enumField.selectPlaceholder": "Selecionar...",
+  "sectionsEditor.enumField.selectPlaceholder": "Selecionar…",
   "sectionsEditor.enumField.clearOption": "Nenhum",
   "sectionsEditor.formatMatcher.dateRange": "De {start} até {end}",
   "sectionsEditor.formatMatcher.fromDate": "A partir de {date}",
@@ -87,16 +87,16 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.removeImage": "Remover imagem",
   "sectionsEditor.imageField.replaceImage": "Substituir imagem",
   "sectionsEditor.imageField.supportedFormatsAndSize":
-    "PNG, JPEG, WebP, GIF, SVG, AVIF — até 100 MB",
+    "PNG, JPEG, WebP, GIF, SVG, AVIF, até 100 MB",
   "sectionsEditor.imageField.unsafeUrl":
     "Esse endereço não pode ser usado como origem de imagem.",
   "sectionsEditor.imageField.uploadFailed": "Falha no envio",
   "sectionsEditor.imageField.uploadedWithExtraFilesIgnored":
     "Enviado {fileName}; arquivos adicionais foram ignorados (campo de seleção única).",
   "sectionsEditor.imageField.uploading": "Enviando…",
-  "sectionsEditor.imageField.urlPlaceholder": "https://...",
+  "sectionsEditor.imageField.urlPlaceholder": "https://…",
   "sectionsEditor.inlineUnionField.branchFallback": "Opção {index}",
-  "sectionsEditor.inlineUnionField.selectPlaceholder": "Selecionar...",
+  "sectionsEditor.inlineUnionField.selectPlaceholder": "Selecionar…",
   "sectionsEditor.locationField.cityDefault": "Cidade",
   "sectionsEditor.locationField.cityHelperText":
     "Correspondência exata com cf-ipcity.",
@@ -127,7 +127,7 @@ export const sectionsEditor = {
   "sectionsEditor.matcherPicker.chooseRuleTitle": "Escolher uma regra",
   "sectionsEditor.matcherPicker.noRulesFound": "Nenhuma regra encontrada.",
   "sectionsEditor.matcherPicker.savedRulesHeading": "Regras salvas",
-  "sectionsEditor.matcherPicker.searchRulesPlaceholder": "Pesquisar regras...",
+  "sectionsEditor.matcherPicker.searchRulesPlaceholder": "Pesquisar regras…",
   "sectionsEditor.matcherPicker.targetAllUsers": "Direcionar todos os usuários",
   "sectionsEditor.mediaTransformControls.mediaOptionsLabel": "Opções de mídia",
   "sectionsEditor.mediaTransformControls.mutedLabel": "Mudo",
@@ -140,7 +140,7 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.copied": "Copiado",
   "sectionsEditor.pageJsonDialog.copy": "Copiar",
   "sectionsEditor.pageJsonDialog.invalidJsonError":
-    "JSON inválido — corrija a sintaxe antes de salvar.",
+    "JSON inválido, corrija a sintaxe antes de salvar.",
   "sectionsEditor.pageJsonDialog.pageNotFound": "Página não encontrada.",
   "sectionsEditor.pageJsonDialog.save": "Salvar",
   "sectionsEditor.pageJsonDialog.saveError": "Falha ao salvar: {error}",

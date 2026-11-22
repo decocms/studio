@@ -193,7 +193,7 @@ export function DateTimeInput({
   const displayError = error || localError;
 
   return (
-    <div className={cn("flex gap-1", className)}>
+    <div className={cn("flex gap-(--space-xs)", className)}>
       <div className="flex-1 relative">
         <Input
           value={inputValue}
@@ -203,12 +203,13 @@ export function DateTimeInput({
           placeholder={placeholder}
           disabled={disabled}
           className={cn(
-            "text-sm h-8",
-            displayError && "border-destructive focus-visible:ring-destructive",
+            displayError && "shadow-[0_0_0_var(--border-s)_var(--error)]",
           )}
         />
         {displayError && (
-          <p className="text-xs text-destructive mt-1">{displayError}</p>
+          <p className="mt-(--space-xxs) text-s font-regular text-destructive">
+            {displayError}
+          </p>
         )}
       </div>
       <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -216,10 +217,10 @@ export function DateTimeInput({
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 shrink-0"
+            className="shrink-0"
             disabled={disabled}
           >
-            <CalendarIcon className="h-4 w-4" />
+            <CalendarIcon className="size-4" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="end">
@@ -229,16 +230,11 @@ export function DateTimeInput({
             onSelect={handleDateSelect}
             initialFocus
           />
-          <div className="border-t p-3">
-            <label className="text-xs text-muted-foreground mb-1.5 block">
+          <div className="border-t border-border p-(--space-s)">
+            <label className="mb-(--space-xs) block text-s font-medium">
               Time
             </label>
-            <Input
-              type="time"
-              value={timeValue}
-              onChange={handleTimeChange}
-              className="text-sm h-8"
-            />
+            <Input type="time" value={timeValue} onChange={handleTimeChange} />
           </div>
         </PopoverContent>
       </Popover>

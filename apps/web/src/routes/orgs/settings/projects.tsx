@@ -1,9 +1,6 @@
 /**
  * Settings › Projects — the index INTO per-project settings, for an org running
  * several storefronts off different platforms and analytics accounts.
- *
- * The note under the heading is load-bearing: members, billing, security and AI
- * providers are deliberately NOT per project.
  */
 
 import { useState } from "react";
@@ -13,9 +10,14 @@ import { GitBranch01, ZapSquare } from "@untitledui/icons";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
 import { Page } from "@/components/page";
+import {
+  SettingsCard,
+  SettingsPage,
+} from "@/components/settings/settings-section";
 import { NewProjectButton } from "@/components/projects/new-project-dialog";
 import { PlatformMark } from "@/components/projects/platform-mark";
 import { ProjectsEmptyState } from "@/components/projects/projects-empty-state";
@@ -62,7 +64,7 @@ function ProjectRow({
   const connections = project.connections?.length ?? 0;
 
   return (
-    <li className="flex flex-wrap items-center gap-3 rounded-xl bg-card p-4 card-shadow">
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
       <AgentAvatar icon={project.icon} name={project.title} size="sm" />
       <div className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
         <span className="truncate text-sm font-medium text-foreground">
@@ -119,7 +121,7 @@ function ProjectRow({
           </Link>
         </Button>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -145,8 +147,8 @@ export default function SettingsProjectsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Container className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
+        <Page.Container>
+          <SettingsPage className="gap-6">
             <Page.Title
               actions={
                 canManageProjects && (
@@ -156,41 +158,40 @@ export default function SettingsProjectsPage() {
             >
               {t("projects.settings.title")}
             </Page.Title>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              {t("projects.settings.description")}{" "}
-              {t("projects.settings.orgScopeNote")}
-            </p>
-          </div>
 
-          {projects.length === 0 ? (
-            <ProjectsEmptyState canCreate={canManageProjects} />
-          ) : (
-            <>
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder={t("projects.settings.searchPlaceholder")}
-                className="w-full md:w-[375px]"
-              />
-              {shown.length === 0 ? (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  {t("projects.settings.noResults", { search })}
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {shown.map((project) => (
-                    <ProjectRow
-                      key={project.id}
-                      project={project}
-                      orgSlug={org.slug}
-                      reportStatus={byProject.get(project.id)?.status ?? "none"}
-                      platform={platforms.get(project.id) ?? null}
+            {projects.length === 0 ? (
+              <ProjectsEmptyState canCreate={canManageProjects} />
+            ) : (
+              <>
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder={t("projects.settings.searchPlaceholder")}
+                  className="w-full md:w-[375px]"
+                />
+                <SettingsCard>
+                  {shown.length === 0 ? (
+                    <EmptyState
+                      size="sm"
+                      title={t("projects.settings.noResults", { search })}
                     />
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
+                  ) : (
+                    shown.map((project) => (
+                      <ProjectRow
+                        key={project.id}
+                        project={project}
+                        orgSlug={org.slug}
+                        reportStatus={
+                          byProject.get(project.id)?.status ?? "none"
+                        }
+                        platform={platforms.get(project.id) ?? null}
+                      />
+                    ))
+                  )}
+                </SettingsCard>
+              </>
+            )}
+          </SettingsPage>
         </Page.Container>
       </Page.Content>
     </Page>

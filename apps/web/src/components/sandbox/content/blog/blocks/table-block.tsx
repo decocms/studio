@@ -144,7 +144,7 @@ export function TableBlock({
                     placeholder={t("sandbox.tableBlock.headerPlaceholder", {
                       n: c + 1,
                     })}
-                    className="py-2 pl-7 pr-3 text-xs font-semibold uppercase tracking-wide [&_p]:my-0 focus:bg-background"
+                    className="py-2 pl-7 pr-3 text-xs font-semibold [&_p]:my-0 focus:bg-background"
                     menuHost={menuHost}
                     sources={linkSources}
                   />

@@ -482,7 +482,7 @@ export function ImportFromDecoDialog({
                       type="button"
                       onClick={() => setSelectedSite(site.name)}
                       className={cn(
-                        "flex flex-col rounded-xl border overflow-hidden text-left transition-all cursor-pointer",
+                        "flex flex-col rounded-m border overflow-hidden text-left transition-all cursor-pointer",
                         isSelected
                           ? "border-primary ring-1 ring-primary"
                           : "border-border hover:border-muted-foreground/40",

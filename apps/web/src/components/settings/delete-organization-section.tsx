@@ -145,7 +145,7 @@ export function DeleteOrganizationSection() {
             <AlertDialogAction
               onClick={() => deleteMutation.mutate()}
               disabled={confirmName !== org.name || deleteMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:bg-neutral-3 disabled:text-neutral-6"
             >
               {deleteMutation.isPending
                 ? t("settings.deleteOrganizationSection.deleting")

@@ -239,12 +239,8 @@ function ModelItemContent({
         alt={model.title}
       />
       <div className="flex flex-col flex-1 min-w-0">
-        <span className="text-sm text-foreground leading-tight truncate">
-          {displayName}
-        </span>
-        <span className="text-xs text-muted-foreground/60 leading-tight">
-          {provider}
-        </span>
+        <span className="text-sm text-foreground truncate">{displayName}</span>
+        <span className="text-xs text-muted-foreground/60">{provider}</span>
       </div>
     </div>
   );

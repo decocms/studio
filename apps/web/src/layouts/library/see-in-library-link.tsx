@@ -35,7 +35,7 @@ export function SeeInLibraryLink({ previewPath }: { previewPath: string }) {
       variant="ghost"
       size="sm"
       onClick={handleClick}
-      className="shrink-0 gap-1.5 text-xs text-muted-foreground"
+      className="shrink-0 gap-1.5 text-muted-foreground"
     >
       <Folder size={14} />
       {t("library.seeInLibrary.label")}

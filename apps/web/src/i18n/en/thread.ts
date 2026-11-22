@@ -34,13 +34,13 @@ export const thread = {
   "thread.branchPicker.newChatHint":
     "This chat's branch is fixed. Picking or creating a branch opens a new chat on it.",
   "thread.branchPicker.hiddenForkPrs":
-    "{count} PR(s) from forks hidden — open on a branch in this repo",
+    "{count} PR(s) from forks hidden, open on a branch in this repo",
   "thread.branchPicker.last7Days": "Last 7 days",
   "thread.branchPicker.loadMoreBranches": "Load more branches",
   "thread.branchPicker.loadingMore": "Loading more…",
   "thread.branchPicker.loadingPullRequests": "Loading pull requests…",
   "thread.branchPicker.moreMatches":
-    "{count} more match(es) — refine your search",
+    "{count} more match(es), refine your search",
   "thread.branchPicker.new": "New",
   "thread.branchPicker.noBranchesFound": "No branches found.",
   "thread.branchPicker.noPullRequestsFound":
@@ -81,7 +81,7 @@ export const thread = {
   "thread.cmsActions.gettingLatest": "Getting latest…",
   "thread.cmsActions.retry": "Retry",
   "thread.cmsActions.resolveOnProvider": "Resolve on provider",
-  "thread.cmsActions.reviewAndPublish": "Review & Publish",
+  "thread.cmsActions.reviewAndPublish": "Review & publish",
   "thread.cmsActions.viewOnProvider": "View on provider",
   "thread.cmsActions.waitingForReview": "Waiting for review",
   "thread.gitTab.by": "by @{author}",
@@ -107,7 +107,7 @@ export const thread = {
   "thread.headerActions.checkingOutTooltip": "Checking out {branch}",
   "thread.headerActions.cloneFailed": "Clone failed",
   "thread.headerActions.cloneFailedDefaultTooltip":
-    "git clone failed — see setup logs",
+    "git clone failed, see setup logs",
   "thread.headerActions.cloningRepo": "Cloning repo…",
   "thread.headerActions.cloningRepoTooltip": "Cloning the project repository",
   "thread.headerActions.continue": "Continue",
@@ -116,10 +116,10 @@ export const thread = {
   "thread.headerActions.failingChecksTooltip": "Failing: {checks}",
   "thread.headerActions.fixChecks": "Fix checks",
   "thread.headerActions.githubConnectionRemoved":
-    "GitHub connection was removed — relink the repository in Settings to save changes",
+    "GitHub connection was removed, relink the repository in Settings to save changes",
   "thread.headerActions.installingPackages": "Installing packages…",
   "thread.headerActions.installingPackagesTooltip":
-    "Installing dependencies — nothing to review or publish yet",
+    "Installing dependencies, nothing to review or publish yet",
   "thread.headerActions.loading": "Loading…",
   "thread.headerActions.loadingBranch": "Loading branch…",
   "thread.headerActions.loadingBranchTooltip":
@@ -145,7 +145,7 @@ export const thread = {
     "Squash-merge PR #{prNumber} into {base}",
   "thread.headerActions.startingApp": "Starting app…",
   "thread.headerActions.startingAppTooltip":
-    "Starting the dev server — no committed work to review or publish yet",
+    "Starting the dev server, no committed work to review or publish yet",
   "thread.headerActions.startingSandbox": "Preparing sandbox…",
   "thread.headerActions.submitForReview": "Submit for review",
   "thread.headerActions.switchingTo": "Switching to {branch}…",
@@ -155,11 +155,11 @@ export const thread = {
   "thread.headerActions.waitingForApprovalsTooltip":
     "Waiting for required approvals",
   "thread.headerActions.waitingForBranchTooltip":
-    "Almost ready — finishing setting up your environment",
+    "Almost ready, finishing setting up your environment",
   "thread.headerActions.waitingForDaemonTooltip":
-    "Getting your environment ready — this only takes a moment",
+    "Getting your environment ready, this only takes a moment",
   "thread.headerActions.waitingForSandboxBranchTooltip":
-    "Getting your environment ready — this only takes a moment",
+    "Getting your environment ready, this only takes a moment",
   "thread.publishDialog.allChangesDiscarded": "All changes discarded",
   "thread.publishDialog.branchLabel": "Branch:",
   "thread.publishDialog.cancel": "Cancel",
@@ -192,11 +192,11 @@ export const thread = {
   "thread.publishDialog.mergeFailed":
     "Changes were pushed and PR #{prNumber} is open, but merge failed: {message}",
   "thread.mergeRefused.conflict":
-    "It conflicts with the base branch — rebase it and try again.",
+    "It conflicts with the base branch, rebase it and try again.",
   "thread.mergeRefused.blocked":
-    "The repository refused the merge — a required review or a branch rule is outstanding.",
+    "The repository refused the merge, a required review or a branch rule is outstanding.",
   "thread.mergeRefused.rateLimited":
-    "The provider is rate-limiting us — try again in a moment.",
+    "The provider is rate-limiting us, try again in a moment.",
   "thread.mergeRefused.notFound": "It no longer exists.",
   "thread.mergeRefused.error": "Failed to merge.",
   "thread.publishDialog.openingComparison": "Opening the comparison…",
@@ -288,7 +288,7 @@ export const thread = {
   "thread.publishCompare.mobile": "Mobile",
   "thread.publishCompare.openDraft": "Open in new tab",
   "thread.publishCompare.globalHint":
-    "This change can appear on any page. Showing the home page — type another address to compare it.",
+    "This change can appear on any page. Showing the home page, type another address to compare it.",
   "thread.publishCompare.dynamicHint":
     "This page's address is a pattern ({template}). Type a real address to compare it.",
   "thread.publishCompare.enterPath": "Type a page address to compare.",

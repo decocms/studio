@@ -35,10 +35,7 @@ export function FastPreviewField<T extends FieldValues>({
       render={({ field }) => (
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-0.5 min-w-0">
-            <Label
-              htmlFor="fast-preview"
-              className="font-normal text-foreground"
-            >
+            <Label htmlFor="fast-preview" className="text-foreground">
               {t("sandbox.cmsSettings.fastPreview.label")}
             </Label>
             <p className="text-xs text-muted-foreground">

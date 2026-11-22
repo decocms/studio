@@ -151,7 +151,7 @@ export function WhatMoved({
                   taskKey: undefined,
                 }}
                 onClick={() => track("home_what_moved_clicked")}
-                className="min-w-0 flex-1 text-sm leading-6 text-foreground hover:underline"
+                className="min-w-0 flex-1 text-sm text-foreground hover:underline"
               >
                 {written}
               </Link>
@@ -167,7 +167,7 @@ export function WhatMoved({
                   onClick={() => track("home_what_moved_clicked")}
                   className="flex min-w-0 flex-1 flex-col gap-1"
                 >
-                  <span className="text-sm leading-5 text-foreground hover:underline">
+                  <span className="text-sm text-foreground hover:underline">
                     {derived.title}
                   </span>
                   <span className="text-meta flex flex-wrap items-center gap-1.5">

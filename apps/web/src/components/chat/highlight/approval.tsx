@@ -77,7 +77,7 @@ function ApprovalLevelSelect({
     >
       <SelectTrigger
         size="xs"
-        className="text-xs text-muted-foreground border-border/60 bg-transparent hover:bg-accent/60 h-7 gap-1"
+        className="text-muted-foreground border-border/60 bg-transparent hover:bg-accent/60 h-7 gap-1"
         onClick={(e) => e.stopPropagation()}
       >
         <SelectValue>{t(currentOption.shortKey)}</SelectValue>
@@ -167,7 +167,7 @@ function SingleApprovalPrompt({
         type="button"
         variant="ghost"
         size="sm"
-        className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
+        className="text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
         onClick={handleDeny}
       >
         {t("chat.approval.denyButton")}
@@ -175,7 +175,7 @@ function SingleApprovalPrompt({
       <Button
         type="button"
         size="sm"
-        className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
+        className="active:scale-[0.97] transition-transform"
         onClick={handleAccept}
       >
         {t("chat.approval.acceptButton")}
@@ -355,7 +355,6 @@ function ApprovalDecisionButtons({
               type="button"
               variant={isDenied ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2.5 text-xs"
               onClick={() => {
                 field.onChange(false);
                 onChange();
@@ -368,7 +367,6 @@ function ApprovalDecisionButtons({
               type="button"
               variant={isAccepted ? "default" : "outline"}
               size="sm"
-              className="h-7 px-2.5 text-xs"
               onClick={() => {
                 field.onChange(true);
                 onChange();

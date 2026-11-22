@@ -70,7 +70,12 @@ export function ViewModeToggle<T extends string = string>({
   const config = sizeConfig[size];
 
   return (
-    <div className={cn("relative flex gap-0 bg-muted rounded-full", className)}>
+    <div
+      className={cn(
+        "relative flex gap-0 bg-neutral-3 rounded-(--radius-s)",
+        className,
+      )}
+    >
       {options.map((option, i) => {
         const btn = (
           <button
@@ -82,17 +87,17 @@ export function ViewModeToggle<T extends string = string>({
             onClick={() => onValueChange(option.value)}
             aria-label={option.label}
             className={cn(
-              "relative z-10 flex items-center justify-center gap-2 rounded-full transition-colors [transition-timing-function:var(--ease-out-cubic)] duration-200",
+              "relative z-10 flex items-center justify-center gap-(--space-xs) rounded-(--radius-s) transition-colors duration-(--motion-duration) ease-motion focus-ring",
               fullWidth
-                ? "flex-1 h-12 px-4"
+                ? "flex-1 h-12 px-(--space-m)"
                 : option.label
-                  ? cn(config.buttonWithLabel, "px-3")
+                  ? cn(config.buttonWithLabel, "px-(--space-s)")
                   : config.button,
             )}
           >
             <span
               className={cn(
-                "transition-colors ease-out duration-200 flex items-center justify-center [&>svg]:size-[1em]",
+                "transition-colors duration-(--motion-duration) ease-motion flex items-center justify-center [&>svg]:size-[1em]",
                 config.icon,
                 value === option.value
                   ? "text-foreground"
@@ -104,7 +109,7 @@ export function ViewModeToggle<T extends string = string>({
             {option.label && (
               <span
                 className={cn(
-                  "text-xs transition-colors ease-out duration-200 whitespace-nowrap",
+                  "text-xs transition-colors duration-(--motion-duration) ease-motion whitespace-nowrap",
                   value === option.value
                     ? "text-foreground"
                     : "text-muted-foreground",
@@ -126,7 +131,7 @@ export function ViewModeToggle<T extends string = string>({
       {/* Sliding indicator */}
       <div
         className={cn(
-          "absolute z-0 bg-background rounded-full border-shadow transition-all [transition-timing-function:var(--ease-out-cubic)] duration-200",
+          "absolute z-0 bg-neutral-1 rounded-(--radius-s) shadow-(--card-shadow) transition-[left,width,opacity] duration-(--motion-duration) ease-motion",
           fullWidth ? "h-12" : config.button,
         )}
         style={{

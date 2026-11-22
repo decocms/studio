@@ -125,7 +125,7 @@ export function OrganizationChoice({
         <button
           type="button"
           onClick={onCreateNew}
-          className="rounded-xl border border-dashed border-border p-4 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+          className="rounded-m border border-dashed border-border p-4 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
         >
           <Plus size={16} />
           {createNewLabel}
@@ -146,7 +146,7 @@ export function OrganizationChoice({
         return (
           <div
             key={org.id}
-            className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4"
+            className="rounded-m card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4"
           >
             <Avatar
               url={logoUrl ?? undefined}

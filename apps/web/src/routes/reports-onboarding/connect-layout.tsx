@@ -37,7 +37,7 @@ export function ConnectLayout({
           type="button"
           onClick={onClose}
           aria-label={t("routes.reportsOnboarding.connectModal.close")}
-          className="absolute right-3 top-3 z-10 flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground lg:text-white/80 lg:hover:bg-white/15 lg:hover:text-white"
+          className="absolute right-3 top-3 z-10 flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:text-white/80 lg:hover:bg-white/15 lg:hover:text-white"
         >
           <X size={18} />
         </button>
@@ -65,7 +65,7 @@ export function ConnectLayout({
                   <img src={faviconUrl} alt="" className="size-full" />
                 </span>
               )}
-              <span className="truncate text-[15px] leading-tight text-muted-foreground">
+              <span className="truncate text-m text-muted-foreground">
                 {siteHost}
               </span>
             </>
@@ -119,7 +119,6 @@ export function ConnectFooterButton({
     <Button
       type="button"
       size="lg"
-      className="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base font-medium leading-tight"
       onClick={onClick}
       disabled={pending || !ready}
     >

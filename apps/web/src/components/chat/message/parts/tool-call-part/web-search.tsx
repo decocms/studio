@@ -118,7 +118,7 @@ function SourceChip({
         }}
       />
       <span className="truncate max-w-[180px]">{label}</span>
-      <span className="text-[10px] text-muted-foreground/50 tabular-nums shrink-0">
+      <span className="text-xxs text-muted-foreground/50 tabular-nums shrink-0">
         [{index + 1}]
       </span>
       <LinkExternal01
@@ -213,7 +213,7 @@ export function WebSearchPart({
 
   const latencyLabel =
     latency != null && latency > 0 ? (
-      <span className="text-[11px] font-mono tabular-nums text-muted-foreground/60">
+      <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
         {formatDuration(latency)}
       </span>
     ) : null;
@@ -268,7 +268,7 @@ export function WebSearchPart({
         {/* Research content */}
         {displayContent ? (
           <div className="max-h-96 overflow-y-auto overflow-x-hidden rounded-lg border border-border/40 bg-muted/20 px-4 py-3 min-w-0">
-            <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-[13px] leading-relaxed break-words">
+            <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-s break-words">
               <MemoizedMarkdown id={part.toolCallId} text={displayContent} />
             </div>
           </div>

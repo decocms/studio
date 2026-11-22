@@ -58,8 +58,7 @@ function HeaderActionsMenu({
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
+            size="icon-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <DotsVertical size={20} />
@@ -302,36 +301,21 @@ export function BulkActionBar({
 
   return (
     <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-      <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
+      <div className="rounded-m border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
         <div className="text-xs text-muted-foreground pr-1 tabular-nums">
           {t("orgs.connectionSelectionUi.selectedCount", { count })}
         </div>
         {count < total ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={onSelectAll}
-          >
+          <Button variant="outline" size="sm" onClick={onSelectAll}>
             {t("orgs.connectionSelectionUi.selectAll", { total })}
           </Button>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={onDeselectAll}
-          >
+          <Button variant="outline" size="sm" onClick={onDeselectAll}>
             {t("orgs.connectionSelectionUi.clearSelection")}
           </Button>
         )}
         {canManageAgents && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={onAddToAgent}
-          >
+          <Button variant="outline" size="sm" onClick={onAddToAgent}>
             <Plus size={13} />
             {t("orgs.connectionSelectionUi.addToAgent")}
           </Button>
@@ -341,7 +325,6 @@ export function BulkActionBar({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs px-2"
               onClick={() => onToggleStatus("active")}
             >
               {t("orgs.connectionSelectionUi.enable")}
@@ -349,28 +332,17 @@ export function BulkActionBar({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs px-2"
               onClick={() => onToggleStatus("inactive")}
             >
               {t("orgs.connectionSelectionUi.disable")}
             </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-7 text-xs px-2"
-              onClick={onDelete}
-            >
+            <Button variant="destructive" size="sm" onClick={onDelete}>
               <Trash01 size={13} />
               {t("orgs.connectionSelectionUi.delete")}
             </Button>
           </>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs px-2"
-          onClick={onCancel}
-        >
+        <Button variant="ghost" size="sm" onClick={onCancel}>
           <XClose size={13} />
         </Button>
       </div>

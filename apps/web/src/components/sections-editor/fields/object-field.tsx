@@ -115,7 +115,7 @@ export function ObjectField({
       </button>
 
       {!tooltipsEnabled && schema.description && (
-        <p className="break-words pl-9 text-xs leading-normal text-muted-foreground">
+        <p className="break-words pl-9 text-xs text-muted-foreground">
           {schema.description}
         </p>
       )}

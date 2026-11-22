@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Monitor01 } from "@untitledui/icons";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { ConnectProviderDialog } from "@/views/settings/ai-providers/connect-provider-dialog";
 import {
   ProviderGrid,
@@ -41,32 +41,6 @@ function useDefaultBrand(): BrandContext | null {
   return data ?? null;
 }
 
-function extractPrimaryColor(brand: BrandContext): string | null {
-  const colors = brand.colors;
-  if (!colors) return null;
-
-  if (Array.isArray(colors)) {
-    const entry = colors.find(
-      (c) =>
-        typeof c === "object" &&
-        c !== null &&
-        "label" in c &&
-        /primary|brand|main/i.test((c as { label: string }).label),
-    );
-    const val = entry
-      ? (entry as { value?: string }).value
-      : (colors[0] as { value?: string })?.value;
-    return typeof val === "string" ? val : null;
-  }
-
-  if (typeof colors === "object") {
-    const rec = colors as Record<string, string>;
-    return rec.primary ?? Object.values(rec)[0] ?? null;
-  }
-
-  return null;
-}
-
 export function NoAiProviderEmptyState({
   title,
   description,
@@ -89,7 +63,6 @@ export function NoAiProviderEmptyState({
   const providers = aiProviders?.providers ?? [];
 
   const orgName = org.name;
-  const primaryColor = brand ? extractPrimaryColor(brand) : null;
   const brandIcon = brand?.favicon ?? brand?.logo ?? null;
 
   const heading =
@@ -100,64 +73,29 @@ export function NoAiProviderEmptyState({
   const subtitle =
     description ?? t("chat.noAiProviderEmptyState.subtitleDefault");
 
-  // Badge styles: use brand color if available, otherwise a neutral muted background
-  const hasBrandStyle = !!(brandIcon || primaryColor);
-  const badgeStyle = primaryColor
-    ? {
-        backgroundColor: `${primaryColor}18`,
-        borderColor: `${primaryColor}30`,
-      }
-    : undefined;
-  const badgeClass = hasBrandStyle
-    ? "flex items-center justify-center size-14 rounded-2xl border"
-    : "flex items-center justify-center size-14 rounded-2xl bg-muted border border-border";
-
   return (
-    <div className="flex flex-col items-center gap-8 w-full max-w-3xl px-4">
-      <div className="flex flex-col items-center gap-4 text-center">
-        {brandIcon ? (
-          <div className={badgeClass} style={badgeStyle}>
-            <img
-              src={brandIcon}
-              alt=""
-              className="size-7 rounded object-contain"
-            />
-          </div>
+    <EmptyState
+      className="w-full max-w-3xl py-0"
+      icon={
+        brandIcon ? (
+          <img src={brandIcon} alt="" className="size-6 object-contain" />
         ) : offerDownload ? (
           <button
             type="button"
             onClick={() => setDownloadDialogOpen(true)}
             aria-label={t("downloadApp.openLabel")}
-            className={cn(
-              badgeClass,
-              "cursor-pointer transition-colors hover:bg-accent",
-            )}
-            style={badgeStyle}
+            className="focus-ring flex size-full items-center justify-center rounded-m transition-colors hover:bg-accent"
           >
-            <Monitor01
-              size={24}
-              style={primaryColor ? { color: primaryColor } : undefined}
-              className={cn(!primaryColor && "text-muted-foreground")}
-            />
+            <Monitor01 />
           </button>
         ) : (
-          <div className={badgeClass} style={badgeStyle}>
-            <Monitor01
-              size={24}
-              style={primaryColor ? { color: primaryColor } : undefined}
-              className={cn(!primaryColor && "text-muted-foreground")}
-            />
-          </div>
-        )}
-        <div className="space-y-2">
-          <p className="text-xl font-semibold text-foreground tracking-tight">
-            {heading}
-          </p>
-          <p className="text-sm text-muted-foreground max-w-md">{subtitle}</p>
-        </div>
-      </div>
-
-      <div className="w-full">
+          <Monitor01 />
+        )
+      }
+      title={heading}
+      description={subtitle}
+    >
+      <div className="mt-(--space-xl) w-full text-start">
         <ProviderGrid
           providers={providers}
           onSelect={(selection) => setPendingProvider(selection)}
@@ -180,6 +118,6 @@ export function NoAiProviderEmptyState({
         open={downloadDialogOpen}
         onOpenChange={setDownloadDialogOpen}
       />
-    </div>
+    </EmptyState>
   );
 }

@@ -16,7 +16,7 @@ function Tabs({ className, variant = "pill", ...props }: TabsProps) {
     <TabsPrimitive.Root
       data-slot="tabs"
       data-variant={variant}
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("flex flex-col gap-(--space-xs)", className)}
       {...props}
     />
   );
@@ -36,11 +36,12 @@ function TabsList({ className, variant, ...props }: TabsListProps) {
       data-slot="tabs-list"
       data-variant={parentVariant}
       className={cn(
+        /* `underline` is deco's tabs; `pill` borrows the toggle-group shape. */
         parentVariant === "underline"
-          ? "flex h-[52px] items-center border-b border-border"
+          ? "flex h-[52px] items-center gap-(--space-l) border-b border-border"
           : parentVariant === "canvas"
             ? "flex h-10 items-center bg-background relative"
-            : "bg-muted text-muted-foreground inline-flex h-10 w-fit items-center justify-center rounded-xl p-[3px]",
+            : "inline-flex h-(--studio-control-height-sm) w-fit items-center justify-center gap-(--space-xxs)",
         className,
       )}
       {...props}
@@ -63,10 +64,10 @@ function TabsTrigger({ className, variant, ...props }: TabsTriggerProps) {
       data-variant={parentVariant}
       className={cn(
         parentVariant === "underline"
-          ? "flex items-center h-full px-3 relative text-sm whitespace-nowrap border-b-2 mb-[-1px] transition-all text-muted-foreground border-transparent hover:text-foreground data-[state=active]:text-foreground data-[state=active]:border-primary disabled:pointer-events-none disabled:opacity-50"
+          ? "relative flex h-full items-center gap-(--space-xs) px-0 py-(--space-xs) text-s font-regular whitespace-nowrap text-neutral-6 transition-colors duration-(--motion-duration) ease-motion focus-ring hover:text-foreground focus-visible:text-foreground data-[state=active]:text-foreground data-[state=active]:shadow-[inset_0_calc(-1*var(--border-l))_0_var(--foreground)] disabled:pointer-events-none disabled:text-neutral-4"
           : parentVariant === "canvas"
-            ? "flex items-center h-full px-3 gap-2.5 text-sm whitespace-nowrap transition-all border-r border-b border-border [&>*]:opacity-50 data-[state=active]:[&>*]:opacity-100 data-[state=active]:border-b-0 last:border-r-0 disabled:pointer-events-none max-w-2xs"
-            : "data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/20 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-lg border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[2px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+            ? "flex items-center h-full px-(--space-s) gap-(--space-xs) text-s font-regular whitespace-nowrap text-neutral-6 transition-colors duration-(--motion-duration) ease-motion focus-ring border-r border-b border-border hover:text-foreground data-[state=active]:text-foreground data-[state=active]:border-b-0 last:border-r-0 disabled:pointer-events-none disabled:text-neutral-4 max-w-2xs"
+            : "inline-flex h-full flex-1 items-center justify-center gap-(--space-xs) rounded-(--radius-s) px-(--space-s) text-s font-medium whitespace-nowrap text-muted-foreground transition-[background-color,color] duration-(--motion-duration) ease-motion focus-ring hover:bg-neutral-3 hover:text-foreground data-[state=active]:bg-neutral-3 data-[state=active]:text-foreground disabled:pointer-events-none disabled:text-neutral-6 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

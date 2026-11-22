@@ -174,7 +174,7 @@ function LatencyBytesBadge({
   const hasBytes = typeof outputBytes === "number" && outputBytes >= 0;
   if (!hasLatency && !hasBytes) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] font-mono tabular-nums text-muted-foreground/60 px-1 leading-none">
+    <span className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums text-muted-foreground/60 px-1 leading-none">
       {hasLatency && <span>{formatLatency(latency!)}</span>}
       {hasLatency && hasBytes && (
         <span className="text-muted-foreground/30">·</span>
@@ -461,7 +461,7 @@ export function GenericToolCallPart({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs gap-1.5 shrink-0"
+                  className="gap-1.5 shrink-0"
                   onClick={resetError}
                 >
                   <RefreshCw01 className="size-3.5" />

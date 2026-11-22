@@ -55,7 +55,7 @@ export function PageTemplateSelect({
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className="w-full justify-between font-normal"
+          className="w-full justify-between"
         >
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">

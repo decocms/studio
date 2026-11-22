@@ -1,64 +1,61 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const WEIGHTS = [
-  { cls: "font-light", label: "font-light", value: "300" },
-  { cls: "font-normal", label: "font-normal", value: "400" },
-  { cls: "font-medium", label: "font-medium", value: "500" },
-  { cls: "font-semibold", label: "font-semibold", value: "600" },
-  { cls: "font-bold", label: "font-bold", value: "650 (custom)" },
+  { cls: "font-regular", label: "font-regular" },
+  { cls: "font-medium", label: "font-medium" },
+  { cls: "font-heavy", label: "font-heavy" },
 ];
 
 const SIZES = [
+  { cls: "text-xxs", label: "text-xxs" },
   { cls: "text-xs", label: "text-xs" },
-  { cls: "text-sm", label: "text-sm" },
-  { cls: "text-base", label: "text-base" },
-  { cls: "text-lg", label: "text-lg" },
+  { cls: "text-s", label: "text-s" },
+  { cls: "text-m", label: "text-m" },
+  { cls: "text-l", label: "text-l" },
   { cls: "text-xl", label: "text-xl" },
-  { cls: "text-2xl", label: "text-2xl" },
-  { cls: "text-3xl", label: "text-3xl" },
-  { cls: "text-4xl", label: "text-4xl" },
+  { cls: "text-xxl", label: "text-xxl" },
 ];
 
 function Typography() {
   return (
     <div className="flex flex-col gap-10 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Typography</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Inter (variable) for interface text, Commit Mono for code. Body text
-          renders at weight 450 with optical features enabled; `font-bold` maps
-          to 650 instead of 700 for a softer bold.
+        <h1 className="text-l font-heavy text-foreground">Typography</h1>
+        <p className="text-s text-muted-foreground mt-1">
+          The deco theme: Geist for interface text, Geist Mono for data. Body
+          text renders at the regular weight. The older size and weight names
+          alias onto these steps.
         </p>
       </div>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-base font-medium text-foreground">Families</h2>
-        <div className="rounded-lg border border-border p-4 bg-card">
+        <h2 className="text-m font-medium text-foreground">Families</h2>
+        <div className="surface p-(--space-m)">
           <p className="text-xs text-muted-foreground font-mono mb-2">
-            font-sans — Inter
+            font-sans · Geist
           </p>
-          <p className="text-xl text-card-foreground">
+          <p className="text-l text-card-foreground">
             Connect anything, orchestrate everything.
           </p>
         </div>
-        <div className="rounded-lg border border-border p-4 bg-card">
+        <div className="surface p-(--space-m)">
           <p className="text-xs text-muted-foreground font-mono mb-2">
-            font-mono — Commit Mono
+            font-mono · Geist Mono
           </p>
-          <p className="text-xl font-mono text-card-foreground">
+          <p className="text-l font-mono text-card-foreground">
             bun add @decocms/ui
           </p>
         </div>
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-base font-medium text-foreground mb-2">Weights</h2>
+        <h2 className="text-m font-medium text-foreground mb-2">Weights</h2>
         {WEIGHTS.map((weight) => (
           <div key={weight.cls} className="flex items-baseline gap-4">
             <span className="w-36 shrink-0 text-xs text-muted-foreground font-mono">
-              {weight.label} · {weight.value}
+              {weight.label}
             </span>
-            <span className={`text-lg text-foreground ${weight.cls}`}>
+            <span className={`text-m text-foreground ${weight.cls}`}>
               The quick brown fox jumps over the lazy dog
             </span>
           </div>
@@ -66,7 +63,7 @@ function Typography() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-base font-medium text-foreground mb-2">Scale</h2>
+        <h2 className="text-m font-medium text-foreground mb-2">Scale</h2>
         {SIZES.map((size) => (
           <div key={size.cls} className="flex items-baseline gap-4">
             <span className="w-36 shrink-0 text-xs text-muted-foreground font-mono">

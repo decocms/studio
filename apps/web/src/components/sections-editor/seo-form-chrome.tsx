@@ -32,7 +32,7 @@ export function SeoFormChrome({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <Label htmlFor="seo-enable" className="text-sm font-medium">
+        <Label htmlFor="seo-enable">
           {t("sectionsEditor.seoFormChrome.enableLabel")}
         </Label>
         <Switch
@@ -53,7 +53,7 @@ export function SeoFormChrome({
                 <p className="text-sm font-medium">
                   {t("sectionsEditor.seoFormChrome.asyncRenderLabel")}
                 </p>
-                <p className="text-xs leading-normal text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {/* TODO(i18n): rich text - link in middle of sentence */}
                   Render SEO asynchronously with edge caching. Learn more in our{" "}
                   <a

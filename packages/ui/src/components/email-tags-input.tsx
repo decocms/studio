@@ -359,22 +359,25 @@ export const EmailTagsInput = forwardRef<
   };
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-(--space-xs)">
       <div
         className={cn(
-          "min-h-[96px] w-full rounded-xl border border-input bg-background px-3 py-2 text-sm transition-[color,box-shadow]",
-          "focus-within:border-ring focus-within:ring-ring/20 focus-within:ring-[2px]",
-          disabled && "opacity-50 cursor-not-allowed",
+          "min-h-[96px] w-full rounded-(--studio-control-radius) bg-[var(--studio-input-background)] px-(--space-s) py-(--space-xs) text-s font-regular text-foreground shadow-(--edge) transition-[background-color,box-shadow,color] duration-(--motion-duration) ease-motion",
+          "hover:shadow-[0_0_0_var(--border-s)_var(--neutral-5)] [&:has(textarea:focus-visible)]:[outline:var(--focus-ring-outline)] [&:has(textarea:focus-visible)]:outline-offset-2",
+          (invalidEmails.length > 0 || selfEmails.length > 0) &&
+            "shadow-[0_0_0_var(--border-s)_var(--error)] hover:shadow-[0_0_0_var(--border-s)_var(--error)]",
+          disabled &&
+            "cursor-not-allowed bg-neutral-3 text-neutral-6 shadow-[0_0_0_var(--border-s)_var(--neutral-4-transparent)]",
         )}
         onClick={() => textareaRef.current?.focus()}
       >
-        <div className="flex flex-wrap gap-1 items-start">
+        <div className="flex flex-wrap gap-(--space-xxs) items-start">
           {emails.map((email) => (
             <Badge
               key={email}
               variant={getBadgeVariant(email)}
               className={cn(
-                "flex items-center gap-1 max-w-xs",
+                "flex items-center gap-(--space-xxs) max-w-xs",
                 badgeClassName || "px-1 py-0.5", // Default to tighter spacing
               )}
             >
@@ -385,7 +388,7 @@ export const EmailTagsInput = forwardRef<
                 size="icon"
                 aria-label={`Remove ${email}`}
                 className={cn(
-                  "h-4 w-4 transition-colors",
+                  "size-4 rounded-xs",
                   getBadgeVariant(email) === "destructive"
                     ? "text-destructive hover:text-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -406,7 +409,7 @@ export const EmailTagsInput = forwardRef<
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            className="flex-1 min-w-[120px] bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground overflow-hidden"
+            className="flex-1 min-w-[120px] bg-transparent outline-none resize-none placeholder:text-muted-foreground overflow-hidden disabled:cursor-not-allowed"
             placeholder={
               emails.length === 0 ? placeholder : "Add more emails..."
             }
@@ -422,13 +425,13 @@ export const EmailTagsInput = forwardRef<
 
       {/* Show validation errors */}
       {selfEmails.length > 0 && (
-        <div className="text-sm text-destructive">
+        <div className="text-s font-regular text-destructive">
           You're not able to send an invite to yourself: {selfEmails.join(", ")}
         </div>
       )}
 
       {invalidEmails.length > 0 && (
-        <div className="text-sm text-destructive">
+        <div className="text-s font-regular text-destructive">
           Invalid email format: {invalidEmails.join(", ")}
         </div>
       )}

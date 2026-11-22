@@ -146,8 +146,8 @@ export function AvailableSectionEditor({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="icon"
-                  className="size-8 shrink-0"
+                  size="icon-sm"
+                  className="shrink-0"
                   disabled={isCreating}
                   onClick={() => setSaveOpen(true)}
                   aria-label={t(
@@ -162,7 +162,7 @@ export function AvailableSectionEditor({
               </TooltipContent>
             </Tooltip>
           </div>
-          <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-muted-foreground">
+          <p className="mt-1.5 py-1 pl-1 text-sm text-muted-foreground">
             {t("sandbox.availableSectionEditor.localEditsHint", { typeLabel })}
           </p>
         </div>

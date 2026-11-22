@@ -23,7 +23,7 @@ export function ConnectionDetailHeader({
       <div className="flex-1 min-w-0">
         <Page.Title>{title}</Page.Title>
         {connection.description && (
-          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
+          <p className="text-sm text-muted-foreground line-clamp-2">
             {connection.description}
           </p>
         )}
