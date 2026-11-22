@@ -9,9 +9,6 @@ import {
   LayoutLeft,
   Rows01,
   SearchSm,
-  User01,
-  Users01,
-  Zap,
 } from "@untitledui/icons";
 import {
   Tooltip,
@@ -19,6 +16,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -181,13 +183,7 @@ export function TaskGroupsList({
   const allThreadsFiltered = typeFiltered(sortedThreads);
   const memberScoped = showAll ? allThreadsFiltered : myThreads;
 
-  // Agent scope is URL-driven: inside a thread the sidebar shows that thread's
-  // agent's threads; on the org home it shows everything. Decopilot = all.
-  const filterAgentId = activeTaskId ? activeAgentId : null;
-  const visibleScopedThreads =
-    filterAgentId && filterAgentId !== decopilotId
-      ? memberScoped.filter((t) => t.virtual_mcp_id === filterAgentId)
-      : memberScoped;
+  const visibleScopedThreads = memberScoped;
 
   const handleArchive = (task: Task) => {
     // Archiving hides a thread org-wide, so it must be owner-only — the UI
@@ -302,12 +298,8 @@ export function TaskGroupsList({
     );
   }
 
-  // Two-state toggle: all tasks ↔ only automations.
-  const toggleAutomations = () => {
-    const next: TypeFilter = typeFilter === "automation" ? "all" : "automation";
-    track("tasks_panel_filter_changed", { to_value: next });
-    setTypeFilter(next);
-  };
+  const filtersActive =
+    typeFilter !== "all" || groupBy !== "flat" || showAll;
 
   const toolbar = (mobile: boolean) => (
     <TooltipProvider delayDuration={300}>
@@ -317,43 +309,78 @@ export function TaskGroupsList({
           mobile ? "h-10" : "h-10 md:h-7 mb-2",
         )}
       >
-        {/* Left: toggle + view filters. */}
+        {/* Left: sidebar toggle + filter popover. */}
         <div className="flex items-center gap-0.5">
           {!mobile && <SidebarTriggerButton />}
-          {/* Tooltip reflects the current view mode. */}
-          <ToolbarTooltipButton
-            label={groupBy === "flat" ? "Show all threads" : "Group by status"}
-            active={groupBy === "status"}
-            onClick={() => {
-              const next: GroupBy = groupBy === "flat" ? "status" : "flat";
-              track("tasks_panel_group_by_changed", { to_value: next });
-              setGroupBy(next);
-            }}
-          >
-            {groupBy === "flat" ? <Rows01 size={16} /> : <Activity size={16} />}
-          </ToolbarTooltipButton>
           {!mobile && (
-            <ToolbarTooltipButton
-              label={
-                typeFilter === "automation" ? "Only Automations" : "All tasks"
-              }
-              active={typeFilter === "automation"}
-              onClick={toggleAutomations}
-            >
-              {typeFilter === "automation" ? (
-                <Zap size={16} />
-              ) : (
-                <FilterLines size={16} />
-              )}
-            </ToolbarTooltipButton>
+            <Popover>
+              <PopoverTrigger asChild>
+                <ToolbarIconButton
+                  aria-label="Filter threads"
+                  className={cn(
+                    filtersActive && "bg-sidebar-accent text-foreground",
+                  )}
+                >
+                  <FilterLines size={16} />
+                  {filtersActive && (
+                    <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-red-500 ring-1 ring-sidebar pointer-events-none" />
+                  )}
+                </ToolbarIconButton>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={8}
+                collisionPadding={16}
+                className="w-64 p-3"
+              >
+                <div className="flex flex-col gap-3">
+                  <FilterRow label="View">
+                    <TabGroup
+                      value={groupBy}
+                      onChange={(v) => {
+                        const next = v as GroupBy;
+                        track("tasks_panel_group_by_changed", {
+                          to_value: next,
+                        });
+                        setGroupBy(next);
+                      }}
+                      options={[
+                        { value: "flat", label: "List", icon: <Rows01 size={12} /> },
+                        { value: "status", label: "Status", icon: <Activity size={12} /> },
+                      ]}
+                    />
+                  </FilterRow>
+                  <FilterRow label="Type">
+                    <TabGroup
+                      value={typeFilter}
+                      onChange={(v) => {
+                        const next = v as TypeFilter;
+                        if (next !== typeFilter) {
+                          track("tasks_panel_filter_changed", { to_value: next });
+                        }
+                        setTypeFilter(next);
+                      }}
+                      options={[
+                        { value: "all", label: "All" },
+                        { value: "manual", label: "Chats" },
+                        { value: "automation", label: "Auto" },
+                      ]}
+                    />
+                  </FilterRow>
+                  <FilterRow label="Scope">
+                    <TabGroup
+                      value={showAll ? "all" : "mine"}
+                      onChange={(v) => setShowAll(v === "all")}
+                      options={[
+                        { value: "mine", label: "Mine" },
+                        { value: "all", label: "Team" },
+                      ]}
+                    />
+                  </FilterRow>
+                </div>
+              </PopoverContent>
+            </Popover>
           )}
-          <ToolbarTooltipButton
-            label={showAll ? "Show Team Threads" : "Show My Threads"}
-            active={showAll}
-            onClick={() => setShowAll((v) => !v)}
-          >
-            {showAll ? <Users01 size={16} /> : <User01 size={16} />}
-          </ToolbarTooltipButton>
         </div>
         {/* Right: search + new thread. */}
         <div className="flex items-center gap-0.5">
@@ -429,6 +456,53 @@ export function TaskGroupsList({
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       )}
+    </div>
+  );
+}
+
+function FilterRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <div className="w-36 shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function TabGroup({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; icon?: ReactNode }[];
+}) {
+  return (
+    <div className="flex rounded-md border overflow-hidden">
+      {options.map((opt, i) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs transition-colors",
+            i > 0 && "border-l",
+            value === opt.value
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted",
+          )}
+        >
+          {opt.icon}
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
