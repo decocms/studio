@@ -463,11 +463,9 @@ export const auth = betterAuth({
           // to default org creation — there's no verification path to gate on.
           // All verified corporate users go to /onboarding regardless of auto-join status
           // so the user can explicitly choose to join an existing org or create a new one.
-          if (user.emailVerified) {
-            const emailDomain = user.email?.split("@")[1]?.toLowerCase();
-            if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
-              return;
-            }
+          const emailDomain = user.email?.split("@")[1]?.toLowerCase();
+          if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
+            return;
           }
 
           // Check if auto-creation is enabled (default: true)
