@@ -8,12 +8,12 @@ test("anonymous shared report shows login over a blurred preview", async ({
     "/report/example.com?share_id=example%3Aslide%3Atest&utm_source=share#overview",
   );
 
-  const dialog = page.getByRole("dialog", { name: "Acesse seu relatório" });
+  const dialog = page.getByRole("dialog", { name: "Access your report" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Já receberam")).toBeVisible();
 
   const preview = page.locator('div[aria-hidden="true"]').filter({
-    hasText: "Uma visão completa da sua loja e onde crescer primeiro.",
+    hasText: "A complete view of your store and where to grow first.",
   });
   await expect(preview).toHaveCSS("filter", "blur(9px)");
   await expect(page).toHaveURL(/share_id=example%3Aslide%3Atest/);
@@ -71,7 +71,7 @@ test("an expired report session returns to the inline login", async ({
   await page.goto("/report/session-expired.example");
 
   await expect(
-    page.getByRole("dialog", { name: "Acesse seu relatório" }),
+    page.getByRole("dialog", { name: "Access your report" }),
   ).toBeVisible();
 });
 
@@ -98,7 +98,7 @@ test("a failed initial read never triggers a scan", async ({ page }) => {
 
   await expect(
     page.getByRole("alert", {
-      name: "Não foi possível carregar o relatório",
+      name: "Failed to load report",
     }),
   ).toBeVisible();
   expect(scanRequests).toBe(0);

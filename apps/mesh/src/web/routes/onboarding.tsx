@@ -194,8 +194,9 @@ function OnboardingContent({
 
   const [creatingNewOrg, setCreatingNewOrg] = useState(false);
 
+  const t = useT();
+
   if (domainLoading) {
-    const t = useT();
     return (
       <AuthSplitLayout>
         <div className="flex items-center gap-2 py-4">
@@ -213,7 +214,6 @@ function OnboardingContent({
   // duplicate organization instead of joining the one they already have
   // access to.
   if (domainLookupFailed) {
-    const t = useT();
     return (
       <AuthSplitLayout>
         <div className="flex flex-col items-start gap-3 py-4">
@@ -268,7 +268,6 @@ function OnboardingContent({
   // Request to join (needs admin approval). Both kinds can match the same
   // domain, so they share a single list.
   if (discoverableOrgs.length > 0) {
-    const t = useT();
     return (
       <AuthSplitLayout>
         <div className="grid gap-10">

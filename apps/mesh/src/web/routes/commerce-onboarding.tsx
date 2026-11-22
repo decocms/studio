@@ -340,6 +340,7 @@ function CommerceOnboardingContent({
   siteUrl?: string;
 }) {
   const navigate = useNavigate();
+  const t = useT();
   const organizationsQuery = useActiveOrganizations();
   const [selectedOrg, setSelectedOrg] = useState<CommerceOrganization | null>(
     null,
@@ -389,7 +390,6 @@ function CommerceOnboardingContent({
   }
 
   if (organizationsQuery.error) {
-    const t = useT();
     return (
       <CommerceErrorState
         title={t("routes.commerceOnboarding.couldNotLoadOrgs")}
@@ -409,7 +409,6 @@ function CommerceOnboardingContent({
   }
 
   if (requestedOrgSlug) {
-    const t = useT();
     return (
       <CommerceErrorState
         title={t("routes.commerceOnboarding.orgNotFound")}
@@ -431,7 +430,6 @@ function CommerceOnboardingContent({
   }
 
   if (activeOrganizations.length > 1) {
-    const t = useT();
     return (
       <CommerceOnboardingLayout>
         <div className="grid gap-10">
@@ -491,7 +489,6 @@ function CommerceOnboardingContent({
     ensureResult.organizations &&
     ensureResult.organizations.length > 0
   ) {
-    const t = useT();
     return (
       <CommerceOnboardingLayout>
         <div className="grid gap-10">
@@ -518,7 +515,6 @@ function CommerceOnboardingContent({
     );
   }
 
-  const t = useT();
   return (
     <CommerceErrorState
       title={t("routes.commerceOnboarding.onboardingNeedsSupport")}
@@ -543,6 +539,7 @@ function EnsureOrganizationRecovery({
   onRetry: () => void;
 }) {
   const startedRef = useRef(false);
+  const t = useT();
 
   const triggerRecovery = (node: HTMLDivElement | null) => {
     if (!node || startedRef.current) return;
@@ -553,7 +550,6 @@ function EnsureOrganizationRecovery({
   };
 
   if (mutation.error) {
-    const t = useT();
     return (
       <CommerceErrorState
         title={t("routes.commerceOnboarding.onboardingUnavailable")}
@@ -775,6 +771,8 @@ function CommerceSetupContent({
     retry: false,
   });
 
+  const t = useT();
+
   const setupMutation = useMutation({
     mutationFn: async (siteUrl: string) => {
       const result = await selfClient.callTool({
@@ -800,7 +798,6 @@ function CommerceSetupContent({
         error: error instanceof Error ? error.message : String(error),
       });
       // ponytail: error.message is dynamic; only fallback is translated
-      const t = useT();
       setInlineError(
         error instanceof Error
           ? error.message
@@ -845,8 +842,6 @@ function CommerceSetupContent({
   const currentMeetingVisual = (
     <ScheduleMeetingVisual href={currentMeetingUrl} orgId={org.id} />
   );
-
-  const t = useT();
 
   const runSetup = (rawSiteUrl: string) => {
     const normalized = normalizeReportsSiteUrl(rawSiteUrl);
