@@ -58,9 +58,9 @@ function nextRun(iso: string | null, locale: string): string {
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <section className="flex min-w-[168px] flex-1 flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2">
-      <h3 className="truncate text-muted-foreground text-xs">{label}</h3>
-      <p className="font-semibold text-base text-foreground leading-none tabular-nums">
+    <section className="flex min-w-[168px] flex-1 flex-col gap-3 rounded-2xl bg-card p-5 card-shadow">
+      <h3 className="truncate text-muted-foreground text-sm">{label}</h3>
+      <p className="tnum text-3xl font-semibold text-foreground leading-none">
         {value}
       </p>
     </section>
@@ -233,14 +233,6 @@ export function AgentsPage() {
       <Page.Title>{t("agents.title")}</Page.Title>
       <Page.Content>
         <Page.Container width="wide" className="flex flex-col gap-6">
-          <div className="flex flex-col gap-1">
-            <h1 className="font-semibold text-foreground text-xl tracking-tight">
-              {t("agents.title")}
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {t("agents.subtitle")}
-            </p>
-          </div>
           <Suspense
             fallback={
               <div className="flex min-h-64 items-center justify-center">
