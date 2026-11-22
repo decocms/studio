@@ -588,7 +588,7 @@ export default function AutomationDetailPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Body className="md:pt-8">
           <SettingsTab
             key={automationId}
             automationId={automationId}

@@ -144,7 +144,7 @@ function PageBody({
   return (
     <div
       className={cn(
-        "mx-auto w-full px-4 pt-6 pb-6 md:px-10 md:pt-8 md:pb-10",
+        "mx-auto w-full px-4 pt-6 pb-6 md:px-10 md:pt-14 md:pb-10",
         maxWidth,
         className,
       )}

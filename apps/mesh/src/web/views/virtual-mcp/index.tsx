@@ -1030,7 +1030,7 @@ Define step-by-step how the agent should handle requests.
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Body className="md:pt-8">
           <div className="flex flex-col gap-6">
             <Page.Title
               actions={
