@@ -61,6 +61,7 @@ import { resolveRunMemory } from "@/harnesses/run-memory";
 import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
+import { withRunContext } from "@/harnesses/with-run-context";
 import { daemonRunId } from "@/harnesses/live-messages";
 import type { StudioContext } from "../core/studio-context";
 import {
@@ -762,14 +763,16 @@ export class SandboxDispatchClient {
           : () => {};
         try {
           yield* withModelMetadata(
-            dispatchToDaemon({
-              provider,
-              handle: sandbox.sandboxHandle,
-              harnessId,
-              input: resume ? { ...boundInput, resume } : boundInput,
-              runId,
-              signal: input.signal,
-            }),
+            withRunContext(
+              dispatchToDaemon({
+                provider,
+                handle: sandbox.sandboxHandle,
+                harnessId,
+                input: resume ? { ...boundInput, resume } : boundInput,
+                runId,
+                signal: input.signal,
+              }),
+            ),
             // A continuation's `start` is dropped downstream, so don't re-stamp it.
             resume
               ? null

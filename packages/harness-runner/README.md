@@ -81,6 +81,20 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   falls back to its folder on the sandbox's disk for a path it rejects. An
   input without the field keeps the CLI default. A kept session is ended
   instead of reused when the next turn's memory differs.
+- Record what a Claude Code run was given. The `finish` chunk of a turn that
+  reached a result carries `messageMetadata.context`, which Studio stores on
+  the message's `finish` row next to `usage`: the runner, image and CLI
+  versions, model, effort, permission mode, tool names, MCP servers with their
+  status, agent types, skill counts, whether memory is on, and the length of
+  the system prompt append. It never holds prompt text, environment, paths or
+  ids. It is taken from the first `init` of the run, so a retry or an image
+  resend does not replace it. `init` lists an http MCP server as `pending`
+  with none of its tools, so the server status, the MCP tools and which of
+  them are deferred are read from the CLI at the turn's first result (two
+  local control requests, given up on after one second). The CLI does not say
+  which built-in tools are deferred. Skills the organization or the checkout
+  owns are counted, never named. The JSON is capped at 4 KB: whole lists are
+  dropped, longest first, their counts stay, and `truncated` is set.
 - Continue an interrupted turn rather than redoing it. `input.resume` means a
   previous attempt was cut short by infrastructure and its conversation is gone;
   the work itself is in the checkout and in git (a replaced pod clones the branch
@@ -113,6 +127,7 @@ by Studio and reaching this process as its spawn environment:
 | `STUDIO_CODEX_AUTH_JSON` | ChatGPT login cache, encrypted at rest by the API and supplied to the runner |
 | `CODEX_API_KEY` + `OPENAI_BASE_URL` | Responses API provider credentials, cleared for subscription runs |
 | `CLAUDE_CONFIG_DIR` | Claude Code's config dir; also where the per-thread session id is remembered |
+| `STUDIO_SANDBOX_IMAGE_VERSION` | The sandbox image's release version, baked in at build time and recorded in the run context; empty on a local build |
 
 The default-off `chat_harness_codex` organization flag selects Codex for new
 sandbox chats. Existing chats keep their pinned runtime. Link a ChatGPT login
@@ -136,6 +151,7 @@ inside the sandbox runtime. Freestyle deployments opt in with
 - `codex.ts` — app-server requests, isolated runtime configuration, subscription refresh sync, and session resumption.
 - `codex-to-ui-chunks.ts` — Codex notifications translated to existing text, reasoning, tool, question, and plan parts.
 - `live-messages.ts` — the live-message line, ack and per-turn bookkeeping.
+- `run-context.ts` — the run context: what it is built from, and its size cap.
 - `studio-cli.ts` — the CLI session file, its prompt, and recognizing a
   shell command that is one Studio tool call.
 - `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s, with Claude
