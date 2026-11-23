@@ -13,7 +13,7 @@ Read docs://store.md for catalog search patterns, and evaluation criteria. Read 
 
 Recommended tool order:
 1. Use COLLECTION_CONNECTIONS_LIST to check which MCPs are already installed.
-2. If the user has not clearly described the target capability, data source, or authentication constraints, use user_ask.
+2. If the user has not clearly described the target capability, data source, or authentication constraints, ask the user.
 3. Use the built-in REGISTRY_ITEM_SEARCH tool to search the Deco catalog.
 4. Filter by tags or categories when useful.
 5. Use REGISTRY_ITEM_LIST to browse the catalog.

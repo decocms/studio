@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { agentMentionContext } from "@decocms/shared/agent-mention";
 import {
   createSubtaskTool,
   isTransientStreamError,
@@ -206,6 +207,17 @@ describe("createSubtaskTool", () => {
     expect(tool.description).toBeDefined();
     expect(tool.description).toContain("subagent");
     expect(tool.inputSchema).toBeDefined();
+  });
+
+  test("the description says what an @agent mention in a message asks for", () => {
+    const tool = createSubtaskTool(mockWriter, mockParams, mockCtx);
+    const [marker] = agentMentionContext({
+      title: "<name>",
+      agentId: "<id>",
+    }).split("\n");
+
+    expect(tool.description).toContain(marker!);
+    expect(tool.description).toContain("passing its agent_id");
   });
 });
 

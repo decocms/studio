@@ -13,7 +13,7 @@ Read docs://connections.md for authentication modes, lifecycle guidance, and err
 
 Recommended tool order:
 1. Use COLLECTION_CONNECTIONS_LIST to avoid duplicate installs and inspect similar existing connections.
-2. If the user has not provided a server URL or auth details, use user_ask.
+2. If the user has not provided a server URL or auth details, ask the user.
 3. Use COLLECTION_CONNECTIONS_CREATE with the MCP server URL and required authentication payload.
 4. Use CONNECTION_TEST to verify the connection is reachable and healthy.
 5. Use COLLECTION_CONNECTIONS_GET if you need the saved details for follow-up.
@@ -38,7 +38,7 @@ Read docs://connections.md for connection lifecycle and troubleshooting guidance
 
 Recommended tool order:
 1. Use COLLECTION_CONNECTIONS_LIST or COLLECTION_CONNECTIONS_GET to identify the target connection.
-2. Use user_ask if the intended URL, title, or auth change is not explicit.
+2. Ask the user if the intended URL, title, or auth change is not explicit.
 3. Use COLLECTION_CONNECTIONS_UPDATE with only the fields that should change.
 4. Use CONNECTION_TEST to validate the updated configuration.
 5. Use COLLECTION_CONNECTIONS_GET to confirm the final saved state if needed.
@@ -64,7 +64,7 @@ Recommended tool order:
 1. Use COLLECTION_CONNECTIONS_LIST to find the connection and its current status.
 2. Use COLLECTION_CONNECTIONS_GET for detailed configuration and metadata.
 3. Use CONNECTION_TEST to reproduce or validate the health state.
-4. If the failure suggests missing credentials or incorrect setup, use user_ask before changing anything.
+4. If the failure suggests missing credentials or incorrect setup, ask the user before changing anything.
 5. Use COLLECTION_CONNECTIONS_UPDATE only after identifying a concrete remediation.
 
 Checks:

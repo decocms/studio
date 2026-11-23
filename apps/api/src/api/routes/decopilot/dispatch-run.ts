@@ -29,7 +29,7 @@
  */
 
 import {
-  VOICE_MODE_PROMPT,
+  voiceModePrompt,
   voiceRequestContext,
   type VoiceTranscript,
 } from "@decocms/shared/voice";
@@ -1339,8 +1339,8 @@ async function prepareRun(
           {
             type: "text",
             text: voiceContext
-              ? `${VOICE_MODE_PROMPT}\n\n${voiceContext}`
-              : VOICE_MODE_PROMPT,
+              ? `${voiceModePrompt(harnessId)}\n\n${voiceContext}`
+              : voiceModePrompt(harnessId),
           },
         ],
       });
@@ -1418,6 +1418,7 @@ async function prepareRun(
           ? withVoiceResponseStyle(
               wireUserMessage,
               input.voiceMode === true,
+              harnessId,
               voiceContext,
             )
           : wireUserMessage,

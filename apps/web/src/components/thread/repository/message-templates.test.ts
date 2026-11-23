@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SANDBOX_STALE_NAMES } from "@decocms/shared/harness/sandbox-stale-names";
 import * as tpl from "./message-templates";
 
 describe("message-templates", () => {
@@ -82,7 +83,7 @@ describe("message-templates", () => {
     expect(out).toContain("git rebase origin/main");
   });
 
-  test("all templates include the button-confirmed reinforcement", () => {
+  test("all templates include the button-confirmed reinforcement and name no tool a sandbox run lacks", () => {
     const outputs = [
       tpl.commitAndPush({ branch: "x" }),
       tpl.createPr({ branch: "x" }),
@@ -98,7 +99,8 @@ describe("message-templates", () => {
     ];
     for (const out of outputs) {
       expect(out.toLowerCase()).toContain("user clicked this action");
-      expect(out.toLowerCase()).toContain("user_ask");
+      expect(out).toContain("Do not stop to ask the user unless");
+      for (const stale of SANDBOX_STALE_NAMES) expect(out).not.toContain(stale);
     }
   });
 });

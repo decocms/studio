@@ -53,7 +53,7 @@ mergeability after each merge rather than trusting what you read at the start.
 ## Merge
 
 - `gh pr merge <url>` from a checkout of THAT repository. A run can hold
-  several (`mcp__studio__TASK_ADD_REPO` accumulates), and each is authenticated
+  several (`TASK_ADD_REPO` accumulates), and each is authenticated
   for its own host.
 - **A conflict is yours to fix.** Check the branch out, merge the base branch
   into it, resolve preserving BOTH sides' intent, push to update the SAME pull
@@ -68,11 +68,11 @@ mergeability after each merge rather than trusting what you read at the start.
 Per issue, as soon as that issue is settled — not one summary at the end, which
 a run that dies on the tenth issue never writes:
 
-- `mcp__studio__JIRA_COMMENT_ADD` with `issueKey` — what merged, with the pull
+- `JIRA_COMMENT_ADD` with `issueKey` — what merged, with the pull
   request links, and anything you decided (a red check you judged
   pre-existing, a conflict you resolved and how). This is the only record: a
   merge otherwise leaves no trace on the card.
-- `mcp__studio__JIRA_ISSUE_TRANSITION` with `issueKey` — move the card to where
+- `JIRA_ISSUE_TRANSITION` with `issueKey` — move the card to where
   your team puts shipped work, LAST, after the comment. If your team's flow
   ends before that column — some hand off with a comment and let the customer
   pull the card themselves — then say so in the comment and leave the status
