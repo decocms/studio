@@ -119,6 +119,8 @@ const ALL_TOOL_NAMES = [
   "REPORTS_BIND",
   "REPORTS_CONNECTION_STATUS",
   "REPORTS_SET_REPOSITORY",
+  "PLAN_DIAGNOSIS_SETUP",
+  "PLAN_DIAGNOSIS_STATUS",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -737,6 +739,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPORTS_SET_REPOSITORY",
     description: "Set the Deco Score repository",
+    category: "Connections",
+  },
+  {
+    name: "PLAN_DIAGNOSIS_SETUP",
+    description: "Connect the Plan page's store diagnosis to BigQuery",
+    category: "Connections",
+  },
+  {
+    name: "PLAN_DIAGNOSIS_STATUS",
+    description: "Read whether the Plan page's store diagnosis is set up",
     category: "Connections",
   },
   // Virtual MCP tools
@@ -2012,6 +2024,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "PLAN_GOAL_CASES",
       // Any member asks the AI for goals; proposes, never saves.
       "PLAN_GOAL_SUGGEST",
+      // Any member on the Plan page sees whether its diagnosis is set up.
+      "PLAN_DIAGNOSIS_STATUS",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -2156,6 +2170,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REPORTS_BIND",
       "REPORTS_CONNECTION_STATUS",
       "REPORTS_SET_REPOSITORY",
+      "PLAN_DIAGNOSIS_SETUP",
     ],
     dangerous: true,
   },

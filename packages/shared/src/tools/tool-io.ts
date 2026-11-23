@@ -4240,6 +4240,22 @@ export interface StudioToolIO {
       } | null;
     };
   };
+  PLAN_DIAGNOSIS_SETUP: {
+    input: {
+      bigquery_connection_id: string;
+      bigquery_project_id: string;
+      bigquery_dataset_id: string;
+    };
+    output: { connection_id: string };
+  };
+  PLAN_DIAGNOSIS_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      configured: boolean;
+      connection_id: string | null;
+      reason?: "flag_off" | "service_unset" | "not_connected" | undefined;
+    };
+  };
   COLLECTION_VIRTUAL_MCP_CREATE: {
     input: {
       data: {

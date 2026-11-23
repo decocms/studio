@@ -439,6 +439,7 @@ export function resolveConfig(
       envVars.REPORTS_INTERNAL_API_KEY,
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_KEY,
     ),
+    planDiagnosisMcpUrl: envVars.PLAN_DIAGNOSIS_MCP_URL || undefined,
 
     // Managed asset storage (shared deco tenant bucket). Defaults match the
     // legacy admin platform so an existing deployment works without new env.

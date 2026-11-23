@@ -22,6 +22,7 @@ import * as DemoBoardTools from "./demo-board";
 import * as NotificationTools from "./notifications";
 import * as AlertTools from "./alerts";
 import * as PlanGoalTools from "./plan-goals";
+import * as PlanDiagnosisTools from "./plan-diagnosis";
 import * as TagTools from "./tags";
 import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
@@ -188,6 +189,8 @@ export const CORE_TOOLS = [
   ReportsTools.REPORTS_BIND,
   ReportsTools.REPORTS_CONNECTION_STATUS,
   ReportsTools.REPORTS_SET_REPOSITORY,
+  PlanDiagnosisTools.PLAN_DIAGNOSIS_SETUP,
+  PlanDiagnosisTools.PLAN_DIAGNOSIS_STATUS,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
