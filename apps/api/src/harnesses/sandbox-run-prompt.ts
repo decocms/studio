@@ -36,19 +36,26 @@ const PREVIEW_INSTRUCTION =
   `change a page, call ${studioTool("preview_navigate")} with its path so they ` +
   "see it.";
 
+/** Whom an unattended run acts for, so "me" in an automation's or a card's instructions still names someone. */
+function actsFor(email: string | undefined): string | null {
+  return email
+    ? `This run acts on behalf of ${email}. "Me" and "my" in its instructions mean that person.`
+    : null;
+}
+
 export function sandboxRunPrompt(args: {
   mode: ChatMode;
   threadId: string;
   userEmail: string | undefined;
   userContext: HarnessUserContext;
-  /** Nobody is in the run (`isUnattendedRun`): it gets no "About this user". */
+  /** Nobody is in the run (`isUnattendedRun`): it gets whom it acts for, not "About this user". */
   unattended: boolean;
   /** The user is watching this chat's dev-server preview. */
   previewWatched?: boolean;
 }): string {
   return [
     args.unattended
-      ? null
+      ? actsFor(args.userEmail)
       : renderUserContextBlock({
           user: { email: args.userEmail },
           currentThreadId: args.threadId,

@@ -101,10 +101,18 @@ describe("sandboxRunPrompt", () => {
     expect(prompt).not.toContain("agent-sales");
   });
 
-  test("a run nobody is in gets no user block at all", () => {
+  test("a run nobody is in is told whom it acts for, and nothing about them", () => {
     expect(sandboxRunPrompt({ ...base, unattended: true, userContext })).toBe(
-      "",
+      'This run acts on behalf of person@example.com. "Me" and "my" in its instructions mean that person.',
     );
+    expect(
+      sandboxRunPrompt({
+        ...base,
+        unattended: true,
+        userEmail: undefined,
+        userContext,
+      }),
+    ).toBe("");
   });
 
   test("the mode and preview lines do not depend on who the run is for", () => {
