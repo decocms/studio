@@ -1262,6 +1262,21 @@ const planRoute = createRoute({
   },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
+/** One loss from Plan's store analysis, by the engine's opportunity id. */
+const planOpportunityRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/plan/opportunity/$opportunityId",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/plan-opportunity.tsx"),
+  ),
+});
 /** Monitor: the tab, the past day, and the store (ingest connection id) and
  *  instant under review. A malformed day is dropped, not a broken page. */
 const monitoringSearch = z.object({
@@ -1324,6 +1339,21 @@ const projectPlanRoute = createRoute({
     mainView: "plan",
   },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+/** One loss from Plan's store analysis, by the engine's opportunity id. */
+const projectPlanOpportunityRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/plan/opportunity/$opportunityId",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/plan-opportunity.tsx"),
+  ),
 });
 /** One chat's business case, built on the Plan page; `path` is the case file
  *  in the home volume (`plans/cases/<threadId>.json`). */
@@ -1856,6 +1886,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentConnectSourcesRoute,
   agentLegacyProjectViewRoute,
   projectPlanRoute,
+  projectPlanOpportunityRoute,
   projectBusinessCaseRoute,
   projectMonitoringRoute,
 ]);
@@ -1874,6 +1905,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   libraryRoute,
   discoverRoute,
   planRoute,
+  planOpportunityRoute,
   orgMonitoringRoute,
 ]);
 

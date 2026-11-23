@@ -4,13 +4,16 @@
  * only lay it out.
  */
 
+import { z } from "zod";
 import type {
   Lifecycle,
+  OpportunityHypothesis,
   PageType,
   StoreOpportunity,
   StoreOpportunityHypothesis,
   StoreView,
 } from "./diagnosis-schema.ts";
+import { DiagnosisEngineError } from "./diagnosis-state.ts";
 
 /** The engine's page order, which is also the funnel's. */
 const PAGE_ORDER: readonly PageType[] = [
@@ -141,6 +144,24 @@ export function formatMoney(value: number, locale: string): string {
   }).format(value);
 }
 
+/** An engine rate (0–1) as a percent, with up to `digits` decimals. */
+export function formatPercent(
+  rate: number,
+  locale: string,
+  digits = 1,
+): string {
+  return new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: digits,
+  }).format(rate);
+}
+
+export function formatCount(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
+    value,
+  );
+}
+
 export type SectionPhase =
   | { phase: "results"; refreshing: boolean }
   | { phase: "running" }
@@ -182,4 +203,75 @@ export function viewScope(v: StoreView): {
     pages: PAGE_ORDER.filter((p) => covered.has(p)),
     analysedAt: latest?.at ?? null,
   };
+}
+
+// ── The loss's detail ────────────────────────────────────────────────────────
+
+/** The engine's own rule (`canApprove`): only a ready hypothesis goes to test. */
+export function canApprove(h: Pick<OpportunityHypothesis, "lifecycle">) {
+  return h.lifecycle === "pronta_para_experimento";
+}
+
+/** What the member can do with a hypothesis. A decision is undone by setting
+ *  it back to pending, which the engine accepts. */
+export function hypothesisActions(
+  h: Pick<OpportunityHypothesis, "lifecycle" | "status">,
+): {
+  decision: OpportunityHypothesis["status"];
+  approve: boolean;
+  dismiss: boolean;
+  undo: boolean;
+} {
+  const pending = h.status === "pending";
+  return {
+    decision: h.status,
+    approve: pending && canApprove(h),
+    dismiss: pending,
+    undo: !pending,
+  };
+}
+
+export function detailHypotheses<H extends { rank: number }>(o: {
+  hypotheses: readonly H[];
+}): H[] {
+  return o.hypotheses.toSorted((a, b) => a.rank - b.rank);
+}
+
+/** Engine text carries links; only http(s) ones become an `href`. */
+export function safeHref(value: string | null): string | null {
+  if (!value?.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.hostname ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+export type ConfidenceLevel = "high" | "medium" | "low";
+
+/** The engine's 0–1 confidence, in the words the page uses. */
+export function confidenceLevel(confidence: number): ConfidenceLevel | null {
+  if (!Number.isFinite(confidence)) return null;
+  if (confidence >= 0.7) return "high";
+  if (confidence >= 0.4) return "medium";
+  return "low";
+}
+
+const OpportunityIdSchema = z.string().trim().min(1).max(128);
+
+/** The route's `$opportunityId`, or null when it cannot be an engine id. */
+export function parseOpportunityId(value: unknown): string | null {
+  const parsed = OpportunityIdSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+/** The engine answers an id it does not hold for this org, another org's
+ *  included, with "não encontrada"; that is a missing page, not a retry. */
+export function detailFailure(error: unknown): "not_found" | "error" {
+  return error instanceof DiagnosisEngineError &&
+    /não encontrad|not found/i.test(error.message)
+    ? "not_found"
+    : "error";
 }

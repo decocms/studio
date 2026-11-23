@@ -5,13 +5,20 @@
  *  store goal. */
 
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Page } from "@/components/page";
+import {
+  DESTINATION_ROUTE,
+  PROJECT_ROUTE,
+} from "@/hooks/use-destination-route";
 import {
   useOrgFlag,
   usePlanObjective,
 } from "@/hooks/use-organization-settings";
 import { usePlanGoals, usePlanGoalsLive } from "@/hooks/use-plan-goals";
+import { useScopeId } from "@/hooks/use-project-scope";
+import { useProjectContext } from "@/sdk";
 import { PlanGuide } from "./guide/plan-guide.tsx";
 import { PlanGuideResume } from "./guide/plan-guide-resume.tsx";
 import { usePlanGuide } from "./guide/use-plan-guide.ts";
@@ -23,6 +30,23 @@ import { PlanCasesList } from "./plan-cases-list.tsx";
 import { PlanGoalsSection } from "./plan-goals.tsx";
 import { PlanIdeaComposer } from "./plan-idea-composer.tsx";
 import { PlanObjective } from "./plan-objective.tsx";
+
+/** Opens a loss's page, inside the project when Plan is open in one. */
+function useOpenOpportunity() {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const scopeId = useScopeId();
+  return (opportunityId: string) =>
+    scopeId
+      ? navigate({
+          to: PROJECT_ROUTE.planOpportunity,
+          params: { org: org.slug, agentId: scopeId, opportunityId },
+        })
+      : navigate({
+          to: DESTINATION_ROUTE.planOpportunity,
+          params: { org: org.slug, opportunityId },
+        });
+}
 
 export function PlanPage() {
   const goalsOn = useOrgFlag("plan_goals_enabled");
@@ -36,6 +60,7 @@ export function PlanPage() {
       }
     : { statement: storeGoal, id: null };
   const guide = usePlanGuide(goal);
+  const openOpportunity = useOpenOpportunity();
   // Going back from the intro puts the idea back in the composer.
   const [draft, setDraft] = useState("");
   const { state } = guide;
@@ -71,7 +96,10 @@ export function PlanPage() {
           <ErrorBoundary
             fallback={(props) => <OpportunitiesSectionFallback {...props} />}
           >
-            <OpportunitiesSection goal={goal} />
+            <OpportunitiesSection
+              goal={goal}
+              onOpenOpportunity={(id) => void openOpportunity(id)}
+            />
           </ErrorBoundary>
           <PlanCasesList goalId={goal.id} />
         </Page.Container>

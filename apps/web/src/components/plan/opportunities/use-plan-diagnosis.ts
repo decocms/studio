@@ -146,9 +146,10 @@ export function useStartRun() {
   });
 }
 
+/** `pending` undoes an earlier decision. */
 export interface DecideHypothesisInput {
   hypothesis_id: string;
-  status: "approved" | "dismissed";
+  status: "pending" | "approved" | "dismissed";
   note?: string;
 }
 

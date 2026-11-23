@@ -358,4 +358,95 @@ export const plan = {
     "Não foi possível conectar a análise da loja",
   "plan.opportunities.connect.loadFailed":
     "Não foi possível listar as conexões da organização",
+  "plan.opportunities.detail.back": "Voltar para Planejar",
+  "plan.opportunities.detail.pageTitle": "Perda {rank}",
+  "plan.opportunities.detail.notFound.heading": "Não encontramos esta perda",
+  "plan.opportunities.detail.notFound.description":
+    "Ela pode ser de uma análise que não existe mais, ou o link pode estar errado.",
+  "plan.opportunities.detail.unavailable.heading":
+    "A análise da loja não está disponível aqui",
+  "plan.opportunities.detail.unavailable.description":
+    "Abra Planejar para ver o que esta organização tem configurado.",
+  "plan.opportunities.detail.error.heading":
+    "Não foi possível carregar esta perda",
+  "plan.opportunities.detail.compare": "{device} x {other}",
+  "plan.opportunities.detail.observed": "O que vimos na página",
+  "plan.opportunities.detail.money.toggle": "estimado · ver a conta",
+  "plan.opportunities.detail.money.heading": "De onde vem esse número",
+  "plan.opportunities.detail.money.formula":
+    "{base} ({baseLabel}) × {delta} pp × {value} ({valueLabel}) × {share} (fatia do canal) = {monthly}/mês",
+  "plan.opportunities.detail.money.ceiling":
+    "Teto: {value}/mês, o gap inteiro. Não é promessa.",
+  "plan.opportunities.detail.trust.measured": "{label} no {device}: {rate}",
+  "plan.opportunities.detail.trust.measuredVs":
+    "{label} no {device}: {rate} x {other} {otherRate}",
+  "plan.opportunities.detail.trust.meta": "{source}, {days} dias",
+  "plan.opportunities.detail.confidence.high": "confiança alta",
+  "plan.opportunities.detail.confidence.medium": "confiança média",
+  "plan.opportunities.detail.confidence.low": "confiança baixa",
+  "plan.opportunities.detail.data.heading": "Os dados por trás",
+  "plan.opportunities.detail.data.sources.one": "1 fonte",
+  "plan.opportunities.detail.data.sources.other": "{count} fontes",
+  "plan.opportunities.detail.data.basedOn": "Baseado em",
+  "plan.opportunities.detail.data.checks": "Dá pra confiar nesses dados?",
+  "plan.opportunities.detail.stop.achou_causa_candidata":
+    "Achamos uma causa candidata",
+  "plan.opportunities.detail.stop.todas_descartadas":
+    "Todas as hipóteses caíram",
+  "plan.opportunities.detail.stop.evidencias_esgotadas": "Evidências esgotadas",
+  "plan.opportunities.detail.stop.orcamento": "Parte ficou sem investigar",
+  "plan.opportunities.detail.stop.dados_insuficientes": "Dados insuficientes",
+  "plan.opportunities.detail.stop.other": "Onde a investigação parou",
+  "plan.opportunities.detail.hypotheses.heading":
+    "Por que pode estar acontecendo",
+  "plan.opportunities.detail.hypotheses.empty":
+    "Ainda não há hipóteses do porquê.",
+  "plan.opportunities.detail.hypothesis.label": "Hipótese {number}",
+  "plan.opportunities.detail.hypothesis.approved": "Aprovada pro teste",
+  "plan.opportunities.detail.hypothesis.dismissed": "Descartada",
+  "plan.opportunities.detail.hypothesis.verification":
+    "O que a verificação viu",
+  "plan.opportunities.detail.hypothesis.rewrittenFrom":
+    "Antes achávamos: {title}",
+  "plan.opportunities.detail.hypothesis.idea": "O que fazer",
+  "plan.opportunities.detail.hypothesis.where": "Onde: {where}",
+  "plan.opportunities.detail.hypothesis.noChange":
+    "Não é uma mudança na página: é uma explicação concorrente. Se ela for verdade, as outras hipóteses desta perda perdem força.",
+  "plan.opportunities.detail.hypothesis.before": "Hoje",
+  "plan.opportunities.detail.hypothesis.after": "Com a mudança",
+  "plan.opportunities.detail.hypothesis.imageExpired":
+    "Imagem expirou, recarregue a página",
+  "plan.opportunities.detail.evidence.toggle": "Ver evidências",
+  "plan.opportunities.detail.evidence.checks": "Testes na loja",
+  "plan.opportunities.detail.evidence.citations": "O que a pesquisa diz",
+  "plan.opportunities.detail.experiment.heading": "Teste recomendado",
+  "plan.opportunities.detail.experiment.weeks.one": "1 semana",
+  "plan.opportunities.detail.experiment.weeks.other": "{count} semanas",
+  "plan.opportunities.detail.experiment.notMeasurable": "Não mensurável agora",
+  "plan.opportunities.detail.experiment.control": "Controle",
+  "plan.opportunities.detail.experiment.variant": "Variante",
+  "plan.opportunities.detail.experiment.metric": "Métrica principal",
+  "plan.opportunities.detail.experiment.metricUp":
+    "{label} no {device} (hoje {baseline}; sobe {mde} pp ou mais)",
+  "plan.opportunities.detail.experiment.metricDown":
+    "{label} no {device} (hoje {baseline}; desce {mde} pp ou mais)",
+  "plan.opportunities.detail.experiment.guardrails": "Guardrails",
+  "plan.opportunities.detail.experiment.sample": "Amostra",
+  "plan.opportunities.detail.experiment.sampleValue":
+    "{perGroup} por grupo · {eligible} elegíveis por semana",
+  "plan.opportunities.detail.experiment.duration": "Duração",
+  "plan.opportunities.detail.experiment.mde4Weeks":
+    "Em 4 semanas, dá pra ver efeitos a partir de {mde} pp.",
+  "plan.opportunities.detail.actions.dismiss": "Descartar",
+  "plan.opportunities.detail.actions.approve": "Aprovar pro teste",
+  "plan.opportunities.detail.actions.undo": "Desfazer",
+  "plan.opportunities.detail.actions.approveBlocked":
+    "Só aprova quando estiver pronta pro teste.",
+  "plan.opportunities.detail.source.ga4": "GA4",
+  "plan.opportunities.detail.source.deco_analytics": "Deco Analytics",
+  "plan.opportunities.detail.source.vtex": "VTEX",
+  "plan.opportunities.detail.source.pagina": "Página ao vivo",
+  "plan.opportunities.detail.source.benchmark": "Outras lojas",
+  "plan.opportunities.detail.actions.failed":
+    "Não foi possível salvar sua decisão",
 } satisfies Record<keyof typeof planEn, string>;

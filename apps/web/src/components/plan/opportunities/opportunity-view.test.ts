@@ -1,19 +1,36 @@
 import { describe, expect, it } from "bun:test";
 import {
+  GetOpportunitySchema,
+  type Lifecycle,
+  type OpportunityHypothesis,
   StoreViewSchema,
   type StoreOpportunity,
   type StoreOpportunityHypothesis,
   type StorePage,
   type StoreView,
 } from "./diagnosis-schema.ts";
-import { storeViewFixture, storeViewWithGapsFixture } from "./fixtures.ts";
+import { DiagnosisEngineError } from "./diagnosis-state.ts";
 import {
+  opportunityDetailFixture,
+  storeViewFixture,
+  storeViewWithGapsFixture,
+} from "./fixtures.ts";
+import {
+  canApprove,
   cardState,
+  confidenceLevel,
   dataBadge,
+  detailFailure,
+  detailHypotheses,
+  hypothesisActions,
+  formatCount,
   formatMoney,
+  formatPercent,
   hypothesesTally,
   hypothesisLine,
+  parseOpportunityId,
   readyHypothesis,
+  safeHref,
   sectionPhase,
   summaryNumbers,
   viewGaps,
@@ -334,5 +351,165 @@ describe("viewScope", () => {
       pages: [],
       analysedAt: null,
     });
+  });
+});
+
+const detail = GetOpportunitySchema.parse(opportunityDetailFixture).opportunity;
+const [sticky] = detail.hypotheses as [OpportunityHypothesis];
+
+const LIFECYCLES: Lifecycle[] = [
+  "gerada",
+  "em_investigacao",
+  "condicao_confirmada",
+  "relevancia_avaliada",
+  "pronta_para_experimento",
+  "refutada",
+  "inconclusiva",
+  "bloqueada",
+  "sem_relevancia",
+  "unknown",
+];
+
+describe("canApprove", () => {
+  it("approve is only allowed for ready hypotheses", () => {
+    const allowed = LIFECYCLES.filter((lifecycle) => canApprove({ lifecycle }));
+    expect(allowed).toEqual(["pronta_para_experimento"]);
+  });
+});
+
+describe("hypothesisActions", () => {
+  it("a pending ready hypothesis can be approved or dismissed", () => {
+    expect(hypothesisActions(sticky)).toEqual({
+      decision: "pending",
+      approve: true,
+      dismiss: true,
+      undo: false,
+    });
+  });
+
+  it("a pending hypothesis that is not ready can only be dismissed", () => {
+    expect(
+      hypothesisActions({ ...sticky, lifecycle: "condicao_confirmada" }),
+    ).toEqual({
+      decision: "pending",
+      approve: false,
+      dismiss: true,
+      undo: false,
+    });
+  });
+
+  it("a decided hypothesis can only go back to pending", () => {
+    for (const status of ["approved", "dismissed"] as const) {
+      expect(hypothesisActions({ ...sticky, status })).toEqual({
+        decision: status,
+        approve: false,
+        dismiss: false,
+        undo: true,
+      });
+    }
+  });
+});
+
+describe("detailHypotheses", () => {
+  it("orders the hypotheses by rank", () => {
+    const second = { ...sticky, id: "h2", rank: 2 };
+    const first = { ...sticky, id: "h0", rank: 0 };
+    const ordered = detailHypotheses({
+      hypotheses: [second, sticky, first],
+    });
+    expect(ordered.map((h) => h.id)).toEqual(["h0", "hyp_sticky", "h2"]);
+  });
+
+  it("the detail payload reuses the card's verdict line", () => {
+    expect(hypothesisLine(sticky)).toEqual({
+      text: "A sticky buy bar on mobile",
+      verdict: "confirmed",
+      strike: false,
+    });
+  });
+});
+
+describe("safeHref", () => {
+  it("keeps http and https links", () => {
+    expect(safeHref("https://research.loja.example/sticky")).toBe(
+      "https://research.loja.example/sticky",
+    );
+    expect(safeHref("http://loja.example/a?b=1")).toBe(
+      "http://loja.example/a?b=1",
+    );
+  });
+
+  it("drops every other scheme, relative and malformed values", () => {
+    for (const value of [
+      null,
+      "",
+      "   ",
+      "javascript:alert(1)",
+      " JavaScript:alert(1)",
+      "data:text/html,<b>x</b>",
+      "ftp://loja.example/file",
+      "/relative/path",
+      "loja.example",
+      "https://",
+    ]) {
+      expect(safeHref(value)).toBeNull();
+    }
+  });
+});
+
+describe("confidenceLevel", () => {
+  it("reads the engine's confidence in three levels", () => {
+    expect(confidenceLevel(0.9)).toBe("high");
+    expect(confidenceLevel(0.7)).toBe("high");
+    expect(confidenceLevel(0.5)).toBe("medium");
+    expect(confidenceLevel(0.4)).toBe("medium");
+    expect(confidenceLevel(0.1)).toBe("low");
+    expect(confidenceLevel(Number.NaN)).toBeNull();
+  });
+});
+
+describe("parseOpportunityId", () => {
+  it("keeps an engine id", () => {
+    expect(parseOpportunityId("opp_size")).toBe("opp_size");
+    expect(parseOpportunityId("4b0e9a5c-2f7e-4c1a-9a51-0d6f1e1f2a3b")).toBe(
+      "4b0e9a5c-2f7e-4c1a-9a51-0d6f1e1f2a3b",
+    );
+  });
+
+  it("rejects an empty, blank, oversized or missing id", () => {
+    for (const value of [undefined, null, 42, "", "   ", "x".repeat(129)]) {
+      expect(parseOpportunityId(value)).toBeNull();
+    }
+    expect(parseOpportunityId("x".repeat(128))).toBe("x".repeat(128));
+  });
+});
+
+describe("detailFailure", () => {
+  it("an id the engine does not know is not found", () => {
+    expect(
+      detailFailure(new DiagnosisEngineError("oportunidade não encontrada")),
+    ).toBe("not_found");
+    expect(detailFailure(new DiagnosisEngineError("Not found"))).toBe(
+      "not_found",
+    );
+  });
+
+  it("any other failure is an error to retry", () => {
+    expect(detailFailure(new DiagnosisEngineError("D1 timeout"))).toBe("error");
+    expect(detailFailure(new Error("fetch failed: not found"))).toBe("error");
+    expect(detailFailure(null)).toBe("error");
+  });
+});
+
+describe("formatPercent and formatCount", () => {
+  it("shows a 0–1 rate as a percent in the reader's language", () => {
+    expect(formatPercent(0.099, "pt-BR")).toBe("9,9%");
+    expect(formatPercent(0.258, "en")).toBe("25.8%");
+    expect(formatPercent(0.35, "en", 0)).toBe("35%");
+  });
+
+  it("groups whole counts", () => {
+    expect(plain(formatCount(48_000, "pt-BR"))).toBe("48.000");
+    expect(formatCount(27_000.4, "en")).toBe("27,000");
   });
 });

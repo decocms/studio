@@ -103,7 +103,7 @@ function SectionSkeleton() {
 
 /** A translated headline; the engine's own message, often technical, is the
  *  detail under it. */
-function SectionError({
+export function SectionError({
   error,
   retry,
   headline,

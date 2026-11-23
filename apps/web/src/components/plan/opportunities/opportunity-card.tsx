@@ -240,7 +240,21 @@ export function OpportunityCard({
 
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-medium text-foreground">
-          {opportunity.title}
+          {onOpenOpportunity ? (
+            // Ready cards' CTA is the business case, so the title is their way in.
+            <button
+              type="button"
+              className="rounded-sm text-left underline-offset-4 hover:underline focus-ring"
+              onClick={() => {
+                opened("see_hypotheses");
+                onOpenOpportunity(opportunity.id);
+              }}
+            >
+              {opportunity.title}
+            </button>
+          ) : (
+            opportunity.title
+          )}
         </h3>
         <p className="text-sm text-muted-foreground">{opportunity.summary}</p>
       </div>
