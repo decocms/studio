@@ -82,6 +82,8 @@ async function* turn(
       tools: [],
       skills: [],
       mcp_servers: [],
+      // Names the `query` call the init came from.
+      claude_code_version: `query-${queries}`,
     };
   }
   const id = crypto.randomUUID();
@@ -225,6 +227,8 @@ interface Outcome {
   types: string[];
   finish: string | undefined;
   errorText: string | undefined;
+  /** `messageMetadata.context` of the finish chunk. */
+  context: { runner?: { cli?: string }; memory?: boolean } | undefined;
 }
 
 /** One Studio turn through the real runner, against the fake SDK above. */
@@ -235,8 +239,12 @@ async function run(
   copy = RUNNER,
 ): Promise<Outcome> {
   const { runClaudeCode } = await runner(copy);
-  const chunks: { type: string; finishReason?: string; errorText?: string }[] =
-    [];
+  const chunks: {
+    type: string;
+    finishReason?: string;
+    errorText?: string;
+    messageMetadata?: { context?: Outcome["context"] };
+  }[] = [];
   await runClaudeCode(
     input(threadId, memory),
     (frame) => {
@@ -250,6 +258,8 @@ async function run(
     types: chunks.map((chunk) => chunk.type),
     finish: chunks.find((chunk) => chunk.type === "finish")?.finishReason,
     errorText: chunks.find((chunk) => chunk.type === "error")?.errorText,
+    context: chunks.find((chunk) => chunk.type === "finish")?.messageMetadata
+      ?.context,
   };
 }
 
@@ -411,6 +421,23 @@ describe("a turn whose image blocks the provider refuses", () => {
     expect(queries).toBe(1);
     expect(outcome.finish).toBe("error");
     expect(fallbackLines()).toEqual([]);
+  });
+
+  test("the finish chunk carries the context of the run's first init, resent or not", async () => {
+    const plain = await run("thrd_context", withoutImage);
+    expect(plain.context?.runner?.cli).toBe("query-1");
+    expect(plain.context && "memory" in plain.context).toBe(false);
+
+    provider = opaque400;
+    const resent = await run("thrd_context_resent", withImage, {
+      enabled: true,
+      directory: "/app/org/home/users/user_1",
+    });
+    expect(queries).toBe(3);
+    // The refused session's init, not the one of the session the resend ran on.
+    expect(resent.context?.runner?.cli).toBe("query-2");
+    expect(resent.context?.memory).toBe(true);
+    expect(JSON.stringify(resent.context)).not.toContain("user_1");
   });
 
   // Last: it leaves a kept session behind in the runner module.

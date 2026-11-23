@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SANDBOX_STALE_NAMES } from "@decocms/shared/harness/sandbox-stale-names";
 import { buildImprovePromptDoc } from "./build-improve-prompt-doc";
 import { derivePartsFromTiptapDoc } from "../derive-parts";
 
@@ -39,7 +40,7 @@ describe("buildImprovePromptDoc", () => {
     );
   });
 
-  test("compiles through derivePartsFromTiptapDoc into a DELEGATE directive", () => {
+  test("compiles through derivePartsFromTiptapDoc into the agent mention context", () => {
     const doc = buildImprovePromptDoc(baseInput);
     const parts = derivePartsFromTiptapDoc(
       doc as Parameters<typeof derivePartsFromTiptapDoc>[0],
@@ -50,10 +51,10 @@ describe("buildImprovePromptDoc", () => {
       .join("\n");
     expect(text).toContain("Use @Agent Manager to improve the instructions");
     expect(text).toContain(
-      "[DELEGATE TO AGENT: Agent Manager (agent_id: agent_mgr_123)]",
+      "[MENTIONED AGENT: Agent Manager (agent_id: agent_mgr_123)]",
     );
-    expect(text).toContain("subtask tool");
     expect(text).toContain("<current_instructions>");
+    for (const stale of SANDBOX_STALE_NAMES) expect(text).not.toContain(stale);
   });
 
   test("handles automation kind", () => {

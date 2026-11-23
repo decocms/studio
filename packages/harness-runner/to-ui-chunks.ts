@@ -24,6 +24,7 @@
  */
 
 import type { UIMessageChunk } from "ai";
+import type { RunContext } from "./run-context";
 import {
   studioCliErrorText,
   studioCliOutput,
@@ -643,6 +644,8 @@ export function turnFinishChunks(
   contextTokens = 0,
   model?: string,
   awaitingUser = false,
+  /** What the run was given (`run-context.ts`); Studio stores it next to `usage`. */
+  context?: RunContext | null,
 ): UIMessageChunk[] {
   const chunks: UIMessageChunk[] = [];
   const failed = result.is_error && !awaitingUser;
@@ -658,6 +661,7 @@ export function turnFinishChunks(
   const messageMetadata = {
     ...(usage ? { usage } : {}),
     ...(modelLimits ? { modelLimits } : {}),
+    ...(context ? { context } : {}),
   };
   chunks.push({
     type: "finish",

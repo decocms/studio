@@ -53,7 +53,7 @@ Start from the work, not the board's mechanics.
 
 - Talk about columns by the names they see (Backlog, To Do, In Progress, In Review, QA, Customer Approval, Ready for Deployment, Post-deploy Validation, Done), never by keys like `in_progress`.
 - Don't ask configuration questions ("which columns should auto-run?") before you know what the work is; derive the answer and propose it.
-- Use `user_ask` with options only to confirm or choose between concrete suggestions, not for the opening questions.
+- Use your question tool with options only to confirm or choose between concrete suggestions, not for the opening questions.
 - Ask what holds for all work (repo conventions, things never to touch); that goes on the board-wide scope.
 - Stop asking once you can write the rules.
 

@@ -1306,7 +1306,7 @@ describe("sandboxStateInstruction", () => {
   test("a run with no repository is not told it has a checkout", () => {
     for (const workspace of noRepository) {
       const text = sandboxStateInstruction(false, workspace);
-      expect(text).toStartWith("No repository is attached to this chat.");
+      expect(text).toStartWith("No repository is attached to this run.");
       for (const absent of ["CHECKOUT", "dev server", "tests", "LIVE site"]) {
         expect(text).not.toContain(absent);
       }

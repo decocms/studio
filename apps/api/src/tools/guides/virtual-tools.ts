@@ -14,7 +14,7 @@ Read docs://virtual-tools.md for code format, sandbox expectations, and schema g
 Recommended tool order:
 1. Use COLLECTION_VIRTUAL_MCP_LIST or COLLECTION_VIRTUAL_MCP_GET to identify the target agent.
 2. Use COLLECTION_VIRTUAL_TOOLS_LIST to avoid duplicate names and inspect the current tool set.
-3. If behavior, schema, or the target agent is ambiguous, use user_ask.
+3. If behavior, schema, or the target agent is ambiguous, ask the user.
 4. Use COLLECTION_VIRTUAL_TOOLS_CREATE with a clear name, description, input schema, JavaScript implementation, and connection_dependencies for any tools the code calls.
 5. Use COLLECTION_VIRTUAL_TOOLS_GET to verify the saved code and schema.
 
@@ -40,7 +40,7 @@ Read docs://virtual-tools.md for schema and sandbox guidance.
 Recommended tool order:
 1. Use COLLECTION_VIRTUAL_TOOLS_LIST or COLLECTION_VIRTUAL_TOOLS_GET to locate the existing tool.
 2. Use COLLECTION_VIRTUAL_MCP_GET if you need more context about the parent agent.
-3. Use user_ask if the requested behavior change is not precise.
+3. Ask the user if the requested behavior change is not precise.
 4. Use COLLECTION_VIRTUAL_TOOLS_UPDATE with the exact fields to change.
 5. Use COLLECTION_VIRTUAL_TOOLS_GET to confirm the final code and schema.
 

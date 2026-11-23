@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { agentMentionContext } from "@decocms/shared/agent-mention";
+import { SANDBOX_STALE_NAMES } from "@decocms/shared/harness/sandbox-stale-names";
 import { REVIEWER_KINDS } from "@decocms/shared/task-board";
 import { sandboxStateInstruction } from "@/harnesses/sandbox-dispatch-client";
+import { voiceRequestContext } from "@decocms/shared/voice";
 import {
   modeInstruction,
   runIdentityParagraph,
@@ -9,6 +12,9 @@ import {
 import { DEFAULT_BOARD_PROMPTS } from "@/storage/task-board-default-prompts";
 import { composeBoardPrompt } from "@/storage/task-board-prompts";
 import type { TaskBoardItem } from "@/storage/types";
+import { getPrompts, getResources } from "@/tools/guides";
+import { STUDIO_PACK_AGENTS } from "@/tools/virtual/studio-pack";
+import { withVoiceResponseStyle } from "@/voice/prompt";
 import {
   buildClaudeCodeTaskPrompt,
   type TaskRepo,
@@ -19,14 +25,6 @@ import { withBoardPrompt } from "./enqueue-task-run";
 import { followUpPrompt } from "./reviewer-comment";
 import { buildReviewerPrompt } from "./reviewer-run";
 import { nudgePrompt } from "./stall-recovery";
-
-// Each of these names a tool a sandbox run does not have under that name.
-const STALE_NAMES = [
-  "mcp__studio__",
-  "`studio` MCP server",
-  "user_ask",
-  "subtask",
-];
 
 const repo: TaskRepo = {
   id: "conn_1",
@@ -66,6 +64,20 @@ function reviewer(r: TaskRepo | null, priorReviewAt: number): string[] {
       withBoardPrompt(system, lane("in_review")),
     ].join("\n\n");
   });
+}
+
+function voiceTurn(harnessId: string): string {
+  const { parts } = withVoiceResponseStyle(
+    {
+      id: "m1",
+      role: "user",
+      parts: [{ type: "text", text: "Look into it." }],
+    },
+    true,
+    harnessId,
+    voiceRequestContext([{ role: "user", text: "And the second one?" }]),
+  );
+  return parts.map((p) => (p.type === "text" ? p.text : "")).join("\n\n");
 }
 
 const prompts: Record<string, string> = {
@@ -119,6 +131,24 @@ const prompts: Record<string, string> = {
       previewWatched: true,
     }),
   ].join("\n\n"),
+  "agent mention": agentMentionContext({ title: "Sales", agentId: "vir_1" }),
+  "voice turn on claude-code": voiceTurn("claude-code"),
+  "voice turn on codex": voiceTurn("codex"),
+  ...Object.fromEntries(
+    STUDIO_PACK_AGENTS.map((agent) => [
+      `studio pack agent ${agent.id}`,
+      agent.instructions,
+    ]),
+  ),
+  ...Object.fromEntries(
+    getPrompts().map((guide) => [
+      `guide prompt ${guide.name}`,
+      typeof guide.text === "string" ? guide.text : guide.text({}),
+    ]),
+  ),
+  ...Object.fromEntries(
+    getResources().map((guide) => [`guide resource ${guide.uri}`, guide.text]),
+  ),
   "project chat identity": runIdentityParagraph({
     kind: "project",
     title: "Example Storefront",
@@ -138,10 +168,12 @@ const prompts: Record<string, string> = {
   }),
 };
 
-describe("prompts a sandbox run receives from the task board", () => {
+describe("prompts a sandbox run receives", () => {
   for (const [name, text] of Object.entries(prompts)) {
     test(`${name} names no tool the run lacks`, () => {
-      for (const stale of STALE_NAMES) expect(text).not.toContain(stale);
+      expect(text).not.toBe("");
+      for (const stale of SANDBOX_STALE_NAMES)
+        expect(text).not.toContain(stale);
     });
   }
 

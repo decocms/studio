@@ -9,6 +9,7 @@ import type {
   ReadResourceResult,
   EmbeddedResource,
 } from "@modelcontextprotocol/sdk/types.js";
+import { agentMentionContext } from "@decocms/shared/agent-mention";
 import type { FileAttrs } from "./tiptap/file/node.tsx";
 import type { ChatMessage, Metadata } from "./types.ts";
 
@@ -358,13 +359,13 @@ export function derivePartsFromTiptapDoc(
           !Array.isArray(meta) &&
           "agentId" in meta
         ) {
-          // Agent mention: instruct the AI to delegate via subtask
           parts.push({
             type: "text",
-            text:
-              `[DELEGATE TO AGENT: ${(meta as { title?: string }).title ?? node.attrs.name} (agent_id: ${(meta as { agentId: string }).agentId})]\n` +
-              `Use the subtask tool to delegate this task to the agent above. ` +
-              `Include the full relevant context from this conversation in the prompt field — the subagent has no conversation history.`,
+            text: agentMentionContext({
+              title:
+                (meta as { title?: string }).title ?? String(node.attrs.name),
+              agentId: (meta as { agentId: string }).agentId,
+            }),
           });
         } else if (Array.isArray(meta)) {
           // Resource mention: metadata is ReadResourceResult.contents

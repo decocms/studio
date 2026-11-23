@@ -1,9 +1,24 @@
 import { expect, test } from "bun:test";
+import { SANDBOX_STALE_NAMES } from "./harness/sandbox-stale-names";
 import {
   boundVoiceTranscript,
+  voiceModePrompt,
   voiceRequestContext,
   VoiceTranscriptSchema,
 } from "./voice";
+
+test("only Decopilot is told about its subtask tool", () => {
+  const decopilot = voiceModePrompt("decopilot");
+  const subtask =
+    " When a subtask tool is available, run research or analysis beyond a quick lookup as a subtask with background set to true so this turn can end.";
+  expect(decopilot).toContain(subtask);
+  for (const harnessId of ["claude-code", "codex", null]) {
+    const prompt = voiceModePrompt(harnessId);
+    expect(prompt).toBe(decopilot.replace(subtask, ""));
+    for (const stale of SANDBOX_STALE_NAMES)
+      expect(prompt).not.toContain(stale);
+  }
+});
 
 test("bounding keeps the latest turns within the transcript contract", () => {
   const turns = Array.from({ length: 80 }, (_, index) => ({

@@ -42,7 +42,7 @@ request, or its checks fail because of its own change.
 
 ### Build the branch
 
-In a checkout of the repository (`mcp__studio__TASK_ADD_REPO` accumulates
+In a checkout of the repository (`TASK_ADD_REPO` accumulates
 them):
 
 ```
@@ -85,7 +85,7 @@ report the delta.
 ### The tracking issue
 
 Create it last, when there is everything to say
-(`mcp__studio__JIRA_ISSUE_CREATE`): the title, type, sprint and points your
+(`JIRA_ISSUE_CREATE`): the title, type, sprint and points your
 team's skill gives, `relatesTo` every issue in this release, and a description
 with:
 
@@ -98,14 +98,14 @@ with:
 Calling it again with the same title returns the same issue, so a restarted
 run does not open a second one. Then, on it:
 
-- `mcp__studio__JIRA_REMOTE_LINK_ADD` the release pull request
+- `JIRA_REMOTE_LINK_ADD` the release pull request
   (`key: "pull-request"`) and the preview (`key: "preview"`);
-- `mcp__studio__JIRA_COMMENT_ADD` your team's pre-deploy checklist.
+- `JIRA_COMMENT_ADD` your team's pre-deploy checklist.
 
 ### Hand it over
 
 Move every included issue AND the tracking issue to the column your team
-reviews releases in (`mcp__studio__JIRA_ISSUE_TRANSITION`). An issue you left
+reviews releases in (`JIRA_ISSUE_TRANSITION`). An issue you left
 out stays where it is, with a comment saying why. Then stop, and say plainly
 that the release is assembled and waits for a person to approve and ship it.
 

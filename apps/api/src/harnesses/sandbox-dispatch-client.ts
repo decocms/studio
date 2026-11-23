@@ -35,6 +35,7 @@ import type { UIMessageChunk } from "ai";
 import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
 import { RetryError, retry, sleep } from "@decocms/shared/std";
 import {
+  harnessRunContextRejection,
   harnessRunResultSchema,
   type HarnessDispatchEnvelope,
   type HarnessStreamInputWire,
@@ -66,6 +67,7 @@ import {
 import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
+import { withRunContext } from "@/harnesses/with-run-context";
 import { daemonRunId } from "@/harnesses/live-messages";
 import type { StudioContext } from "../core/studio-context";
 import {
@@ -790,14 +792,17 @@ export class SandboxDispatchClient {
           : () => {};
         try {
           yield* withModelMetadata(
-            dispatchToDaemon({
-              provider,
-              handle: sandbox.sandboxHandle,
-              harnessId,
-              input: resume ? { ...boundInput, resume } : boundInput,
-              runId,
-              signal: input.signal,
-            }),
+            withRunContext(
+              dispatchToDaemon({
+                provider,
+                handle: sandbox.sandboxHandle,
+                harnessId,
+                input: resume ? { ...boundInput, resume } : boundInput,
+                runId,
+                signal: input.signal,
+              }),
+              harnessRunContextRejection,
+            ),
             // A continuation's `start` is dropped downstream, so don't re-stamp it.
             resume
               ? null
@@ -1008,12 +1013,12 @@ export function sandboxStateInstruction(
   }
   const inCheckoutDir = workspace.cwd !== null;
   return [
-    "No repository is attached to this chat.",
+    "No repository is attached to this run.",
     inCheckoutDir
       ? "Your working directory holds no code; you can still write and run code in it."
       : null,
     `What you write outside \`${SANDBOX_ORG_ROOT}/\` is deleted with the sandbox ` +
-      "once the chat sits idle, so save what the person should keep under " +
+      "once it sits idle, so save what the person should keep under " +
       `\`${SANDBOX_ORG_ROOT}/output/\`.`,
     inCheckoutDir
       ? "To work on one of the organization's repositories, call " +
