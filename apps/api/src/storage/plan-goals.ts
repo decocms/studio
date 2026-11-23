@@ -6,7 +6,7 @@ import type { Database } from "./types";
 /**
  * Plan goals (migration 268). Every method takes the org in its WHERE clause.
  *
- * A goal is open until it is archived or merged; only open goals show in the
+ * A goal is open until it is archived; only open goals show in the
  * picker, can be picked, or can have cases started toward them. Who uses a
  * goal is derived, never stored: the members whose Plan opens on it and the
  * members who started a case toward it.
@@ -80,7 +80,6 @@ export class PlanGoalStorage {
         FROM plan_goals g
        WHERE g.organization_id = ${organizationId}
          AND g.archived_at IS NULL
-         AND g.merged_into_id IS NULL
        ORDER BY g.created_at, g.id
     `.execute(this.db);
 
@@ -142,14 +141,13 @@ export class PlanGoalStorage {
         "created_at",
         "updated_at",
         "archived_at",
-        "merged_into_id",
       ])
       .where("organization_id", "=", organizationId)
       .where("id", "=", id)
       .executeTakeFirst();
     if (!row) return null;
-    const { archived_at, merged_into_id, ...goal } = row;
-    return { ...goal, open: archived_at === null && merged_into_id === null };
+    const { archived_at, ...goal } = row;
+    return { ...goal, open: archived_at === null };
   }
 
   /**
@@ -172,8 +170,7 @@ export class PlanGoalStorage {
              ${params.by}, ${params.by}
        WHERE (SELECT count(*) FROM plan_goals
                WHERE organization_id = ${params.organizationId}
-                 AND archived_at IS NULL
-                 AND merged_into_id IS NULL) < ${MAX_OPEN_PLAN_GOALS}
+                 AND archived_at IS NULL) < ${MAX_OPEN_PLAN_GOALS}
       RETURNING id
     `.execute(this.db);
     return rows[0]?.id ?? null;
@@ -192,7 +189,6 @@ export class PlanGoalStorage {
       .where("organization_id", "=", organizationId)
       .where("id", "=", id)
       .where("archived_at", "is", null)
-      .where("merged_into_id", "is", null)
       .executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
@@ -214,7 +210,6 @@ export class PlanGoalStorage {
         .where("organization_id", "=", organizationId)
         .where("id", "=", id)
         .where("archived_at", "is", null)
-        .where("merged_into_id", "is", null)
         .executeTakeFirst();
       if (result.numUpdatedRows === 0n) return false;
       await trx
@@ -243,7 +238,6 @@ export class PlanGoalStorage {
       .where("s.user_id", "=", userId)
       .where("g.organization_id", "=", organizationId)
       .where("g.archived_at", "is", null)
-      .where("g.merged_into_id", "is", null)
       .executeTakeFirst();
     if (picked) return picked.id;
     const oldest = await this.db
@@ -251,7 +245,6 @@ export class PlanGoalStorage {
       .select("id")
       .where("organization_id", "=", organizationId)
       .where("archived_at", "is", null)
-      .where("merged_into_id", "is", null)
       .orderBy("created_at")
       .orderBy("id")
       .limit(1)
@@ -272,7 +265,6 @@ export class PlanGoalStorage {
        WHERE g.organization_id = ${organizationId}
          AND g.id = ${goalId}
          AND g.archived_at IS NULL
-         AND g.merged_into_id IS NULL
       ON CONFLICT (user_id, organization_id)
       DO UPDATE SET active_goal_id = EXCLUDED.active_goal_id,
                     updated_at = now()

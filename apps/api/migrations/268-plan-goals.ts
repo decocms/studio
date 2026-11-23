@@ -4,8 +4,8 @@ import { type Kysely, sql } from "kysely";
  * Plan goals (docs/plans/plan-goals.md): the org's list of goals, the goal
  * each member works toward, and which business case went toward which goal.
  *
- * - `plan_goals`: one row per goal. Archiving or merging hides a goal from
- *   the picker and keeps the row, so cases written toward it still resolve.
+ * - `plan_goals`: one row per goal. Archiving hides a goal from the picker
+ *   and keeps the row, so cases written toward it still resolve.
  *   `created_by` is not a foreign key: a goal outlives the member who wrote it.
  * - `member_plan_state`: one row per (user, org). Its goal is a real foreign
  *   key, so deleting a goal clears it.
@@ -35,9 +35,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       col.notNull().defaultTo(sql`now()`),
     )
     .addColumn("archived_at", "timestamptz")
-    .addColumn("merged_into_id", "text", (col) =>
-      col.references("plan_goals.id").onDelete("set null"),
-    )
     .addCheckConstraint(
       "plan_goals_statement_not_blank",
       sql`length(btrim(statement)) > 0`,
@@ -49,13 +46,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .on("plan_goals")
     .columns(["organization_id", "created_at"])
     .where(sql.ref("archived_at"), "is", null)
-    .execute();
-
-  await db.schema
-    .createIndex("plan_goals_merged_into")
-    .on("plan_goals")
-    .column("merged_into_id")
-    .where("merged_into_id", "is not", null)
     .execute();
 
   await db.schema

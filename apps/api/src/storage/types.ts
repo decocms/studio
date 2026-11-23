@@ -343,7 +343,6 @@ export interface PlanGoalTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
   archived_at: ColumnType<Date | null, never, Date | string | null>;
-  merged_into_id: ColumnType<string | null, never, string | null>;
 }
 
 /** The goal a member's Plan page opens on (migration 268). */
