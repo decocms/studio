@@ -112,11 +112,14 @@ person typed, because they are a separate list.
 
 ### 5.4 Business cases
 
-- The composer shows the active goal as a chip ("Toward: Make the app our
-  main sales channel ▾"), which the member can change for this case only.
-- The case file stores `goal_id` **and** a snapshot of the statement. The
-  snapshot keeps the case readable if the goal later changes, is merged, or is
-  archived.
+- The composer starts the case toward the member's goal. A chip to change it
+  for one case only ("Toward: Make the app our main sales channel ▾") can come
+  later; switching the goal in the picker covers it for now.
+- The case file keeps the snapshot of the statement it has today
+  (`objective`), which stays readable if the goal later changes, is merged, or
+  is archived. Which goal a case went toward is stored in `plan_goal_cases`,
+  not in the file: the agent rewrites the case file and could drop a field it
+  does not know.
 - "Your business cases" can filter by goal. Seeing other members' cases
   toward the **same goal** becomes possible; today the list only shows cases
   you created (`plan-cases-list.tsx`).
@@ -182,6 +185,12 @@ plan_goals
 member_plan_state
   user_id, organization_id               -- pk, cascade on both
   active_goal_id  text null -> plan_goals.id ON DELETE SET NULL
+
+plan_goal_cases
+  organization_id, thread_id             -- pk; org cascade
+  goal_id         text not null -> plan_goals.id
+  user_id         text not null
+  created_at
 ```
 
 `member_plan_state` has the same shape as `user_sidebar_preferences`
@@ -200,6 +209,7 @@ alerts storage.
 | `PLAN_GOAL_SIMILAR` | Duplicate check used by create (section 6.2). |
 | `PLAN_GOAL_MERGE` | Applies an approved merge. |
 | `PLAN_ACTIVE_GOAL_SET` | Writes only the caller's row. |
+| `PLAN_GOAL_CASE_RECORD` / `PLAN_GOAL_CASES` | Ties a case chat to its goal; lists the cases toward a goal. |
 | `PLAN_GOAL_SUGGEST` | Replaces `ORGANIZATION_PLAN_OBJECTIVE_FIND`, widened to several candidates (section 6.1). |
 
 Agent built-in (`plan-tools.ts`): replace `ORGANIZATION_PLAN_OBJECTIVE_SET`
@@ -243,29 +253,30 @@ inside the handler.
 
 The migration follows the rollback rules in `apps/api/AGENTS.md`:
 
-1. **Release A:** add the new tables. Backfill: each org with a non-null
-   `plan_objective` gets one goal with the same statement,
-   `created_by = updated_by`, timestamps copied, and it becomes the active
-   goal of every member of that org, so nobody opens an empty Plan page. New
-   code reads and writes goals. The old tool keeps working as a thin alias
-   that updates that backfilled goal, so old clients and agent prompts don't
-   break.
-2. **Release B:** remove the alias tool, the `plan_objective` reads and
+1. **Release A:** add the new tables. No backfill: the first goal list read
+   of an org with no goals at all seeds one goal from `plan_objective`, with
+   the same statement, author and time. Orgs keep writing the single goal
+   until they turn goals on, so seeding at that point starts from their latest
+   text. A member who never picked a goal opens on the org's oldest open goal,
+   which is the seeded one, so nobody opens an empty Plan page. Orgs without
+   the flag keep `ORGANIZATION_PLAN_OBJECTIVE_SET` unchanged; with it, agents
+   get the goal tools instead.
+2. **Release B:** once every org is on goals, remove
+   `ORGANIZATION_PLAN_OBJECTIVE_SET` / `_FIND`, the `plan_objective` reads and
    `PlanObjectiveSchema`.
 3. **Release C:** migration that drops `organization_settings.plan_objective`.
 
-Existing case files keep their `objective` string. New cases also get
-`goal_id`; the business-case schema gains an optional `goal` object
-(`{ id, statement }`) and keeps reading old files.
+Case files keep their `objective` string, old and new; the business-case
+schema does not change.
 
 ## 10. Rollout
 
 - New default-off org flag `plan_goals_enabled`, on top of `plan_page_enabled`
   (see `packages/shared/AGENTS.md#organization-flags`). Orgs without it keep
-  today's single goal, backed by the backfilled goal row after release A.
+  today's single goal.
 - Phases:
   1. **Goal list + picker + active goal**: create, select, archive; business
-     case tied to `goal_id`.
+     cases tied to their goal in `plan_goal_cases`.
   2. **Suggest several goals with AI** (finder widened).
   3. **Duplicate check on create.**
   4. **Consolidation proposals + merge.**
