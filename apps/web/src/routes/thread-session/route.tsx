@@ -560,6 +560,8 @@ function ProjectPanelThread({
   const task = ensured.status === "ready" ? ensured.task : null;
   const value: ChatTaskContextValue = {
     ...chat,
+    // The panel asks the sandbox as its own draft; the URL's chat may be a CMS session whose stamp the server would judge instead.
+    taskId: task?.id ?? chat.taskId,
     activeTask: task,
     isThreadLocked: task?.harness_id != null,
     lockedHarness: task?.harness_id ?? null,
