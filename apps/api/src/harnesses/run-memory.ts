@@ -9,7 +9,7 @@
  */
 
 import { userMemoryDir } from "@decocms/shared/memory";
-import { type RunThread, threadAudience } from "@/harnesses/run-audience";
+import { isUnattendedThread, type RunThread } from "@/harnesses/unattended-run";
 
 /** The dispatch input's `memory`. Declared here so the decision stays sandbox-free; the dispatch glue types it against the wire schema. */
 type RunMemory = { enabled: false } | { enabled: true; directory: string };
@@ -36,8 +36,9 @@ export function resolveRunMemory(args: {
 }): RunMemory | undefined {
   if (!args.enabled) return undefined;
   const { thread, userId } = args;
+  if (!thread || isUnattendedThread(thread)) return OFF;
   // Only the member who opened the chat: nobody loads a teammate's memory.
-  if (threadAudience(thread, userId) !== "owner") return OFF;
+  if (thread.created_by !== userId) return OFF;
   if (!args.orgFsMounted || !isFolderName(userId)) return OFF;
   return { enabled: true, directory: userMemoryDir(userId) };
 }

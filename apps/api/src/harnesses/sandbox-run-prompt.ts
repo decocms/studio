@@ -1,7 +1,7 @@
 /**
  * What a sandbox-hosted run's system-prompt append carries beyond the agent's
  * own instructions: the per-user context Decopilot renders into its system
- * prompt, as far as a person is in the run (`runAudience`), and the chat mode
+ * prompt, when a person is in the run (`isUnattendedRun`), and the chat mode
  * the user picked for this message.
  * A chat also gets who its model is (`runIdentityParagraph`).
  */
@@ -10,11 +10,7 @@ import { getDecopilotId } from "@decocms/shared/sdk";
 import type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
-import {
-  type RunAudience,
-  type RunThread,
-  runAudience,
-} from "@/harnesses/run-audience";
+import { isUnattendedRun, type RunThread } from "@/harnesses/unattended-run";
 
 /** A Studio tool, named bare: the runner tells the model how a bare name is called (CLI or mounted server). */
 export const studioTool = (name: string) => `the Studio tool \`${name}\``;
@@ -45,20 +41,18 @@ export function sandboxRunPrompt(args: {
   threadId: string;
   userEmail: string | undefined;
   userContext: HarnessUserContext;
-  /** Who the run is for (`runAudience`): how much of "About this user" it gets. */
-  audience: RunAudience;
+  /** Nobody is in the run (`isUnattendedRun`): it gets no "About this user". */
+  unattended: boolean;
   /** The user is watching this chat's dev-server preview. */
   previewWatched?: boolean;
 }): string {
   return [
-    args.audience === "unattended"
+    args.unattended
       ? null
       : renderUserContextBlock({
           user: { email: args.userEmail },
           currentThreadId: args.threadId,
           userContext: args.userContext,
-          // History and interests are the thread opener's, not a teammate's.
-          whoOnly: args.audience === "attended",
         }),
     modeInstruction(args.mode),
     args.previewWatched ? PREVIEW_INSTRUCTION : null,
@@ -171,8 +165,6 @@ export function resolveRunIdentity(args: {
   /** `runMetadata.runClass`: set by the board and by triggered runs. */
   runClass: string | undefined;
   thread: RunThread | null | undefined;
-  /** The member the run acts as. */
-  userId: string;
   /** The run was given the org's connections as an interactive home chat. */
   homeChat: boolean;
   /** The connections on the run's key. */
@@ -184,7 +176,7 @@ export function resolveRunIdentity(args: {
   /** The Studio tools the run's key carries. */
   selfTools: readonly string[];
 }): RunIdentity | null {
-  if (runAudience(args) === "unattended") return null;
+  if (isUnattendedRun(args)) return null;
   const organization = args.organization.name ?? args.organization.slug;
   const viaStudio = (connections: readonly { id: string }[]) =>
     args.selfTools.includes("CONNECTION_TOOLS_SEARCH") &&

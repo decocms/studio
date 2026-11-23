@@ -128,7 +128,7 @@ const prompts: Record<string, string> = {
       threadId: "t",
       userEmail: undefined,
       userContext: {},
-      audience: "owner",
+      unattended: false,
       previewWatched: true,
     }),
   ].join("\n\n"),

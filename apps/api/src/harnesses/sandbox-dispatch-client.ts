@@ -456,7 +456,6 @@ export class SandboxDispatchClient {
       agent: ownAgent,
       runClass: this.ctx.metadata?.runMetadata?.[RUN_CLASS_METADATA_KEY],
       thread,
-      userId: dispatcherUserId,
       homeChat,
       connections,
       ownIds,

@@ -39,7 +39,7 @@ describe("sandboxRunPrompt", () => {
     mode: "default" as const,
     threadId: "thread-now",
     userEmail: "person@example.com",
-    audience: "owner" as const,
+    unattended: false,
   };
   const userContext: HarnessUserContext = {
     interests: [{ title: "Launch v2", summary: "Ship the new checkout" }],
@@ -101,34 +101,17 @@ describe("sandboxRunPrompt", () => {
     expect(prompt).not.toContain("agent-sales");
   });
 
-  test("a teammate in someone else's chat is told who they are and nothing of the opener's", () => {
-    const prompt = sandboxRunPrompt({
-      ...base,
-      audience: "attended",
-      userContext,
-    });
-    expect(prompt).toBe(WHO);
-    expect(
-      sandboxRunPrompt({
-        ...base,
-        audience: "attended",
-        userEmail: undefined,
-        userContext,
-      }),
-    ).toBe("");
-  });
-
   test("a run nobody is in gets no user block at all", () => {
-    expect(
-      sandboxRunPrompt({ ...base, audience: "unattended", userContext }),
-    ).toBe("");
+    expect(sandboxRunPrompt({ ...base, unattended: true, userContext })).toBe(
+      "",
+    );
   });
 
   test("the mode and preview lines do not depend on who the run is for", () => {
-    for (const audience of ["unattended", "attended", "owner"] as const) {
+    for (const unattended of [true, false]) {
       const prompt = sandboxRunPrompt({
         ...base,
-        audience,
+        unattended,
         mode: "web-search",
         userEmail: undefined,
         userContext: {},
@@ -353,7 +336,6 @@ describe("resolveRunIdentity", () => {
     agent: { title: "Example Storefront", description: "Sells goods." },
     runClass: undefined,
     thread: chat,
-    userId: "user_1",
     homeChat: false,
     connections,
     ownIds: new Set(["conn_own", "conn_signin"]),
