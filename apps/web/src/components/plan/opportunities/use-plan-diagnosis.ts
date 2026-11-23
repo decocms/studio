@@ -2,30 +2,32 @@
  * The store diagnosis behind Plan. `PLAN_DIAGNOSIS_STATUS` is a Studio tool;
  * everything else calls the org's engine connection, and stays disabled until
  * the status says it is configured. Engine answers go through
- * `diagnosis-schema.ts`, so the page sees `{ ok: false, error }` for anything
- * it cannot read.
+ * `diagnosis-schema.ts`; anything the page cannot read throws a
+ * `DiagnosisEngineError`, so React Query keeps the last good data.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
-import {
-  mcpClientQueryOptions,
-  useProjectContext,
-  WellKnownOrgMCPId,
-} from "@/sdk";
+import { mcpClientQueryOptions, useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   DecideHypothesisSchema,
   GetOpportunitySchema,
   type PageType,
-  type ParsedToolResult,
   StartRunSchema,
   StoreViewSchema,
   parseToolResult,
-  storeViewRefetchInterval,
   toolPayload,
 } from "./diagnosis-schema.ts";
+import {
+  type DiagnosisStatusState,
+  diagnosisStatusState,
+  engineConnectionOf,
+  retryEngineRead,
+  storeViewRefetchInterval,
+  unwrapEngineResult,
+} from "./diagnosis-state.ts";
 
 type EngineTool =
   | "get_ux_store_view"
@@ -33,73 +35,54 @@ type EngineTool =
   | "start_ux_diagnosis"
   | "update_ux_hypothesis_status";
 
-export function usePlanDiagnosisStatus(): {
-  configured: boolean;
-  reason?: string;
-  isLoading: boolean;
-} {
+export function usePlanDiagnosisStatus(): DiagnosisStatusState {
   const { org } = useProjectContext();
   const studio = useStudioTools();
-  const { data, isLoading } = useQuery({
+  const query = useQuery({
     queryKey: KEYS.planDiagnosisStatus(org.id),
     staleTime: 60_000,
     queryFn: () => studio.call("PLAN_DIAGNOSIS_STATUS", {}),
   });
-  return {
-    configured: data?.configured ?? false,
-    reason: data?.reason,
-    isLoading,
-  };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message
-    ? error.message
-    : String(error);
-}
-
-function valueOf<T>(result: ParsedToolResult<T>): T {
-  if (!result.ok) throw new Error(result.error);
-  return result.value;
+  return diagnosisStatusState(query, () => void query.refetch());
 }
 
 function useEngine() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const { configured } = usePlanDiagnosisStatus();
-  const connectionId = WellKnownOrgMCPId.PLAN_DIAGNOSIS(org.id);
+  const connectionId = engineConnectionOf(usePlanDiagnosisStatus());
 
-  /** A failed connect or call is the same `{ ok: false }` as an engine error. */
+  /** Throws `DiagnosisEngineError` for an engine error or an unreadable answer;
+   *  a failed connect or transport error propagates as is. */
   const call = async <T>(
     schema: z.ZodType<T>,
     name: EngineTool,
     args: Record<string, unknown>,
-  ): Promise<ParsedToolResult<T>> => {
-    try {
-      const client = await queryClient.fetchQuery(
-        mcpClientQueryOptions({
-          connectionId,
-          orgId: org.id,
-          orgSlug: org.slug,
-        }),
-      );
-      const result = await client.callTool({ name, arguments: args });
-      return parseToolResult(schema, toolPayload(result));
-    } catch (error) {
-      return { ok: false, error: errorMessage(error) };
+  ): Promise<T> => {
+    if (!connectionId) {
+      throw new Error("The store diagnosis is not configured");
     }
+    const client = await queryClient.fetchQuery(
+      mcpClientQueryOptions({ connectionId, orgId: org.id, orgSlug: org.slug }),
+    );
+    const result = await client.callTool({ name, arguments: args });
+    return unwrapEngineResult(parseToolResult(schema, toolPayload(result)));
   };
 
-  return { orgId: org.id, connectionId, configured, call, queryClient };
+  return { orgId: org.id, connectionId, call, queryClient };
 }
 
-/** The store at a glance for a goal's runs (`null` = every run). Polls only
- *  while a page is running. */
+/** The store at a glance for a goal's runs (`null` = every run). Polls while
+ *  the last good view says a page is running. */
 export function useStoreView(goalId: string | null) {
   const engine = useEngine();
   return useQuery({
-    queryKey: KEYS.planStoreView(engine.orgId, goalId, engine.connectionId),
-    enabled: engine.configured,
+    queryKey: KEYS.planStoreView(
+      engine.orgId,
+      goalId,
+      engine.connectionId ?? "",
+    ),
+    enabled: engine.connectionId !== null,
+    retry: retryEngineRead,
     queryFn: () =>
       engine.call(
         StoreViewSchema,
@@ -113,14 +96,14 @@ export function useStoreView(goalId: string | null) {
 export function useOpportunity(id: string) {
   const engine = useEngine();
   return useQuery({
-    queryKey: KEYS.planOpportunity(engine.orgId, id, engine.connectionId),
-    enabled: engine.configured && id !== "",
-    retry: 1,
+    queryKey: KEYS.planOpportunity(engine.orgId, id, engine.connectionId ?? ""),
+    enabled: engine.connectionId !== null && id !== "",
+    retry: retryEngineRead,
     queryFn: async () =>
-      valueOf(
+      (
         await engine.call(GetOpportunitySchema, "get_ux_opportunity", {
           opportunity_id: id,
-        }),
+        })
       ).opportunity,
   });
 }
@@ -132,13 +115,13 @@ export interface StartRunInput {
   objective_statement?: string;
 }
 
+/** Rejects with `DiagnosisEngineError`; `needsDomain` is set when the store
+ *  has no domain yet. */
 export function useStartRun() {
   const engine = useEngine();
   return useMutation({
-    mutationFn: async (input: StartRunInput) =>
-      valueOf(
-        await engine.call(StartRunSchema, "start_ux_diagnosis", { ...input }),
-      ),
+    mutationFn: (input: StartRunInput) =>
+      engine.call(StartRunSchema, "start_ux_diagnosis", { ...input }),
     onSettled: () =>
       engine.queryClient.invalidateQueries({
         queryKey: KEYS.planStoreViews(engine.orgId),
@@ -156,12 +139,12 @@ export function useDecideHypothesis() {
   const engine = useEngine();
   return useMutation({
     mutationFn: async (input: DecideHypothesisInput) =>
-      valueOf(
+      (
         await engine.call(
           DecideHypothesisSchema,
           "update_ux_hypothesis_status",
           { ...input },
-        ),
+        )
       ).hypothesis,
     onSettled: () =>
       Promise.all([

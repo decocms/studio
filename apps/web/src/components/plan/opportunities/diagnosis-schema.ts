@@ -351,9 +351,13 @@ export const DecideHypothesisSchema = z.object({
 
 export type ParsedToolResult<T> =
   | { ok: true; value: T }
-  | { ok: false; error: string };
+  | { ok: false; error: string; needs_domain?: true };
 
-const ToolErrorSchema = z.object({ error: z.string() });
+/** `needs_domain`: `start_ux_diagnosis` refused because the store has no domain. */
+const ToolErrorSchema = z.object({
+  error: z.string(),
+  needs_domain: z.boolean().optional(),
+});
 
 const CallToolResultSchema = z.object({
   isError: z.boolean().optional(),
@@ -391,19 +395,14 @@ export function parseToolResult<T>(
 ): ParsedToolResult<T> {
   const engineError = ToolErrorSchema.safeParse(raw);
   if (engineError.success) {
-    return { ok: false, error: engineError.data.error || UNNAMED_TOOL_ERROR };
+    const { error, needs_domain } = engineError.data;
+    return {
+      ok: false,
+      error: error || UNNAMED_TOOL_ERROR,
+      ...(needs_domain ? { needs_domain: true as const } : {}),
+    };
   }
   const parsed = schema.safeParse(raw);
   if (parsed.success) return { ok: true, value: parsed.data };
   return { ok: false, error: z.prettifyError(parsed.error) };
-}
-
-/** An external connection cannot push Studio events, so a running analysis
- *  is followed by polling until the engine says it stopped. */
-const RUNNING_POLL_MS = 5000;
-
-export function storeViewRefetchInterval(
-  data: ParsedToolResult<StoreView> | undefined,
-): number | false {
-  return data?.ok && data.value.running ? RUNNING_POLL_MS : false;
 }

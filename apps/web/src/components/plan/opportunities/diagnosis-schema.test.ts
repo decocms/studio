@@ -6,7 +6,6 @@ import {
   StartRunSchema,
   StoreViewSchema,
   parseToolResult,
-  storeViewRefetchInterval,
   toolPayload,
 } from "./diagnosis-schema.ts";
 import {
@@ -121,7 +120,11 @@ describe("parseToolResult", () => {
         error: "configure o domínio da loja",
         needs_domain: true,
       }),
-    ).toEqual({ ok: false, error: "configure o domínio da loja" });
+    ).toEqual({
+      ok: false,
+      error: "configure o domínio da loja",
+      needs_domain: true,
+    });
     // A tool-level error in the MCP result carries the message as text.
     expect(
       parseToolResult(
@@ -246,17 +249,5 @@ describe("toolPayload", () => {
     const raw = toolPayload({ isError: true, content: [] });
     const result = parseToolResult(StoreViewSchema, raw);
     expect(!result.ok && result.error.length > 0).toBe(true);
-  });
-});
-
-describe("storeViewRefetchInterval", () => {
-  it("polls every 5s only while the view is running", () => {
-    const view = parsedView(storeViewFixture);
-    expect(
-      storeViewRefetchInterval({ ok: true, value: { ...view, running: true } }),
-    ).toBe(5000);
-    expect(storeViewRefetchInterval({ ok: true, value: view })).toBe(false);
-    expect(storeViewRefetchInterval({ ok: false, error: "down" })).toBe(false);
-    expect(storeViewRefetchInterval(undefined)).toBe(false);
   });
 });
