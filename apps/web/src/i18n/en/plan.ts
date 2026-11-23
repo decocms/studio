@@ -183,6 +183,14 @@ export const plan = {
   "plan.goals.saveError": "Could not save the goal. Try again.",
   "plan.goals.pickError": "Could not switch to that goal. Try again.",
   "plan.goals.archiveError": "Could not archive the goal. Try again.",
+  "plan.goals.similar.title":
+    "A goal like this already exists. You can work toward it instead.",
+  "plan.goals.similar.meta": "Created {when} · {people}",
+  "plan.goals.similar.peopleNone": "no one working toward it yet",
+  "plan.goals.similar.peopleOne": "1 person",
+  "plan.goals.similar.peopleMany": "{n} people",
+  "plan.goals.similar.use": "Use that one",
+  "plan.goals.similar.createAnyway": "Create mine anyway",
   "plan.cases.towardGoal": "Toward this goal",
   "plan.cases.towardGoalDescription":
     "Business cases anyone in your organization started toward this goal.",

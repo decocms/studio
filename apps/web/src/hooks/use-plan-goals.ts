@@ -94,5 +94,10 @@ export function usePlanGoalActions() {
       studio.call("PLAN_ACTIVE_GOAL_SET", input),
     onSettled: invalidate,
   });
-  return { create, update, archive, pick };
+  /** The open goals that already say what the person is about to add. */
+  const similar = useMutation({
+    mutationFn: (input: ToolInput<"PLAN_GOAL_SIMILAR">) =>
+      studio.call("PLAN_GOAL_SIMILAR", input),
+  });
+  return { create, update, archive, pick, similar };
 }

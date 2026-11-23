@@ -416,6 +416,18 @@ export interface StudioToolIO {
     };
     output: { id: string };
   };
+  PLAN_GOAL_SIMILAR: {
+    input: { statement: string; exclude_id?: string | undefined };
+    output: {
+      matches: {
+        id: string;
+        statement: string;
+        created_by: string;
+        created_at: string;
+        users: number;
+      }[];
+    };
+  };
   PLAN_GOAL_UPDATE: {
     input: { id: string; statement: string };
     output: { id: string };

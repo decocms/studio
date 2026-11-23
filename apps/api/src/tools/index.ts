@@ -72,6 +72,7 @@ export const CORE_TOOLS = [
   OrganizationTools.PLAN_CASE_NEXT_QUESTION,
   PlanGoalTools.PLAN_GOAL_LIST,
   PlanGoalTools.PLAN_GOAL_CREATE,
+  PlanGoalTools.PLAN_GOAL_SIMILAR,
   PlanGoalTools.PLAN_GOAL_UPDATE,
   PlanGoalTools.PLAN_GOAL_ARCHIVE,
   PlanGoalTools.PLAN_ACTIVE_GOAL_SET,

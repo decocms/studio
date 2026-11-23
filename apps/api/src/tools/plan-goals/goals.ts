@@ -22,9 +22,13 @@ import {
 } from "@/core/studio-context";
 import type { StoredPlanGoal } from "@/storage/plan-goals";
 import { emitPlanGoalsUpdated } from "./events";
+import { confirmSameGoals, prefilterSimilarGoals } from "./similar";
 
 /** Cases the Plan page lists for one goal. */
 const MAX_GOAL_CASES = 50;
+
+/** How long creating a goal may wait on the model's "same goal?" answer. */
+const SIMILAR_TIMEOUT_MS = 4_000;
 
 const GoalIdSchema = z.string().min(1).max(128).describe("A goal's id.");
 
@@ -149,6 +153,57 @@ export const PLAN_GOAL_CREATE = defineTool({
     }
     emitPlanGoalsUpdated(who.orgId, id);
     return { id };
+  },
+});
+
+const SimilarGoalSchema = PlanGoalSchema.pick({
+  id: true,
+  statement: true,
+  users: true,
+  created_by: true,
+  created_at: true,
+});
+
+export const PLAN_GOAL_SIMILAR = defineTool({
+  name: "PLAN_GOAL_SIMILAR",
+  description:
+    "Before adding a Plan goal: the organization's open goals that already say the same thing, so the person can work toward one of those instead. The same sentence typed differently always matches; a reworded one matches when the fast model is sure. Saves nothing, and an empty list never stops anyone from creating their goal.",
+  annotations: {
+    title: "Find Similar Plan Goals",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: z.object({
+    statement: PlanGoalStatementSchema,
+    exclude_id: GoalIdSchema.optional().describe(
+      "A goal to leave out, such as the one being reworded.",
+    ),
+  }),
+  outputSchema: z.object({
+    matches: z
+      .array(SimilarGoalSchema)
+      .describe("The same sentence first, then the ones the model matched."),
+  }),
+  handler: async (input, ctx, call) => {
+    const who = await caller(ctx);
+    const goals = (
+      await ctx.storage.planGoals.list(who.orgId, who.userId, who.admin)
+    ).filter((goal) => goal.id !== input.exclude_id);
+    const { exact, candidates } = prefilterSimilarGoals(input.statement, goals);
+    const same = await confirmSameGoals(
+      ctx,
+      who.orgId,
+      candidates.map((goal) => ({ a: input.statement, b: goal.statement })),
+      SIMILAR_TIMEOUT_MS,
+      call?.signal,
+    );
+    return {
+      matches: [...exact, ...candidates.filter((_, i) => same[i])].map((goal) =>
+        SimilarGoalSchema.parse(goal),
+      ),
+    };
   },
 });
 

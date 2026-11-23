@@ -64,6 +64,7 @@ const ALL_TOOL_NAMES = [
   "PLAN_CASE_NEXT_QUESTION",
   "PLAN_GOAL_LIST",
   "PLAN_GOAL_CREATE",
+  "PLAN_GOAL_SIMILAR",
   "PLAN_GOAL_UPDATE",
   "PLAN_GOAL_ARCHIVE",
   "PLAN_ACTIVE_GOAL_SET",
@@ -464,6 +465,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "PLAN_GOAL_CREATE",
     description: "Add a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_SIMILAR",
+    description: "Find Plan goals that already say the same thing",
     category: "Organizations",
   },
   {
@@ -1998,6 +2004,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // one is checked against its creator inside the handler.
       "PLAN_GOAL_LIST",
       "PLAN_GOAL_CREATE",
+      // Any member checks for a goal like theirs; asks the fast tier, saves nothing.
+      "PLAN_GOAL_SIMILAR",
       "PLAN_GOAL_UPDATE",
       "PLAN_GOAL_ARCHIVE",
       "PLAN_ACTIVE_GOAL_SET",

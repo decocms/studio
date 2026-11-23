@@ -5,7 +5,8 @@
  * archives it, so nobody changes someone else's goal from under them.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import {
   Archive,
   Check,
@@ -20,7 +21,9 @@ import {
   filterPlanGoals,
   groupPlanGoals,
   type PlanGoal,
+  type PlanGoalSource,
 } from "@decocms/shared/plan-goals";
+import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,6 +50,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
+import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 import { usePlanGoalActions, type PlanGoals } from "@/hooks/use-plan-goals";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -179,6 +183,71 @@ function GoalPicker({
   );
 }
 
+type SimilarGoal = ToolOutput<"PLAN_GOAL_SIMILAR">["matches"][number];
+
+/** The goals that already say what the person is about to add, before it is saved. */
+function SimilarGoals({
+  matches,
+  disabled,
+  onUse,
+  onCreate,
+}: {
+  matches: SimilarGoal[];
+  disabled: boolean;
+  onUse: (goal: SimilarGoal) => void;
+  onCreate: () => void;
+}) {
+  const t = useT();
+  const locale = useDateFnsLocale();
+  const people = (n: number) =>
+    n === 0
+      ? t("plan.goals.similar.peopleNone")
+      : n === 1
+        ? t("plan.goals.similar.peopleOne")
+        : t("plan.goals.similar.peopleMany", { n });
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-3">
+      <p className="text-sm text-foreground">{t("plan.goals.similar.title")}</p>
+      {matches.map((goal) => (
+        <div key={goal.id} className="flex flex-col items-start gap-1.5">
+          <p className="text-sm font-medium text-foreground italic">
+            {goal.statement}
+          </p>
+          <p className="text-meta">
+            {t("plan.goals.similar.meta", {
+              when: formatDistanceToNow(new Date(goal.created_at), {
+                addSuffix: true,
+                locale,
+              }),
+              people: people(goal.users),
+            })}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            onClick={() => onUse(goal)}
+          >
+            {t("plan.goals.similar.use")}
+          </Button>
+        </div>
+      ))}
+      <div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={onCreate}
+        >
+          {t("plan.goals.similar.createAnyway")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ArchiveGoal({
   disabled,
   onArchive,
@@ -219,14 +288,84 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
   const t = useT();
   const actions = usePlanGoalActions();
   const [mode, setMode] = useState<"view" | "create" | "edit">("view");
+  /** The goal waiting on the person's answer to "use that one instead?". */
+  const [similar, setSimilar] = useState<{
+    statement: string;
+    source: PlanGoalSource | null;
+    matches: SimilarGoal[];
+  } | null>(null);
+  /** Only the latest duplicate check may go on to create; leaving moves this on. */
+  const checks = useRef(0);
   const { goals, active } = state;
   const busy =
     actions.create.isPending ||
     actions.update.isPending ||
     actions.archive.isPending ||
     actions.pick.isPending;
+  const creating =
+    actions.similar.isPending ||
+    actions.create.isPending ||
+    actions.pick.isPending;
 
-  const view = () => setMode("view");
+  const view = () => {
+    checks.current++;
+    setSimilar(null);
+    setMode("view");
+  };
+
+  const create = (
+    statement: string,
+    source: PlanGoalSource | null,
+    similarShown: boolean,
+  ) =>
+    actions.create.mutate(
+      { statement, source, make_active: true },
+      {
+        onSuccess: () => {
+          track("plan_goal_created", {
+            found: source !== null,
+            similar_shown: similarShown,
+          });
+          view();
+        },
+        onError: (error) =>
+          toast.error(errorText(error, t("plan.goals.saveError"))),
+      },
+    );
+
+  const save = (statement: string, source: PlanGoalSource | null) => {
+    setSimilar(null);
+    if (goals.length === 0) return create(statement, source, false);
+    const check = ++checks.current;
+    actions.similar.mutate(
+      { statement },
+      {
+        onSuccess: ({ matches }) => {
+          if (check !== checks.current) return;
+          if (matches.length === 0) return create(statement, source, false);
+          track("plan_goal_similar_shown", { matches: matches.length });
+          setSimilar({ statement, source, matches });
+        },
+        // The check only helps; when it fails, the goal is created as asked.
+        onError: () => {
+          if (check === checks.current) create(statement, source, false);
+        },
+      },
+    );
+  };
+
+  const pickExisting = (goal: SimilarGoal) =>
+    actions.pick.mutate(
+      { goal_id: goal.id },
+      {
+        onSuccess: () => {
+          track("plan_goal_similar_used", { users: goal.users });
+          view();
+        },
+        onError: (error) =>
+          toast.error(errorText(error, t("plan.goals.pickError"))),
+      },
+    );
 
   const body = () => {
     if (state.isPending) {
@@ -243,21 +382,17 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
           <ObjectiveForm
             initial=""
             onDone={goals.length > 0 ? view : undefined}
-            saving={actions.create.isPending}
-            onSave={(statement, source) =>
-              actions.create.mutate(
-                { statement, source, make_active: true },
-                {
-                  onSuccess: () => {
-                    track("plan_goal_created", { found: source !== null });
-                    view();
-                  },
-                  onError: (error) =>
-                    toast.error(errorText(error, t("plan.goals.saveError"))),
-                },
-              )
-            }
+            saving={creating}
+            onSave={save}
           />
+          {similar && (
+            <SimilarGoals
+              matches={similar.matches}
+              disabled={creating}
+              onUse={pickExisting}
+              onCreate={() => create(similar.statement, similar.source, true)}
+            />
+          )}
         </>
       );
     }

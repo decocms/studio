@@ -185,6 +185,14 @@ export const plan = {
   "plan.goals.saveError": "Não deu para salvar o objetivo. Tente de novo.",
   "plan.goals.pickError": "Não deu para trocar de objetivo. Tente de novo.",
   "plan.goals.archiveError": "Não deu para arquivar o objetivo. Tente de novo.",
+  "plan.goals.similar.title":
+    "Já existe um objetivo como este. Você pode trabalhar nele em vez de criar outro.",
+  "plan.goals.similar.meta": "Criado {when} · {people}",
+  "plan.goals.similar.peopleNone": "ninguém trabalhando nele ainda",
+  "plan.goals.similar.peopleOne": "1 pessoa",
+  "plan.goals.similar.peopleMany": "{n} pessoas",
+  "plan.goals.similar.use": "Usar esse",
+  "plan.goals.similar.createAnyway": "Criar o meu mesmo assim",
   "plan.cases.towardGoal": "Neste objetivo",
   "plan.cases.towardGoalDescription":
     "Business cases que qualquer pessoa da organização criou para este objetivo.",
