@@ -8,7 +8,9 @@ import {
   blogBlockTypeFor,
   customBlogSectionPaths,
   discoverBlogBlockTypes,
+  BLOG_KINDS,
   emptyBlogPayload,
+  POST_STATUSES,
   isBlogPostBlockResolveType,
   KNOWN_BLOG_BLOCK_EXAMPLES,
   listPostsWithMeta,
@@ -1769,6 +1771,68 @@ describe("scanBlogEntries duplicate names", () => {
   });
 });
 
+describe("the name a new record is created with is never a duplicate", () => {
+  // Read off the seed itself, so the check can't drift from what is stored.
+  const seeded = {
+    post: String(emptyBlogPayload("posts").title),
+    author: String(emptyBlogPayload("authors").name),
+    category: String(emptyBlogPayload("categories").name),
+  };
+  const authorBlock = (name: string) => ({
+    __resolveType: "blog/loaders/Author.ts",
+    author: { name },
+  });
+
+  test("two new posts, live or planned, don't flag each other", () => {
+    const decofile = {
+      "collections/blog/posts/a": postBlock(seeded.post),
+      ...planningPost("b", seeded.post),
+      ...planningPost("c", "  untitled   POST "),
+    };
+    expect(duplicateTitleKeys(decofile).size).toBe(0);
+    expect(
+      hasDuplicateName(decofile, "posts", "blog-manager/posts/d", seeded.post),
+    ).toBe(false);
+    expect(
+      listAllPostsWithMeta(decofile).some((post) => post.duplicateTitle),
+    ).toBe(false);
+  });
+
+  test("the list rows don't flag new categories or authors either", () => {
+    const scanned = scanBlogEntries({
+      a: categoryBlock(seeded.category, "one"),
+      b: categoryBlock(seeded.category, "two"),
+      c: authorBlock(seeded.author),
+      d: authorBlock(seeded.author),
+      e: postBlock(seeded.post),
+      f: postBlock(seeded.post),
+    });
+    for (const kind of BLOG_KINDS) {
+      expect(scanned[kind].every((e) => !e.duplicateName)).toBe(true);
+    }
+    expect(
+      hasDuplicateName(
+        { a: categoryBlock(seeded.category, "one") },
+        "categories",
+        "new-key",
+        seeded.category,
+      ),
+    ).toBe(false);
+  });
+
+  test("a real title shared with a new post's neighbors still clashes", () => {
+    const decofile = {
+      ...planningPost("a", seeded.post),
+      ...planningPost("b", "Receitas"),
+      "collections/blog/posts/c": postBlock("receitas"),
+    };
+    expect([...duplicateTitleKeys(decofile)].sort()).toEqual([
+      "blog-manager/posts/b",
+      "collections/blog/posts/c",
+    ]);
+  });
+});
+
 describe("listAllPostPayloads", () => {
   test("includes a planning draft, which carries no __resolveType", () => {
     const decofile = {
@@ -3163,30 +3227,19 @@ describe("applyExtractResult, example fields", () => {
 });
 
 describe("canDeletePost", () => {
-  test("allows an archived post", () => {
-    expect(canDeletePost({ status: "archived" })).toBe(true);
-  });
-
-  test("refuses every other status, including the live ones", () => {
-    for (const status of [
-      "draft",
-      "idea",
-      "generating",
-      "awaiting_review",
-      "in_review",
-      "scheduled",
-      "published",
-    ]) {
-      expect(canDeletePost({ status })).toBe(false);
+  test("allows every status a person owns, the live ones included", () => {
+    for (const status of POST_STATUSES.filter((s) => s !== "generating")) {
+      expect(canDeletePost(status)).toBe(true);
     }
   });
 
-  test("refuses a post with no status — that reads as published", () => {
-    expect(canDeletePost({})).toBe(false);
+  test("refuses a post generation is still writing", () => {
+    expect(canDeletePost("generating")).toBe(false);
   });
 
-  test("refuses an unrecognized status rather than guessing", () => {
-    expect(canDeletePost({ status: "whatever" })).toBe(false);
+  test("reads a stored status the way the board does", () => {
+    expect(canDeletePost(postStatus({ status: "in_review" }))).toBe(true);
+    expect(canDeletePost(postStatus({}))).toBe(true);
   });
 });
 

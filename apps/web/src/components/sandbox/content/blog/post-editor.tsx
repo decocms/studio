@@ -12,18 +12,7 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@decocms/ui/components/alert-dialog.tsx";
-import { Button, buttonVariants } from "@decocms/ui/components/button.tsx";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
@@ -96,6 +85,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { HeldBlockView } from "../held-block-view";
 import { deleteConfirmKey } from "../delete-copy";
+import { DeletePostDialog } from "./delete-post-dialog";
 import { useContentBackend } from "@/cms/use-content-backend";
 
 type ExtraProp = { key: string; value: string };
@@ -246,7 +236,8 @@ function PostEditorForm({
     str(post.title),
   );
 
-  const canDelete = canDeletePost(post);
+  const status = postStatus(post);
+  const canDelete = canDeletePost(status);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const deletePost = async () => {
@@ -501,52 +492,21 @@ function PostEditorForm({
         </div>
       </div>
 
-      <AlertDialog
+      <DeletePostDialog
         open={confirmingDelete}
-        onOpenChange={(next) => {
-          if (!next && !remove.isPending) setConfirmingDelete(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("sandbox.postEditor.deletePostConfirmTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                deleteConfirmKey("post", hostedDraft, {
-                  neverPublished: neverPublished(blockKey),
-                }),
-                {
-                  title: str(post.title) || t("sandbox.postBoard.untitled"),
-                },
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={remove.isPending}>
-              {t("sandbox.postEditor.deletePostCancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                void deletePost();
-              }}
-              disabled={remove.isPending}
-              className={cn(buttonVariants({ variant: "destructive" }))}
-            >
-              {remove.isPending ? (
-                <>
-                  <Spinner className="size-3.5" />
-                  {t("sandbox.postEditor.deletingPost")}
-                </>
-              ) : (
-                t("sandbox.postEditor.deletePost")
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={() => void deletePost()}
+        pending={remove.isPending}
+        title={t("sandbox.postEditor.deletePostConfirmTitle")}
+        description={t(
+          deleteConfirmKey("post", hostedDraft, {
+            neverPublished: neverPublished(blockKey),
+            live: status === "published" || status === "scheduled",
+          }),
+          { title: str(post.title) || t("sandbox.postBoard.untitled") },
+        )}
+        confirmLabel={t("sandbox.postEditor.deletePost")}
+      />
     </div>
   );
 }

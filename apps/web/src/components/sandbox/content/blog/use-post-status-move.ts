@@ -48,7 +48,7 @@ interface UsePostStatusMoveParams {
 
 /**
  * The one path a post takes to a new status, shared by the board's drag-and-drop,
- * the delete-into-Archived action and the editor's status control.
+ * the list's bulk archive and the editor's status control.
  *
  * Every surface asks {@link PostStatusMove.refuse} the same question before
  * offering the move, and every surface applies it through the same atomic

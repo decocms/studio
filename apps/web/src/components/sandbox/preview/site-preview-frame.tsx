@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { PreviewDeviceSize } from "./device-hint";
 import {
+  DRAFT_SETTLE_MS,
   frameNavigationLoaded,
   HELD_NAVIGATION_RELEASE_MS,
   heldForChange,
   type HeldFrameNavigation,
   nextFrameNavigation,
+  settlesFirst,
 } from "./frame-navigation";
 import { resolvePreviewFrameGeometry } from "./preview-frame-geometry";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
@@ -84,6 +86,7 @@ export function SitePreviewFrame({
   /**
    * A Fast Preview frame: a new `src` waits for the current load instead of
    * cancelling it, and the latest one goes in after.
+   * It also waits for the saves to stop ({@link DRAFT_SETTLE_MS}).
    */
   holdNavigation?: boolean;
   /**
@@ -113,9 +116,19 @@ export function SitePreviewFrame({
     src,
     loading: false,
   });
+  /** The newest `src` that stood still for {@link DRAFT_SETTLE_MS}. */
+  const [settledSrc, setSettledSrc] = useState(src);
+  const settling = holdNavigation && settlesFirst(settledSrc, src);
+  if (!settling && settledSrc !== src) setSettledSrc(src);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- a timer: the src goes in once it and the saves have stood still
+  useEffect(() => {
+    if (!settling || changePending) return;
+    const settle = setTimeout(() => setSettledSrc(src), DRAFT_SETTLE_MS);
+    return () => clearTimeout(settle);
+  }, [settling, changePending, src]);
   const nextNavigation = nextFrameNavigation(
     navigation,
-    heldForChange(navigation.src, src, changePending),
+    heldForChange(navigation.src, settledSrc, changePending),
     holdNavigation,
   );
   if (nextNavigation !== navigation) setNavigation(nextNavigation);
@@ -176,7 +189,7 @@ export function SitePreviewFrame({
 
   return (
     <>
-      {(changePending || awaitingLoad || frameLoading) && (
+      {(changePending || awaitingLoad || frameLoading || settling) && (
         <PreviewProgressBar />
       )}
       <div

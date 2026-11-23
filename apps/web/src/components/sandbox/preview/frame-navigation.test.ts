@@ -5,6 +5,7 @@ import {
   heldForChange,
   nextFrameNavigation,
   nextFrameSwap,
+  settlesFirst,
 } from "./frame-navigation";
 
 describe("nextFrameNavigation", () => {
@@ -47,6 +48,24 @@ describe("nextFrameNavigation", () => {
       loading: false,
     });
     expect(nextFrameNavigation(idle, idle.src, false)).toBe(idle);
+  });
+});
+
+describe("settlesFirst", () => {
+  const page = "https://site.example/blog/post-a";
+
+  it("lets a new draft version of the page settle", () => {
+    expect(settlesFirst(`${page}?__draft=v1`, `${page}?__draft=v2`)).toBe(true);
+  });
+
+  it("takes the same src, another page, or an unparsable one at once", () => {
+    expect(settlesFirst(`${page}?__draft=v1`, `${page}?__draft=v1`)).toBe(
+      false,
+    );
+    expect(
+      settlesFirst(`${page}?__draft=v1`, "https://site.example/blog/post-b"),
+    ).toBe(false);
+    expect(settlesFirst("not a url", "not a url either")).toBe(false);
   });
 });
 

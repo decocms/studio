@@ -894,6 +894,17 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Recolher para o painel",
   "sandbox.postBoard.collapseLane": "Recolher {lane}",
   "sandbox.postBoard.delete": "Excluir",
+  "sandbox.postBoard.deleteArchived": "Excluir todos os posts arquivados",
+  "sandbox.postBoard.deleteArchivedConfirm": "Excluir todos",
+  "sandbox.postBoard.deleteArchivedConfirmTitle":
+    "Excluir todos os posts arquivados?",
+  "sandbox.postBoard.deleteArchivedConfirmBody":
+    "Os posts arquivados ({count}) serão removidos permanentemente. Isso não pode ser desfeito.",
+  "sandbox.postBoard.deleteArchivedConfirmBodyDraft":
+    "Os posts arquivados ({count}) serão removidos do seu rascunho. Nada vai ao ar até você publicar, e até lá você pode trazê-los de volta descartando esta alteração em Publicar.",
+  "sandbox.postBoard.deleteArchivedConfirmBodyNeverPublished":
+    "Os posts arquivados ({count}) serão removidos do seu rascunho. Eles nunca foram publicados, então nada muda no site no ar, e depois de removidos não dá para trazê-los de volta.",
+  "sandbox.postBoard.deletedArchived": "Posts arquivados excluídos ({count})",
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
@@ -968,6 +979,8 @@ export const sandbox = {
     '"{title}" será removido permanentemente. Isso não pode ser desfeito.',
   "sandbox.postEditor.deletePostConfirmBodyDraft":
     '"{title}" será removido do seu rascunho. Nada vai ao ar até você publicar, e até lá você pode trazê-lo de volta descartando esta alteração em Publicar.',
+  "sandbox.postEditor.deletePostConfirmBodyLive":
+    '"{title}" está publicado ou agendado no site. Excluir tira a página dele do ar, e isso não pode ser desfeito. Para tirá-lo do site e mantê-lo, arquive em vez de excluir.',
   "sandbox.postEditor.deletePostConfirmBodyNeverPublished":
     '"{title}" será removido do seu rascunho. Ele nunca foi publicado, então nada muda no site no ar, e depois de removido não dá para trazer de volta.',
   "sandbox.postEditor.deletePostConfirmTitle": "Excluir este post?",
