@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation, AutomationTrigger } from "@/storage/types";
-import { AutomationEventDispatcher } from "./automation-event-dispatcher";
+import {
+  AutomationEventDispatcher,
+  MAX_TRIGGER_PAYLOAD_CHARS,
+} from "./automation-event-dispatcher";
 import type { ContextMessage } from "./dbos-workflow";
 
 const automation = { id: "auto-1", name: "Test" } as unknown as Automation;
@@ -68,6 +71,9 @@ describe("AutomationEventDispatcher.buildContextMessages", () => {
     expect(textPart?.type).toBe("text");
     if (textPart?.type === "text") {
       expect(textPart.text).toContain("[TRUNCATED]");
+      expect(textPart.text.length).toBeLessThan(
+        MAX_TRIGGER_PAYLOAD_CHARS + 1024,
+      );
     }
   });
 });
