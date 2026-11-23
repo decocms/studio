@@ -13,6 +13,7 @@ import type {
 } from "../types";
 
 const MAX_INJECTED_INTERESTS = 3;
+const HEADING = "## About this user";
 
 /** Absolute date label (YYYY-MM-DD) — request-stable so the cached system
  *  prefix isn't invalidated each turn the way a relative "3 mins ago" would. */
@@ -54,6 +55,8 @@ export interface RenderUserContextOptions {
   user: { name?: string | null; email?: string | null };
   currentThreadId?: string;
   userContext: HarnessUserContext;
+  /** Only the "Who you're talking to" section: no history, no interests, no `update_interests` line. */
+  whoOnly?: boolean;
 }
 
 /** Build the per-user context block from pre-resolved data. Returns null when
@@ -70,6 +73,12 @@ export function renderUserContextBlock(
     sections.push(`### Who you're talking to
 
 You're talking to ${name}${email}. Address them by name when it's natural.`);
+  }
+
+  if (opts.whoOnly) {
+    return sections.length > 0
+      ? `${HEADING}\n\n${sections.join("\n\n")}`
+      : null;
   }
 
   const recent = userContext.recentThreads;
@@ -98,5 +107,5 @@ You're talking to ${name}${email}. Address them by name when it's natural.`);
   );
 
   if (sections.length <= 1) return null;
-  return `## About this user\n\n${sections.join("\n\n")}`;
+  return `${HEADING}\n\n${sections.join("\n\n")}`;
 }

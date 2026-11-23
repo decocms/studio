@@ -49,6 +49,8 @@ import {
   isRunSuperseded,
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
+import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
+import { runAudience } from "@/harnesses/run-audience";
 import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
 import { markTurn } from "@/harnesses/turn-latency";
 import { withRunTitle } from "@/harnesses/sandbox-run-title";
@@ -1444,6 +1446,11 @@ async function prepareRun(
                 threadId: mem.thread.id,
                 userEmail: ctx.auth.user?.email,
                 userContext,
+                audience: runAudience({
+                  runClass: ctx.metadata.runMetadata?.[RUN_CLASS_METADATA_KEY],
+                  thread: mem.thread,
+                  userId: input.userId,
+                }),
                 previewWatched,
               }),
             ]
