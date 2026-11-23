@@ -16,6 +16,9 @@ export const plan = {
     "This removes the goal for everyone in the organization: every member's Plan page and every new business case stop using it.",
   "plan.objective.clearConfirm.action": "Clear goal",
   "plan.objective.find": "Find with AI",
+  "plan.objective.stop": "Stop",
+  "plan.objective.useFound": "Use this",
+  "plan.objective.keepMine": "Keep mine",
   "plan.objective.finding": "Reading the brand's files, meetings and messages…",
   "plan.objective.found": "Found in {source}: “{quote}”",
   "plan.objective.notFound":

@@ -1,7 +1,7 @@
 /** The store goal at the top of Plan: a member writes it, and may ask the AI to find it in what the brand wrote and said. */
 
-import { useState, type FormEvent } from "react";
-import { Edit03, Stars02, Target04 } from "@untitledui/icons";
+import { useRef, useState, type FormEvent } from "react";
+import { Edit03, Stars02, StopCircle, Target04 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { PLAN_OBJECTIVE_MAX_LENGTH } from "@decocms/shared/organization/schema";
 import {
@@ -24,27 +24,53 @@ import {
 } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
-import { type FindNotice, findNotice } from "./find-store-goal.ts";
+import { type FindNotice, findFills, findNotice } from "./find-store-goal.ts";
 
 function FindNoticeText({
   notice,
   draft,
+  suggestion,
 }: {
   notice: FindNotice;
   draft: string;
+  /** The person had written their own goal: the finding waits beside it. */
+  suggestion?: { onUse: () => void; onKeep: () => void };
 }) {
   const t = useT();
   if (notice.kind === "found") {
+    const found = t("plan.objective.found", {
+      source: notice.source,
+      quote: notice.quote,
+    });
+    if (suggestion) {
+      return (
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/40 p-3">
+          <p className="text-meta">{found}</p>
+          <p className="text-sm text-foreground">{notice.statement}</p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={suggestion.onUse}
+            >
+              {t("plan.objective.useFound")}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={suggestion.onKeep}
+            >
+              {t("plan.objective.keepMine")}
+            </Button>
+          </div>
+        </div>
+      );
+    }
     // The source stays while the person edits the sentence it came from.
     if (!draft) return null;
-    return (
-      <p className="text-meta">
-        {t("plan.objective.found", {
-          source: notice.source,
-          quote: notice.quote,
-        })}
-      </p>
-    );
+    return <p className="text-meta">{found}</p>;
   }
   return (
     <div className="flex flex-col gap-1 text-sm text-muted-foreground">
@@ -113,7 +139,13 @@ function ObjectiveForm({
 }) {
   const t = useT();
   const [draft, setDraft] = useState(initial);
+  /** The draft as it is now, for a search that answers after an edit. */
+  const latest = useRef(initial);
   const [notice, setNotice] = useState<FindNotice | null>(null);
+  /** The finding is waiting beside the person's own goal. */
+  const [suggested, setSuggested] = useState(false);
+  /** Only the latest search may answer; Stop moves this on. */
+  const lookups = useRef(0);
   const save = useSetPlanObjective();
   const find = useFindPlanObjective();
   const statement = draft.trim();
@@ -133,26 +165,51 @@ function ObjectiveForm({
     if (statement) write(statement);
   };
 
+  const edit = (value: string) => {
+    latest.current = value;
+    setDraft(value);
+  };
+
   const lookUp = () => {
     track("plan_objective_find_clicked");
+    const lookup = ++lookups.current;
     setNotice(null);
+    setSuggested(false);
     find.mutate(undefined, {
       onSuccess: (result) => {
+        if (lookup !== lookups.current) return;
         const next = findNotice(result);
+        // Decided on the draft as it is now: the input stays open meanwhile.
+        const fills =
+          next.kind === "found" && findFills(latest.current, initial);
         track("plan_objective_find_answered", {
           outcome: result.found ? "found" : (result.reason ?? "not_found"),
+          ...(next.kind === "found"
+            ? { applied: fills ? "filled" : "suggested" }
+            : {}),
         });
-        if (next.kind === "found") setDraft(next.statement);
+        if (next.kind === "found") {
+          if (fills) edit(next.statement);
+          setSuggested(!fills);
+        }
         setNotice(next);
       },
-      onError: () =>
+      onError: () => {
+        if (lookup !== lookups.current) return;
         setNotice({
           kind: "missing",
           message: "plan.objective.findUnavailable",
           read: [],
           unread: [],
-        }),
+        });
+      },
     });
+  };
+
+  const stop = () => {
+    track("plan_objective_find_stopped");
+    lookups.current++;
+    find.reset();
   };
 
   return (
@@ -162,8 +219,7 @@ function ObjectiveForm({
         placeholder={t("plan.objective.placeholder")}
         value={draft}
         maxLength={PLAN_OBJECTIVE_MAX_LENGTH}
-        onChange={(event) => setDraft(event.target.value)}
-        disabled={find.isPending}
+        onChange={(event) => edit(event.target.value)}
         className="min-h-20 text-base"
         autoFocus={onDone !== undefined}
       />
@@ -172,21 +228,45 @@ function ObjectiveForm({
           {t("plan.objective.finding")}
         </p>
       ) : notice ? (
-        <FindNoticeText notice={notice} draft={statement} />
+        <FindNoticeText
+          notice={notice}
+          draft={statement}
+          suggestion={
+            suggested && notice.kind === "found"
+              ? {
+                  onUse: () => {
+                    edit(notice.statement);
+                    setSuggested(false);
+                  },
+                  onKeep: () => {
+                    setNotice(null);
+                    setSuggested(false);
+                  },
+                }
+              : undefined
+          }
+        />
       ) : (
         <span className="text-meta">{t("plan.objective.hint")}</span>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={lookUp}
-        >
-          <Stars02 />
-          {t("plan.objective.find")}
-        </Button>
+        {find.isPending ? (
+          <Button type="button" variant="outline" size="sm" onClick={stop}>
+            <StopCircle />
+            {t("plan.objective.stop")}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={lookUp}
+          >
+            <Stars02 />
+            {t("plan.objective.find")}
+          </Button>
+        )}
         {initial && <ClearGoal disabled={busy} onClear={() => write(null)} />}
         <div className="ml-auto flex gap-2">
           {onDone && (

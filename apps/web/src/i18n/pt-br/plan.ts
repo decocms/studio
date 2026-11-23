@@ -18,6 +18,9 @@ export const plan = {
     "Isso apaga o objetivo para toda a organização: a página Plan de cada membro e os novos casos de negócio deixam de usá-lo.",
   "plan.objective.clearConfirm.action": "Apagar objetivo",
   "plan.objective.find": "Buscar com IA",
+  "plan.objective.stop": "Parar",
+  "plan.objective.useFound": "Usar este",
+  "plan.objective.keepMine": "Manter o meu",
   "plan.objective.finding": "Lendo arquivos, reuniões e conversas da marca…",
   "plan.objective.found": "Encontrei em {source}: “{quote}”",
   "plan.objective.notFound":
