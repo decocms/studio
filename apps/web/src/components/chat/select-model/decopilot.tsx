@@ -1,4 +1,8 @@
-import { isChatModel } from "@decocms/shared/sdk";
+import { getFastModel, isChatModel } from "@decocms/shared/sdk";
+import {
+  CLAUDE_OPUS,
+  CLAUDE_SONNET,
+} from "@decocms/shared/sdk/lib/claude-lineup";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -60,10 +64,30 @@ const TIER_LABEL_KEYS: Record<TierId, TranslationKey> = {
   cheaper: "chat.decopilot.tierCheaper",
 };
 
+// Catalog ids here are in the OpenRouter form, which the Deco AI Gateway shares.
+const LEADING_FAST_MODEL = getFastModel("openrouter");
+
+// The product's current defaults lead their tier and the default shortlist.
+const LEADING_MODELS: Record<TierId, string[]> = {
+  smarter: [CLAUDE_OPUS.openrouter, CLAUDE_SONNET.openrouter],
+  faster: LEADING_FAST_MODEL ? [LEADING_FAST_MODEL] : [],
+  cheaper: [],
+};
+
+const LEADING_PREFIXES = TIER_IDS.flatMap((tier) => LEADING_MODELS[tier]);
+
+function leadingRank(modelId: string): number {
+  const index = LEADING_PREFIXES.findIndex((prefix) =>
+    modelId.startsWith(prefix),
+  );
+  return index === -1 ? LEADING_PREFIXES.length : index;
+}
+
 const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
   {
     tier: "smarter",
     prefixes: [
+      ...LEADING_MODELS.smarter,
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-4.6-sonnet",
@@ -77,6 +101,7 @@ const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
   {
     tier: "faster",
     prefixes: [
+      ...LEADING_MODELS.faster,
       "anthropic/claude-haiku-4.5",
       "anthropic/claude-4.5-haiku",
       "google/gemini-3-flash",
@@ -152,7 +177,7 @@ export function pickBrowseModels(
   return shortlisted.length > 0 ? shortlisted : allModels;
 }
 
-function groupByTier(
+export function groupByTier(
   models: AiProviderModel[],
 ): Record<TierId | "other", AiProviderModel[]> {
   const groups: Record<TierId | "other", AiProviderModel[]> = {
@@ -166,7 +191,11 @@ function groupByTier(
     groups[tier ?? "other"].push(m);
   }
   for (const key of Object.keys(groups) as Array<TierId | "other">) {
-    groups[key].sort((a, b) => a.title.localeCompare(b.title));
+    groups[key].sort(
+      (a, b) =>
+        leadingRank(a.modelId) - leadingRank(b.modelId) ||
+        a.title.localeCompare(b.title),
+    );
   }
   return groups;
 }
@@ -179,6 +208,7 @@ const SHORTLIST_KEY_PREFIX = "studio:model-shortlist:";
 
 const DEFAULT_SHORTLIST = new Set([
   // Smarter
+  ...LEADING_MODELS.smarter,
   "anthropic/claude-opus-4.8",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-4.6-sonnet",
@@ -187,6 +217,7 @@ const DEFAULT_SHORTLIST = new Set([
   "google/gemini-3-pro-preview",
   "google/gemini-2.5-pro",
   // Faster
+  ...LEADING_MODELS.faster,
   "anthropic/claude-haiku-4.5",
   "anthropic/claude-haiku-4.5-20251001",
   "anthropic/claude-4.5-haiku",
@@ -207,6 +238,11 @@ function readShortlist(keyId: string): Set<string> | null {
   } catch {
     return null;
   }
+}
+
+// A stored shortlist is the user's own choice, so the defaults never merge into it.
+export function initialShortlist(keyId: string | undefined): Set<string> {
+  return (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST;
 }
 
 function writeShortlist(keyId: string, ids: Set<string>) {
@@ -496,8 +532,8 @@ function ConnectionModelList({
   const allModels = filterModelsProp
     ? rawModels.filter(filterModelsProp)
     : rawModels.filter(isChatModel);
-  const [shortlistSet, setShortlistSet] = useState<Set<string>>(
-    () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
+  const [shortlistSet, setShortlistSet] = useState<Set<string>>(() =>
+    initialShortlist(keyId),
   );
   const [, startShortlistTransition] = useTransition();
 
