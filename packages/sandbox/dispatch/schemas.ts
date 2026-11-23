@@ -90,6 +90,18 @@ export const harnessRunContextSchema = z.looseObject({
   truncated: z.boolean().optional(),
 });
 
+/** Why a run context cannot be stored, or `null` when it can. */
+export function harnessRunContextRejection(context: unknown): string | null {
+  const parsed = harnessRunContextSchema.safeParse(context);
+  if (!parsed.success) {
+    return parsed.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.code}`)
+      .join(", ");
+  }
+  const size = Buffer.byteLength(JSON.stringify(context));
+  return size > HARNESS_RUN_CONTEXT_MAX_BYTES ? `${size} bytes` : null;
+}
+
 const chatMessageSchema = z.record(z.string(), z.unknown());
 
 const modelSelectionSchema = z

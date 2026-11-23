@@ -1,7 +1,3 @@
-import {
-  HARNESS_RUN_CONTEXT_MAX_BYTES,
-  harnessRunContextSchema,
-} from "@decocms/sandbox/dispatch/schemas";
 import type { UIMessageChunk } from "ai";
 
 /**
@@ -16,13 +12,20 @@ import type { UIMessageChunk } from "ai";
  */
 export async function* withRunContext(
   chunks: AsyncIterable<UIMessageChunk>,
+  rejection: RunContextRejection,
 ): AsyncIterable<UIMessageChunk> {
   for await (const chunk of chunks) {
-    yield checked(chunk);
+    yield checked(chunk, rejection);
   }
 }
 
-function checked(chunk: UIMessageChunk): UIMessageChunk {
+/** Why a context cannot be stored, or `null` when it can. Passed in by the dispatch glue, which owns the wire schema. */
+type RunContextRejection = (context: unknown) => string | null;
+
+function checked(
+  chunk: UIMessageChunk,
+  rejection: RunContextRejection,
+): UIMessageChunk {
   if (!("messageMetadata" in chunk)) return chunk;
   const metadata = chunk.messageMetadata;
   if (typeof metadata !== "object" || metadata === null) return chunk;
@@ -32,16 +35,4 @@ function checked(chunk: UIMessageChunk): UIMessageChunk {
   if (!reason) return chunk;
   console.warn("[sandbox-dispatch] dropped the run context", { reason });
   return { ...chunk, messageMetadata: rest };
-}
-
-/** Why a context cannot be stored, or `null` when it can. */
-function rejection(context: unknown): string | null {
-  const parsed = harnessRunContextSchema.safeParse(context);
-  if (!parsed.success) {
-    return parsed.error.issues
-      .map((issue) => `${issue.path.join(".")}: ${issue.code}`)
-      .join(", ");
-  }
-  const size = Buffer.byteLength(JSON.stringify(context));
-  return size > HARNESS_RUN_CONTEXT_MAX_BYTES ? `${size} bytes` : null;
 }

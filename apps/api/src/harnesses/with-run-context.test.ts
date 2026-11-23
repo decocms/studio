@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { HARNESS_RUN_CONTEXT_MAX_BYTES } from "@decocms/sandbox/dispatch/schemas";
+import {
+  HARNESS_RUN_CONTEXT_MAX_BYTES,
+  harnessRunContextRejection,
+} from "@decocms/sandbox/dispatch/schemas";
 import type { UIMessageChunk } from "ai";
 import { PartRowBuilder } from "@/api/routes/decopilot/part-row-builder";
 import { projectChunks } from "@/api/routes/decopilot/project-chunks";
 import { withModelMetadata } from "./with-model-metadata";
-import { withRunContext } from "./with-run-context";
+import { withRunContext as withCheckedRunContext } from "./with-run-context";
+
+const withRunContext = (chunks: AsyncIterable<UIMessageChunk>) =>
+  withCheckedRunContext(chunks, harnessRunContextRejection);
 
 const context = {
   runner: { version: "0.18.0", image: "1.108.1", cli: "2.1.280" },

@@ -35,6 +35,7 @@ import type { UIMessageChunk } from "ai";
 import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
 import { RetryError, retry, sleep } from "@decocms/shared/std";
 import {
+  harnessRunContextRejection,
   harnessRunResultSchema,
   type HarnessDispatchEnvelope,
   type HarnessStreamInputWire,
@@ -772,6 +773,7 @@ export class SandboxDispatchClient {
                 runId,
                 signal: input.signal,
               }),
+              harnessRunContextRejection,
             ),
             // A continuation's `start` is dropped downstream, so don't re-stamp it.
             resume
