@@ -16,6 +16,7 @@ import { BUILDING, Question, Thinking } from "../guide/guide-screens.tsx";
 import { BusinessCaseCanvas } from "./business-case-canvas.tsx";
 import { readCaseSeed } from "./case-seed.ts";
 import { caseView, userAskQuestion } from "./case-view.ts";
+import { type OpenFlowProgress, startOpenFlow } from "./open-flow.ts";
 import { OpenQuestionsFlow } from "./open-questions-flow.tsx";
 import { useBusinessCase } from "./use-business-case.ts";
 
@@ -84,8 +85,10 @@ export function BusinessCaseTab({ path }: { path: string }) {
   const task = useOptionalChatTask();
   const read = useBusinessCase(path);
   const send = useCaseChat(path);
-  /** The open questions being answered, as they were when the flow opened. */
-  const [answering, setAnswering] = useState<string[] | null>(null);
+  /** The open questions being answered, kept while the person is on the
+   *  canvas so coming back resumes them. */
+  const [progress, setProgress] = useState<OpenFlowProgress | null>(null);
+  const [answering, setAnswering] = useState(false);
   const value = read.data?.value ?? readCaseSeed(sessionStorage, path);
 
   if (!value) {
@@ -111,12 +114,13 @@ export function BusinessCaseTab({ path }: { path: string }) {
   });
 
   // Ahead of the view: the agent may reopen the case before the last beat ends.
-  if (answering) {
+  if (answering && progress) {
     return (
       <Page>
         <OpenQuestionsFlow
           title={value.title}
-          questions={answering}
+          progress={progress}
+          onProgress={setProgress}
           onDone={(answers) => {
             track("plan_case_open_questions_answered", {
               questions: answers.length,
@@ -126,7 +130,10 @@ export function BusinessCaseTab({ path }: { path: string }) {
             if (send) send(openAnswersPrompt(t, answers));
             else toast.error(t("plan.case.openFlow.busy"));
           }}
-          onClose={() => setAnswering(null)}
+          onClose={(finished) => {
+            if (finished) setProgress(null);
+            setAnswering(false);
+          }}
         />
       </Page>
     );
@@ -150,7 +157,8 @@ export function BusinessCaseTab({ path }: { path: string }) {
                   track("plan_case_open_questions_opened", {
                     questions: questions.length,
                   });
-                  setAnswering(questions);
+                  setProgress(startOpenFlow(questions, progress));
+                  setAnswering(true);
                 })
               }
             />

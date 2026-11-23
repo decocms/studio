@@ -175,13 +175,16 @@ export function Question({
   view,
   onAnswer,
   skipLabel,
+  initialAnswer = "",
 }: {
   view: { question: ScreenQuestion; reaction: string | null };
   onAnswer: (answer: string) => void;
   skipLabel?: string;
+  /** The answer given before the person came back to this question. */
+  initialAnswer?: string;
 }) {
   const t = useT();
-  const [answer, setAnswer] = useState("");
+  const [answer, setAnswer] = useState(initialAnswer);
   /** The answer being sent while the screen leaves. */
   const [leaving, setLeaving] = useState<string | null>(null);
   const ready = answer.trim().length > 0;

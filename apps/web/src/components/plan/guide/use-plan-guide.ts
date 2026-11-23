@@ -193,6 +193,23 @@ export function usePlanGuide() {
       });
       void think(next);
     },
+    /** The last question again, its answer filled in. */
+    back: () => {
+      if (!state) return;
+      const next = guideReducer(state, { type: "back", step: state.step });
+      if (next === state) return;
+      current.current?.abort();
+      current.current = null;
+      track("plan_guide_back", { step: state.step });
+      show(next);
+    },
+    /** Leaves an intro with answers: they stay saved for the resume card. */
+    exit: () => {
+      current.current?.abort();
+      current.current = null;
+      setState(null);
+      setSaved(readGuideDraft(localStorage, org.id));
+    },
     /** Back to the composer, which takes the idea; nothing to resume. */
     cancel: () => {
       current.current?.abort();

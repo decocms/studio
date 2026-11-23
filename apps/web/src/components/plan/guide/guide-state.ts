@@ -5,18 +5,25 @@
  *
  * Every step has a number, so a model reply that arrives after the person
  * moved on (answered, or went back) is dropped instead of overwriting the
- * screen they are on.
+ * screen they are on. Going back re-asks the last question, its answer
+ * filled in, as a new step.
  */
 
 import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
 import type { GuideAnswer } from "../business-case-prompt.ts";
 
 export type NextStep = StudioToolOutput<"PLAN_CASE_NEXT_QUESTION">;
-type GuideQuestion = NonNullable<NextStep["question"]>;
+export type GuideQuestion = NonNullable<NextStep["question"]>;
 
 export type GuideView =
   | { phase: "thinking" }
-  | { phase: "asking"; question: GuideQuestion; reaction: string | null }
+  | {
+      phase: "asking";
+      question: GuideQuestion;
+      reaction: string | null;
+      /** What the person answered before going back to it. */
+      answer?: string;
+    }
   /** `guided`: the model said it had enough. False when it failed and the
    *  agent gets the idea as it is. */
   | { phase: "building"; guided: boolean };
@@ -25,6 +32,8 @@ export interface GuideState {
   step: number;
   idea: string;
   answers: GuideAnswer[];
+  /** The question behind each answer, with its options, to go back to. */
+  asked: GuideQuestion[];
   /** The case title the model suggested, once it has one. */
   title: string | null;
   view: GuideView;
@@ -33,13 +42,15 @@ export interface GuideState {
 export type GuideAction =
   | { type: "answered"; step: number; answer: string }
   | { type: "resolved"; step: number; result: NextStep }
-  | { type: "failed"; step: number };
+  | { type: "failed"; step: number }
+  | { type: "back"; step: number };
 
 export function startGuide(idea: string): GuideState {
   return {
     step: 0,
     idea: idea.trim(),
     answers: [],
+    asked: [],
     title: null,
     view: { phase: "thinking" },
   };
@@ -60,6 +71,7 @@ export function guideReducer(
           ...state.answers,
           { question: state.view.question.text, answer: action.answer.trim() },
         ],
+        asked: [...state.asked, state.view.question],
         view: { phase: "thinking" },
       };
     }
@@ -77,6 +89,23 @@ export function guideReducer(
     case "failed": {
       if (state.view.phase !== "thinking") return state;
       return { ...state, view: { phase: "building", guided: false } };
+    }
+    case "back": {
+      const question = state.asked.at(-1);
+      const last = state.answers.at(-1);
+      if (!question || !last) return state;
+      return {
+        ...state,
+        step: state.step + 1,
+        answers: state.answers.slice(0, -1),
+        asked: state.asked.slice(0, -1),
+        view: {
+          phase: "asking",
+          question,
+          reaction: null,
+          answer: last.answer,
+        },
+      };
     }
   }
 }

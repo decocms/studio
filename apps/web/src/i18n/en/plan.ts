@@ -201,6 +201,7 @@ export const plan = {
   "plan.guide.continue": "Continue",
   "plan.guide.skip": "Skip this one",
   "plan.guide.back": "Back",
+  "plan.guide.exit": "Leave and keep my answers",
   "plan.guide.resume.heading": "Your last case did not open",
   "plan.guide.resume.description":
     "Your idea and answers are saved. Pick up where you left off.",

@@ -110,4 +110,108 @@ describe("guide state", () => {
       { question: "What bothers you?", answer: "X" },
     ]);
   });
+
+  describe("going back", () => {
+    /** Two questions answered, the third on screen. */
+    function twoAnswered() {
+      let state = guideReducer(startGuide("Improve search"), {
+        type: "resolved",
+        step: 0,
+        result: ask("What bothers you?"),
+      });
+      state = guideReducer(state, { type: "answered", step: 0, answer: "A" });
+      state = guideReducer(state, {
+        type: "resolved",
+        step: 1,
+        result: ask("Which device?"),
+      });
+      state = guideReducer(state, {
+        type: "answered",
+        step: 1,
+        answer: "Mobile",
+      });
+      return guideReducer(state, {
+        type: "resolved",
+        step: 2,
+        result: ask("How often?", "Got it."),
+      });
+    }
+
+    it("re-asks the last question with its options and answer", () => {
+      const state = guideReducer(twoAnswered(), { type: "back", step: 2 });
+      expect(state.step).toBe(3);
+      expect(state.answers).toEqual([
+        { question: "What bothers you?", answer: "A" },
+      ]);
+      expect(state.asked).toEqual([
+        { text: "What bothers you?", options: ["A", "B"] },
+      ]);
+      expect(state.view).toEqual({
+        phase: "asking",
+        question: { text: "Which device?", options: ["A", "B"] },
+        reaction: null,
+        answer: "Mobile",
+      });
+    });
+
+    it("goes back while the next question is still loading", () => {
+      let state = guideReducer(startGuide("Improve search"), {
+        type: "resolved",
+        step: 0,
+        result: ask("What bothers you?"),
+      });
+      state = guideReducer(state, { type: "answered", step: 0, answer: "B" });
+      expect(state.view.phase).toBe("thinking");
+      state = guideReducer(state, { type: "back", step: 1 });
+      expect(state.answers).toEqual([]);
+      expect(state.view).toMatchObject({ phase: "asking", answer: "B" });
+      // The reply for the step the person left does not replace the screen.
+      expect(
+        guideReducer(state, {
+          type: "resolved",
+          step: 1,
+          result: ask("Stale question"),
+        }),
+      ).toBe(state);
+    });
+
+    it("replaces the answer when the question is answered again", () => {
+      let state = guideReducer(twoAnswered(), { type: "back", step: 2 });
+      state = guideReducer(state, {
+        type: "answered",
+        step: 3,
+        answer: "Desktop",
+      });
+      expect(state.answers).toEqual([
+        { question: "What bothers you?", answer: "A" },
+        { question: "Which device?", answer: "Desktop" },
+      ]);
+      expect(state.asked).toHaveLength(2);
+    });
+
+    it("has nowhere to go before the first answer", () => {
+      const state = guideReducer(startGuide("Improve search"), {
+        type: "resolved",
+        step: 0,
+        result: ask("What bothers you?"),
+      });
+      expect(guideReducer(state, { type: "back", step: 0 })).toBe(state);
+    });
+
+    it("goes back from the last beat to the last question", () => {
+      let state = guideReducer(twoAnswered(), {
+        type: "answered",
+        step: 2,
+        answer: "",
+      });
+      state = guideReducer(state, { type: "resolved", step: 3, result: done });
+      expect(state.view.phase).toBe("building");
+      state = guideReducer(state, { type: "back", step: 3 });
+      expect(state.view).toMatchObject({
+        phase: "asking",
+        question: { text: "How often?" },
+        answer: "",
+      });
+    });
+  });
 });

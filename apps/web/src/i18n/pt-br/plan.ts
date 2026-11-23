@@ -202,6 +202,7 @@ export const plan = {
   "plan.guide.continue": "Continuar",
   "plan.guide.skip": "Pular esta",
   "plan.guide.back": "Voltar",
+  "plan.guide.exit": "Sair e guardar as respostas",
   "plan.guide.resume.heading": "Seu último case não abriu",
   "plan.guide.resume.description":
     "Sua ideia e suas respostas estão salvas. Continue de onde parou.",
