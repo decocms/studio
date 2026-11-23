@@ -23,6 +23,10 @@ import { handleAuthError } from "./oauth-proxy";
 import { getMcpListCache } from "@/mcp-clients/mcp-list-cache";
 import { createLazyClient } from "@/mcp-clients/lazy-client";
 import { injectCSP } from "@decocms/shared/mcp-apps/csp-injector";
+import {
+  MCP_APP_ALLOW_HEADER,
+  permissionsToAllow,
+} from "@decocms/shared/mcp-apps/permissions";
 import type { McpUiResourceCsp } from "@decocms/shared/mcp-apps/types";
 import {
   assertCircuitClosed,
@@ -95,7 +99,9 @@ export const createProxyRoutes = () => {
    *
    * This is the GET counterpart to the JSON-RPC `resources/read` POST, which is
    * inherently uncacheable by the browser. The frontend renders the bytes into
-   * an iframe `srcDoc` (CSP already injected here).
+   * an iframe `srcDoc` (CSP already injected here). The browser capabilities
+   * the resource declares (`_meta.ui.permissions`) ride along in
+   * `X-MCP-App-Allow`, the value for the iframe's `allow` attribute.
    */
   app.get("/:connectionId/ui-resource", async (c) => {
     const ctx = c.get("studioContext");
@@ -138,16 +144,18 @@ export const createProxyRoutes = () => {
     );
     let text: string | undefined;
     let resourceCsp: McpUiResourceCsp | undefined;
+    let allow = "";
     try {
       const result = (await client.readResource({ uri })) as {
         contents?: Array<{
           text?: string;
-          _meta?: { ui?: { csp?: McpUiResourceCsp } };
+          _meta?: { ui?: { csp?: McpUiResourceCsp; permissions?: unknown } };
         }>;
       };
       const content = result.contents?.[0];
       text = content?.text;
       resourceCsp = content?._meta?.ui?.csp;
+      allow = permissionsToAllow(content?._meta?.ui?.permissions);
     } catch (err) {
       return c.json({ error: (err as Error).message }, 502);
     } finally {
@@ -158,20 +166,18 @@ export const createProxyRoutes = () => {
     }
 
     const html = injectCSP(text, { resourceCsp });
-    const etag = `"${Bun.hash(html).toString(36)}"`;
-    const cacheControl = "private, no-cache";
+    // The allow value is part of the response, so it's part of the ETag.
+    const etag = `"${Bun.hash(`${allow}\n${html}`).toString(36)}"`;
+    const headers = {
+      ETag: etag,
+      "Cache-Control": "private, no-cache",
+      [MCP_APP_ALLOW_HEADER]: allow,
+    };
     if (c.req.header("if-none-match") === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: { ETag: etag, "Cache-Control": cacheControl },
-      });
+      return new Response(null, { status: 304, headers });
     }
     return new Response(html, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        ETag: etag,
-        "Cache-Control": cacheControl,
-      },
+      headers: { "Content-Type": "text/html; charset=utf-8", ...headers },
     });
   });
 

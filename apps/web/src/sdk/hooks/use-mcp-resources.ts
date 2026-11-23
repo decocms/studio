@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { resolveStudioUrl } from "../lib/studio-url";
+import { MCP_APP_ALLOW_HEADER } from "@decocms/shared/mcp-apps/permissions";
 
 /**
  * List resources from an MCP client.
@@ -145,8 +146,16 @@ export function useMCPReadResource({
  */
 export const UI_RESOURCE_HTML_KEY = "ui-resource-html" as const;
 
+interface UiResourceHtml {
+  html: string;
+  allow: string;
+}
+
 export interface UseUiResourceHtmlOptions
-  extends Omit<UseSuspenseQueryOptions<string, Error>, "queryKey" | "queryFn"> {
+  extends Omit<
+    UseSuspenseQueryOptions<UiResourceHtml, Error>,
+    "queryKey" | "queryFn"
+  > {
   /** Org slug (the `:org` path segment). */
   orgSlug: string;
   /** Connection id serving the resource. */
@@ -165,7 +174,8 @@ export interface UseUiResourceHtmlOptions
  * `resources/read` POST. The GET carries an ETag + `Cache-Control`, so the
  * browser HTTP-caches the (often multi-MiB) HTML and revalidates with cheap
  * 304s — and the response is already CSP-injected server-side, ready for an
- * iframe `srcDoc`.
+ * iframe `srcDoc`. `allow` is the iframe `allow` value for the capabilities
+ * the resource declares (empty when none).
  */
 export function useUiResourceHtml({
   orgSlug,
@@ -174,8 +184,8 @@ export function useUiResourceHtml({
   studioUrl,
   meshUrl,
   ...queryOptions
-}: UseUiResourceHtmlOptions): UseSuspenseQueryResult<string, Error> {
-  return useSuspenseQuery<string, Error>({
+}: UseUiResourceHtmlOptions): UseSuspenseQueryResult<UiResourceHtml, Error> {
+  return useSuspenseQuery<UiResourceHtml, Error>({
     ...queryOptions,
     queryKey: KEYS.mcpUiResourceHtml(orgSlug, connectionId, uri),
     queryFn: async () => {
@@ -192,7 +202,10 @@ export function useUiResourceHtml({
       if (!res.ok) {
         throw new Error(`Failed to read UI resource (${res.status})`);
       }
-      return res.text();
+      return {
+        html: await res.text(),
+        allow: res.headers.get(MCP_APP_ALLOW_HEADER) ?? "",
+      };
     },
     staleTime: queryOptions.staleTime ?? 30000,
     retry: false,
