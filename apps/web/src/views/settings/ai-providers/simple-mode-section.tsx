@@ -72,6 +72,11 @@ const TIER_KEYS = [
   },
 ] as const;
 
+// Below `sm` the badge or reset button sits above the selector. Side by side
+// they leave the tier title no room, and a long title runs under the button.
+const ROW_ACTION_CLASS =
+  "flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2";
+
 function SimpleModeModelRow({
   slot,
   followsDefault,
@@ -140,7 +145,7 @@ function SimpleModeModelRow({
 
   if (filterModels && !hasFilteredModels) {
     return (
-      <div className="flex items-center gap-2">
+      <div className={ROW_ACTION_CLASS}>
         {resetButton}
         <p className="text-xs text-muted-foreground italic">
           {t("settings.simpleModeSection.notAvailableWithCurrentProvider")}
@@ -150,7 +155,7 @@ function SimpleModeModelRow({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className={ROW_ACTION_CLASS}>
       {resetButton}
       {followsDefault && resolvedModel && (
         <Badge variant="muted">
