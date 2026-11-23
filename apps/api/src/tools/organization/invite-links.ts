@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { canAssignRole } from "@decocms/shared/auth/roles";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -71,6 +72,11 @@ export const ORGANIZATION_INVITE_LINK_CREATE = defineTool({
 
     const org = requireOrganization(ctx);
     const userId = getUserId(ctx);
+
+    const settings = await ctx.storage.organizationSettings.get(org.id);
+    if (!orgFlagEnabled(settings?.flags, "invite_links_enabled")) {
+      throw new Error("Invite links are not enabled for this organization");
+    }
 
     const orgRow = await ctx.db
       .selectFrom("organization")

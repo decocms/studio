@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { signUp } from "../fixtures/auth";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { SettingsMembersPage } from "../pages/settings-members";
 import {
   expect,
@@ -7,6 +8,23 @@ import {
   test,
   waitForPostSignupRedirect,
 } from "../fixtures/test";
+
+/** Invite links are behind a default-off org flag. */
+async function setInviteLinksFlag(page: Page, orgSlug: string, on: boolean) {
+  const { id } = await callSelfMcpTool<{ id: string }>(
+    page.request,
+    orgSlug,
+    "ORGANIZATION_GET",
+    {},
+  );
+  await callSelfMcpTool(page.request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+    organizationId: id,
+    flags: { invite_links_enabled: on },
+  });
+  // Org settings persist across reloads (and are rewritten on pagehide), so
+  // drop them before each boot to read the flag as a fresh browser would.
+  await page.addInitScript(() => localStorage.removeItem("studio:rq-cache"));
+}
 
 /** Reads the generated link out of the copy row; headless clipboard is not reliable. */
 async function createdInvitePath(page: Page): Promise<string> {
@@ -27,6 +45,7 @@ test.describe("Shareable invite link", () => {
     await signUp(page);
     await waitForPostSignupRedirect(page);
     const orgSlug = extractOrgSlugFromUrl(page);
+    await setInviteLinksFlag(page, orgSlug, true);
 
     // Share a page other than the org home, so landing there proves the redirect.
     const sharedPath = `/${orgSlug}/library`;
@@ -82,6 +101,7 @@ test.describe("Shareable invite link", () => {
     await signUp(page);
     await waitForPostSignupRedirect(page);
     const orgSlug = extractOrgSlugFromUrl(page);
+    await setInviteLinksFlag(page, orgSlug, true);
 
     const members = new SettingsMembersPage(page);
     await members.goto(orgSlug);
@@ -112,6 +132,55 @@ test.describe("Shareable invite link", () => {
     expect(accept.status()).toBe(410);
   });
 
+  test("with the flag off, the UI hides the feature and links stop working", async ({
+    page,
+    context,
+  }) => {
+    await signUp(page);
+    await waitForPostSignupRedirect(page);
+    const orgSlug = extractOrgSlugFromUrl(page);
+    await setInviteLinksFlag(page, orgSlug, true);
+
+    const members = new SettingsMembersPage(page);
+    await members.goto(orgSlug);
+    await members.openInviteDialog();
+    await page
+      .getByRole("button", { name: "Create invite link (24h)" })
+      .click();
+    const invitePath = await createdInvitePath(page);
+
+    await setInviteLinksFlag(page, orgSlug, false);
+    await page.reload();
+    await members.openInviteDialog();
+    await expect(page.getByText("Or share an invite link")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.goto(`/${orgSlug}/library`);
+    await expect(page.getByRole("button", { name: "New folder" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
+
+    const create = await page.request.post(`/api/${orgSlug}/mcp/self`, {
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      },
+      data: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "ORGANIZATION_INVITE_LINK_CREATE", arguments: {} },
+      },
+    });
+    expect(await create.text()).toMatch(/not enabled/);
+
+    await context.clearCookies();
+    await page.goto(invitePath);
+    await expect(
+      page.getByRole("heading", { name: "Invite link unavailable" }),
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
   test("only members managers can create links, and never for owner", async ({
     page,
     context,
@@ -119,6 +188,7 @@ test.describe("Shareable invite link", () => {
     await signUp(page);
     await waitForPostSignupRedirect(page);
     const orgSlug = extractOrgSlugFromUrl(page);
+    await setInviteLinksFlag(page, orgSlug, true);
 
     const callTool = (name: string, args: Record<string, unknown>) =>
       page.request.post(`/api/${orgSlug}/mcp/self`, {

@@ -1,24 +1,27 @@
 import { useCapabilities } from "@/hooks/use-capability";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-export function useCanManageMembers() {
+/** The org has invite links on and the caller can manage members. */
+export function useCanShareInviteLinks() {
+  const enabled = useOrgFlag("invite_links_enabled");
   const { capabilities, isPrivileged } = useCapabilities();
-  return isPrivileged || !!capabilities["members:manage"];
+  return enabled && (isPrivileged || !!capabilities["members:manage"]);
 }
 
-/** Active invite links for the org; empty for callers who cannot manage members. */
+/** Active invite links for the org; empty when the caller cannot share them. */
 export function useActiveInviteLinks() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
-  const canManage = useCanManageMembers();
+  const canShare = useCanShareInviteLinks();
 
   const { data } = useQuery({
     queryKey: KEYS.organizationInviteLinks(org.id),
     queryFn: () => studio.call("ORGANIZATION_INVITE_LINK_LIST", {}),
-    enabled: !!org.id && canManage,
+    enabled: !!org.id && canShare,
   });
 
   return data?.links ?? [];

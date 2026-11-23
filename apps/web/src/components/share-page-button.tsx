@@ -12,15 +12,15 @@ import { Share07 } from "@untitledui/icons";
 import { useLocation } from "@tanstack/react-router";
 import { InviteLinkPanel } from "@/components/invite-link-panel";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import { useCanManageMembers } from "@/hooks/use-invite-links";
+import { useCanShareInviteLinks } from "@/hooks/use-invite-links";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectContextOptional } from "@/sdk";
 
 function SharePagePopover({ orgName }: { orgName: string }) {
   const t = useT();
   const location = useLocation();
-  const canManage = useCanManageMembers();
-  if (!canManage) return null;
+  const canShare = useCanShareInviteLinks();
+  if (!canShare) return null;
 
   return (
     <Popover>

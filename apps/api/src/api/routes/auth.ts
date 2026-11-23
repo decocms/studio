@@ -32,6 +32,8 @@ import { getBaseUrl } from "../../core/server-constants";
 import { OrganizationDomainStorage } from "../../storage/organization-domains";
 import { OrganizationJoinRequestStorage } from "../../storage/organization-join-requests";
 import { OrganizationInviteLinkStorage } from "../../storage/organization-invite-links";
+import { OrganizationSettingsStorage } from "../../storage/organization-settings";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { hashInviteLinkToken } from "../../auth/invite-link-token";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
 import {
@@ -1020,7 +1022,7 @@ type InviteLinkResolution =
       };
     };
 
-/** Looks a token up by digest; an archived org reads as not-found. */
+/** Looks a token up by digest; an archived org, or one with the flag off, reads as not-found. */
 async function resolveInviteLink(token: string): Promise<InviteLinkResolution> {
   if (!token || token.length > 256) return { status: "not-found" };
   const db = getDb().db;
@@ -1035,6 +1037,10 @@ async function resolveInviteLink(token: string): Promise<InviteLinkResolution> {
     .where("id", "=", link.organizationId)
     .executeTakeFirst();
   if (!org || isOrgArchived(org)) return { status: "not-found" };
+  const settings = await new OrganizationSettingsStorage(db).get(org.id);
+  if (!orgFlagEnabled(settings?.flags, "invite_links_enabled")) {
+    return { status: "not-found" };
+  }
 
   const status = link.revokedAt
     ? "revoked"
