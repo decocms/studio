@@ -178,6 +178,7 @@ export function checkCandidates(
   proposals: readonly { statement: string | null; quote: string | null }[],
   evidence: readonly Evidence[],
   existing: readonly string[],
+  limit: number = MAX_GOAL_CANDIDATES,
 ): { candidates: Candidate[]; reason: NoCandidateReason | null } {
   const listedKeys = new Set(existing.map(planGoalKey));
   const proposed = new Set<string>();
@@ -185,7 +186,7 @@ export function checkCandidates(
   let unproven = false;
   let listed = false;
   for (const raw of proposals) {
-    if (candidates.length >= MAX_GOAL_CANDIDATES) break;
+    if (candidates.length >= limit) break;
     const proposal = checkProposal(raw, evidence);
     if (!proposal.ok) {
       unproven ||= proposal.reason === "not_clear";

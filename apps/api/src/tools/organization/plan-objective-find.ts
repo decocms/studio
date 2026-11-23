@@ -32,6 +32,6 @@ export const ORGANIZATION_PLAN_OBJECTIVE_FIND = defineTool({
     if (!orgFlagEnabled(settings?.flags, "plan_page_enabled")) {
       throw new Error("The Plan page is not enabled for this organization");
     }
-    return firstFinding(await findBrandGoals(ctx, org.id));
+    return firstFinding(await findBrandGoals(ctx, org.id, { limit: 1 }));
   },
 });

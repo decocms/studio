@@ -278,6 +278,18 @@ describe("checkCandidates", () => {
     expect(candidates[0]?.source.label).toBe("estrategia/2027.md");
   });
 
+  it("stops at the limit, so the single store-goal finder checks one goal with Jev", () => {
+    const { candidates } = checkCandidates(
+      [unsaid, app, returns, cac],
+      evidence,
+      [],
+      1,
+    );
+    expect(candidates.map((candidate) => candidate.statement)).toEqual([
+      app.statement,
+    ]);
+  });
+
   it("drops the proposals nobody said, or without a sentence, and keeps the rest", () => {
     const { candidates, reason } = checkCandidates(
       [unsaid, { statement: null, quote: cac.quote }, returns],
