@@ -4,7 +4,7 @@
  * default). In the Content tab an open post shows beside the list or in the
  * board's drawer (`renderDetail`); Blog leaves for the post's own screen,
  * `/blog/posts/<id>`, and lists posts full width. Statuses are the blog app's
- * own `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
+ * own `PostStatus` vocabulary; a delete is confirmed, archiving is a lane move.
  */
 import { Fragment, type ReactNode, Suspense, useRef, useState } from "react";
 import {
@@ -43,6 +43,12 @@ import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
+import { HostedKeptTheirsError } from "@/components/sections-editor/hosted-reconcile";
+import { useNeverPublished } from "@/components/sections-editor/use-never-published";
+import { useContentBackend } from "@/cms/use-content-backend";
+import { deleteConfirmKey } from "../delete-copy";
+import { DeletePostDialog } from "./delete-post-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,6 +61,7 @@ import { useGeneratePost } from "./use-generate-post";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   buildPlanningPostBlock,
+  canDeletePost,
   emptyDraftPostPayload,
   getBlogPayload,
   listAllPostsWithMeta,
@@ -209,15 +216,88 @@ export function PostsWorkspace({
       "posts",
     );
 
-  /**
-   * Delete is a soft delete: the post moves to Archived, off every working
-   * lane but still recoverable by dragging it back out.
-   */
-  const archivePost = async (post: PostMeta) => {
-    if (await move.apply(post.key, "archived")) {
-      toast.success(t("sandbox.postBoard.archived"));
+  // -- Delete: one post, or the whole Archived lane ---------------------------
+
+  const blockMove = useMoveBlocks({ orgSlug, virtualMcpId, branch });
+  const contentBackend = useContentBackend(virtualMcpId, branch);
+  /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+  const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
+  const [deleteTarget, setDeleteTarget] = useState<
+    { kind: "post"; post: PostMeta } | { kind: "archived" } | null
+  >(null);
+
+  const archivedPosts = posts.filter((p) => p.status === "archived");
+
+  /** Drops `keys` in one atomic write; resolves to whether they are gone. */
+  const deletePosts = async (keys: string[]) => {
+    try {
+      await blockMove.move({ writes: {}, deletes: keys });
+    } catch (err) {
+      // The user kept their version: `move` said so in its own toast.
+      if (!(err instanceof HostedKeptTheirsError)) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : t("sandbox.postEditor.deletePostFailed"),
+        );
+      }
+      return false;
     }
+    if (selectedKey && keys.includes(selectedKey)) onClose?.();
+    return true;
   };
+
+  const confirmDelete = async () => {
+    if (deleteTarget?.kind === "post") {
+      const { post } = deleteTarget;
+      if (await deletePosts([post.key])) {
+        toast.success(
+          t("sandbox.postEditor.deletePostSuccess", { title: post.title }),
+        );
+      }
+    } else if (deleteTarget?.kind === "archived") {
+      // Read at confirm: a post dragged out of Archived since opening stays.
+      const keys = archivedPosts
+        .filter((p) => !move.isMoving(p.key))
+        .map((p) => p.key);
+      if (keys.length > 0 && (await deletePosts(keys))) {
+        toast.success(
+          t("sandbox.postBoard.deletedArchived", {
+            count: String(keys.length),
+          }),
+        );
+      }
+    }
+    setDeleteTarget(null);
+  };
+
+  const deleteCopy =
+    deleteTarget?.kind === "archived"
+      ? {
+          title: t("sandbox.postBoard.deleteArchivedConfirmTitle"),
+          description: t(
+            deleteConfirmKey("archivedPosts", hostedDraft, {
+              neverPublished: archivedPosts.every((p) => neverPublished(p.key)),
+            }),
+            { count: String(archivedPosts.length) },
+          ),
+          confirmLabel: t("sandbox.postBoard.deleteArchivedConfirm"),
+        }
+      : {
+          title: t("sandbox.postEditor.deletePostConfirmTitle"),
+          description: deleteTarget
+            ? t(
+                deleteConfirmKey("post", hostedDraft, {
+                  neverPublished: neverPublished(deleteTarget.post.key),
+                  live: isDatedStatus(deleteTarget.post.status),
+                }),
+                { title: deleteTarget.post.title },
+              )
+            : "",
+          confirmLabel: t("sandbox.postEditor.deletePost"),
+        };
 
   // -- List view: filter, sort, selection -------------------------------------
 
@@ -571,9 +651,26 @@ export function PostsWorkspace({
                           <ChevronDown size={14} className="shrink-0" />
                           <span className="truncate">{laneLabel}</span>
                         </button>
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {lanePosts.length}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {lanePosts.length}
+                          </span>
+                          {status === "archived" && lanePosts.length > 0 && (
+                            <Button
+                              variant="ghost-destructive"
+                              size="icon-xs"
+                              type="button"
+                              disabled={blockMove.isPending}
+                              aria-label={t("sandbox.postBoard.deleteArchived")}
+                              title={t("sandbox.postBoard.deleteArchived")}
+                              onClick={() =>
+                                setDeleteTarget({ kind: "archived" })
+                              }
+                            >
+                              <Trash01 className="size-3.25" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
                         {lanePosts.length === 0 ? (
@@ -588,10 +685,11 @@ export function PostsWorkspace({
                               payload={payloadOf(post.key)}
                               moving={move.isMoving(post.key)}
                               onOpen={() => onOpen(post.key)}
-                              onArchive={
-                                post.status === "archived"
-                                  ? undefined
-                                  : () => void archivePost(post)
+                              onDelete={
+                                canDeletePost(post.status)
+                                  ? () =>
+                                      setDeleteTarget({ kind: "post", post })
+                                  : undefined
                               }
                             />
                           ))
@@ -654,7 +752,7 @@ export function PostsWorkspace({
                 onToggleSelect={toggleSelect}
                 onOpen={onOpen}
                 isMoving={move.isMoving}
-                onArchive={(post) => void archivePost(post)}
+                onDelete={(post) => setDeleteTarget({ kind: "post", post })}
               />
             </div>
           </div>
@@ -732,6 +830,14 @@ export function PostsWorkspace({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <DeletePostDialog
+        open={deleteTarget !== null}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDelete()}
+        pending={blockMove.isPending}
+        {...deleteCopy}
+      />
     </div>
   );
 }
@@ -772,17 +878,21 @@ function PostList({
   onToggleSelect,
   onOpen,
   isMoving,
-  onArchive,
+  onDelete,
 }: {
   /** Already filtered and sorted by the toolbar — rendered in order. */
   posts: PostMeta[];
+  /**
+   * The post open beside the list. Its editor owns its delete: an autosave
+   * pending there would write the post back after a delete from its row.
+   */
   selectedKey?: string | null;
   selectionActive: boolean;
   selectedKeys: Set<string>;
   onToggleSelect: (key: string) => void;
   onOpen: (key: string) => void;
   isMoving: (key: string) => boolean;
-  onArchive: (post: PostMeta) => void;
+  onDelete: (post: PostMeta) => void;
 }) {
   const t = useT();
   if (posts.length === 0) {
@@ -804,8 +914,10 @@ function PostList({
           onToggleSelect={() => onToggleSelect(post.key)}
           moving={isMoving(post.key)}
           onOpen={() => onOpen(post.key)}
-          onArchive={
-            post.status === "archived" ? undefined : () => onArchive(post)
+          onDelete={
+            canDeletePost(post.status) && post.key !== selectedKey
+              ? () => onDelete(post)
+              : undefined
           }
         />
       ))}
@@ -821,7 +933,7 @@ function PostRow({
   onToggleSelect,
   moving,
   onOpen,
-  onArchive,
+  onDelete,
 }: {
   post: PostMeta;
   selected: boolean;
@@ -832,8 +944,8 @@ function PostRow({
   /** A move for this post is in flight — freeze the delete action. */
   moving: boolean;
   onOpen: () => void;
-  /** Omitted for a post that is already archived — there is nothing to archive. */
-  onArchive?: () => void;
+  /** Omitted for a post that can't be deleted from its row. */
+  onDelete?: () => void;
 }) {
   const t = useT();
   const hasIssues =
@@ -856,9 +968,9 @@ function PostRow({
           aria-label={post.title || t("sandbox.postBoard.untitled")}
         />
       </span>
-      {onArchive && !selectionActive && (
-        <ArchiveButton
-          onArchive={onArchive}
+      {onDelete && !selectionActive && (
+        <DeleteButton
+          onDelete={onDelete}
           disabled={moving}
           className="top-2.5"
         />
@@ -915,15 +1027,15 @@ function PostCard({
   payload,
   moving,
   onOpen,
-  onArchive,
+  onDelete,
 }: {
   post: PostMeta;
   payload: Record<string, unknown>;
   /** A move for this post is in flight — freeze it so a second one can't race. */
   moving: boolean;
   onOpen: () => void;
-  /** Omitted for a post that is already archived — there is nothing to archive. */
-  onArchive?: () => void;
+  /** Omitted for a post that can't be deleted ({@link canDeletePost}). */
+  onDelete?: () => void;
 }) {
   const t = useT();
   const draggable = post.status !== "generating" && !moving;
@@ -936,12 +1048,8 @@ function PostCard({
         !draggable && "opacity-80",
       )}
     >
-      {onArchive && (
-        <ArchiveButton
-          onArchive={onArchive}
-          disabled={moving}
-          className="top-2"
-        />
+      {onDelete && (
+        <DeleteButton onDelete={onDelete} disabled={moving} className="top-2" />
       )}
       <button
         type="button"
@@ -1000,23 +1108,18 @@ function PostCard({
   );
 }
 
-/**
- * Delete affordance for a post. Deleting is a soft delete — the post moves to
- * the Archived lane, so nothing is lost and no confirmation is warranted.
- */
-function ArchiveButton({
-  label,
-  onArchive,
+/** Hover delete for a post; it only asks — the board's dialog does the deleting. */
+function DeleteButton({
+  onDelete,
   disabled,
   className,
 }: {
-  label?: string;
-  onArchive: () => void;
+  onDelete: () => void;
   disabled?: boolean;
   className?: string;
 }) {
   const t = useT();
-  const text = label ?? t("sandbox.postBoard.delete");
+  const text = t("sandbox.postBoard.delete");
   return (
     <Button
       variant="ghost-destructive"
@@ -1027,7 +1130,7 @@ function ArchiveButton({
       title={text}
       onClick={(e) => {
         e.stopPropagation();
-        onArchive();
+        onDelete();
       }}
       className={cn(
         "absolute right-2 z-10 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/card:opacity-100 group-hover/row:opacity-100",

@@ -66,6 +66,16 @@ export const BLOG_SINGULAR: Record<BlogKind, string> = {
   categories: "category",
 };
 
+/**
+ * The name a freshly created record is stored with (`emptyBlogPayload`) — a
+ * stand-in until someone names it, never a name two records can clash on.
+ */
+const PLACEHOLDER_NAME: Record<BlogKind, string> = {
+  posts: "Untitled post",
+  authors: "New author",
+  categories: "New category",
+};
+
 export function isBlogKind(id: string): id is BlogKind {
   return (BLOG_KINDS as readonly string[]).includes(id);
 }
@@ -136,7 +146,7 @@ function entryLabelAndSubtitle(
   switch (kind) {
     case "posts":
       return {
-        label: str(payload.title) || "Untitled post",
+        label: str(payload.title) || PLACEHOLDER_NAME.posts,
         subtitle: str(payload.slug),
         missing: missingPostFields(payload),
       };
@@ -189,7 +199,10 @@ export function scanBlogEntries(
     // The RAW name, not the label: two untitled records share its fallback.
     nameKeys.push({
       entry,
-      key: normalizeTitleKey(str(payload[kind === "posts" ? "title" : "name"])),
+      key: duplicateNameKey(
+        kind,
+        str(payload[kind === "posts" ? "title" : "name"]),
+      ),
     });
   }
   markDuplicateNames(nameKeys);
@@ -564,17 +577,9 @@ export function postStatus(payload: Record<string, unknown>): PostStatus {
   }
 }
 
-/**
- * Whether this post may be deleted outright.
- *
- * Archived only. Every other status still resolves somewhere — a published
- * post is on the site, a scheduled one is about to be, and a draft is work
- * someone has not abandoned yet — so archiving is the one state where
- * dropping the block cannot break a live page. It also keeps a deliberate
- * step between "I'm done with this" and "it's gone".
- */
-export function canDeletePost(payload: Record<string, unknown>): boolean {
-  return postStatus(payload) === "archived";
+/** Every status but Generating, whose landing draft would rewrite a deleted card. */
+export function canDeletePost(status: PostStatus): boolean {
+  return status !== "generating";
 }
 
 /**
@@ -634,7 +639,7 @@ export function listPostsWithMeta(
   return listBlogPayloads(decofile, "posts").map(({ key, payload }) => ({
     key,
     duplicateTitle: duplicates.has(key),
-    title: str(payload.title) || "Untitled post",
+    title: str(payload.title) || PLACEHOLDER_NAME.posts,
     slug: str(payload.slug),
     date: str(payload.date),
     scheduledDatetime: str(payload.scheduledDatetime),
@@ -780,7 +785,7 @@ export function listAllPostsWithMeta(
     ({ key, payload }) => ({
       key,
       duplicateTitle: duplicates.has(key),
-      title: str(payload.title) || "Untitled post",
+      title: str(payload.title) || PLACEHOLDER_NAME.posts,
       slug: str(payload.slug),
       date: str(payload.date),
       scheduledDatetime: str(payload.scheduledDatetime),
@@ -983,7 +988,7 @@ export function emptyBlogPayload(
   switch (kind) {
     case "posts":
       return {
-        title: "Untitled post",
+        title: PLACEHOLDER_NAME.posts,
         excerpt: "",
         slug: `untitled-${randomHex(8)}`,
         date: new Date().toISOString().slice(0, 10),
@@ -995,7 +1000,7 @@ export function emptyBlogPayload(
       };
     case "authors":
       return {
-        name: "New author",
+        name: PLACEHOLDER_NAME.authors,
         type: "Person",
         email: "",
         jobTitle: "",
@@ -1005,7 +1010,7 @@ export function emptyBlogPayload(
       };
     case "categories":
       return {
-        name: "New category",
+        name: PLACEHOLDER_NAME.categories,
         slug: `category-${randomHex(8)}`,
         description: "",
         sections: [],
@@ -2364,9 +2369,15 @@ export function normalizeTitleKey(title: string): string {
     .trim();
 }
 
+/** What two records clash on, or "" for an empty or placeholder name. */
+function duplicateNameKey(kind: BlogKind, name: string): string {
+  const key = normalizeTitleKey(name);
+  return key === normalizeTitleKey(PLACEHOLDER_NAME[kind]) ? "" : key;
+}
+
 /**
  * Whether another record of `kind` already carries `name`, comparing on
- * {@link normalizeTitleKey} so casing, accents and spacing don't hide a clash.
+ * {@link duplicateNameKey} so casing, accents and spacing don't hide a clash.
  * An empty name is never a duplicate — that is the "missing field" guard's job.
  *
  * Takes the name separately from the decofile so an editor can ask about the
@@ -2378,11 +2389,11 @@ export function hasDuplicateName(
   blockKey: string,
   name: string,
 ): boolean {
-  const key = normalizeTitleKey(name);
+  const key = duplicateNameKey(kind, name);
   if (!key) return false;
   return namedRecords(decofile, kind).some(
     (record) =>
-      record.key !== blockKey && normalizeTitleKey(record.name) === key,
+      record.key !== blockKey && duplicateNameKey(kind, record.name) === key,
   );
 }
 
@@ -2409,13 +2420,13 @@ function namedRecords(
   }));
 }
 
-/** Block keys of posts whose non-empty title collides with another post's. */
+/** Block keys of posts whose title collides with another post's ({@link duplicateNameKey}). */
 export function duplicateTitleKeys(
   decofile: Record<string, unknown>,
 ): Set<string> {
   const byKey = new Map<string, string[]>();
   for (const { key, name } of namedRecords(decofile, "posts")) {
-    const normalized = normalizeTitleKey(name);
+    const normalized = duplicateNameKey("posts", name);
     if (!normalized) continue;
     const keys = byKey.get(normalized);
     keys ? keys.push(key) : byKey.set(normalized, [key]);
