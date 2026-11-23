@@ -4,6 +4,17 @@ import { useState, type FormEvent } from "react";
 import { Edit03, Stars02, Target04 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { PLAN_OBJECTIVE_MAX_LENGTH } from "@decocms/shared/organization/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
@@ -48,6 +59,47 @@ function FindNoticeText({
       )}
       <p>{t("plan.objective.connectHint")}</p>
     </div>
+  );
+}
+
+/** The goal is the organization's, so clearing it asks first. */
+function ClearGoal({
+  disabled,
+  onClear,
+}: {
+  disabled: boolean;
+  onClear: () => void;
+}) {
+  const t = useT();
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost-destructive"
+          size="sm"
+          disabled={disabled}
+        >
+          {t("plan.objective.clear")}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("plan.objective.clearConfirm.title")}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {t("plan.objective.clearConfirm.description")}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t("plan.objective.cancel")}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={onClear}>
+            {t("plan.objective.clearConfirm.action")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -135,18 +187,8 @@ function ObjectiveForm({
           <Stars02 />
           {t("plan.objective.find")}
         </Button>
+        {initial && <ClearGoal disabled={busy} onClear={() => write(null)} />}
         <div className="ml-auto flex gap-2">
-          {initial && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => write(null)}
-            >
-              {t("plan.objective.clear")}
-            </Button>
-          )}
           {onDone && (
             <Button
               type="button"

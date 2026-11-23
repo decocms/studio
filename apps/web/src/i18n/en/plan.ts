@@ -11,6 +11,10 @@ export const plan = {
   "plan.objective.save": "Save",
   "plan.objective.cancel": "Cancel",
   "plan.objective.clear": "Clear goal",
+  "plan.objective.clearConfirm.title": "Clear the store goal?",
+  "plan.objective.clearConfirm.description":
+    "This removes the goal for everyone in the organization: every member's Plan page and every new business case stop using it.",
+  "plan.objective.clearConfirm.action": "Clear goal",
   "plan.objective.find": "Find with AI",
   "plan.objective.finding": "Reading the brand's files, meetings and messages…",
   "plan.objective.found": "Found in {source}: “{quote}”",

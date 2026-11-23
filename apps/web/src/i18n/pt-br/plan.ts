@@ -13,6 +13,10 @@ export const plan = {
   "plan.objective.save": "Salvar",
   "plan.objective.cancel": "Cancelar",
   "plan.objective.clear": "Apagar objetivo",
+  "plan.objective.clearConfirm.title": "Apagar o objetivo da loja?",
+  "plan.objective.clearConfirm.description":
+    "Isso apaga o objetivo para toda a organização: a página Plan de cada membro e os novos casos de negócio deixam de usá-lo.",
+  "plan.objective.clearConfirm.action": "Apagar objetivo",
   "plan.objective.find": "Buscar com IA",
   "plan.objective.finding": "Lendo arquivos, reuniões e conversas da marca…",
   "plan.objective.found": "Encontrei em {source}: “{quote}”",
