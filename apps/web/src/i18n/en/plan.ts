@@ -323,6 +323,10 @@ export const plan = {
   "plan.opportunities.stage.verify":
     "Testing each hypothesis on the live store and in the code",
   "plan.opportunities.stage.relevance": "How many people each change reaches",
+  "plan.opportunities.summary.noSources": "No sources",
+  "plan.opportunities.noSources.heading": "No sources to measure with",
+  "plan.opportunities.noSources.description":
+    "Connect the sources below, then run the analysis again.",
   "plan.opportunities.empty.heading": "No losses found for this goal yet",
   "plan.opportunities.empty.description":
     "Run an analysis to measure where the store loses the most.",

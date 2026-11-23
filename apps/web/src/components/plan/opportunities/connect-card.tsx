@@ -22,14 +22,11 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t.ts";
 import { useConnections, useProjectContext } from "@/sdk";
+import { errorText } from "./opportunity-view.ts";
 import { useDiagnosisSetup } from "./use-plan-diagnosis.ts";
 
 /** What the engine calls on the BigQuery connection it is bound to. */
 const BIGQUERY_BINDING = [{ name: "bigquery_query" }];
-
-function errorText(error: unknown): string | null {
-  return error instanceof Error && error.message ? error.message : null;
-}
 
 function SetupForm() {
   const t = useT();

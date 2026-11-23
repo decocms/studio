@@ -155,6 +155,22 @@ describe("parseToolResult", () => {
     }
   });
 
+  it("a page analysed at a date that does not parse is an error", () => {
+    const [page] = storeViewFixture.pages;
+    for (const analysed_at of ["not-a-date", "", "2026-13-45"]) {
+      const result = parseToolResult(StoreViewSchema, {
+        ...storeViewFixture,
+        pages: [{ ...page, analysed_at }],
+      });
+      expect(result.ok).toBe(false);
+    }
+    const offset = parseToolResult(StoreViewSchema, {
+      ...storeViewFixture,
+      pages: [{ ...page, analysed_at: "2026-11-20T09:00:00-03:00" }],
+    });
+    expect(offset.ok).toBe(true);
+  });
+
   it("view with gaps keeps them", () => {
     const view = parsedView(storeViewWithGapsFixture);
     const [page] = view.pages;

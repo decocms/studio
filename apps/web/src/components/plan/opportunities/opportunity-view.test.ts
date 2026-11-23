@@ -3,6 +3,7 @@ import {
   StoreViewSchema,
   type StoreOpportunity,
   type StoreOpportunityHypothesis,
+  type StorePage,
   type StoreView,
 } from "./diagnosis-schema.ts";
 import { storeViewFixture, storeViewWithGapsFixture } from "./fixtures.ts";
@@ -263,6 +264,22 @@ describe("sectionPhase", () => {
       phase: "empty",
     });
   });
+
+  it("is no_sources when a finished run found nothing and named gaps", () => {
+    const gaps = StoreViewSchema.parse(storeViewWithGapsFixture);
+    expect(sectionPhase(gaps)).toEqual({ phase: "no_sources" });
+  });
+
+  it("losses win over gaps, and a run going wins over gaps", () => {
+    const gaps = StoreViewSchema.parse(storeViewWithGapsFixture);
+    expect(sectionPhase({ ...gaps, top: view.top })).toEqual({
+      phase: "results",
+      refreshing: false,
+    });
+    expect(sectionPhase({ ...gaps, running: true })).toEqual({
+      phase: "running",
+    });
+  });
 });
 
 describe("viewGaps", () => {
@@ -296,6 +313,19 @@ describe("viewScope", () => {
       pages: ["home", "pdp"],
       analysedAt: "2026-11-20T12:05:00.000Z",
     });
+  });
+
+  it("picks the latest analysis by time across offsets", () => {
+    const [home, pdp] = view.pages as [StorePage, StorePage];
+    const mixed = {
+      ...view,
+      pages: [
+        // 12:30 UTC, later, though it sorts first as text.
+        { ...home, analysed_at: "2026-11-20T09:30:00-03:00" },
+        { ...pdp, analysed_at: "2026-11-20T12:05:00.000Z" },
+      ],
+    };
+    expect(viewScope(mixed).analysedAt).toBe("2026-11-20T09:30:00-03:00");
   });
 
   it("has no date without pages", () => {

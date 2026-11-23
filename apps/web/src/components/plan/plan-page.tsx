@@ -5,6 +5,7 @@
  *  store goal. */
 
 import { useState } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Page } from "@/components/page";
 import {
   useOrgFlag,
@@ -14,7 +15,10 @@ import { usePlanGoals, usePlanGoalsLive } from "@/hooks/use-plan-goals";
 import { PlanGuide } from "./guide/plan-guide.tsx";
 import { PlanGuideResume } from "./guide/plan-guide-resume.tsx";
 import { usePlanGuide } from "./guide/use-plan-guide.ts";
-import { OpportunitiesSection } from "./opportunities/opportunities-section.tsx";
+import {
+  OpportunitiesSection,
+  OpportunitiesSectionFallback,
+} from "./opportunities/opportunities-section.tsx";
 import { PlanCasesList } from "./plan-cases-list.tsx";
 import { PlanGoalsSection } from "./plan-goals.tsx";
 import { PlanIdeaComposer } from "./plan-idea-composer.tsx";
@@ -64,7 +68,11 @@ export function PlanPage() {
             />
           )}
           <PlanIdeaComposer initialIdea={draft} onSubmit={guide.start} />
-          <OpportunitiesSection goal={goal} />
+          <ErrorBoundary
+            fallback={(props) => <OpportunitiesSectionFallback {...props} />}
+          >
+            <OpportunitiesSection goal={goal} />
+          </ErrorBoundary>
           <PlanCasesList goalId={goal.id} />
         </Page.Container>
       </Page.Content>

@@ -126,6 +126,11 @@ export function summaryNumbers(v: StoreView): {
   };
 }
 
+/** An error's message for detail text under a translated headline. */
+export function errorText(error: unknown): string | null {
+  return error instanceof Error && error.message ? error.message : null;
+}
+
 /** The engine's money is in BRL; the reader's language sets the format. */
 export function formatMoney(value: number, locale: string): string {
   return new Intl.NumberFormat(locale, {
@@ -139,14 +144,18 @@ export function formatMoney(value: number, locale: string): string {
 export type SectionPhase =
   | { phase: "results"; refreshing: boolean }
   | { phase: "running" }
+  | { phase: "no_sources" }
   | { phase: "empty" };
 
-/** A run that starts over keeps the last result on screen until it ends. */
+/** A run that starts over keeps the last result on screen until it ends. A
+ *  finished run with nothing found and named gaps lacked sources, so running
+ *  it again would not help until they are connected. */
 export function sectionPhase(v: StoreView): SectionPhase {
   if (v.top.length + v.others.length > 0) {
     return { phase: "results", refreshing: v.running };
   }
-  return v.running ? { phase: "running" } : { phase: "empty" };
+  if (v.running) return { phase: "running" };
+  return viewGaps(v).length > 0 ? { phase: "no_sources" } : { phase: "empty" };
 }
 
 /** The sources that did not answer, named once across pages. */
@@ -161,13 +170,16 @@ export function viewScope(v: StoreView): {
   analysedAt: string | null;
 } {
   const covered = new Set(v.pages.map((p) => p.page_type));
-  const analysedAt = v.pages.reduce<string | null>(
-    (latest, p) => (latest && latest >= p.analysed_at ? latest : p.analysed_at),
+  const latest = v.pages.reduce<{ at: string; time: number } | null>(
+    (best, p) => {
+      const time = Date.parse(p.analysed_at);
+      return best && best.time >= time ? best : { at: p.analysed_at, time };
+    },
     null,
   );
   return {
     whole: PAGE_ORDER.every((p) => covered.has(p)),
     pages: PAGE_ORDER.filter((p) => covered.has(p)),
-    analysedAt,
+    analysedAt: latest?.at ?? null,
   };
 }

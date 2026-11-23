@@ -21,6 +21,7 @@ import {
   OpportunityCard,
 } from "./opportunity-card.tsx";
 import {
+  errorText,
   formatMoney,
   sectionPhase,
   summaryNumbers,
@@ -37,10 +38,6 @@ export interface OpportunitiesSectionProps extends OpportunityActions {
   onNewRun?: () => void;
   /** Opens the store, step by step. Hidden when absent. */
   onOpenStore?: () => void;
-}
-
-function errorText(error: unknown): string | null {
-  return error instanceof Error && error.message ? error.message : null;
 }
 
 function NewRunButton({ onNewRun }: { onNewRun?: () => void }) {
@@ -201,20 +198,24 @@ function Summary({ view }: { view: StoreView }) {
                   }),
             )}
         </div>
-        {view.sources.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-muted-foreground">
-              {t("plan.opportunities.summary.sources")}
-            </span>
-            <div className="flex max-w-64 flex-wrap gap-1.5">
-              {view.sources.map((source) => (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">
+            {t("plan.opportunities.summary.sources")}
+          </span>
+          <div className="flex max-w-64 flex-wrap gap-1.5">
+            {view.sources.length === 0 ? (
+              <Badge variant="muted">
+                {t("plan.opportunities.summary.noSources")}
+              </Badge>
+            ) : (
+              view.sources.map((source) => (
                 <Badge key={source} variant="info">
                   {source}
                 </Badge>
-              ))}
-            </div>
+              ))
+            )}
           </div>
-        )}
+        </div>
       </div>
       {gaps.length > 0 && <Gaps gaps={gaps} />}
     </Card>
@@ -237,7 +238,17 @@ function Gaps({ gaps }: { gaps: string[] }) {
   );
 }
 
-function Empty({ view, onNewRun }: { view: StoreView; onNewRun?: () => void }) {
+/** Nothing found: either the run had no sources to measure with, which the
+ *  gaps name, or it measured and found no loss. */
+function Empty({
+  view,
+  noSources,
+  onNewRun,
+}: {
+  view: StoreView;
+  noSources: boolean;
+  onNewRun?: () => void;
+}) {
   const t = useT();
   const gaps = viewGaps(view);
   const failed = view.pages.filter(
@@ -247,10 +258,14 @@ function Empty({ view, onNewRun }: { view: StoreView; onNewRun?: () => void }) {
     <Card className="items-start gap-3">
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-medium text-foreground">
-          {t("plan.opportunities.empty.heading")}
+          {noSources
+            ? t("plan.opportunities.noSources.heading")
+            : t("plan.opportunities.empty.heading")}
         </h3>
         <p className="text-sm text-muted-foreground">
-          {t("plan.opportunities.empty.description")}
+          {noSources
+            ? t("plan.opportunities.noSources.description")
+            : t("plan.opportunities.empty.description")}
         </p>
       </div>
       {failed.length > 0 && (
@@ -313,11 +328,15 @@ function StoreSection({
     );
   }
 
-  if (phase.phase === "empty") {
+  if (phase.phase === "empty" || phase.phase === "no_sources") {
     return (
       <Frame eyebrow={eyebrow}>
         {stale}
-        <Empty view={view} onNewRun={onNewRun} />
+        <Empty
+          view={view}
+          noSources={phase.phase === "no_sources"}
+          onNewRun={onNewRun}
+        />
       </Frame>
     );
   }
@@ -356,11 +375,28 @@ function StoreSection({
   );
 }
 
+/** For an error boundary around the section: the section's error card, so a
+ *  render failure here leaves the rest of Plan working. */
+export function OpportunitiesSectionFallback({
+  error,
+  resetError,
+}: {
+  error: Error | null;
+  resetError: () => void;
+}) {
+  return (
+    <Frame>
+      <SectionError error={errorText(error)} retry={resetError} />
+    </Frame>
+  );
+}
+
 export function OpportunitiesSection(props: OpportunitiesSectionProps) {
   const status = usePlanDiagnosisStatus();
   switch (status.state) {
     case "loading":
-      return <SectionSkeleton />;
+      // Most deployments answer "not available", so nothing holds the space.
+      return null;
     case "error":
       return (
         <Frame>

@@ -152,10 +152,16 @@ const StoreOpportunitySchema = OpportunitySchema.extend({
 });
 export type StoreOpportunity = z.infer<typeof StoreOpportunitySchema>;
 
+/** A date the page formats; one that does not parse fails the view instead
+ *  of throwing while it renders. */
+const DateStringSchema = z
+  .string()
+  .refine((s) => !Number.isNaN(Date.parse(s)), "Expected a date");
+
 const StorePageSchema = z.object({
   page_type: PageTypeSchema,
   diagnosis_id: z.string(),
-  analysed_at: z.string(),
+  analysed_at: DateStringSchema,
   status: DiagnosisStatusSchema,
   stage: z.string().nullable(),
   progress_note: z.string().nullable(),
