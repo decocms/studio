@@ -34,6 +34,7 @@ const createMockContext = (
     asyncResearchJobs: null as never,
     tags: null as never,
     sprints: null as never,
+    planGoals: null as never,
     projectSidebar: null as never,
     experiments: null as never,
     aiProviderKeys: null as never,

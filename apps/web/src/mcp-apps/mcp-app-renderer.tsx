@@ -10,6 +10,7 @@ import type {
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { injectCSP } from "@decocms/shared/mcp-apps/csp-injector";
+import { permissionsToAllow } from "@decocms/shared/mcp-apps/permissions";
 import type { McpUiResourceCsp } from "@decocms/shared/mcp-apps/types";
 import { authClient } from "@/lib/auth-client";
 import { useAppBridge } from "./use-app-bridge.ts";
@@ -27,18 +28,20 @@ const openedMcpApps = new Set<string>();
 type ReadResourceData = {
   contents?: Array<{
     text?: string;
-    _meta?: { ui?: { csp?: McpUiResourceCsp } };
+    _meta?: { ui?: { csp?: McpUiResourceCsp; permissions?: unknown } };
   }>;
 };
 
-function useResourceHtml(data: ReadResourceData | undefined): string | null {
+function useResourceHtml(
+  data: ReadResourceData | undefined,
+): { html: string; allow: string } | null {
   const content = data?.contents?.[0];
   if (!content || !("text" in content) || !content.text) return null;
-  return injectCSP(content.text, {
-    resourceCsp: (
-      content._meta as { ui?: { csp?: McpUiResourceCsp } } | undefined
-    )?.ui?.csp,
-  });
+  const ui = content._meta?.ui;
+  return {
+    html: injectCSP(content.text, { resourceCsp: ui?.csp }),
+    allow: permissionsToAllow(ui?.permissions),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +83,7 @@ interface MCPAppRendererProps {
 
 function MCPAppFrame({
   html,
+  allow,
   uri,
   orgId,
   toolInfo,
@@ -96,6 +100,8 @@ function MCPAppFrame({
   className,
 }: Omit<MCPAppRendererProps, "resourceURI" | "orgSlug" | "connectionId"> & {
   html: string | null;
+  /** iframe `allow` for the capabilities the resource declares. */
+  allow: string;
   uri: string;
 }) {
   // Fire mcp_app_opened once per (page session × resource URI) — render-time
@@ -184,6 +190,9 @@ function MCPAppFrame({
         // With scripts enabled that would be a full sandbox escape — the app
         // bridge uses postMessage, which needs no same-origin.
         sandbox="allow-scripts allow-forms allow-popups allow-downloads"
+        // Only what the resource declared in `_meta.ui.permissions` (e.g. the
+        // mic for dictation); nothing when it declares none.
+        allow={allow || undefined}
         className={cn("w-full h-full border-0", isLoading && "invisible")}
         title={`MCP App: ${toolName ?? uri}`}
       />
@@ -208,7 +217,14 @@ function MCPAppRendererViaGet({
     uri: resourceURI,
     staleTime: 30_000,
   });
-  return <MCPAppFrame html={html.data} uri={resourceURI} {...frameProps} />;
+  return (
+    <MCPAppFrame
+      html={html.data.html}
+      allow={html.data.allow}
+      uri={resourceURI}
+      {...frameProps}
+    />
+  );
 }
 
 // JSON-RPC `resources/read` path (CSP injected client-side). Used wherever the
@@ -222,8 +238,15 @@ function MCPAppRendererViaClient({
     uri: resourceURI,
     staleTime: 30_000,
   });
-  const html = useResourceHtml(data);
-  return <MCPAppFrame html={html} uri={resourceURI} {...frameProps} />;
+  const resource = useResourceHtml(data);
+  return (
+    <MCPAppFrame
+      html={resource?.html ?? null}
+      allow={resource?.allow ?? ""}
+      uri={resourceURI}
+      {...frameProps}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -158,7 +158,11 @@ export interface FreestyleSandboxProviderOptions {
    * into the base snapshot, so code in any of these sandboxes can read it.
    */
   commitSigning?: { email: string; privateKey: string };
-  /** Pause a VM after this long without network activity. Default 5 min. */
+  /**
+   * Pause a VM after this long without network activity. Default 2 min: a
+   * live run's dispatch heartbeat writes every 15s, so only a VM nobody is
+   * using goes this quiet.
+   */
   idleTimeoutSeconds?: number;
   /**
    * Also pause a running VM once its daemon has gone this long unused. The
@@ -169,7 +173,9 @@ export interface FreestyleSandboxProviderOptions {
   idlePauseMs?: number;
   /**
    * Freestyle deletes a VM after this long without running, with no shutdown
-   * sync. Default 1 day. A plan that caps it lower gets its cap.
+   * sync. Default 4 hours: 95% of follow-ups in a chat arrive within 3, and the
+   * retire sweep keeps any VM with unsaved work. A plan that caps it lower
+   * gets its cap.
    */
   autoDeleteSeconds?: number;
   /**
@@ -261,9 +267,9 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.allowUserNamespaces = opts.allowUserNamespaces ?? false;
     this.commitSigning = opts.commitSigning;
-    this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
+    this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 2 * 60;
     this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
-    this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
+    this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 4 * 60 * 60;
     this.daemonBootTimeoutMs =
       opts.daemonBootTimeoutMs ?? DAEMON_BOOT_TIMEOUT_MS;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";

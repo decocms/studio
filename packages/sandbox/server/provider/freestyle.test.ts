@@ -53,11 +53,11 @@ function fakeClient(opts: { autoDeleteCap?: boolean } = {}) {
 }
 
 describe("FreestyleSandboxProvider", () => {
-  test("creates VMs that are deleted after a day paused", async () => {
+  test("creates VMs that are deleted after 4 hours paused", async () => {
     const { client, creates } = fakeClient();
     const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
     await provider.ensure(ID);
-    expect(creates.at(-1)?.autoDeleteSeconds).toBe(24 * 60 * 60);
+    expect(creates.at(-1)?.autoDeleteSeconds).toBe(4 * 60 * 60);
     provider.close();
   });
 

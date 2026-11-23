@@ -11,6 +11,7 @@ import {
   Cube01,
   FileSearch02,
   GitBranch01,
+  Flag01,
   GitCommit,
   GitMerge,
   Microphone01,
@@ -432,6 +433,12 @@ export function PlanSettings() {
           icon={<Target04 size={16} />}
           titleKey="settings.plan.pageTitle"
           descriptionKey="settings.plan.pageDescription"
+        />
+        <FlagToggle
+          flag="plan_goals_enabled"
+          icon={<Flag01 size={16} />}
+          titleKey="settings.plan.goalsTitle"
+          descriptionKey="settings.plan.goalsDescription"
         />
       </SettingsCard>
     </SettingsSection>

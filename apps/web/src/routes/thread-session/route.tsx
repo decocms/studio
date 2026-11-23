@@ -10,10 +10,7 @@ import {
 } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Chat, useChatTask } from "@/components/chat/index";
-import {
-  ChatTaskValueProvider,
-  type ChatTaskContextValue,
-} from "@/components/chat/context";
+import { ChatTaskValueProvider } from "@/components/chat/context";
 import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
@@ -73,6 +70,7 @@ import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { resolveThreadSessionIdentity } from "./session-identity";
+import { projectPanelTaskValue } from "./project-panel-task";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -558,19 +556,7 @@ function ProjectPanelThread({
     id === panel?.threadId ? panel.branch : undefined,
   );
   const task = ensured.status === "ready" ? ensured.task : null;
-  const value: ChatTaskContextValue = {
-    ...chat,
-    // The panel asks the sandbox as its own draft; the URL's chat may be a CMS session whose stamp the server would judge instead.
-    taskId: task?.id ?? chat.taskId,
-    activeTask: task,
-    isThreadLocked: task?.harness_id != null,
-    lockedHarness: task?.harness_id ?? null,
-    lockedBranch: task?.branch ?? null,
-    currentBranch: task?.branch ?? null,
-    setCurrentTaskBranch: (branch) => {
-      if (task) threadActions.setBranch(task.id, branch);
-    },
-  };
+  const value = projectPanelTaskValue(chat, task, threadActions.setBranch);
 
   return (
     <ChatTaskValueProvider value={value}>

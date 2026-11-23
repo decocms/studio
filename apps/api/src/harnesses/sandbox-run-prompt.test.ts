@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { harnessStreamInputSchema } from "@decocms/sandbox/dispatch/schemas";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import { TASK_RUN_INSTRUCTIONS_KEY } from "@/harnesses/claude-code-env";
+import type { HarnessUserContext } from "@/harnesses/lib/types";
 import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import {
   modeInstruction,
@@ -38,56 +39,91 @@ describe("sandboxRunPrompt", () => {
     mode: "default" as const,
     threadId: "thread-now",
     userEmail: "person@example.com",
+    unattended: false,
   };
-
-  test("renders interests and recent threads but no agents catalog", () => {
-    const prompt = sandboxRunPrompt({
-      ...base,
-      userContext: {
-        interests: [{ title: "Launch v2", summary: "Ship the new checkout" }],
-        recentThreads: {
-          total: 2,
-          threads: [
-            {
-              id: "thread-now",
-              title: "This chat",
-              updated_at: "2026-10-06T00:00:00Z",
-            },
-            {
-              id: "thread-old",
-              title: "Pricing page copy",
-              updated_at: "2026-10-01T00:00:00Z",
-            },
-          ],
+  const userContext: HarnessUserContext = {
+    interests: [{ title: "Launch v2", summary: "Ship the new checkout" }],
+    recentThreads: {
+      total: 2,
+      threads: [
+        {
+          id: "thread-now",
+          title: "This chat",
+          updated_at: "2026-10-06T00:00:00Z",
         },
-        agents: [
-          {
-            id: "agent-self",
-            name: "Me",
-            description: null,
-            status: "active",
-          },
-          {
-            id: "agent-sales",
-            name: "Sales",
-            description: "Answers pricing",
-            status: "active",
-          },
-          {
-            id: "agent-off",
-            name: "Retired",
-            description: null,
-            status: "inactive",
-          },
-        ],
+        {
+          id: "thread-old",
+          title: "Pricing page copy",
+          updated_at: "2026-10-01T00:00:00Z",
+        },
+      ],
+    },
+    agents: [
+      { id: "agent-self", name: "Me", description: null, status: "active" },
+      {
+        id: "agent-sales",
+        name: "Sales",
+        description: "Answers pricing",
+        status: "active",
       },
-    });
-    expect(prompt).toContain("person@example.com");
-    expect(prompt).toContain("Launch v2: Ship the new checkout");
-    expect(prompt).toContain('"Pricing page copy"');
+      {
+        id: "agent-off",
+        name: "Retired",
+        description: null,
+        status: "inactive",
+      },
+    ],
+  };
+  const WHO = [
+    "## About this user",
+    "### Who you're talking to",
+    "You're talking to person@example.com. Address them by name when it's natural.",
+  ].join("\n\n");
+
+  test("the chat's opener gets the whole block but no agents catalog", () => {
+    const prompt = sandboxRunPrompt({ ...base, userContext });
+    expect(prompt).toBe(
+      [
+        WHO,
+        "### Your history together",
+        "You and this user have had 1 previous conversation. Most recent:",
+        '- "Pricing page copy" (2026-10-01)',
+        "Don't recap these unprompted, but use them so you recognize the user and pick up context naturally instead of treating them as a stranger.",
+        "### What they're working toward",
+        "Most important first:",
+        "- Launch v2: Ship the new checkout",
+        "When the conversation is open-ended or clearly related, gently surface one concrete next step toward these. Do NOT derail a focused task the user is already on, and never force an interest in when it isn't relevant.",
+        "When you learn a durable new goal the user is working toward — or clear progress on an existing one — call `update_interests` to keep this record current. Skip one-off questions.",
+      ].join("\n\n"),
+    );
     expect(prompt).not.toContain('"This chat"');
     expect(prompt).not.toContain("available-agents");
     expect(prompt).not.toContain("agent-sales");
+  });
+
+  test("a run nobody is in gets no user block at all", () => {
+    expect(sandboxRunPrompt({ ...base, unattended: true, userContext })).toBe(
+      "",
+    );
+  });
+
+  test("the mode and preview lines do not depend on who the run is for", () => {
+    for (const unattended of [true, false]) {
+      const prompt = sandboxRunPrompt({
+        ...base,
+        unattended,
+        mode: "web-search",
+        userEmail: undefined,
+        userContext: {},
+        previewWatched: true,
+      });
+      expect(prompt).toBe(
+        [
+          "The user turned on web search for this message: answer it by calling the Studio tool `web_search`.",
+          "The user watches your dev server in a live preview beside this chat. After you build or change a page, call the Studio tool `preview_navigate` with its path so they see it.",
+        ].join("\n\n"),
+      );
+    }
   });
 
   test("appends the mode line", () => {

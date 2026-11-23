@@ -494,6 +494,12 @@ export const KEYS = {
     ["task-board-prompts", organizationId] as const,
   taskBoardSprints: (organizationId: string) =>
     ["task-board-sprints", organizationId] as const,
+  planGoalsAll: (organizationId: string) =>
+    ["plan-goals", organizationId] as const,
+  planGoals: (organizationId: string) =>
+    ["plan-goals", organizationId, "list"] as const,
+  planGoalCases: (organizationId: string, goalId: string) =>
+    ["plan-goals", organizationId, "cases", goalId] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>

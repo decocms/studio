@@ -164,6 +164,48 @@ export const plan = {
   "plan.case.card.risksQuestion": "O que pode piorar, e o que vamos vigiar?",
   "plan.case.card.unknowns": "O que ainda não sabemos",
   "plan.case.card.unknownsQuestion": "O que falta, e como descobrir?",
+  "plan.goals.eyebrow": "Seu objetivo",
+  "plan.goals.empty":
+    "Escreva em uma frase o objetivo em que você está trabalhando. Qualquer pessoa da organização pode trabalhar nele também, ou adicionar o dela.",
+  "plan.goals.change": "Trocar objetivo",
+  "plan.goals.search": "Buscar objetivos",
+  "plan.goals.yours": "Seus",
+  "plan.goals.others": "Usados na sua organização",
+  "plan.goals.noMatch": "Nenhum objetivo encontrado.",
+  "plan.goals.people": "Pessoas trabalhando nele",
+  "plan.goals.new": "Novo objetivo",
+  "plan.goals.edit": "Editar",
+  "plan.goals.archive": "Arquivar",
+  "plan.goals.archiveConfirm.title": "Arquivar este objetivo?",
+  "plan.goals.archiveConfirm.description":
+    "Ele sai da lista de objetivos de todo mundo, e quem trabalhava nele volta para o primeiro objetivo da organização. Os business cases criados para ele continuam com ele.",
+  "plan.goals.archiveConfirm.action": "Arquivar objetivo",
+  "plan.goals.cancel": "Cancelar",
+  "plan.goals.found": "Encontrado em {source}",
+  "plan.goals.saveError": "Não deu para salvar o objetivo. Tente de novo.",
+  "plan.goals.pickError": "Não deu para trocar de objetivo. Tente de novo.",
+  "plan.goals.archiveError": "Não deu para arquivar o objetivo. Tente de novo.",
+  "plan.goals.suggest.action": "Sugerir objetivos com IA",
+  "plan.goals.suggest.finding":
+    "Lendo os arquivos, reuniões e mensagens da marca atrás dos objetivos dela…",
+  "plan.goals.suggest.heading":
+    "Objetivos encontrados no que o seu time escreveu e falou",
+  "plan.goals.suggest.description":
+    "Adicione aqueles em que você trabalha. Nada é salvo até você adicionar.",
+  "plan.goals.suggest.found": "Encontrado em {source}: “{quote}”",
+  "plan.goals.suggest.add": "Adicionar",
+  "plan.goals.suggest.edit": "Editar",
+  "plan.goals.suggest.dismiss": "Descartar",
+  "plan.goals.suggest.close": "Fechar",
+  "plan.goals.suggest.notFound":
+    "Não encontrei um objetivo nos arquivos e conversas da marca. Escreva um do jeito que o seu time falaria.",
+  "plan.goals.suggest.allListed":
+    "Todos os objetivos que encontrei já estão na lista da sua organização.",
+  "plan.cases.towardGoal": "Neste objetivo",
+  "plan.cases.towardGoalDescription":
+    "Business cases que qualquer pessoa da organização criou para este objetivo.",
+  "plan.cases.goalEmpty": "Ainda não há business case para este objetivo.",
+  "plan.cases.mine": "Seus",
   "plan.cases.heading": "Seus business cases",
   "plan.cases.description": "Abra um para ver o canvas e continuar a conversa.",
   "plan.cases.updated": "Atualizado {when}",

@@ -1,7 +1,11 @@
 /** What the goal finder may read, and the check that a proposed quote was really said. */
 
 import { memoryTemplate } from "@decocms/shared/memory";
+import { PLAN_GOAL_MAX_LENGTH, planGoalKey } from "@decocms/shared/plan-goals";
 import type { OrgFsEntry } from "../../storage/org-fs";
+
+/** Goals one search proposes at most; more must not mean more reading. */
+export const MAX_GOAL_CANDIDATES = 6;
 
 export interface Evidence {
   kind: "memory" | "file" | "connection";
@@ -142,6 +146,8 @@ export type Proposal =
   | { ok: true; statement: string; quote: string; source: Evidence }
   | { ok: false; reason: "not_found" | "not_clear" };
 
+export type Candidate = Extract<Proposal, { ok: true }>;
+
 /**
  * The model's proposal, kept only with both a sentence and a quote, and only
  * when the quote is found in what was read; Jev judges it next.
@@ -157,4 +163,48 @@ export function checkProposal(
   return source
     ? { ok: true, statement, quote, source }
     : { ok: false, reason: "not_clear" };
+}
+
+/** Why a search ended with no candidate to show. */
+export type NoCandidateReason = "not_found" | "not_clear" | "already_listed";
+
+/**
+ * The model's proposals worth showing, in its order: each one passes
+ * `checkProposal`, fits one goal sentence, and is new, neither one of the
+ * `existing` goals nor a repeat of an earlier proposal. At most
+ * `MAX_GOAL_CANDIDATES`; with none left, `reason` says why.
+ */
+export function checkCandidates(
+  proposals: readonly { statement: string | null; quote: string | null }[],
+  evidence: readonly Evidence[],
+  existing: readonly string[],
+  limit: number = MAX_GOAL_CANDIDATES,
+): { candidates: Candidate[]; reason: NoCandidateReason | null } {
+  const listedKeys = new Set(existing.map(planGoalKey));
+  const proposed = new Set<string>();
+  const candidates: Candidate[] = [];
+  let unproven = false;
+  let listed = false;
+  for (const raw of proposals) {
+    if (candidates.length >= limit) break;
+    const proposal = checkProposal(raw, evidence);
+    if (!proposal.ok) {
+      unproven ||= proposal.reason === "not_clear";
+      continue;
+    }
+    if (proposal.statement.length > PLAN_GOAL_MAX_LENGTH) continue;
+    const key = planGoalKey(proposal.statement);
+    if (listedKeys.has(key)) {
+      listed = true;
+      continue;
+    }
+    if (!key || proposed.has(key)) continue;
+    proposed.add(key);
+    candidates.push(proposal);
+  }
+  if (candidates.length > 0) return { candidates, reason: null };
+  return {
+    candidates,
+    reason: listed ? "already_listed" : unproven ? "not_clear" : "not_found",
+  };
 }

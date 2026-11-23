@@ -62,6 +62,14 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_PLAN_OBJECTIVE_SET",
   "ORGANIZATION_PLAN_OBJECTIVE_FIND",
   "PLAN_CASE_NEXT_QUESTION",
+  "PLAN_GOAL_LIST",
+  "PLAN_GOAL_CREATE",
+  "PLAN_GOAL_UPDATE",
+  "PLAN_GOAL_ARCHIVE",
+  "PLAN_ACTIVE_GOAL_SET",
+  "PLAN_GOAL_CASE_RECORD",
+  "PLAN_GOAL_CASES",
+  "PLAN_GOAL_SUGGEST",
   "ORGANIZATION_HAS_SITE",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
@@ -447,6 +455,47 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "PLAN_CASE_NEXT_QUESTION",
     description: "Pick the next question of the Plan page's guided intro",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_LIST",
+    description: "List the organization's Plan goals",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_CREATE",
+    description: "Add a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_UPDATE",
+    description: "Reword a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_ARCHIVE",
+    description: "Archive a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_ACTIVE_GOAL_SET",
+    description: "Pick the Plan goal you work toward",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_CASE_RECORD",
+    description: "Record which Plan goal a business case went toward",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_CASES",
+    description: "List the business cases toward a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_SUGGEST",
+    description:
+      "Suggest Plan goals from what the brand's people wrote and said",
     category: "Organizations",
   },
   {
@@ -1952,6 +2001,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_PLAN_OBJECTIVE_FIND",
       // Any member starts a business case; asks the fast tier, saves nothing.
       "PLAN_CASE_NEXT_QUESTION",
+      // Any member reads, adds and picks Plan goals; rewording or archiving
+      // one is checked against its creator inside the handler.
+      "PLAN_GOAL_LIST",
+      "PLAN_GOAL_CREATE",
+      "PLAN_GOAL_UPDATE",
+      "PLAN_GOAL_ARCHIVE",
+      "PLAN_ACTIVE_GOAL_SET",
+      "PLAN_GOAL_CASE_RECORD",
+      "PLAN_GOAL_CASES",
+      // Any member asks the AI for goals; proposes, never saves.
+      "PLAN_GOAL_SUGGEST",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
