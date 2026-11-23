@@ -1,9 +1,13 @@
-/** The store goal at the top of Plan: a member writes it, and may ask the AI to find it in what the brand wrote and said. */
+/** The store goal at the top of Plan: a member writes it, and may ask the AI to find it in what the brand wrote and said. The form is shared with Plan goals. */
 
 import { useRef, useState, type FormEvent } from "react";
 import { Edit03, Stars02, StopCircle, Target04 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { PLAN_OBJECTIVE_MAX_LENGTH } from "@decocms/shared/organization/schema";
+import {
+  PLAN_GOAL_SOURCE_LIMITS,
+  type PlanGoalSource,
+} from "@decocms/shared/plan-goals";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,6 +92,20 @@ function FindNoticeText({
   );
 }
 
+/** Where the sentence in the input came from, while it is still the one the AI found. */
+function sourceOf(
+  notice: FindNotice | null,
+  statement: string,
+): PlanGoalSource | null {
+  if (notice?.kind !== "found" || notice.statement.trim() !== statement) {
+    return null;
+  }
+  return {
+    label: notice.source.slice(0, PLAN_GOAL_SOURCE_LIMITS.label),
+    quote: notice.quote.slice(0, PLAN_GOAL_SOURCE_LIMITS.quote),
+  };
+}
+
 /** The goal is the organization's, so clearing it asks first. */
 function ClearGoal({
   disabled,
@@ -129,13 +147,21 @@ function ClearGoal({
   );
 }
 
-function ObjectiveForm({
+export function ObjectiveForm({
   initial,
   onDone,
+  saving,
+  onSave,
+  onClear,
 }: {
   initial: string;
   /** Leaves the form; absent while no goal is saved, so the form is the page. */
   onDone?: () => void;
+  saving: boolean;
+  /** Writes the sentence; `source` is set while it is still what the AI found. */
+  onSave: (statement: string, source: PlanGoalSource | null) => void;
+  /** Offers to clear the goal; absent when there is nothing to clear. */
+  onClear?: () => void;
 }) {
   const t = useT();
   const [draft, setDraft] = useState(initial);
@@ -146,23 +172,13 @@ function ObjectiveForm({
   const [suggested, setSuggested] = useState(false);
   /** Only the latest search may answer; Stop moves this on. */
   const lookups = useRef(0);
-  const save = useSetPlanObjective();
   const find = useFindPlanObjective();
   const statement = draft.trim();
-  const busy = save.isPending || find.isPending;
-
-  const write = (value: string | null) =>
-    save.mutate(
-      { statement: value },
-      {
-        onSuccess: () => onDone?.(),
-        onError: () => toast.error(t("plan.objective.saveError")),
-      },
-    );
+  const busy = saving || find.isPending;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (statement) write(statement);
+    if (statement) onSave(statement, sourceOf(notice, statement));
   };
 
   const edit = (value: string) => {
@@ -267,14 +283,14 @@ function ObjectiveForm({
             {t("plan.objective.find")}
           </Button>
         )}
-        {initial && <ClearGoal disabled={busy} onClear={() => write(null)} />}
+        {onClear && <ClearGoal disabled={busy} onClear={onClear} />}
         <div className="ml-auto flex gap-2">
           {onDone && (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={save.isPending}
+              disabled={saving}
               onClick={onDone}
             >
               {t("plan.objective.cancel")}
@@ -286,6 +302,35 @@ function ObjectiveForm({
         </div>
       </div>
     </form>
+  );
+}
+
+/** The single store goal's form: writes `plan_objective`, and clears it. */
+function StoreGoalForm({
+  initial,
+  onDone,
+}: {
+  initial: string;
+  onDone?: () => void;
+}) {
+  const t = useT();
+  const save = useSetPlanObjective();
+  const write = (value: string | null) =>
+    save.mutate(
+      { statement: value },
+      {
+        onSuccess: () => onDone?.(),
+        onError: () => toast.error(t("plan.objective.saveError")),
+      },
+    );
+  return (
+    <ObjectiveForm
+      initial={initial}
+      onDone={onDone}
+      saving={save.isPending}
+      onSave={(statement) => write(statement)}
+      onClear={initial ? () => write(null) : undefined}
+    />
   );
 }
 
@@ -306,10 +351,10 @@ export function PlanObjective() {
           <p className="max-w-[560px] text-base text-pretty text-muted-foreground">
             {t("plan.objective.empty")}
           </p>
-          <ObjectiveForm initial="" />
+          <StoreGoalForm initial="" />
         </>
       ) : editing ? (
-        <ObjectiveForm initial={statement} onDone={() => setEditing(false)} />
+        <StoreGoalForm initial={statement} onDone={() => setEditing(false)} />
       ) : (
         <div className="flex flex-col items-start gap-3">
           <p className="max-w-[720px] text-2xl leading-snug font-medium text-balance text-foreground">

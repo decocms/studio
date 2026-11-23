@@ -59,6 +59,9 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   ALERT_RULES_LIST: { readOnly: true, destructive: false },
   ALERT_RULE_UPDATE: { readOnly: false, destructive: false },
   ORGANIZATION_PLAN_OBJECTIVE_SET: { readOnly: false, destructive: false },
+  PLAN_GOAL_LIST: { readOnly: true, destructive: false },
+  PLAN_GOAL_CREATE: { readOnly: false, destructive: false },
+  PLAN_ACTIVE_GOAL_SET: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";

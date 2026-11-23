@@ -147,6 +147,7 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -244,6 +245,7 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | undefined;
@@ -333,6 +335,7 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -385,6 +388,50 @@ export interface StudioToolIO {
       question: { text: string; options: string[] } | null;
       title: string | null;
     };
+  };
+  PLAN_GOAL_LIST: {
+    input: { [x: string]: never };
+    output: {
+      goals: {
+        id: string;
+        statement: string;
+        source: { label: string; quote: string } | null;
+        created_by: string;
+        updated_by: string;
+        created_at: string;
+        updated_at: string;
+        users: number;
+        last_case_at: string | null;
+        mine: boolean;
+        can_edit: boolean;
+      }[];
+      active_goal_id: string | null;
+    };
+  };
+  PLAN_GOAL_CREATE: {
+    input: {
+      statement: string;
+      source?: { label: string; quote: string } | null | undefined;
+      make_active?: boolean | undefined;
+    };
+    output: { id: string };
+  };
+  PLAN_GOAL_UPDATE: {
+    input: { id: string; statement: string };
+    output: { id: string };
+  };
+  PLAN_GOAL_ARCHIVE: { input: { id: string }; output: { id: string } };
+  PLAN_ACTIVE_GOAL_SET: {
+    input: { goal_id: string };
+    output: { goal_id: string };
+  };
+  PLAN_GOAL_CASE_RECORD: {
+    input: { goal_id: string; thread_id: string };
+    output: { goal_id: string };
+  };
+  PLAN_GOAL_CASES: {
+    input: { goal_id: string };
+    output: { thread_ids: string[] };
   };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };
