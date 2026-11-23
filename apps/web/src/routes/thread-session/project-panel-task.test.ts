@@ -31,7 +31,7 @@ const chat: ChatTaskContextValue = {
   taskId: chatThread.id,
   openTask,
   createTask: () => "thread-new",
-  createTaskWithMessage: () => {},
+  createTaskWithMessage: async () => true,
   activeTask: chatThread,
   isThreadLocked: true,
   lockedHarness: "claude-code",
