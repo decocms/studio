@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { memoryTemplate } from "@decocms/shared/memory";
 import {
+  checkCandidates,
   checkProposal,
+  MAX_GOAL_CANDIDATES,
   type Evidence,
   evidenceLabels,
   filesToRead,
@@ -232,5 +234,112 @@ describe("checkProposal", () => {
         evidence,
       ),
     ).toEqual({ ok: false, reason: "not_clear" });
+  });
+});
+
+describe("checkCandidates", () => {
+  const said = [
+    "Em 2027 o nosso foco é fazer o app vender mais que o site.",
+    "Queremos reduzir a taxa de troca de vestuário para menos de 12%.",
+    "A meta do trimestre é baixar o custo de aquisição em mídia paga.",
+  ].join("\n");
+  const evidence: Evidence[] = [
+    { kind: "file", label: "estrategia/2027.md", text: said },
+  ];
+  const app = {
+    statement: "Fazer o app vender mais que o site em 2027.",
+    quote: "o nosso foco é fazer o app vender mais que o site",
+  };
+  const returns = {
+    statement: "Reduzir a troca de vestuário para menos de 12%.",
+    quote: "reduzir a taxa de troca de vestuário para menos de 12%",
+  };
+  const cac = {
+    statement: "Baixar o custo de aquisição em mídia paga.",
+    quote: "A meta do trimestre é baixar o custo de aquisição",
+  };
+  const unsaid = {
+    statement: "Abrir lojas físicas.",
+    quote: "vamos abrir dez lojas físicas no ano que vem",
+  };
+
+  it("keeps every proposal whose quote was said, in the model's order", () => {
+    const { candidates, reason } = checkCandidates(
+      [app, returns, cac],
+      evidence,
+      [],
+    );
+    expect(reason).toBeNull();
+    expect(candidates.map((candidate) => candidate.statement)).toEqual([
+      app.statement,
+      returns.statement,
+      cac.statement,
+    ]);
+    expect(candidates[0]?.source.label).toBe("estrategia/2027.md");
+  });
+
+  it("drops the proposals nobody said, or without a sentence, and keeps the rest", () => {
+    const { candidates, reason } = checkCandidates(
+      [unsaid, { statement: null, quote: cac.quote }, returns],
+      evidence,
+      [],
+    );
+    expect(reason).toBeNull();
+    expect(candidates.map((candidate) => candidate.statement)).toEqual([
+      returns.statement,
+    ]);
+  });
+
+  it("skips goals the org already has, despite case, punctuation and spacing", () => {
+    const { candidates } = checkCandidates([app, returns], evidence, [
+      "  fazer o APP vender mais que o site em 2027 ",
+    ]);
+    expect(candidates.map((candidate) => candidate.statement)).toEqual([
+      returns.statement,
+    ]);
+  });
+
+  it("keeps the first of two proposals with the same sentence", () => {
+    const { candidates } = checkCandidates(
+      [
+        app,
+        { ...app, statement: "Fazer o app vender mais que o site em 2027!" },
+      ],
+      evidence,
+      [],
+    );
+    expect(candidates).toHaveLength(1);
+  });
+
+  it("drops a sentence longer than one goal", () => {
+    const { candidates, reason } = checkCandidates(
+      [{ ...app, statement: `${app.statement} ${"x".repeat(300)}` }],
+      evidence,
+      [],
+    );
+    expect(candidates).toEqual([]);
+    expect(reason).toBe("not_found");
+  });
+
+  it("proposes at most the limit, however many the model returned", () => {
+    const many = Array.from(
+      { length: MAX_GOAL_CANDIDATES + 3 },
+      (_, index) => ({
+        statement: `Meta ${index}: fazer o app vender mais que o site.`,
+        quote: app.quote,
+      }),
+    );
+    expect(checkCandidates(many, evidence, []).candidates).toHaveLength(
+      MAX_GOAL_CANDIDATES,
+    );
+  });
+
+  it("says why nothing is left", () => {
+    expect(checkCandidates([], evidence, []).reason).toBe("not_found");
+    expect(checkCandidates([unsaid], evidence, []).reason).toBe("not_clear");
+    expect(
+      checkCandidates([app, unsaid], evidence, [app.statement.toUpperCase()])
+        .reason,
+    ).toBe("already_listed");
   });
 });

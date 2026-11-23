@@ -99,6 +99,19 @@ export function groupPlanGoals(goals: readonly PlanGoal[]): {
   };
 }
 
+/**
+ * A statement reduced to its words, so two goals that differ only in case,
+ * punctuation or spacing count as the same goal.
+ */
+export function planGoalKey(statement: string): string {
+  return statement
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Case-insensitive search over the statement; a blank query keeps all. */
 export function filterPlanGoals(
   goals: readonly PlanGoal[],

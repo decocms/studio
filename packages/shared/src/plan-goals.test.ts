@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   filterPlanGoals,
   groupPlanGoals,
+  planGoalKey,
   PlanGoalStatementSchema,
   PLAN_GOAL_MAX_LENGTH,
   type PlanGoal,
@@ -65,6 +66,31 @@ describe("filterPlanGoals", () => {
 
   test("keeps every goal for a blank query", () => {
     expect(filterPlanGoals(goals, "  ")).toHaveLength(2);
+  });
+});
+
+describe("planGoalKey", () => {
+  test("treats goals that differ only in case, punctuation or spacing as one", () => {
+    const key = planGoalKey("Make the app our main sales channel in 2027.");
+    expect(planGoalKey("  make the APP our main sales-channel in 2027! ")).toBe(
+      key,
+    );
+    expect(planGoalKey("“Make the app our main sales channel in 2027”")).toBe(
+      key,
+    );
+  });
+
+  test("keeps goals with different words apart, accents included", () => {
+    expect(planGoalKey("Vender mais no app")).not.toBe(
+      planGoalKey("Vender mais no site"),
+    );
+    expect(planGoalKey("Reduzir trocas")).not.toBe(
+      planGoalKey("Reduzir troças"),
+    );
+  });
+
+  test("leaves nothing of a statement that is only punctuation", () => {
+    expect(planGoalKey(" ... !? ")).toBe("");
   });
 });
 

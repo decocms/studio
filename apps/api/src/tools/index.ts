@@ -77,6 +77,7 @@ export const CORE_TOOLS = [
   PlanGoalTools.PLAN_ACTIVE_GOAL_SET,
   PlanGoalTools.PLAN_GOAL_CASE_RECORD,
   PlanGoalTools.PLAN_GOAL_CASES,
+  PlanGoalTools.PLAN_GOAL_SUGGEST,
   OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,

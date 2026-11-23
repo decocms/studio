@@ -4,7 +4,11 @@ import { z } from "zod";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { FindResultSchema, findBrandGoal } from "./plan-goal-find";
+import {
+  FindResultSchema,
+  findBrandGoals,
+  firstFinding,
+} from "./plan-goal-find";
 
 export const ORGANIZATION_PLAN_OBJECTIVE_FIND = defineTool({
   name: "ORGANIZATION_PLAN_OBJECTIVE_FIND",
@@ -28,6 +32,6 @@ export const ORGANIZATION_PLAN_OBJECTIVE_FIND = defineTool({
     if (!orgFlagEnabled(settings?.flags, "plan_page_enabled")) {
       throw new Error("The Plan page is not enabled for this organization");
     }
-    return findBrandGoal(ctx, org.id);
+    return firstFinding(await findBrandGoals(ctx, org.id));
   },
 });

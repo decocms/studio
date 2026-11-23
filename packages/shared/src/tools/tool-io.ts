@@ -433,6 +433,24 @@ export interface StudioToolIO {
     input: { goal_id: string };
     output: { thread_ids: string[] };
   };
+  PLAN_GOAL_SUGGEST: {
+    input: { [x: string]: never };
+    output: {
+      candidates: {
+        statement: string;
+        quote: string;
+        source: { kind: "file" | "memory" | "connection"; label: string };
+      }[];
+      read: string[];
+      unread: string[];
+      reason?:
+        | "not_found"
+        | "not_clear"
+        | "unavailable"
+        | "already_listed"
+        | undefined;
+    };
+  };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };
     output: { hasSite: boolean };

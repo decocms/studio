@@ -69,6 +69,7 @@ const ALL_TOOL_NAMES = [
   "PLAN_ACTIVE_GOAL_SET",
   "PLAN_GOAL_CASE_RECORD",
   "PLAN_GOAL_CASES",
+  "PLAN_GOAL_SUGGEST",
   "ORGANIZATION_HAS_SITE",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
@@ -489,6 +490,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "PLAN_GOAL_CASES",
     description: "List the business cases toward a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_SUGGEST",
+    description:
+      "Suggest Plan goals from what the brand's people wrote and said",
     category: "Organizations",
   },
   {
@@ -2003,6 +2010,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "PLAN_ACTIVE_GOAL_SET",
       "PLAN_GOAL_CASE_RECORD",
       "PLAN_GOAL_CASES",
+      // Any member asks the AI for goals; proposes, never saves.
+      "PLAN_GOAL_SUGGEST",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
