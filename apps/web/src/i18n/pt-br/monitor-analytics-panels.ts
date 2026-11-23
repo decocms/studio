@@ -3,6 +3,10 @@ import type { monitorAnalyticsPanels as monitorAnalyticsPanelsEn } from "../en/m
 export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.empty": "Nada neste período",
   "monitor.analytics.panels.error": "Não foi possível carregar esta visão",
+  "monitor.analytics.panels.failed": "Parte desta visão não carregou",
+  "monitor.analytics.panels.failedDesc":
+    "O banco de analytics não respondeu, então alguns cards abaixo estão vazios. Tente de novo em alguns minutos.",
+  "monitor.analytics.panels.retry": "Tentar de novo",
   "monitor.analytics.panels.withheld": "Omitida",
   "monitor.analytics.panels.sampled": "Amostragem de {pct}%",
   "monitor.analytics.panels.chartMetric": "Métrica do gráfico",

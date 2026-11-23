@@ -12,7 +12,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { isNotConfigured } from "@/layouts/main-panel-tabs/analytics-tab";
 import { AXIS_TICK } from "@/layouts/task-board/analytics-sections";
 import { LiveGlobe } from "@/layouts/main-panel-tabs/analytics-globe-tab";
-import { Panel, RankedList } from "./panels";
+import { Panel, PanelsFailed, RankedList } from "./panels";
 import { useDecoView } from "./segment";
 import type { SectionProps } from "./types";
 
@@ -132,6 +132,11 @@ export function RealtimeSection({ orgSlug, site, segment }: SectionProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PanelsFailed
+        data={query.data?.data}
+        isFetching={query.isFetching}
+        onRetry={() => query.refetch()}
+      />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {kpis.map(([label, value, live]) => (
           <section

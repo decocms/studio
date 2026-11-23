@@ -161,7 +161,8 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
     }
   });
 
-  it("answers as before when Deco Analytics fails", async () => {
+  // A failure must not read as "no data": the screen offers a retry instead.
+  it("answers load_failed when Deco Analytics fails", async () => {
     const legacySpy = spyOn(legacy, "queryExperimentResults").mockResolvedValue(
       { status: "not_configured" },
     );
@@ -172,7 +173,7 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
     try {
       expect(await EXPERIMENT_RESULTS.handler(input, ctx as never)).toEqual({
         available: false,
-        reason: "not_configured",
+        reason: "load_failed",
         analyticsSite: "acme",
         results: null,
       });

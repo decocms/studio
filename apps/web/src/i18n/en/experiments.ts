@@ -124,6 +124,9 @@ export const experiments = {
   "experiments.results.noSiteData":
     "No analytics traffic found for {site}. The site may not be sending analytics events yet, or its traffic is reported under another site.",
   "experiments.results.empty": "No participants yet for this experiment.",
+  "experiments.results.loadFailed":
+    "Couldn't load the results: the analytics database didn't respond. Try again in a few minutes.",
+  "experiments.results.retry": "Try again",
   "experiments.results.control": "Control",
   "experiments.results.test": "Test",
   "experiments.results.variant": "Variant",

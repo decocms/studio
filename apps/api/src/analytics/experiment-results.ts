@@ -49,6 +49,7 @@ const Behaviour = z.object({
 });
 /** A panel that failed upstream comes back as `[]` (named in `panelErrors`). */
 const Payload = z.object({
+  panelErrors: z.record(z.string(), z.unknown()).optional().catch(undefined),
   expResults: z.array(Measures),
   expDaily: z.array(Measures.extend({ day: z.string() })).catch([]),
   expBehaviour: z.array(Behaviour.extend({ variant: z.string() })).catch([]),
@@ -252,17 +253,18 @@ function toExperimentResults(
 }
 
 /**
- * The experiment's results from Deco Analytics, or null when the site has no
- * registration the org can read, the read surface isn't configured, has no
- * rows for the experiment's configured arms, or fails. Never throws: the
- * caller then answers as before.
+ * The experiment's results from Deco Analytics; null when the site has no
+ * registration the org can read, the read surface isn't configured, or it has
+ * no rows for the experiment's configured arms; `"failed"` when the read
+ * surface could not answer (an error, or the results panel failed), so the
+ * caller doesn't report a failure as "no data". Never throws.
  */
 export async function readDecoExperimentResults(
   ctx: StudioContext,
   organizationId: string,
   input: DecoExperimentInput,
   now = new Date(),
-): Promise<DecoExperimentResults | null> {
+): Promise<DecoExperimentResults | "failed" | null> {
   const { analyticsDataUrl, analyticsMasterToken } = getSettings();
   if (!analyticsDataUrl || !analyticsMasterToken) return null;
   if (!EXPERIMENT_KEY.test(input.key)) return null;
@@ -301,7 +303,7 @@ export async function readDecoExperimentResults(
       console.error(
         `[experiments] Deco Analytics HTTP ${res.status} for site="${input.slug}"`,
       );
-      return null;
+      return res.status >= 500 ? "failed" : null;
     }
     if (!isTenantScoped(body, siteId)) {
       console.error(
@@ -317,6 +319,12 @@ export async function readDecoExperimentResults(
       );
       return null;
     }
+    if (parsed.data.panelErrors?.expResults !== undefined) {
+      console.error(
+        `[experiments] Deco Analytics results panel failed for site="${input.slug}"`,
+      );
+      return "failed";
+    }
     // Rows for arms the experiment doesn't configure (stale or unknown) would
     // map to an all-zero answer that hides the legacy outcome.
     const ids = new Set(input.variants.map((v) => v.id));
@@ -327,6 +335,6 @@ export async function readDecoExperimentResults(
       `[experiments] Deco Analytics read failed for site="${input.slug}":`,
       err,
     );
-    return null;
+    return "failed";
   }
 }

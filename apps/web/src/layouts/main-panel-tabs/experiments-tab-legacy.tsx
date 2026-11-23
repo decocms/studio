@@ -1472,12 +1472,34 @@ function GoalsTable({
 function ResultsView({
   data,
   experiment,
+  retrying,
+  onRetry,
 }: {
   data: ResultsData | undefined;
   experiment: Experiment;
+  retrying: boolean;
+  onRetry: () => void;
 }) {
   const t = useT();
   const now = useClockTick(3_600_000);
+  if (data?.reason === "load_failed") {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+        <span className="min-w-0 flex-1">
+          {t("experiments.results.loadFailed")}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={retrying}
+          onClick={onRetry}
+        >
+          {retrying && <Spinner size="xs" />}
+          {t("experiments.results.retry")}
+        </Button>
+      </div>
+    );
+  }
   if (!data?.available) {
     return (
       <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -1547,7 +1569,10 @@ function Results({
   site: string;
   experiment: Experiment;
 }) {
-  const { data, isLoading } = useExperimentResults(site, experiment.key);
+  const { data, isLoading, isFetching, refetch } = useExperimentResults(
+    site,
+    experiment.key,
+  );
   if (isLoading) {
     return (
       <div className="flex justify-center p-8">
@@ -1555,7 +1580,14 @@ function Results({
       </div>
     );
   }
-  return <ResultsView data={data} experiment={experiment} />;
+  return (
+    <ResultsView
+      data={data}
+      experiment={experiment}
+      retrying={isFetching}
+      onRetry={() => refetch()}
+    />
+  );
 }
 
 function Detail({

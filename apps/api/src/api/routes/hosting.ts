@@ -328,7 +328,8 @@ type SiteIdResolution =
  *  forwards only these: a key the upstream adds later stays server-side until
  *  Monitor is taught to read it.
  *  `pipeline`/`install`-only keys, `worker`, `panelErrors` and `meterCheck` are
- *  left out on purpose. */
+ *  left out on purpose: `panelErrors` messages can name warehouse internals,
+ *  so only the failed panels' names cross, as `failedPanels`. */
 export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
   // context the tab reads or skips as non-panel (META_KEYS)
   "range",
@@ -426,7 +427,8 @@ export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
 
 /** A read-surface payload reduced to what the Analytics tab reads: the keys in
  *  {@link ANALYTICS_PAYLOAD_KEYS}, `sites` narrowed to this site's own entry,
- *  and `usageScope` reduced to the one fact the client needs. */
+ *  `usageScope` reduced to the one fact the client needs, and `failedPanels`
+ *  naming the panels whose `[]` is a failed query, not an empty one. */
 export function toTenantAnalyticsPayload(
   payload: Record<string, unknown>,
   siteId: string,
@@ -441,6 +443,13 @@ export function toTenantAnalyticsPayload(
     );
   }
   out.usageScope = { site: siteId, tenantScoped: true };
+  const errors = payload.panelErrors;
+  if (errors && typeof errors === "object" && !Array.isArray(errors)) {
+    const failed = Object.keys(errors).filter((k) =>
+      ANALYTICS_PAYLOAD_KEYS.has(k),
+    );
+    if (failed.length > 0) out.failedPanels = failed;
+  }
   return out;
 }
 
