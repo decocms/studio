@@ -1182,7 +1182,10 @@ export const settings = {
   "settings.secrets.sectionOrganization": "Organization",
   "settings.secrets.sectionPrivate": "Private to me",
   "settings.secrets.valueLabel": "Value",
+  "settings.simpleModeSection.defaultBadge": "Default",
   "settings.simpleModeSection.defaultModels": "Default models",
+  "settings.simpleModeSection.description":
+    "Models marked Default are the recommended picks and change when the recommendation does. Pick a model to keep it.",
   "settings.simpleModeSection.failedToSave": "Failed to save: {error}",
   "settings.simpleModeSection.notAvailableWithCurrentProvider":
     "Not available with current provider",
@@ -1195,6 +1198,7 @@ export const settings = {
   "settings.simpleModeSection.tierSmart": "Smart",
   "settings.simpleModeSection.tierThinking": "Thinking",
   "settings.simpleModeSection.tierWebSearch": "Web search",
+  "settings.simpleModeSection.useDefault": "Use default",
   "settings.aiProviders.groupChat": "Chat and tasks",
   "settings.aiProviders.groupMedia": "Images and web search only",
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",

@@ -1,14 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { RefreshCw01, CheckCircle } from "@untitledui/icons";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   SettingsCard,
   SettingsCardItem,
   SettingsSection,
 } from "@/components/settings/settings-section";
 import {
+  useAutoSimpleModeDefaults,
   useHostedAiProviderKeys,
   useAiProviderModels,
   type AiProviderModel,
@@ -16,7 +19,6 @@ import {
 import {
   isDeepResearchModel,
   isQuickSearchModel,
-  pickSimpleModeDefaults,
   type SimpleModeModelSlot,
 } from "@/sdk";
 import {
@@ -28,6 +30,7 @@ import { SimpleModeConfigSchema } from "@decocms/shared/organization/schema";
 import { ModelSelector } from "@/components/chat/select-model";
 import { useDebouncedAutosave } from "@/hooks/use-debounced-autosave.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { simpleModeToPersist, tierDisplay } from "./simple-mode-form";
 
 // ── Default Models ───────────────────────────────────────────────────
 
@@ -69,13 +72,21 @@ const TIER_KEYS = [
   },
 ] as const;
 
+// Below `sm` the badge or reset button sits above the selector. Side by side
+// they leave the tier title no room, and a long title runs under the button.
+const ROW_ACTION_CLASS =
+  "flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2";
+
 function SimpleModeModelRow({
   slot,
+  followsDefault,
   onSlotChange,
   filterModels,
   defaultKeyId,
 }: {
+  /** The model to name: the admin's choice, or today's default pick. */
   slot: SimpleModeModelSlot | null;
+  followsDefault: boolean;
   onSlotChange: (slot: SimpleModeModelSlot | null) => void;
   filterModels?: (m: AiProviderModel) => boolean;
   defaultKeyId: string | null;
@@ -126,28 +137,45 @@ function SimpleModeModelRow({
 
   const t = useT();
 
+  const resetButton = followsDefault ? null : (
+    <Button variant="ghost" size="sm" onClick={() => onSlotChange(null)}>
+      {t("settings.simpleModeSection.useDefault")}
+    </Button>
+  );
+
   if (filterModels && !hasFilteredModels) {
     return (
-      <p className="text-xs text-muted-foreground italic">
-        {t("settings.simpleModeSection.notAvailableWithCurrentProvider")}
-      </p>
+      <div className={ROW_ACTION_CLASS}>
+        {resetButton}
+        <p className="text-xs text-muted-foreground italic">
+          {t("settings.simpleModeSection.notAvailableWithCurrentProvider")}
+        </p>
+      </div>
     );
   }
 
   return (
-    <ModelSelector
-      variant="bordered"
-      placeholder={t("settings.simpleModeSection.pickModel")}
-      model={resolvedModel}
-      credentialId={activeKeyId}
-      filterModels={filterModels}
-      onCredentialChange={(keyId) => setLocalCredentialId(keyId)}
-      onModelChange={(m) => {
-        const keyId = m.keyId ?? activeKeyId ?? "";
-        setLocalCredentialId(keyId);
-        onSlotChange({ keyId, modelId: m.modelId, title: m.title });
-      }}
-    />
+    <div className={ROW_ACTION_CLASS}>
+      {resetButton}
+      {followsDefault && resolvedModel && (
+        <Badge variant="muted">
+          {t("settings.simpleModeSection.defaultBadge")}
+        </Badge>
+      )}
+      <ModelSelector
+        variant="bordered"
+        placeholder={t("settings.simpleModeSection.pickModel")}
+        model={resolvedModel}
+        credentialId={activeKeyId}
+        filterModels={filterModels}
+        onCredentialChange={(keyId) => setLocalCredentialId(keyId)}
+        onModelChange={(m) => {
+          const keyId = m.keyId ?? activeKeyId ?? "";
+          setLocalCredentialId(keyId);
+          onSlotChange({ keyId, modelId: m.modelId, title: m.title });
+        }}
+      />
+    </div>
   );
 }
 
@@ -183,7 +211,8 @@ export function SimpleModeSection() {
   const t = useT();
   const allKeys = useHostedAiProviderKeys();
   const simpleMode = useSimpleMode();
-  const hasProvider = allKeys.length > 0;
+  const defaults = useAutoSimpleModeDefaults(allKeys);
+  const availableKeyIds = new Set(allKeys.map((key) => key.id));
 
   const form = useForm<SimpleModeConfig>({
     resolver: zodResolver(SimpleModeConfigSchema),
@@ -199,8 +228,7 @@ export function SimpleModeSection() {
 
   const isDirty = form.formState.isDirty;
 
-  // Autosave: 250ms after the last `schedule()` call, persist. The debounce
-  // coalesces multi-field writes from Effect 2 into a single mutation.
+  // Autosave: 250ms after the last `schedule()` call, persist.
   // We can't gate on `formState.isDirty` here: the `values: simpleMode` prop
   // resyncs the form on every cache update — clearing the flag before the timer
   // fires, swallowing the save. Each `schedule()` call is the explicit save
@@ -208,7 +236,7 @@ export function SimpleModeSection() {
   const { schedule: scheduleAutosave } = useDebouncedAutosave({
     delayMs: 250,
     save: async () => {
-      const values = form.getValues();
+      const values = simpleModeToPersist(form.getValues(), availableKeyIds);
       updateSimpleMode(values, {
         onSuccess: () => form.reset(values, { keepValues: true }),
         onError: (err) => {
@@ -222,95 +250,6 @@ export function SimpleModeSection() {
       });
     },
   });
-
-  // Lazily load models for the first 3 keys so we can pre-fill defaults.
-  // Hooks can't run in loops; capping at 3 is sufficient for defaults —
-  // the user can always pick manually.
-  const key0 = allKeys[0];
-  const key1 = allKeys[1];
-  const key2 = allKeys[2];
-  const { models: models0 } = useAiProviderModels(key0?.id);
-  const { models: models1 } = useAiProviderModels(key1?.id);
-  const { models: models2 } = useAiProviderModels(key2?.id);
-
-  // Effect 1: Clear form when all providers are removed.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — reacts to async provider list changes
-  useEffect(() => {
-    if (!hasProvider) {
-      form.reset({
-        tiers: {
-          fast: null,
-          smart: null,
-          thinking: null,
-          image: null,
-          web_search: null,
-          deep_research: null,
-        },
-      });
-    }
-  }, [hasProvider, form]);
-
-  // Effect 2: Fill null slots with defaults once models finish loading,
-  // and clear slots whose keyId no longer exists in allKeys (stale provider).
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — reacts to async model list loading
-  useEffect(() => {
-    const current = form.getValues();
-
-    const validKeyIds = new Set(allKeys.map((k) => k.id));
-    const modelsByKeyId: Record<string, AiProviderModel[]> = {};
-    if (key0?.id) modelsByKeyId[key0.id] = models0;
-    if (key1?.id) modelsByKeyId[key1.id] = models1;
-    if (key2?.id) modelsByKeyId[key2.id] = models2;
-
-    const isStale = (slot: SimpleModeModelSlot | null) =>
-      slot != null && !validKeyIds.has(slot.keyId);
-
-    const clearedTiers = {
-      fast: isStale(current.tiers.fast) ? null : current.tiers.fast,
-      smart: isStale(current.tiers.smart) ? null : current.tiers.smart,
-      thinking: isStale(current.tiers.thinking) ? null : current.tiers.thinking,
-      image: isStale(current.tiers.image) ? null : current.tiers.image,
-      web_search: isStale(current.tiers.web_search)
-        ? null
-        : current.tiers.web_search,
-      deep_research: isStale(current.tiers.deep_research)
-        ? null
-        : current.tiers.deep_research,
-    };
-
-    const needsFill =
-      !clearedTiers.fast ||
-      !clearedTiers.smart ||
-      !clearedTiers.thinking ||
-      !clearedTiers.image ||
-      !clearedTiers.web_search ||
-      !clearedTiers.deep_research;
-
-    const tiersUnchanged =
-      clearedTiers.fast === current.tiers.fast &&
-      clearedTiers.smart === current.tiers.smart &&
-      clearedTiers.thinking === current.tiers.thinking &&
-      clearedTiers.image === current.tiers.image &&
-      clearedTiers.web_search === current.tiers.web_search &&
-      clearedTiers.deep_research === current.tiers.deep_research;
-
-    if (!needsFill && tiersUnchanged) return;
-
-    const defaults = pickSimpleModeDefaults(allKeys, modelsByKeyId);
-    form.reset(
-      {
-        tiers: {
-          fast: clearedTiers.fast ?? defaults.chat.fast,
-          smart: clearedTiers.smart ?? defaults.chat.smart,
-          thinking: clearedTiers.thinking ?? defaults.chat.thinking,
-          image: clearedTiers.image ?? defaults.image,
-          web_search: clearedTiers.web_search ?? defaults.webSearch,
-          deep_research: clearedTiers.deep_research ?? defaults.deepResearch,
-        },
-      },
-      { keepDirty: true },
-    );
-  }, [form, allKeys, models0, models1, models2, key0?.id, key1?.id, key2?.id]);
 
   const getTierLabel = (tierKey: string) => {
     const labels: Record<string, string> = {
@@ -327,6 +266,7 @@ export function SimpleModeSection() {
   return (
     <SettingsSection
       title={t("settings.simpleModeSection.defaultModels")}
+      description={t("settings.simpleModeSection.description")}
       actions={
         <AutosaveStatus
           isPending={isPending}
@@ -345,7 +285,12 @@ export function SimpleModeSection() {
                 title={getTierLabel(row.key)}
                 action={
                   <SimpleModeModelRow
-                    slot={field.value}
+                    {...tierDisplay(
+                      row.key,
+                      field.value,
+                      defaults,
+                      availableKeyIds,
+                    )}
                     defaultKeyId={allKeys[0]?.id ?? null}
                     filterModels={row.filter}
                     onSlotChange={(slot) => {
