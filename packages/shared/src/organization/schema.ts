@@ -389,6 +389,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "The Plan page: the store goal, which Jev picks from the store's data while it is empty, and a composer that turns an idea into a business case written by the agent. Off by default; with it off, Plan stays a coming-soon page.",
     ),
+  plan_goals_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Plan goals: the Plan page offers the organization's list of goals instead of a single store goal. Any member adds a goal or picks the one they work toward, and each business case is tied to a goal. Needs plan_page_enabled. Off by default; with it off, the Plan page keeps the single store goal.",
+    ),
   blog_view_enabled: z
     .boolean()
     .optional()

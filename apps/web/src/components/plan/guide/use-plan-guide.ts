@@ -17,7 +17,6 @@ import {
 } from "@decocms/shared/business-case";
 import { useChatTask } from "@/components/chat";
 import { formatCaseTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { usePlanObjective } from "@/hooks/use-organization-settings";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
@@ -44,11 +43,18 @@ const MIN_THINKING_MS = 1600;
 /** The last beat before the case opens. */
 const BUILDING_MS = 2200;
 
-export function usePlanGuide() {
+/** The goal a case is started toward: its sentence, and its id when the
+ *  org has Plan goals (the single store goal has none). */
+export interface GuideGoal {
+  statement: string | null;
+  id: string | null;
+}
+
+export function usePlanGuide(goal: GuideGoal) {
   const t = useT();
   const studio = useStudioTools();
   const { createTaskWithMessage } = useChatTask();
-  const objective = usePlanObjective()?.statement ?? null;
+  const objective = goal.statement;
   const { org } = useProjectContext();
   const [state, setState] = useState<GuideState | null>(null);
   /** An intro saved by an earlier visit that never got its case chat. Read
@@ -76,6 +82,15 @@ export function usePlanGuide() {
     });
     const threadId = crypto.randomUUID();
     const casePath = businessCasePath(threadId);
+    if (goal.id) {
+      // A chat that then fails to open writes no case file, so nothing lists.
+      studio
+        .call("PLAN_GOAL_CASE_RECORD", {
+          goal_id: goal.id,
+          thread_id: threadId,
+        })
+        .catch(() => {});
+    }
     writeCaseSeed(sessionStorage, casePath, {
       objective,
       request: final.idea,
