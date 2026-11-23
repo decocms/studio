@@ -15,6 +15,13 @@ import {
 import { normalizeFsPath } from "@/file-storage/org-fs-path";
 import { detectContentType } from "@/object-storage/key-utils";
 
+/**
+ * Member-authored HTML runs its scripts in an opaque origin. Never add
+ * allow-same-origin: combined with allow-scripts it lifts the sandbox.
+ */
+export const USER_HTML_CSP =
+  "sandbox allow-scripts allow-modals allow-downloads";
+
 /** Besides HTML, the types a browser runs script in when one is opened as a page (XML can carry an XHTML root). */
 const SCRIPTABLE_TYPES = new Set(["image/svg+xml", "application/xml"]);
 
@@ -78,13 +85,7 @@ export function fsByteResponse(
     headers["Content-Security-Policy"] =
       "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
   } else if (contentType.startsWith("text/html")) {
-    /**
-     * TEMP(demo 2026-07-08, REVERT): allow-same-origin gives previews a real
-     * origin so nested frame-ancestors checks pass — but re-enables
-     * credentialed same-origin API calls from user HTML.
-     */
-    headers["Content-Security-Policy"] =
-      "sandbox allow-scripts allow-modals allow-same-origin allow-downloads";
+    headers["Content-Security-Policy"] = USER_HTML_CSP;
   }
   return c.body(Buffer.from(bytes), 200, headers);
 }
