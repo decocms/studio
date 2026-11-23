@@ -34,3 +34,20 @@ export function readGithubAppConfig(
     slug,
   };
 }
+
+/**
+ * GitHub accounts whose repositories the operator hosts for its customers
+ * (`GITHUB_MANAGED_OWNERS`, comma-separated). Customers own nothing there, so
+ * Studio manages who has access to each repository on their behalf. Empty
+ * means every linked repository is its owner's to manage on GitHub.
+ */
+export function readGithubManagedOwners(
+  env: Record<string, string | undefined> = process.env,
+): Set<string> {
+  return new Set(
+    (env.GITHUB_MANAGED_OWNERS ?? "")
+      .split(",")
+      .map((owner) => owner.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}

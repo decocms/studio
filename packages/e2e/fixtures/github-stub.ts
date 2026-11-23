@@ -152,6 +152,8 @@ interface SeedRepoBody {
    *  large for GitHub's recursive listing. */
   truncateRecursive?: boolean;
   rateLimit?: StubRateLimit;
+  /** login -> GitHub's `role_name` (e.g. `admin`) for people already on the repo. */
+  collaborators?: Record<string, string>;
 }
 
 const repos = new Map<string, RepoState>();
@@ -309,7 +311,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     contentsReads: 0,
     blobReads: 0,
     rateLimit: body.rateLimit ?? null,
-    collaborators: new Map(),
+    collaborators: new Map(Object.entries(body.collaborators ?? {})),
     invitations: [],
   };
 

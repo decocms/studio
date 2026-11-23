@@ -35,6 +35,7 @@ export default defineConfig({
             GITHUB_APP_CLIENT_ID: "Iv1.studio-e2e",
             GITHUB_APP_CLIENT_SECRET: "synthetic-e2e-secret",
             GITHUB_APP_PRIVATE_KEY: privateKey,
+            GITHUB_MANAGED_OWNERS: "hosted-sites",
           }
         : {}),
     },

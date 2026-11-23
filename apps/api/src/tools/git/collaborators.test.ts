@@ -33,13 +33,24 @@ describe("REPOSITORY_COLLABORATOR_ADD input", () => {
     }
   });
 
-  it("rejects a permission GitHub does not have", () => {
-    expect(
-      REPOSITORY_COLLABORATOR_ADD.inputSchema.safeParse({
-        repositoryId: "repo-1",
-        username: "ana",
-        permission: "owner",
-      }).success,
-    ).toBe(false);
+  it("grants at most write access", () => {
+    for (const permission of ["maintain", "admin", "owner"]) {
+      expect(
+        REPOSITORY_COLLABORATOR_ADD.inputSchema.safeParse({
+          repositoryId: "repo-1",
+          username: "ana",
+          permission,
+        }).success,
+      ).toBe(false);
+    }
+    for (const permission of ["read", "triage", "write"]) {
+      expect(
+        REPOSITORY_COLLABORATOR_ADD.inputSchema.safeParse({
+          repositoryId: "repo-1",
+          username: "ana",
+          permission,
+        }).success,
+      ).toBe(true);
+    }
   });
 });

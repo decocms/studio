@@ -1,11 +1,10 @@
 /**
- * Who has access to the project's repository on GitHub, for org owners and
- * admins (the tools refuse everyone else). Adding someone sends a GitHub
- * invitation they accept on GitHub; until then they show as pending.
+ * Project repository access, for org owners and admins: managed here for hosted
+ * repositories (up to write), linked to GitHub for everyone else's.
  */
 
 import { useState } from "react";
-import { Plus, Trash01 } from "@untitledui/icons";
+import { LinkExternal01, Plus, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import {
@@ -46,19 +45,23 @@ import {
 import { useCapabilities } from "@/hooks/use-capability";
 import {
   type CollaboratorPermission,
+  type GrantablePermission,
   useAddCollaborator,
   useRemoveCollaborator,
+  useRepositoryAccessMode,
   useRepositoryCollaborators,
 } from "@/hooks/use-git-providers";
 import { useT } from "@/i18n/use-t.ts";
 
-const PERMISSIONS: CollaboratorPermission[] = [
-  "read",
-  "triage",
-  "write",
-  "maintain",
-  "admin",
-];
+/** What Studio may grant; the API refuses more. */
+const GRANTABLE: GrantablePermission[] = ["read", "triage", "write"];
+
+/** Access Studio leaves alone, matching the API: the host's own people. */
+function isHostAccess(permission: CollaboratorPermission | null): boolean {
+  return (
+    permission === null || permission === "maintain" || permission === "admin"
+  );
+}
 
 function usePermissionLabel() {
   const t = useT();
@@ -97,10 +100,48 @@ export function RepositoryCollaboratorsSection({
 }: {
   repositoryId: string;
 }) {
-  const t = useT();
   const { roleSlug } = useCapabilities();
   const isAdmin = hasAdminRole(roleSlug);
-  const list = useRepositoryCollaborators(repositoryId, { enabled: isAdmin });
+  const access = useRepositoryAccessMode(repositoryId, { enabled: isAdmin });
+  if (!isAdmin || !access.data) return null;
+  return access.data.mode === "managed" ? (
+    <ManagedCollaborators repositoryId={repositoryId} />
+  ) : (
+    <SelfManagedAccess manageUrl={access.data.manageUrl} />
+  );
+}
+
+function SelfManagedAccess({ manageUrl }: { manageUrl: string }) {
+  const t = useT();
+  return (
+    <SettingsSection
+      title={t("virtualMcp.settings.repository.collaborators.title")}
+    >
+      <SettingsCard>
+        <SettingsCardItem
+          title={t("virtualMcp.settings.repository.collaborators.selfTitle")}
+          description={t(
+            "virtualMcp.settings.repository.collaborators.selfDescription",
+          )}
+          action={
+            <Button size="sm" variant="outline" asChild>
+              <a href={manageUrl} target="_blank" rel="noopener noreferrer">
+                {t(
+                  "virtualMcp.settings.repository.collaborators.manageOnGithub",
+                )}
+                <LinkExternal01 size={14} />
+              </a>
+            </Button>
+          }
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+function ManagedCollaborators({ repositoryId }: { repositoryId: string }) {
+  const t = useT();
+  const list = useRepositoryCollaborators(repositoryId);
   const remove = useRemoveCollaborator(repositoryId);
   const permissionLabel = usePermissionLabel();
   const [adding, setAdding] = useState(false);
@@ -108,8 +149,6 @@ export function RepositoryCollaboratorsSection({
     login: string;
     invitation: boolean;
   } | null>(null);
-
-  if (!isAdmin) return null;
 
   const people = [
     ...(list.data?.invitations ?? []).map((person) => ({
@@ -196,26 +235,36 @@ export function RepositoryCollaboratorsSection({
                     {t("virtualMcp.settings.repository.collaborators.pending")}
                   </Badge>
                 )}
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={
-                    person.invitation
-                      ? t(
-                          "virtualMcp.settings.repository.collaborators.cancelInvitation",
-                        )
-                      : t("virtualMcp.settings.repository.collaborators.remove")
-                  }
-                  disabled={remove.isPending}
-                  onClick={() =>
-                    setPendingRemoval({
-                      login: person.login,
-                      invitation: person.invitation,
-                    })
-                  }
-                >
-                  <Trash01 size={14} />
-                </Button>
+                {isHostAccess(person.permission) ? (
+                  <Badge>
+                    {t(
+                      "virtualMcp.settings.repository.collaborators.hostAccess",
+                    )}
+                  </Badge>
+                ) : (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={
+                      person.invitation
+                        ? t(
+                            "virtualMcp.settings.repository.collaborators.cancelInvitation",
+                          )
+                        : t(
+                            "virtualMcp.settings.repository.collaborators.remove",
+                          )
+                    }
+                    disabled={remove.isPending}
+                    onClick={() =>
+                      setPendingRemoval({
+                        login: person.login,
+                        invitation: person.invitation,
+                      })
+                    }
+                  >
+                    <Trash01 size={14} />
+                  </Button>
+                )}
               </div>
             }
           />
@@ -286,7 +335,7 @@ function AddCollaboratorDialog({
   const add = useAddCollaborator(repositoryId);
   const permissionLabel = usePermissionLabel();
   const [username, setUsername] = useState("");
-  const [permission, setPermission] = useState<CollaboratorPermission>("write");
+  const [permission, setPermission] = useState<GrantablePermission>("write");
 
   const close = () => {
     onOpenChange(false);
@@ -362,7 +411,7 @@ function AddCollaboratorDialog({
             <Select
               value={permission}
               onValueChange={(value) => {
-                const next = PERMISSIONS.find((p) => p === value);
+                const next = GRANTABLE.find((p) => p === value);
                 if (next) setPermission(next);
               }}
             >
@@ -370,7 +419,7 @@ function AddCollaboratorDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PERMISSIONS.map((option) => (
+                {GRANTABLE.map((option) => (
                   <SelectItem key={option} value={option}>
                     {permissionLabel(option)}
                   </SelectItem>

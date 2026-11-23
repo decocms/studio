@@ -160,7 +160,15 @@ export const virtualMcp = {
   "virtualMcp.settings.repository.change": "Trocar",
   "virtualMcp.settings.repository.collaborators.title": "Colaboradores",
   "virtualMcp.settings.repository.collaborators.description":
-    "Pessoas com acesso direto a este repositório no GitHub. Acesso por organização ou time do GitHub é gerenciado no GitHub.",
+    "Este repositório é hospedado para a sua organização, então o acesso a ele é gerenciado aqui. Convide quem precisa; o nível máximo que você pode dar é Escrita.",
+  "virtualMcp.settings.repository.collaborators.selfTitle":
+    "O acesso é gerenciado no GitHub",
+  "virtualMcp.settings.repository.collaborators.selfDescription":
+    "Este repositório pertence à sua conta ou organização no GitHub. Adicione ou remova pessoas nas configurações dele no GitHub.",
+  "virtualMcp.settings.repository.collaborators.manageOnGithub":
+    "Gerenciar no GitHub",
+  "virtualMcp.settings.repository.collaborators.hostAccess":
+    "Gerenciado pela hospedagem",
   "virtualMcp.settings.repository.collaborators.add": "Adicionar colaborador",
   "virtualMcp.settings.repository.collaborators.addTitle":
     "Adicionar um colaborador",

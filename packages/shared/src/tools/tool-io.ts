@@ -9472,6 +9472,10 @@ export interface StudioToolIO {
       nextCursor: string | null;
     };
   };
+  REPOSITORY_ACCESS_MODE: {
+    input: { repositoryId: string };
+    output: { mode: "self" | "managed"; manageUrl: string };
+  };
   REPOSITORY_COLLABORATORS_LIST: {
     input: { repositoryId: string };
     output: {
@@ -9491,13 +9495,7 @@ export interface StudioToolIO {
     input: {
       repositoryId: string;
       username: string;
-      permission?:
-        | "read"
-        | "admin"
-        | "triage"
-        | "write"
-        | "maintain"
-        | undefined;
+      permission?: "read" | "triage" | "write" | undefined;
     };
     output: { status: "updated" | "invited" };
   };

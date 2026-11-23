@@ -33,6 +33,10 @@ export type Repository =
 type RepositorySearchPage = StudioToolIO["REPOSITORY_SEARCH"]["output"];
 
 export type CollaboratorPermission = NonNullable<
+  StudioToolIO["REPOSITORY_COLLABORATORS_LIST"]["output"]["collaborators"][number]["permission"]
+>;
+
+export type GrantablePermission = NonNullable<
   StudioToolIO["REPOSITORY_COLLABORATOR_ADD"]["input"]["permission"]
 >;
 
@@ -72,15 +76,26 @@ export function useRepositories(accountId?: string) {
 }
 
 /** People with direct access to a linked repository, and pending invitations. */
-export function useRepositoryCollaborators(
+/** Whether Studio manages who has access to the repository, or its owner does on GitHub. */
+export function useRepositoryAccessMode(
   repositoryId: string,
-  { enabled = true }: { enabled?: boolean } = {},
+  { enabled }: { enabled: boolean },
 ) {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   return useQuery({
-    queryKey: KEYS.repositoryCollaborators(org.id, repositoryId),
+    queryKey: KEYS.repositoryAccessMode(org.id, repositoryId),
     enabled,
+    staleTime: 5 * 60_000,
+    queryFn: () => studio.call("REPOSITORY_ACCESS_MODE", { repositoryId }),
+  });
+}
+
+export function useRepositoryCollaborators(repositoryId: string) {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  return useQuery({
+    queryKey: KEYS.repositoryCollaborators(org.id, repositoryId),
     retry: false,
     queryFn: () =>
       studio.call("REPOSITORY_COLLABORATORS_LIST", { repositoryId }),
@@ -102,7 +117,7 @@ export function useAddCollaborator(repositoryId: string) {
   return useMutation({
     mutationFn: (input: {
       username: string;
-      permission: CollaboratorPermission;
+      permission: GrantablePermission;
     }) =>
       studio.call("REPOSITORY_COLLABORATOR_ADD", { repositoryId, ...input }),
     onSettled: invalidate,

@@ -291,6 +291,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_DEPLOYS_LIST",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
+  "REPOSITORY_ACCESS_MODE",
   "REPOSITORY_COLLABORATORS_LIST",
   "REPOSITORY_COLLABORATOR_ADD",
   "REPOSITORY_COLLABORATOR_REMOVE",
@@ -1480,21 +1481,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Git",
   },
   {
+    name: "REPOSITORY_ACCESS_MODE",
+    description:
+      "Whether Studio or the repository's owner manages who has access to it",
+    category: "Git",
+  },
+  {
     name: "REPOSITORY_COLLABORATORS_LIST",
     description:
-      "List who has direct access to a linked repository, and pending invitations",
+      "List who has direct access to a managed repository, and pending invitations",
     category: "Git",
   },
   {
     name: "REPOSITORY_COLLABORATOR_ADD",
     description:
-      "Invite someone to a linked repository, or change their access",
+      "Invite someone to a managed repository with up to write access, or change their access",
     category: "Git",
   },
   {
     name: "REPOSITORY_COLLABORATOR_REMOVE",
     description:
-      "Withdraw someone's invitation and direct access to a linked repository",
+      "Withdraw someone's invitation and direct access to a managed repository",
     category: "Git",
   },
   // Search tools

@@ -1869,13 +1869,15 @@ test("an admin invites, lists and withdraws a repository collaborator from proje
   // The project settings page is the first UI this suite opens: Vite compiles it cold.
   test.setTimeout(120_000);
   const { page, orgSlug } = authedPage;
-  const repo = { id: 8101, owner: "access-organization", name: "site" };
+  // `hosted-sites` is in GITHUB_MANAGED_OWNERS (playwright.github-connect.config.ts).
+  const repo = { id: 8101, owner: "hosted-sites", name: "site" };
   const seeded = await page.request.post(`${fixtureOrigin}/__admin/repos`, {
     data: {
       owner: repo.owner,
       repo: repo.name,
       id: repo.id,
       branches: { main: { files: { "README.md": "site" } } },
+      collaborators: { "host-engineer": "admin" },
     },
   });
   expect(seeded.ok()).toBe(true);
@@ -1955,9 +1957,27 @@ test("an admin invites, lists and withdraws a repository collaborator from proje
   await page.goto(
     `/${orgSlug}/projects/${project.id}/settings?section=repository`,
   );
-  await expect(page.getByText("No one has direct access yet")).toBeVisible({
+  // The host's own admin is listed, but Studio cannot touch them.
+  await expect(page.getByText("Managed by the host")).toBeVisible({
     timeout: 60_000,
   });
+  await expect(page.getByText("host-engineer")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove access" })).toHaveCount(
+    0,
+  );
+  await expect(
+    callSelfMcpTool(page.request, orgSlug, "REPOSITORY_COLLABORATOR_REMOVE", {
+      repositoryId: repository.id,
+      username: "host-engineer",
+    }),
+  ).rejects.toThrow(/managed by the repository's host/);
+  await expect(
+    callSelfMcpTool(page.request, orgSlug, "REPOSITORY_COLLABORATOR_ADD", {
+      repositoryId: repository.id,
+      username: "someone",
+      permission: "admin",
+    }),
+  ).rejects.toThrow();
 
   const invite = async (login: string) => {
     await page.getByRole("button", { name: "Add collaborator" }).click();
@@ -1989,5 +2009,88 @@ test("an admin invites, lists and withdraws a repository collaborator from proje
     .getByRole("alertdialog")
     .getByRole("button", { name: "Cancel invitation" })
     .click();
-  await expect(page.getByText("No one has direct access yet")).toBeVisible();
+  await expect(page.getByText("Invitation pending")).toHaveCount(0);
+});
+
+test("a repository in the customer's own GitHub account links to GitHub instead of managing access", async ({
+  authedPage,
+}) => {
+  test.setTimeout(120_000);
+  const { page, orgSlug } = authedPage;
+  const repo = { id: 8201, owner: "customer-organization", name: "site" };
+  const seeded = await page.request.post(`${fixtureOrigin}/__admin/repos`, {
+    data: {
+      owner: repo.owner,
+      repo: repo.name,
+      id: repo.id,
+      branches: { main: { files: { "README.md": "site" } } },
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  const org = installation(repo.owner, "Organization", [{ id: repo.id }]);
+  const flow = await seedFlow(authedPage, [org]);
+  const connected = await page.request.post(flow.path, {
+    data: await grantInput(page.request, flow.path, org),
+  });
+  expect(connected.status()).toBe(200);
+  const { account } = (await connected.json()) as { account: { id: string } };
+  const { repository } = await callSelfMcpTool<{
+    repository: { id: string };
+  }>(page.request, orgSlug, "REPOSITORY_LINK", {
+    accountId: account.id,
+    url: `https://github.com/${repo.owner}/${repo.name}`,
+  });
+  const mode = await callSelfMcpTool<{ mode: string; manageUrl: string }>(
+    page.request,
+    orgSlug,
+    "REPOSITORY_ACCESS_MODE",
+    { repositoryId: repository.id },
+  );
+  expect(mode).toEqual({
+    mode: "self",
+    manageUrl: `https://github.com/${repo.owner}/${repo.name}/settings/access`,
+  });
+  for (const [name, args] of [
+    ["REPOSITORY_COLLABORATORS_LIST", { repositoryId: repository.id }],
+    [
+      "REPOSITORY_COLLABORATOR_ADD",
+      { repositoryId: repository.id, username: "someone" },
+    ],
+  ] as const) {
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, name, args),
+    ).rejects.toThrow(/on GitHub/);
+  }
+
+  const { item: project } = await callSelfMcpTool<{ item: { id: string } }>(
+    page.request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title: "Own repository",
+        connections: [],
+        metadata: {
+          repository: {
+            owner: repo.owner,
+            name: repo.name,
+            url: `https://github.com/${repo.owner}/${repo.name}`,
+            repositoryId: repository.id,
+          },
+        },
+      },
+    },
+  );
+  await page.goto(
+    `/${orgSlug}/projects/${project.id}/settings?section=repository`,
+  );
+  await expect(page.getByText("Access is managed on GitHub")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(
+    page.getByRole("link", { name: "Manage on GitHub" }),
+  ).toHaveAttribute("href", mode.manageUrl);
+  await expect(
+    page.getByRole("button", { name: "Add collaborator" }),
+  ).toHaveCount(0);
 });
