@@ -38,10 +38,8 @@ Replace the single goal with a **list of goals** that belongs to the
 organization. Any member can add a goal, and any member can use one. There is
 no area, team or scope to pick: whoever needs a goal writes it, and whoever
 shares it picks it. Each member chooses **the goal they are working toward**,
-and the Plan page opens on it. AI helps both ways: it **proposes several
-goals** from what the company wrote and said, and it **detects duplicates**
-when someone is about to create a goal that already exists, offering to use
-that one instead. A business case, and later an automatic opportunity, is
+and the Plan page opens on it. AI **proposes several goals** from what the
+company wrote and said. A business case, and later an automatic opportunity, is
 always tied to one goal, so it reaches the people who use that goal.
 
 ## 4. Concepts
@@ -50,7 +48,7 @@ always tied to one goal, so it reaches the people who use that goal.
 
 - provenance: `created_by`, `updated_by`, timestamps, and optionally the
   `source` + `quote` it was found in (same shape `findBrandGoal` returns today)
-- lifecycle: `archived_at`, `merged_into_id`
+- lifecycle: `archived_at`
 
 **Active goal.** Per member, the goal the Plan page opens on. It is a
 preference, not a permission.
@@ -94,18 +92,15 @@ YOUR GOAL ▾  Make the app our main sales channel in 2027
 ### 5.2 Creating a goal
 
 1. The member writes the sentence. Nothing else to fill in.
-2. **Duplicate check before saving** (section 6.2). If a similar goal exists:
-   "*Make the app our main sales channel in 2027* already exists (created by
-   A. 3 weeks ago, used by 4 people). Use that one / Create mine anyway."
-3. Save. The new goal becomes the member's active goal.
+2. Save. The new goal becomes the member's active goal.
 
 ### 5.3 "Suggest goals with AI"
 
 The existing finder is widened to return **several** candidates, each with a
 quote and source. The UI shows them as a review list, and the member accepts,
 edits or dismisses each one. Nothing is saved without a person accepting it
-(same rule as today). Candidates that duplicate an existing goal are marked as
-such instead of shown as new.
+(same rule as today). Candidates that repeat a goal the organization already
+has are left out.
 
 This also fixes the issue in #8599: suggestions never overwrite what the
 person typed, because they are a separate list.
@@ -116,8 +111,8 @@ person typed, because they are a separate list.
   for one case only ("Toward: Make the app our main sales channel ▾") can come
   later; switching the goal in the picker covers it for now.
 - The case file keeps the snapshot of the statement it has today
-  (`objective`), which stays readable if the goal later changes, is merged, or
-  is archived. Which goal a case went toward is stored in `plan_goal_cases`,
+  (`objective`), which stays readable if the goal later changes or is
+  archived. Which goal a case went toward is stored in `plan_goal_cases`,
   not in the file: the agent rewrites the case file and could drop a field it
   does not know.
 - "Your business cases" can filter by goal. Seeing other members' cases
@@ -137,29 +132,10 @@ Extend `findBrandGoal` instead of writing a second finder:
 - Give it the org's existing goals so it can skip what already exists.
 - Same budget and timeouts as today; more candidates must not mean more
   reading.
+- The single store-goal finder (`ORGANIZATION_PLAN_OBJECTIVE_FIND`, for orgs
+  without goals) asks for one candidate, so Jev still checks one goal.
 
-### 6.2 Duplicate detection and consolidation
-
-Two moments:
-
-1. **On create (synchronous, cheap).** Compare the new statement with every
-   active goal in the organization. Use the fast model, or embeddings if we
-   already have an embedding path, with a strict threshold. If it matches,
-   offer "use existing" (make it the active goal) instead of creating. Never
-   block: "create anyway" is always there.
-2. **Consolidation proposals (async).** When two goals still end up saying the
-   same thing (people skipped the prompt, or wording drifted), propose a merge
-   to the people who created or use either one: "These 2 goals look like the
-   same thing. Merge into: *…* (editable)". On accept:
-   - the surviving goal keeps one statement, which a person approves;
-   - the other gets `merged_into_id` and is hidden from the picker;
-   - active goals, cases and opportunities pointing to the merged goal resolve
-     to the survivor, and case snapshots stay unchanged.
-
-Rule: **the AI proposes and a person decides.** No silent merges, because a
-merge changes what other people's work is tied to.
-
-### 6.3 Using goals downstream
+### 6.2 Using goals downstream
 
 - Business case prompt: send the selected goal's sentence, as today.
 - Automatic opportunity finder (future): runs **per goal**. An opportunity is
@@ -180,7 +156,6 @@ plan_goals
   created_by, updated_by text not null
   created_at, updated_at
   archived_at     timestamptz null
-  merged_into_id  text null -> plan_goals.id
 
 member_plan_state
   user_id, organization_id               -- pk, cascade on both
@@ -206,8 +181,6 @@ alerts storage.
 | --- | --- |
 | `PLAN_GOAL_LIST` | Active goals, with usage counts and whether the caller created or used each. |
 | `PLAN_GOAL_CREATE` / `PLAN_GOAL_UPDATE` / `PLAN_GOAL_ARCHIVE` | Author and time come from the session, as today. |
-| `PLAN_GOAL_SIMILAR` | Duplicate check used by create (section 6.2). |
-| `PLAN_GOAL_MERGE` | Applies an approved merge. |
 | `PLAN_ACTIVE_GOAL_SET` | Writes only the caller's row. |
 | `PLAN_GOAL_CASE_RECORD` / `PLAN_GOAL_CASES` | Ties a case chat to its goal; lists the cases toward a goal. |
 | `PLAN_GOAL_SUGGEST` | Replaces `ORGANIZATION_PLAN_OBJECTIVE_FIND`, widened to several candidates (section 6.1). |
@@ -234,13 +207,10 @@ Then `saved-store-goal.ts` and its refetch can be deleted.
 
 - **See, create and use** a goal: any member.
 - **Edit the sentence**: the member who created it, or `org:manage`. Anyone
-  else who wants different wording creates their own goal; the duplicate check
-  shows them the existing one first. This keeps #8600's "last edit wins for
+  else who wants different wording creates their own goal. This keeps #8600's "last edit wins for
   everybody" from coming back.
 - **Archive**: the creator, or `org:manage`. Archiving never touches cases
   (they keep their snapshot) and clears the active goal of whoever had it.
-- **Merge**: the creator of either goal, or `org:manage`, always after a
-  person approves the merged statement.
 - Every query is scoped by organization, in storage and tools.
 
 `ctx.access.check()` remembers the first grant
@@ -278,11 +248,9 @@ schema does not change.
   1. **Goal list + picker + active goal**: create, select, archive; business
      cases tied to their goal in `plan_goal_cases`.
   2. **Suggest several goals with AI** (finder widened).
-  3. **Duplicate check on create.**
-  4. **Consolidation proposals + merge.**
-  5. **Opportunity finder per goal** (separate plan).
+  3. **Opportunity finder per goal** (separate plan).
 - Analytics to decide if it works: goals per org, people per goal, % of cases
-  tied to a goal, duplicate-prompt accept rate, merges proposed vs accepted.
+  tied to a goal, suggestions accepted vs dismissed.
 
 ## 11. Open questions
 
@@ -292,26 +260,27 @@ schema does not change.
    and create flow do at the limit.
 3. **Staleness.** Goals should probably carry a period ("in 2027") or a review
    date, with a nudge when one has expired.
-4. **Conflicting goals** (e.g. "more volume" vs "fewer returns"). Should
+4. **Repeated goals.** Nothing stops two members from writing the same goal
+   in different words. Detecting and merging them was left out of this
+   version; revisit if the picker fills with repeats.
+5. **Conflicting goals** (e.g. "more volume" vs "fewer returns"). Should
    business cases surface conflicts with other goals as a risk card? Probably
    later.
-5. **Multiple active goals per member?** v1 assumes one active goal with a
+6. **Multiple active goals per member?** v1 assumes one active goal with a
    per-case override.
 
 ## 12. Edge cases to cover in tests
 
 - Empty: org with no goals; member with no active goal.
 - Invalid: statement over 280 chars, statement that is only whitespace.
-- Duplicate: same statement twice; same text with different case or
-  punctuation.
+- Repeated: the same statement twice is allowed; suggestions skip a goal the
+  org already has, despite case or punctuation.
 - Oversized: an org at the goal limit; finder returning more candidates than
   allowed.
 - Lifecycle: archive a goal that is some members' active goal; member leaves
   the org (goals they created stay, their `member_plan_state` row goes);
-  merged goal referenced by old cases and by active goals; restoring an
-  archived goal.
-- Concurrency: two members creating the same goal at the same time (both pass
-  the duplicate check, so consolidation catches it later); a merge while
-  someone is writing a case against the losing goal.
+  restoring an archived goal.
+- Concurrency: two members creating goals at the limit at the same time; a
+  goal archived while someone starts a case toward it.
 - Authorization: a member who did not create a goal cannot edit or archive it;
   `PLAN_ACTIVE_GOAL_SET` cannot write another member's row.
