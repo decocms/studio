@@ -29,7 +29,7 @@
  */
 
 import {
-  VOICE_MODE_PROMPT,
+  voiceModePrompt,
   voiceRequestContext,
   type VoiceTranscript,
 } from "@decocms/shared/voice";
@@ -49,6 +49,8 @@ import {
   isRunSuperseded,
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
+import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
+import { isUnattendedRun } from "@/harnesses/unattended-run";
 import { sandboxRunPrompt } from "@/harnesses/sandbox-run-prompt";
 import { markTurn } from "@/harnesses/turn-latency";
 import { withRunTitle } from "@/harnesses/sandbox-run-title";
@@ -66,6 +68,7 @@ import type {
 import { createSecretModelSource } from "@/harnesses/lib/types";
 import { streamDecopilot } from "@/harnesses/decopilot/stream";
 import { withHtmlArtifactPreviews } from "@/harnesses/html-artifact-watcher";
+import { withSandboxPrCapture } from "@/tools/task-board/sandbox-pr-capture";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -1338,8 +1341,8 @@ async function prepareRun(
           {
             type: "text",
             text: voiceContext
-              ? `${VOICE_MODE_PROMPT}\n\n${voiceContext}`
-              : VOICE_MODE_PROMPT,
+              ? `${voiceModePrompt(harnessId)}\n\n${voiceContext}`
+              : voiceModePrompt(harnessId),
           },
         ],
       });
@@ -1417,6 +1420,7 @@ async function prepareRun(
           ? withVoiceResponseStyle(
               wireUserMessage,
               input.voiceMode === true,
+              harnessId,
               voiceContext,
             )
           : wireUserMessage,
@@ -1440,9 +1444,12 @@ async function prepareRun(
               sandboxRunPrompt({
                 mode: input.mode,
                 threadId: mem.thread.id,
-                agentId: input.agent.id,
                 userEmail: ctx.auth.user?.email,
                 userContext,
+                unattended: isUnattendedRun({
+                  runClass: ctx.metadata.runMetadata?.[RUN_CLASS_METADATA_KEY],
+                  thread: mem.thread,
+                }),
                 previewWatched,
               }),
             ]
@@ -1568,8 +1575,13 @@ async function prepareRun(
           yield* rawHarnessChunks;
           return;
         }
+        const chunks = withSandboxPrCapture(
+          rawHarnessChunks,
+          ctx,
+          mem.thread.id,
+        );
         // Decopilot titles inside its own loop; a sandbox harness has no such step.
-        yield* withRunTitle(withHtmlArtifactPreviews(rawHarnessChunks, ctx), {
+        yield* withRunTitle(withHtmlArtifactPreviews(chunks, ctx), {
           currentThreadTitle: mem.thread.title,
           isSubagent: input.isSubagent === true,
           userText: materializedRequestMessage.parts

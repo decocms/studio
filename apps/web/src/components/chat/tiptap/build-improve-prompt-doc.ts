@@ -14,9 +14,8 @@ export interface ImprovePromptDocInput {
  *   Here are its current instructions.
  *   <current_instructions>{instructions}</current_instructions>
  *
- * The mention is shaped so derivePartsFromTiptapDoc emits the standard
- * `[DELEGATE TO AGENT: ...]` directive that Decopilot's SUBTASK tool
- * picks up.
+ * The mention is shaped so derivePartsFromTiptapDoc emits the standard agent
+ * mention context (`agentMentionContext`).
  */
 export function buildImprovePromptDoc(input: ImprovePromptDocInput): TiptapDoc {
   const { managerAgentId, managerName, kind, id, instructions } = input;

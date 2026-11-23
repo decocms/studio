@@ -34,6 +34,25 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   the daemon needs new part types.
 - Emit a frame per turn, and always emit a final frame — including on a throw.
 - Remember the per-thread session id so a follow-up turn resumes.
+- Send the turn's message. Claude Code gets the text parts joined into one
+  prompt. When the message has `image/*` file parts, it also gets up to 20
+  base64 image blocks after the text, on the first turn of a session, a turn
+  sent to a kept session, and a resumed one. The bytes come from the file's
+  `/app/org/upload/` path in the attachment annotation, not the part's
+  presigned URL, and only when that path, with `..` and symlinks resolved, is
+  inside the uploads directory. Only JPEG, PNG, GIF and WebP up to 3.75 MB are
+  sent, checked by their bytes. Anything else, or a file that cannot be read,
+  is skipped, and the model still has the annotation's path line. One message
+  carries at most 10 MB of image bytes: images are taken in the order attached,
+  and the first one that would cross that total is left to its path line along
+  with every image after it. When the provider refuses that turn's first
+  request with a client error (a 4xx other than 408 and 429) that the CLI does
+  not recover from itself, the turn is resent once as text only. A refused
+  request stays in the CLI's transcript and is sent again on every later turn,
+  so the resend runs on a copy of the session cut before the turn, or on a fresh
+  session when the turn was its first, and the thread's session file moves to
+  it. One log line names the provider host and the status. Codex forwards image
+  parts by URL.
 - Take live messages into the running turn. Claude Code sends each one into
   the SDK's streaming input as a `priority: "next"` user message, which it reads
   between tool rounds; `--replay-user-messages` echoes it back at that point,
@@ -54,6 +73,28 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   `decocms tools call <NAME> --org <slug> [-d '<json>']` command renders as
   the `<NAME>` tool part. Codex read-only runs keep the research-only `studio`
   MCP, because their sandbox blocks network for shell commands.
+- Point Claude Code's own memory at the folder the input names. `memory` is
+  set per run and passed as SDK `settings` (the flag layer, which the CLI reads
+  before the checkout's or the user's settings): `autoMemoryEnabled: false`
+  when it is off, or `autoMemoryDirectory` with the absolute path the daemon
+  resolved on the org mount. Any other path is treated as off, because the CLI
+  falls back to its folder on the sandbox's disk for a path it rejects. An
+  input without the field keeps the CLI default. A kept session is ended
+  instead of reused when the next turn's memory differs.
+- Record what a Claude Code run was given. The `finish` chunk of a turn that
+  reached a result carries `messageMetadata.context`, which Studio stores on
+  the message's `finish` row next to `usage`: the runner, image and CLI
+  versions, model, effort, permission mode, tool names, MCP servers with their
+  status, agent types, skill counts, whether memory is on, and the length of
+  the system prompt append. It never holds prompt text, environment, paths or
+  ids. It is taken from the first `init` of the run, so a retry or an image
+  resend does not replace it. `init` lists an http MCP server as `pending`
+  with none of its tools, so the server status, the MCP tools and which of
+  them are deferred are read from the CLI at the turn's first result (two
+  local control requests, given up on after one second). The CLI does not say
+  which built-in tools are deferred. Skills the organization or the checkout
+  owns are counted, never named. The JSON is capped at 4 KB: whole lists are
+  dropped, longest first, their counts stay, and `truncated` is set.
 - Continue an interrupted turn rather than redoing it. `input.resume` means a
   previous attempt was cut short by infrastructure and its conversation is gone;
   the work itself is in the checkout and in git (a replaced pod clones the branch
@@ -78,6 +119,7 @@ by Studio and reaching this process as its spawn environment:
 | `ANTHROPIC_API_KEY` | Anthropic direct |
 | `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` | OpenRouter's Anthropic-compatible endpoint |
 | `CLAUDE_CODE_MODEL` | Optional model pin; unset uses Claude Code's default |
+| `CLAUDE_CODE_EFFORT` | Reasoning effort Studio sets from the run's model; unset or unrecognized runs at `low` |
 | `CLAUDE_CODE_PATH` | Optional explicit path to the `claude` executable |
 | `CODEX_MODEL` | Codex model selected for the run |
 | `CODEX_PATH` | Path to the pinned Codex CLI installed in the image |
@@ -85,6 +127,7 @@ by Studio and reaching this process as its spawn environment:
 | `STUDIO_CODEX_AUTH_JSON` | ChatGPT login cache, encrypted at rest by the API and supplied to the runner |
 | `CODEX_API_KEY` + `OPENAI_BASE_URL` | Responses API provider credentials, cleared for subscription runs |
 | `CLAUDE_CONFIG_DIR` | Claude Code's config dir; also where the per-thread session id is remembered |
+| `STUDIO_SANDBOX_IMAGE_VERSION` | The sandbox image's release version, baked in at build time and recorded in the run context; empty on a local build |
 
 The default-off `chat_harness_codex` organization flag selects Codex for new
 sandbox chats. Existing chats keep their pinned runtime. Link a ChatGPT login
@@ -108,6 +151,7 @@ inside the sandbox runtime. Freestyle deployments opt in with
 - `codex.ts` — app-server requests, isolated runtime configuration, subscription refresh sync, and session resumption.
 - `codex-to-ui-chunks.ts` — Codex notifications translated to existing text, reasoning, tool, question, and plan parts.
 - `live-messages.ts` — the live-message line, ack and per-turn bookkeeping.
+- `run-context.ts` — the run context: what it is built from, and its size cap.
 - `studio-cli.ts` — the CLI session file, its prompt, and recognizing a
   shell command that is one Studio tool call.
 - `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s, with Claude

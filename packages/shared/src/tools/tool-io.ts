@@ -124,11 +124,13 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            home_chat_org_connections?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
+            sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
@@ -144,12 +146,18 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
         | undefined;
       submodule_credentials?:
         | { host: string; secretId: string }[]
+        | null
+        | undefined;
+      plan_objective?:
+        | { statement: string; updated_by: string; updated_at: string }
         | null
         | undefined;
       createdAt?: string | undefined;
@@ -214,11 +222,13 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            home_chat_org_connections?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
+            sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
@@ -234,6 +244,8 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | undefined;
@@ -300,11 +312,13 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            home_chat_org_connections?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
             chat_harness_sandbox_only?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
+            sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
@@ -320,6 +334,8 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -328,11 +344,112 @@ export interface StudioToolIO {
         | { host: string; secretId: string }[]
         | null
         | undefined;
+      plan_objective?:
+        | { statement: string; updated_by: string; updated_at: string }
+        | null
+        | undefined;
     };
   };
   ORGANIZATION_BLOCKS_EDITOR_SET: {
     input: { enabled: boolean };
     output: { enabled: boolean };
+  };
+  ORGANIZATION_PLAN_OBJECTIVE_SET: {
+    input: { statement: string | null };
+    output: {
+      plan_objective: {
+        statement: string;
+        updated_by: string;
+        updated_at: string;
+      } | null;
+    };
+  };
+  ORGANIZATION_PLAN_OBJECTIVE_FIND: {
+    input: { [x: string]: never };
+    output: {
+      found: {
+        statement: string;
+        quote: string;
+        source: { kind: "file" | "memory" | "connection"; label: string };
+      } | null;
+      read: string[];
+      unread: string[];
+      reason?: "not_found" | "not_clear" | "unavailable" | undefined;
+    };
+  };
+  PLAN_CASE_NEXT_QUESTION: {
+    input: {
+      idea: string;
+      answers: { question: string; answer: string }[];
+      objective?: string | null | undefined;
+    };
+    output: {
+      reaction: string | null;
+      question: { text: string; options: string[] } | null;
+      title: string | null;
+    };
+  };
+  PLAN_GOAL_LIST: {
+    input: { [x: string]: never };
+    output: {
+      goals: {
+        id: string;
+        statement: string;
+        source: { label: string; quote: string } | null;
+        created_by: string;
+        updated_by: string;
+        created_at: string;
+        updated_at: string;
+        users: number;
+        last_case_at: string | null;
+        mine: boolean;
+        can_edit: boolean;
+      }[];
+      active_goal_id: string | null;
+    };
+  };
+  PLAN_GOAL_CREATE: {
+    input: {
+      statement: string;
+      source?: { label: string; quote: string } | null | undefined;
+      make_active?: boolean | undefined;
+    };
+    output: { id: string };
+  };
+  PLAN_GOAL_UPDATE: {
+    input: { id: string; statement: string };
+    output: { id: string };
+  };
+  PLAN_GOAL_ARCHIVE: { input: { id: string }; output: { id: string } };
+  PLAN_ACTIVE_GOAL_SET: {
+    input: { goal_id: string };
+    output: { goal_id: string };
+  };
+  PLAN_GOAL_CASE_RECORD: {
+    input: { goal_id: string; thread_id: string };
+    output: { goal_id: string };
+  };
+  PLAN_GOAL_CASES: {
+    input: { goal_id: string };
+    output: { thread_ids: string[] };
+  };
+  PLAN_GOAL_SUGGEST: {
+    input: { [x: string]: never };
+    output: {
+      candidates: {
+        statement: string;
+        quote: string;
+        source: { kind: "file" | "memory" | "connection"; label: string };
+      }[];
+      read: string[];
+      unread: string[];
+      reason?:
+        | "not_found"
+        | "not_clear"
+        | "unavailable"
+        | "already_listed"
+        | undefined;
+    };
   };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };
@@ -376,6 +493,94 @@ export interface StudioToolIO {
   NOTIFICATION_SUBSCRIPTION_LIST: {
     input: { taskBoardItemId: string };
     output: { userIds: string[] };
+  };
+  ALERTS_LIST: {
+    input: {
+      status?: "open" | "acked" | "all" | undefined;
+      limit?: number | undefined;
+      cursor?: string | undefined;
+    };
+    output: {
+      alerts: {
+        id: string;
+        source: string;
+        subjectId: string;
+        rule: string;
+        title: string;
+        body: string;
+        link: string | null;
+        createdAt: string;
+        ackedAt: string | null;
+        ackedBy: string | null;
+        ackedByName: string | null;
+        ackNote: string | null;
+        taskBoardItemId: string | null;
+        taskKeySeq: number | null;
+      }[];
+      nextCursor: string | null;
+    };
+  };
+  ALERT_ACK: {
+    input: {
+      id: string;
+      note?: string | undefined;
+      taskBoardItemId?: string | undefined;
+    };
+    output: {
+      alert: {
+        id: string;
+        source: string;
+        subjectId: string;
+        rule: string;
+        title: string;
+        body: string;
+        link: string | null;
+        createdAt: string;
+        ackedAt: string | null;
+        ackedBy: string | null;
+        ackedByName: string | null;
+        ackNote: string | null;
+        taskBoardItemId: string | null;
+        taskKeySeq: number | null;
+      };
+    };
+  };
+  ALERT_RULES_LIST: {
+    input: { [x: string]: never };
+    output: {
+      rules: {
+        threshold: number;
+        minVolume: number;
+        source: string;
+        rule:
+          | "orders_drop"
+          | "denied_spike"
+          | "cancel_spike"
+          | "visitors_drop"
+          | "pageviews_drop";
+        defaults: { threshold: number; minVolume: number };
+      }[];
+    };
+  };
+  ALERT_RULE_UPDATE: {
+    input: {
+      rule:
+        | "orders_drop"
+        | "denied_spike"
+        | "cancel_spike"
+        | "visitors_drop"
+        | "pageviews_drop";
+      threshold: number;
+      minVolume: number;
+    };
+    output: {
+      rule:
+        | "orders_drop"
+        | "denied_spike"
+        | "cancel_spike"
+        | "visitors_drop"
+        | "pageviews_drop";
+    };
   };
   TASK_BOARD_ITEM_CREATE: {
     input: {
@@ -1041,6 +1246,23 @@ export interface StudioToolIO {
       model: string;
       usage: { inputTokens: number; outputTokens: number };
       usedReferenceImages: number;
+    };
+  };
+  generate_text: {
+    input: {
+      prompt: string;
+      system?: string | undefined;
+      images?: { uri: string }[] | undefined;
+      tier?: "fast" | "smart" | "thinking" | undefined;
+      provider?: string | undefined;
+      model?: string | undefined;
+      maxOutputTokens?: number | undefined;
+    };
+    output: {
+      success: true;
+      text: string;
+      model: string;
+      usage: { inputTokens: number; outputTokens: number };
     };
   };
   web_search: {
@@ -2253,7 +2475,7 @@ export interface StudioToolIO {
     };
     output: {
       report: string;
-      outcome: "ok" | "failed" | "no-site" | "no-tools" | "timeout";
+      outcome: "ok" | "failed" | "timeout" | "no-site" | "no-tools";
       toolNames: string[];
       evidence: string;
       evidenceUri: string | null;
@@ -2268,9 +2490,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2310,9 +2532,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2353,9 +2575,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2441,9 +2663,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2529,9 +2751,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2589,9 +2811,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2630,9 +2852,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2946,7 +3168,7 @@ export interface StudioToolIO {
             bankSlipUrl: string | null;
           }[];
         } | null;
-        unavailableReason: "partial_team" | "unavailable" | null;
+        unavailableReason: "unavailable" | "partial_team" | null;
       }[];
       siteSlugsWithoutTeam: string[];
       billingUnavailable: boolean;
@@ -3329,10 +3551,10 @@ export interface StudioToolIO {
         slug?: string | null | undefined;
         status?: "error" | "active" | "inactive" | undefined;
         icon?: string | null | undefined;
-        created_at?: string | undefined;
-        updated_at?: string | undefined;
-        created_by?: string | undefined;
         updated_by?: string | undefined;
+        updated_at?: string | undefined;
+        created_at?: string | undefined;
+        created_by?: string | undefined;
         organization_id?: string | undefined;
         app_name?: string | null | undefined;
         app_id?: string | null | undefined;
@@ -6440,7 +6662,7 @@ export interface StudioToolIO {
         id: string;
         thread_id: string;
         parts: Record<string, unknown>[];
-        role: "user" | "assistant" | "system";
+        role: "user" | "system" | "assistant";
         created_at: string;
         updated_at: string;
         metadata?: unknown;
@@ -7017,7 +7239,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -7117,7 +7339,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -7798,7 +8020,7 @@ export interface StudioToolIO {
   SUBSCRIPTION_USAGE_GET: {
     input: { provider: "codex" | "claude" };
     output: {
-      status: "available" | "unavailable" | "disconnected";
+      status: "unavailable" | "available" | "disconnected";
       reason:
         | "permission"
         | "authorization"

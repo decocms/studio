@@ -28,12 +28,14 @@ import {
   PROJECT_ROUTE,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
+import { withProjectOverviewState } from "@/layouts/main-panel-tabs/tab-id";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
 import {
   selectedProjectNavViews,
   type ProjectNavViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { track } from "@/lib/posthog-client";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 
 interface NavDestination {
@@ -106,6 +108,7 @@ function useNavDestinations(): NavDestination[] {
   const leafPath = useLeafRoutePath();
   const scopeId = useScopeId();
   const { project } = useProjectScope();
+  const planEnabled = useOrgFlag("plan_page_enabled");
   const pendingSidebarViews = useOptimisticProjectSidebarViews(project?.id);
   const shown = selectedProjectNavViews(project?.metadata, pendingSidebarViews);
 
@@ -126,6 +129,7 @@ function useNavDestinations(): NavDestination[] {
         ? {
             to: PROJECT_ROUTE.root,
             params: { org: org.slug, agentId: scopeId },
+            state: withProjectOverviewState,
           }
         : { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
     },
@@ -136,7 +140,7 @@ function useNavDestinations(): NavDestination[] {
       isActive:
         leafPath === DESTINATION_ROUTE.plan || leafPath === PROJECT_ROUTE.plan,
       trackAs: "plan",
-      soon: true,
+      soon: !planEnabled,
       link: scopeId
         ? {
             to: PROJECT_ROUTE.plan,

@@ -16,11 +16,13 @@ import { createHash } from "node:crypto";
 import type { StudioContext } from "@/core/studio-context";
 import {
   TierUnavailableError,
+  resolveDefaultChatTier,
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
 import {
   ChatTierSchema,
+  DEFAULT_CHAT_TIER,
   orgFlagEnabled,
   type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
@@ -245,7 +247,7 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
 }
 
 /**
- * Resolves a tier (defaulting to "smart") to a full ModelsConfig via the
+ * Resolves a tier (or the default chat tier) to a full ModelsConfig via the
  * shared resolveTier(), which falls back to curated provider defaults when
  * the org's tier slot is unset. Also resolves the "image" and "web_research"
  * tiers — when present they enable the generate_image and web_search
@@ -260,15 +262,18 @@ async function resolvePerRequestModels(
   tier: SimpleModeTier | undefined,
   harnessId?: string,
 ): Promise<ModelsConfig> {
+  const chatOptions = {
+    applyUserPrefs: true,
+    ...(harnessId === "codex"
+      ? { acceptProvider: supportsCodex, acceptModel: isCodexModel }
+      : {}),
+  };
   const [chat, image, webSearch, deepResearch] = await Promise.all([
     // The only opt-in site for per-user chat-tier overrides: this is the
     // interactive chat request, dispatched as the caller themselves.
-    resolveTier(ctx, tier ?? "smart", {
-      applyUserPrefs: true,
-      ...(harnessId === "codex"
-        ? { acceptProvider: supportsCodex, acceptModel: isCodexModel }
-        : {}),
-    }),
+    tier
+      ? resolveTier(ctx, tier, chatOptions)
+      : resolveDefaultChatTier(ctx, chatOptions),
     tryResolveTier(ctx, "image"),
     tryResolveTier(ctx, "web_search"),
     tryResolveTier(ctx, "deep_research"),
@@ -661,7 +666,7 @@ async function validate(
     );
     if (!planId) throw err;
     if (chatHarness === "codex") return codexSubscriptionChatModel();
-    const chatTier = ChatTierSchema.safeParse(tier ?? "smart");
+    const chatTier = ChatTierSchema.safeParse(tier ?? DEFAULT_CHAT_TIER);
     const picked = chatTier.success
       ? (await ctx.storage.userModelPreferences.get(userId, organization.id))
           ?.tiers?.[chatTier.data]?.modelId

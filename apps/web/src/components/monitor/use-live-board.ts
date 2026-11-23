@@ -6,9 +6,11 @@
  */
 
 import type { OrderMonitorChannel } from "@decocms/shared/order-monitor";
+import { useMonitorOrg } from "./monitor-org-context";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { localInstant } from "@/components/order-monitor/order-monitor-day";
+import { useAlerts } from "@/hooks/use-alerts";
 import { useFeature } from "@/hooks/use-entitlements";
 import {
   useRepositories,
@@ -62,6 +64,11 @@ export function useLiveBoard(
   const storesEnabled = config.orderMonitorEnabled === true && monitoring;
   const storesQuery = useOrderMonitorStores(orgSlug, storesEnabled);
   const allStores = monitoring ? (storesQuery.data ?? []) : [];
+  // Another org's board: its stores and sites only; your alerts, projects,
+  // connections and repositories aren't its.
+  const viewing = useMonitorOrg() !== undefined;
+  const ownAlerts = useAlerts(orgSlug).alerts;
+  const alerts = viewing ? [] : ownAlerts;
   // Empty means "no store" only once the read answered; disabled keeps its old upsell meaning. See ordersSourceState.
   const storesConfirmed = !storesEnabled || storesQuery.isSuccess;
   const stores = scopeId
@@ -82,7 +89,8 @@ export function useLiveBoard(
     }),
   );
   const days = [...dayOf.values()];
-  const projects = useVirtualMCPsNonBlocking();
+  const ownProjects = useVirtualMCPsNonBlocking();
+  const projects = viewing ? [] : ownProjects;
   // Visitors in the first store's day, so the cards share one clock; the
   // browser's when there is no store.
   const timezone = stores[0]
@@ -102,38 +110,36 @@ export function useLiveBoard(
       },
       monitoring && (!scopeId || !!scopedSite),
     ).data ?? null;
-  const connections = useConnections();
+  const ownConnections = useConnections();
+  const connections = viewing ? [] : ownConnections;
   const repositories = useRepositories().data ?? [];
-  const monitored = repositories.filter((r) => r.monitorDeploys);
+  const monitored = viewing ? [] : repositories.filter((r) => r.monitorDeploys);
   const pushes = useRepositoryDeploys(monitored.map((r) => r.id)).data ?? [];
 
   const daysReady = days.length === stores.length && stores.length > 0;
   // A store whose day failed would leave every total waiting on it.
   const dayError = dayQueries.find((q) => q.error)?.error ?? null;
 
-  // The rules' states are now's; a past day has no verdicts of its own.
-  const signals: Signal[] = (date ? [] : stores).flatMap((store) =>
-    store.rules.flatMap((r): Signal[] =>
-      r.status === "warning" || r.status === "alert"
-        ? [
-            {
-              kind: "orders",
-              id: `${store.connectionId}:${r.rule}`,
-              severity: r.status,
-              since: r.since,
-              projectId: scopeId ?? store.agentIds[0] ?? null,
-              storeId: store.connectionId,
-              storeTitle: store.title,
-              rule: r.rule,
-              observed: r.verdict.observed,
-              expected: r.verdict.expected,
-              after: null,
-              task: r.task,
-            },
-          ]
-        : [],
-    ),
-  );
+  // Open alerts are now's; a past day shows none. A store alert belongs to
+  // the projects that sell through the store, so a scoped board keeps only
+  // its own stores' alerts.
+  const storeOf = new Map(allStores.map((s) => [s.connectionId, s]));
+  const signals: Signal[] = (date ? [] : alerts).flatMap((alert): Signal[] => {
+    const store = storeOf.get(alert.subjectId);
+    if (scopeId && store && !store.agentIds.includes(scopeId)) return [];
+    return [
+      {
+        kind: "alert",
+        id: alert.id,
+        severity: "alert",
+        since: alert.createdAt,
+        projectId: store ? (scopeId ?? store.agentIds[0] ?? null) : null,
+        storeId: store?.connectionId ?? null,
+        title: alert.title,
+        link: alert.link,
+      },
+    ];
+  });
 
   const scoped = scopeId ? projects.filter((p) => p.id === scopeId) : projects;
   // Studio's own agents come with every org and carry no site, the Deco Score
@@ -375,6 +381,24 @@ export function useLiveBoard(
         y1: visitors.y1[h] ?? null,
       })),
     });
+    const { pageviews } = traffic;
+    kpis.push({
+      id: "pageviews",
+      source: "site",
+      value: headline.pageviews.today,
+      references: {
+        d1: headline.pageviews.d1,
+        w1: headline.pageviews.w1,
+        y1: headline.pageviews.y1,
+      },
+      points: hoursSoFar.map((h) => ({
+        bucket: h * 12 + 6,
+        value: pageviews.today[h] ?? null,
+        d1: pageviews.d1[h] ?? null,
+        w1: pageviews.w1[h] ?? null,
+        y1: pageviews.y1[h] ?? null,
+      })),
+    });
   }
   if (traffic && purchases) {
     const { visitors, headline } = traffic;
@@ -462,7 +486,7 @@ export function useLiveBoard(
         // By store: a store several projects aggregate alerts in each of them.
         signals: signals.filter(
           (s) =>
-            s.kind === "orders" &&
+            s.kind === "alert" &&
             own.some((store) => store.connectionId === s.storeId),
         ).length,
       },
@@ -538,7 +562,11 @@ export function useLiveBoard(
             today: c.today.map((v, h) => (h < running ? v : null)),
           }))
         : null,
-      stores: stores.map((store) => ({ store })),
+      devices: traffic?.devices ?? null,
+      stores: stores.map((store) => ({
+        store,
+        day: dayOf.get(store.connectionId),
+      })),
       deploys:
         deployHistory?.filter((d) => {
           const at = Date.parse(d.at);

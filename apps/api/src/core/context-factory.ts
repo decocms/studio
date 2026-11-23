@@ -12,6 +12,7 @@ import { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 
 import { SpanStatusCode, type Meter, type Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
+import { grantedScopes } from "../auth/mcp-userinfo";
 import { verifyStudioToken } from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
@@ -53,6 +54,7 @@ import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import { TagStorage } from "../storage/tags";
 import { SprintStorage } from "../storage/sprints";
+import { PlanGoalStorage } from "../storage/plan-goals";
 import { ProjectSidebarStorage } from "../storage/project-sidebar";
 import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
@@ -633,6 +635,7 @@ import { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { DemoBoardStorage } from "@/storage/demo-board";
 import { NotificationStorage } from "@/storage/notifications";
+import { AlertStorage } from "@/storage/alerts";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -900,7 +903,7 @@ async function authenticateRequest(
       () =>
         auth.api.getMcpSession({
           headers: mcpHeaders,
-        }) as Promise<{ userId: string } | null>,
+        }) as Promise<{ userId: string; scopes: string | null } | null>,
     );
 
     if (session) {
@@ -926,8 +929,10 @@ async function authenticateRequest(
       const membership = await timings.measure("auth_query_membership", () => {
         const base = db
           .selectFrom("member")
+          .innerJoin("user", "user.id", "member.userId")
           .innerJoin("organization", "organization.id", "member.organizationId")
           .select([
+            "user.email",
             "member.role",
             "member.organizationId",
             "organization.id as orgId",
@@ -995,7 +1000,13 @@ async function authenticateRequest(
 
       return {
         method: "mcpOAuth",
-        user: { id: userId, role },
+        user: {
+          id: userId,
+          role,
+          email: grantedScopes(session.scopes).has("email")
+            ? membership?.email
+            : undefined,
+        },
         role,
         permissions,
         organization,
@@ -1567,6 +1578,7 @@ export async function createStudioContextFactory(
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
     sprints: new SprintStorage(config.db),
+    planGoals: new PlanGoalStorage(config.db),
     projectSidebar: new ProjectSidebarStorage(config.db),
     experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
@@ -1596,6 +1608,7 @@ export async function createStudioContextFactory(
     taskBoardAnalytics: new TaskBoardAnalyticsStorage(config.db),
     threadAnalytics: new ThreadAnalyticsStorage(config.db),
     notifications: new NotificationStorage(config.db),
+    alerts: new AlertStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),

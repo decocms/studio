@@ -9,9 +9,10 @@
 
 import type {
   OrderMonitorChannel,
-  OrderMonitorRule,
+  OrderMonitorDay,
   OrderMonitorStatus,
   OrderMonitorStore,
+  SiteTrafficDay,
 } from "@decocms/shared/order-monitor";
 
 export type MonitorStatus = OrderMonitorStatus;
@@ -23,6 +24,7 @@ export type KpiId =
   | "orders"
   | "conversion"
   | "audience"
+  | "pageviews"
   | "latency"
   | "errors"
   | "cancellations";
@@ -65,6 +67,8 @@ export interface Kpi {
 
 export interface MonitoredStore {
   store: OrderMonitorStore;
+  /** The store's day on screen, once read. */
+  day?: OrderMonitorDay;
 }
 
 export type ImpactMetric = "orders" | "errors" | "latency";
@@ -105,19 +109,17 @@ export interface Deploy {
 
 export type Signal =
   | {
-      kind: "orders";
+      /** An open alert: it stays until someone acks it. */
+      kind: "alert";
       id: string;
-      severity: "alert" | "warning";
+      severity: "alert";
       since: string;
       projectId: string | null;
-      storeId: string;
-      storeTitle: string;
-      rule: OrderMonitorRule;
-      observed: number;
-      expected: number;
-      /** The deploy it started after, when one landed shortly before. */
-      after: { message: string; minutes: number } | null;
-      task: { keySeq: number } | null;
+      /** The store it is about, when it is about one of the monitored stores. */
+      storeId: string | null;
+      title: string;
+      /** Where to look when it isn't one of the stores: a Studio path. */
+      link: string | null;
     }
   | {
       kind: "deploy";
@@ -220,6 +222,8 @@ export interface MonitorBoard {
   kpis: Kpi[];
   /** Orders by sales channel, per hour, across the stores in scope. */
   channels: OrderMonitorChannel[] | null;
+  /** Today's purchases by device, from the sites' analytics. */
+  devices: SiteTrafficDay["devices"] | null;
   stores: MonitoredStore[];
   deploys: Deploy[] | null;
   /** Every deploy and rollout of the last two weeks, oldest first. */

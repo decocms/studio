@@ -29,7 +29,9 @@ type IdPrefixes =
   | "cmt"
   | "nsub"
   | "notif"
-  | "sprint";
+  | "sprint"
+  | "goal"
+  | "alert";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;

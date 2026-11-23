@@ -3,14 +3,12 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { AlertCircle, AlertTriangle, Copy01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
-  readToolApprovalLevel,
   usePreferences,
   type ToolApprovalLevel,
 } from "@/hooks/use-preferences.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useChatPrefs, useChatStream, useChatTask } from "../context";
-import type { RequestOptions } from "../store/thread-connection";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import {
   ProposePlanHighlight,
@@ -27,6 +25,7 @@ import { PlanRefusedHighlight } from "./plan-refused";
 import { useHighlightFlags } from "./use-highlight-count";
 import { useFeature } from "@/hooks/use-entitlements";
 import { parseErrorMessage } from "./parse-error-message";
+import { useChatRequestOptions } from "./use-chat-request-options";
 import type { SuggestTaskToolPart, UserAskToolPart } from "../types";
 
 // ============================================================================
@@ -185,26 +184,10 @@ export function ChatHighlight({
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
-  const { chatMode, setChatMode, simpleModeTier } = useChatPrefs();
+  const { setChatMode } = useChatPrefs();
   const canBuyCredits = useFeature("credits");
 
-  // Build a fresh RequestOptions at call time so tier/mode reflect the
-  // user's current selection. `toolApprovalLevel` is passed in explicitly:
-  // the approval dropdown flips it to "auto" and triggers Accept-All in
-  // the same handler, so reading React state here would see the stale
-  // pre-change value.
-  const buildRequestOptions = (
-    toolApprovalLevel: ToolApprovalLevel,
-  ): RequestOptions => ({
-    ...(voiceMode ? { voiceMode: true } : {}),
-    tier: simpleModeTier,
-    mode: chatMode,
-    toolApprovalLevel,
-    agent: virtualMcpId ? { id: virtualMcpId } : undefined,
-  });
-
-  const currentApprovalLevel: ToolApprovalLevel =
-    preferences.toolApprovalLevel ?? readToolApprovalLevel();
+  const buildRequestOptions = useChatRequestOptions({ voiceMode });
 
   const lastMessage = messages.at(-1);
   const assistantParts =
@@ -261,7 +244,7 @@ export function ChatHighlight({
         toolCallId: part.toolCallId,
         output: { response },
       },
-      buildRequestOptions(currentApprovalLevel),
+      buildRequestOptions(),
     );
   };
 
@@ -275,7 +258,7 @@ export function ChatHighlight({
         toolCallId: part.toolCallId,
         output: { accepted },
       },
-      buildRequestOptions(currentApprovalLevel),
+      buildRequestOptions(),
     );
   };
 
@@ -285,7 +268,7 @@ export function ChatHighlight({
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
     // Send plan to a new thread via sendToChat
-    createTaskWithMessage({
+    void createTaskWithMessage({
       virtualMcpId,
       message: {
         parts: [

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { UIMessage } from "ai";
-import { TEXT_MODE_PROMPT, VOICE_MODE_PROMPT } from "@decocms/shared/voice";
+import { TEXT_MODE_PROMPT, voiceModePrompt } from "@decocms/shared/voice";
 import { withVoiceResponseStyle } from "./prompt";
 
 test("turn style reaches the coding-agent message without changing persisted user text", () => {
@@ -9,12 +9,14 @@ test("turn style reaches the coding-agent message without changing persisted use
     role: "user",
     parts: [{ type: "text", text: "Change the homepage title" }],
   };
-  const spoken = withVoiceResponseStyle(message, true);
+  const spoken = withVoiceResponseStyle(message, true, "claude-code");
   expect(spoken.parts.at(-1)).toEqual({
     type: "text",
-    text: VOICE_MODE_PROMPT,
+    text: voiceModePrompt("claude-code"),
   });
-  expect(withVoiceResponseStyle(message, false).parts.at(-1)).toEqual({
+  expect(
+    withVoiceResponseStyle(message, false, "claude-code").parts.at(-1),
+  ).toEqual({
     type: "text",
     text: TEXT_MODE_PROMPT,
   });
@@ -30,11 +32,18 @@ test("spoken request context follows the style without joining the user text", (
     role: "user",
     parts: [speech],
   };
-  const spoken = withVoiceResponseStyle(message, true, "voice context");
+  const spoken = withVoiceResponseStyle(
+    message,
+    true,
+    "claude-code",
+    "voice context",
+  );
   expect(spoken.parts).toEqual([
     speech,
-    { type: "text", text: VOICE_MODE_PROMPT },
+    { type: "text", text: voiceModePrompt("claude-code") },
     { type: "text", text: "voice context" },
   ]);
-  expect(withVoiceResponseStyle(message, true).parts).toHaveLength(2);
+  expect(
+    withVoiceResponseStyle(message, true, "claude-code").parts,
+  ).toHaveLength(2);
 });

@@ -160,6 +160,29 @@ export function parseDeckTabId(
   }
 }
 
+export interface CaseTabParsed {
+  /** Home-volume-relative case path, e.g. `plans/cases/<threadId>.json`. */
+  path: string;
+}
+
+/** The Plan page's business case canvas for one chat. */
+export function formatCaseTabId(path: string): string {
+  return `case:${encodeURIComponent(path)}`;
+}
+
+export function parseCaseTabId(
+  tabId: string | undefined,
+): CaseTabParsed | null {
+  if (!tabId || !tabId.startsWith("case:")) return null;
+  const encoded = tabId.slice("case:".length);
+  if (!encoded) return null;
+  try {
+    return { path: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
 export interface FileTabParsed {
   /** Thread-output key: an org-fs ref
    *  (`org-fs:outputs/<threadId>/x.pdf`) — the same shape returned by the
@@ -285,6 +308,7 @@ export const OVERLAY_TABS = new Set([
  *   - "automation:<id>"               (ephemeral automation detail)
  *   - "file:<encoded key>"            (ephemeral thread-output file preview)
  *   - "deck:<encoded path>"           (ephemeral HTML-artifact preview/editor)
+ *   - "case:<encoded path>"           (the chat's business case canvas)
  *   - "library-file:<encoded path>"   (ephemeral org Library file preview)
  *   - "code:<encoded path>"           (open file in the Code tab's file explorer,
  *     scoped to the task's branch/sandbox — the bare "code" tab id is NOT
@@ -296,6 +320,7 @@ export function isPerThreadTab(tabId: string): boolean {
     tabId.startsWith("automation:") ||
     tabId.startsWith("file:") ||
     tabId.startsWith("deck:") ||
+    tabId.startsWith("case:") ||
     tabId.startsWith("library-file:") ||
     tabId.startsWith("code:")
   );
@@ -390,6 +415,52 @@ export function resolveDefaultTabId(
   return firstDeclaredTabId
     ? formatAgentViewTabId(firstDeclaredTabId)
     : "settings";
+}
+
+/** The router's own keys carry over; a previous visit's flag must not, or
+ *  Overview opened from the app reloads as the app's full-screen frame. */
+function withoutVisitFlags<T extends object>(prev: T): T {
+  const rest = { ...prev };
+  Reflect.deleteProperty(rest, "projectOverview");
+  Reflect.deleteProperty(rest, "appTakeover");
+  return rest;
+}
+
+/**
+ * The history state the project's Overview row navigates with: the one way to
+ * reach the Overview of a project whose main view is something else.
+ */
+export const withProjectOverviewState = <T extends object>(prev: T) => ({
+  ...withoutVisitFlags(prev),
+  projectOverview: true,
+});
+
+export function isProjectOverviewVisit(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "projectOverview" in state &&
+    state.projectOverview === true
+  );
+}
+
+/**
+ * The history state a project's landing navigates with when its main view is
+ * an MCP app: the project is that app, so the app takes the whole frame and
+ * the project's sidebar stays out of the way until asked for.
+ */
+export const withAppTakeoverState = <T extends object>(prev: T) => ({
+  ...withoutVisitFlags(prev),
+  appTakeover: true,
+});
+
+export function isAppTakeoverVisit(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "appTakeover" in state &&
+    state.appTakeover === true
+  );
 }
 
 /**

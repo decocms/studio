@@ -16,6 +16,8 @@ import { type ReactNode, useState } from "react";
 import { Calendar, ChevronRight, Plus } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
   ToggleGroup,
@@ -251,25 +253,23 @@ export function CampaignsView({
       <ScrollArea className="min-h-0 flex-1">
         <div className={cn("flex flex-col gap-4", SITE_DRAFT_VIEW_INSET)}>
           {empty ? (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-16 text-center">
-              <span className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                <Calendar size={20} className="text-muted-foreground" />
-              </span>
-              <p className="text-sm font-medium">
-                {t("sandbox.dateCampaigns.empty.title")}
-              </p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                {t("sandbox.dateCampaigns.empty.desc")}
-              </p>
-              <Button
-                size="sm"
-                className="mt-2"
-                onClick={() => view.setCreating(true)}
-              >
-                <Plus size={16} />
-                {t("sandbox.dateCampaigns.new")}
-              </Button>
-            </div>
+            <Card size="flush">
+              <EmptyState
+                icon={<Calendar />}
+                title={t("sandbox.dateCampaigns.empty.title")}
+                description={t("sandbox.dateCampaigns.empty.desc")}
+                buttonProps={{
+                  variant: "outline",
+                  children: (
+                    <>
+                      <Plus size={16} />
+                      {t("sandbox.dateCampaigns.new")}
+                    </>
+                  ),
+                  onClick: () => view.setCreating(true),
+                }}
+              />
+            </Card>
           ) : (
             <>
               <ToggleGroup
@@ -291,8 +291,9 @@ export function CampaignsView({
                   {t("sandbox.dateCampaigns.tabEnded")}
                 </ToggleGroupItem>
               </ToggleGroup>
-              <div
-                className="overflow-hidden rounded-xl border border-border"
+              <Card
+                size="flush"
+                className="gap-0 overflow-hidden"
                 data-testid="campaigns-list"
               >
                 <div
@@ -347,7 +348,7 @@ export function CampaignsView({
                     })}
                   </ul>
                 )}
-              </div>
+              </Card>
             </>
           )}
           <NamedRuleDraftNotes kind="campaigns" removed={removed} />

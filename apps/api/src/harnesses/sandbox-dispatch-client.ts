@@ -35,6 +35,7 @@ import type { UIMessageChunk } from "ai";
 import { SANDBOX_ORG_ROOT } from "@decocms/shared/organization/home-mount";
 import { RetryError, retry, sleep } from "@decocms/shared/std";
 import {
+  harnessRunContextRejection,
   harnessRunResultSchema,
   type HarnessDispatchEnvelope,
   type HarnessStreamInputWire,
@@ -57,8 +58,16 @@ import {
 } from "@/harnesses/claude-code-env";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
+import { resolveRunMemory } from "@/harnesses/run-memory";
+import {
+  resolveRunIdentity,
+  runIdentityParagraph,
+  studioTool,
+} from "@/harnesses/sandbox-run-prompt";
+import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
+import { withRunContext } from "@/harnesses/with-run-context";
 import { daemonRunId } from "@/harnesses/live-messages";
 import type { StudioContext } from "../core/studio-context";
 import {
@@ -67,14 +76,18 @@ import {
   runKeyPermissions,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { signsInFromSandbox, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import {
+  getDecopilotId,
+  signsInFromSandbox,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
-import type { OrganizationSettings, Permission } from "@/storage/types";
+import type { OrganizationSettings, Permission, Thread } from "@/storage/types";
 import {
   connectionGrantsFor,
   selfToolGrantsFor,
@@ -376,15 +389,19 @@ export class SandboxDispatchClient {
     threadId: string,
     dispatcherUserId: string,
     agent: Promise<VirtualMCPEntity | null>,
-  ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps" | "studioCli">> {
-    const settingsRead = this.ctx.storage.organizationSettings.get(
-      organization.id,
-    );
-    const [candidates, authority, thread, ownAgent, settings] =
+    threadRead: Promise<Thread | null>,
+    settingsRead: Promise<OrganizationSettings | null>,
+  ): Promise<
+    Pick<HarnessStreamInputWire, "mcp" | "orgMcps" | "studioCli"> & {
+      /** Who the model is in this chat; null for a run that is not one. */
+      identity: string | null;
+    }
+  > {
+    const [{ candidates, homeChat }, authority, thread, ownAgent, settings] =
       await Promise.all([
-        this.orgMcpConnections(organization, agent, settingsRead),
+        this.orgMcpConnections(organization, agent, settingsRead, threadRead),
         this.dispatcherAuthority(organization.id, dispatcherUserId),
-        this.ctx.storage.threads.get(threadId),
+        threadRead,
         agent,
         settingsRead,
       ]);
@@ -433,8 +450,23 @@ export class SandboxDispatchClient {
       connections,
       ownIds,
     });
+    const who = resolveRunIdentity({
+      organization,
+      agentId: this.virtualMcpId,
+      agent: ownAgent,
+      runClass: this.ctx.metadata?.runMetadata?.[RUN_CLASS_METADATA_KEY],
+      thread,
+      homeChat,
+      connections,
+      ownIds,
+      mountedIds: new Set(mounted.map((connection) => connection.id)),
+      selfTools,
+    });
+    const identity = who ? runIdentityParagraph(who) : null;
     const cli = studioCli ? { studioCli } : {};
-    if (mounted.length === 0 || !organization.slug) return { mcp, ...cli };
+    if (mounted.length === 0 || !organization.slug) {
+      return { mcp, ...cli, identity };
+    }
     const servers = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
@@ -456,7 +488,27 @@ export class SandboxDispatchClient {
             `dispatching user has no grant for them)`
       }`,
     );
-    return { mcp, orgMcps, ...cli };
+    return { mcp, orgMcps, ...cli, identity };
+  }
+
+  /**
+   * Whose Claude Code memory this run uses, if any (see `resolveRunMemory`).
+   * Only Claude Code has one; Codex gets no field.
+   */
+  private async memoryForRun(
+    userId: string,
+    threadRead: Promise<Thread | null>,
+    settingsRead: Promise<OrganizationSettings | null>,
+  ): Promise<Pick<HarnessStreamInputWire, "memory">> {
+    if (this.harnessId === "codex") return {};
+    const [thread, settings] = await Promise.all([threadRead, settingsRead]);
+    const memory = resolveRunMemory({
+      enabled: orgFlagEnabled(settings?.flags, "sandbox_chat_user_memory"),
+      orgFsMounted: !getSettings().orgFsMountsDisabled,
+      userId,
+      thread,
+    });
+    return memory ? { memory } : {};
   }
 
   /**
@@ -521,40 +573,25 @@ export class SandboxDispatchClient {
     return { role, roleStatements };
   }
 
-  /**
-   * The connections this run mounts: the ones aggregated ON THE AGENT always,
-   * plus every other MCP connection in the org when it opted in
-   * (`coding_agent_org_mcps`). None without a slug, without which the
-   * per-connection URL cannot be built.
-   *
-   * The agent's own half is not flag-gated because it is not a fan-out: those
-   * connections are exactly what someone attached to this agent, and they are
-   * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
-   * virtual MCP). This harness points at the narrow `thread` surface instead,
-   * so without them a Code Agent chat lost every tool the agent was configured
-   * with — its GitHub MCP included.
-   */
-  private async orgMcpConnections(
+  /** This run's {@link runConnectionCandidates}, read from storage. */
+  private orgMcpConnections(
     organization: { id: string; slug?: string },
     agentRead: Promise<VirtualMCPEntity | null>,
     settingsRead: Promise<OrganizationSettings | null>,
-  ): Promise<ConnectionEntity[]> {
-    if (!organization.slug) return [];
-    const [settings, agent] = await Promise.all([settingsRead, agentRead]);
-    const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
-    const ownIds = new Set(
-      (agent?.connections ?? []).map(
-        (aggregation) => aggregation.connection_id,
-      ),
-    );
-    // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
-    const { items } = await this.ctx.storage.connections.list(organization.id);
-    return selectRunConnections({
-      organizationId: organization.id,
-      orgWide,
-      ownIds,
-      excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
-      connections: items,
+    threadRead: Promise<HomeChatThread | null>,
+  ): Promise<{ candidates: ConnectionEntity[]; homeChat: boolean }> {
+    return runConnectionCandidates({
+      organization,
+      agentId: this.virtualMcpId,
+      runClass: this.ctx.metadata?.runMetadata?.[RUN_CLASS_METADATA_KEY],
+      agentRead,
+      settingsRead,
+      threadRead,
+      // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
+      listConnections: async () =>
+        (await this.ctx.storage.connections.list(organization.id)).items,
+      linkedTaskIds: (threadId) =>
+        this.ctx.storage.taskBoard.linkedTaskIds(threadId, organization.id),
     });
   }
 
@@ -613,6 +650,19 @@ export class SandboxDispatchClient {
     const agent = this.ctx.storage.virtualMcps
       .findById(this.virtualMcpId)
       .catch(() => null);
+    // Read once: the thread and the org's flags shape both the MCP surface and the memory.
+    const threadRead = this.ctx.storage.threads.get(input.threadId);
+    const settingsRead = this.ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    const { identity, ...studioSurface } = await this.mcpForRun(
+      organization,
+      input.threadId,
+      input.user.id,
+      agent,
+      threadRead,
+      settingsRead,
+    );
     const wireInput = {
       ...input,
       // Hosted Decopilot's in-process client ignores `mcp` and gets the
@@ -634,12 +684,8 @@ export class SandboxDispatchClient {
       //
       // The org's own MCP connections come alongside it (`orgMcps`), behind
       // the `coding_agent_org_mcps` flag — see `mcpForRun`.
-      ...(await this.mcpForRun(
-        organization,
-        input.threadId,
-        input.user.id,
-        agent,
-      )),
+      ...studioSurface,
+      ...(await this.memoryForRun(input.user.id, threadRead, settingsRead)),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId, agent),
@@ -726,8 +772,10 @@ export class SandboxDispatchClient {
           agent: {
             ...wireInput.agent,
             instructions: [
+              // First: it is who the agent's own instructions are addressed to.
+              identity,
               wireInput.agent.instructions,
-              sandboxStateInstruction(warmPoolAdopted),
+              sandboxStateInstruction(warmPoolAdopted, wireInput.workspace),
               orgOutputFallbackInstruction(input.threadId),
             ]
               .filter(Boolean)
@@ -744,14 +792,17 @@ export class SandboxDispatchClient {
           : () => {};
         try {
           yield* withModelMetadata(
-            dispatchToDaemon({
-              provider,
-              handle: sandbox.sandboxHandle,
-              harnessId,
-              input: resume ? { ...boundInput, resume } : boundInput,
-              runId,
-              signal: input.signal,
-            }),
+            withRunContext(
+              dispatchToDaemon({
+                provider,
+                handle: sandbox.sandboxHandle,
+                harnessId,
+                input: resume ? { ...boundInput, resume } : boundInput,
+                runId,
+                signal: input.signal,
+              }),
+              harnessRunContextRejection,
+            ),
             // A continuation's `start` is dropped downstream, so don't re-stamp it.
             resume
               ? null
@@ -930,19 +981,55 @@ export async function* dispatchWithContinuation(args: {
  * turns to learn something already known here, and a wrong guess is expensive
  * in both directions.
  *
+ * Both texts describe a checkout, so a run with no repository gets neither: it
+ * is told there is none, that only the organization filesystem outlives the
+ * sandbox, and, when it stands in the directory a repository is cloned into,
+ * how to attach one. Told it had a checkout, such runs went looking for it,
+ * then cloned from the shell with a token in the command. A warm pod is always
+ * a repository's pod, so it keeps the warm text whatever the workspace says.
+ *
  * Exported for the unit test — it is the whole contract.
  */
-export function sandboxStateInstruction(warmPoolAdopted: boolean): string {
-  return warmPoolAdopted
-    ? "Your sandbox is WARM: the repository is cloned, its dependencies are " +
-        "already installed, and the dev server is already running and " +
-        "hot-reloading your edits. Do not install anything and do not start a " +
-        "second server — find the running one's port (`ss -ltnp`) and use it."
-    : "Your sandbox is a bare CHECKOUT: nothing is installed and no dev server " +
-        "is running. Usually you don't need one — read the code path end to " +
-        "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
-        "change rendered, install and start the server ONCE in the background " +
-        "and poll until it answers; it is a cold start, so expect minutes.";
+export function sandboxStateInstruction(
+  warmPoolAdopted: boolean,
+  workspace: HarnessStreamInput["workspace"],
+): string {
+  if (warmPoolAdopted) {
+    return (
+      "Your sandbox is WARM: the repository is cloned, its dependencies are " +
+      "already installed, and the dev server is already running and " +
+      "hot-reloading your edits. Do not install anything and do not start a " +
+      "second server — find the running one's port (`ss -ltnp`) and use it."
+    );
+  }
+  if (workspace.cwd !== null && workspace.repo) {
+    return (
+      "Your sandbox is a bare CHECKOUT: nothing is installed and no dev server " +
+      "is running. Usually you don't need one — read the code path end to " +
+      "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
+      "change rendered, install and start the server ONCE in the background " +
+      "and poll until it answers; it is a cold start, so expect minutes."
+    );
+  }
+  const inCheckoutDir = workspace.cwd !== null;
+  return [
+    "No repository is attached to this run.",
+    inCheckoutDir
+      ? "Your working directory holds no code; you can still write and run code in it."
+      : null,
+    `What you write outside \`${SANDBOX_ORG_ROOT}/\` is deleted with the sandbox ` +
+      "once it sits idle, so save what the person should keep under " +
+      `\`${SANDBOX_ORG_ROOT}/output/\`.`,
+    inCheckoutDir
+      ? "To work on one of the organization's repositories, call " +
+        `${studioTool("TASK_ADD_REPO")} (with no arguments it lists them): it ` +
+        "clones the repository into your working directory and authenticates " +
+        "`git` and the provider's CLI (`gh` or `glab`). Never clone with an " +
+        "access token typed into a command."
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**
@@ -1413,7 +1500,8 @@ export function errorForTerminal(code: string, message: string): Error {
  * (the per-run MCP bearer, the title). A different key gets a new process.
  */
 export function harnessSessionKey(
-  input: HarnessStreamInput & Partial<Pick<HarnessStreamInputWire, "orgMcps">>,
+  input: HarnessStreamInput &
+    Partial<Pick<HarnessStreamInputWire, "orgMcps" | "memory">>,
 ): string {
   const {
     signal: _signal,
@@ -1553,6 +1641,8 @@ export function selectRunConnections<
   organizationId: string;
   /** The org opted into every connection (`coding_agent_org_mcps`). */
   orgWide: boolean;
+  /** The run is an interactive home chat (see {@link isInteractiveHomeChat}). */
+  homeChat?: boolean;
   /** Connections aggregated on the agent itself; always mounted. */
   ownIds: ReadonlySet<string>;
   /**
@@ -1570,6 +1660,7 @@ export function selectRunConnections<
       // A sandbox sign-in server is the only way a run reaches it, so it is
       // not left to the agent or the org-wide opt-in.
       (args.orgWide ||
+        args.homeChat ||
         args.ownIds.has(connection.id) ||
         signsInFromSandbox(connection.connection_url)) &&
       !args.excludedIds?.has(connection.id) &&
@@ -1578,6 +1669,130 @@ export function selectRunConnections<
       connection.status === "active" &&
       !isStudioOwnedConnection(args.organizationId, connection.id),
   );
+}
+
+/** The thread facts the home-chat decision reads. */
+type HomeChatThread = {
+  id: string;
+  trigger_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+/** An error's class and driver code: enough to tell failures apart, and free of row data. */
+function errorKind(error: unknown): string {
+  if (!(error instanceof Error)) return "non-error";
+  return "code" in error && typeof error.code === "string"
+    ? `${error.name} ${error.code}`
+    : error.name;
+}
+
+/**
+ * Whether a run is a chat a person drives on the org's default agent
+ * (`home_chat_org_connections`, on by default). Board, reviewer, Jira,
+ * trigger and automation runs dispatch on the same agent and must not match.
+ * An automation's manual Run has no trigger id; its thread carries
+ * `AUTOMATION_THREAD_KEY` instead.
+ *
+ * Ordered by cost: the flag, the agent and the run class are in hand, and the
+ * thread is a read the dispatch already makes. Only a run those leave
+ * undecided asks whether its thread is linked to a card, so a board or
+ * triggered run never pays for that query. A lookup that throws answers "no":
+ * the run keeps the connections it had without this feature.
+ */
+async function isInteractiveHomeChat(args: {
+  flags: Record<string, unknown> | null | undefined;
+  organizationId: string;
+  agentId: string;
+  runClass: string | undefined;
+  threadRead: Promise<HomeChatThread | null>;
+  linkedTaskIds: (threadId: string) => Promise<readonly string[]>;
+}): Promise<boolean> {
+  if (!orgFlagEnabled(args.flags, "home_chat_org_connections")) return false;
+  if (args.agentId !== getDecopilotId(args.organizationId)) return false;
+  if (args.runClass) return false;
+  const thread = await args.threadRead.catch(() => null);
+  if (!thread || thread.trigger_id || thread.metadata?.source) return false;
+  if (thread.metadata?.[AUTOMATION_THREAD_KEY] != null) return false;
+  try {
+    return (await args.linkedTaskIds(thread.id)).length === 0;
+  } catch (error) {
+    console.warn(
+      `[${SANDBOX_HOSTED_HARNESS}] home chat board-link lookup failed (${errorKind(error)}); the run keeps only its agent's connections`,
+    );
+    return false;
+  }
+}
+
+/**
+ * The connections a run is a candidate for: the ones aggregated ON THE AGENT
+ * always, plus every other MCP connection in the org when it opted in
+ * (`coding_agent_org_mcps`) or the run is an interactive home chat (see
+ * {@link isInteractiveHomeChat}). None without a slug, without which the
+ * per-connection URL cannot be built.
+ *
+ * The agent's own half is not flag-gated because it is not a fan-out: those
+ * connections are exactly what someone attached to this agent, and they are
+ * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
+ * virtual MCP). This harness points at the narrow `thread` surface instead,
+ * so without them a Code Agent chat lost every tool the agent was configured
+ * with — its GitHub MCP included.
+ *
+ * Takes its reads as arguments so the whole decision is unit-tested.
+ * Also answers whether the run is that home chat: its identity paragraph says so.
+ */
+export async function runConnectionCandidates<
+  T extends {
+    id: string;
+    status?: string | null;
+    connection_url?: string | null;
+  },
+>(args: {
+  organization: { id: string; slug?: string };
+  agentId: string;
+  /** `runMetadata.runClass`: set by the board and by triggered runs. */
+  runClass: string | undefined;
+  agentRead: Promise<{
+    connections?: readonly { connection_id: string }[] | null;
+  } | null>;
+  settingsRead: Promise<{
+    flags?: Record<string, unknown> | null;
+    coding_agent_mcp_excluded?: readonly string[] | null;
+  } | null>;
+  threadRead: Promise<HomeChatThread | null>;
+  listConnections: () => Promise<readonly T[]>;
+  /** Ids of the task-board items a thread is linked to. */
+  linkedTaskIds: (threadId: string) => Promise<readonly string[]>;
+}): Promise<{ candidates: T[]; homeChat: boolean }> {
+  // Also keeps `home_chat_org_connections` off the slug-less path, which would mount every candidate.
+  if (!args.organization.slug) return { candidates: [], homeChat: false };
+  const [settings, agent] = await Promise.all([
+    args.settingsRead,
+    args.agentRead,
+  ]);
+  const [homeChat, connections] = await Promise.all([
+    isInteractiveHomeChat({
+      flags: settings?.flags,
+      organizationId: args.organization.id,
+      agentId: args.agentId,
+      runClass: args.runClass,
+      threadRead: args.threadRead,
+      linkedTaskIds: args.linkedTaskIds,
+    }),
+    args.listConnections(),
+  ]);
+  const candidates = selectRunConnections({
+    organizationId: args.organization.id,
+    orgWide: orgFlagEnabled(settings?.flags, "coding_agent_org_mcps"),
+    homeChat,
+    ownIds: new Set(
+      (agent?.connections ?? []).map(
+        (aggregation) => aggregation.connection_id,
+      ),
+    ),
+    excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
+    connections,
+  });
+  return { candidates, homeChat };
 }
 
 /**

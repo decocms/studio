@@ -1,8 +1,9 @@
 /** The Monitor, org or project: ask about the data, what needs attention, the numbers that matter. */
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Activity, GitBranch01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   Popover,
@@ -27,6 +28,7 @@ import {
   sortSignals,
   storeTimezone,
 } from "./board";
+import { AlertsView } from "./alerts-view";
 import { AskData } from "./ask-data";
 import {
   AudienceView,
@@ -47,6 +49,8 @@ import { ConnectMore, Locked } from "./locked";
 import { AllClear, SignalsPanel } from "./signals-panel";
 import { StoreDay } from "./store-day";
 import { NumberCards, OverviewNumbers } from "./overview-numbers";
+import { MonitorOrgPicker } from "./monitor-org";
+import { SalesStatus } from "./sales-status";
 import { Sparkline } from "./sparkline";
 
 export interface MonitorSelection {
@@ -57,6 +61,8 @@ export interface MonitorSelection {
   date?: string;
   store?: string;
   at?: string;
+  /** From an admin org: another org's slug, or `all`. */
+  customer?: string;
 }
 
 /** What the board's controls change: which day. */
@@ -65,16 +71,25 @@ interface BoardControls {
   onDate: (date: string) => void;
 }
 
-/** The day picker, in the panel's top bar where the board analytics keep theirs. */
-function Actions({ controls }: { controls: BoardControls | null }) {
-  if (!controls) return null;
+/** The day picker, in the panel's top bar where the board analytics keep theirs; an admin org's customer picker beside it. */
+function Actions({
+  controls,
+  customer,
+}: {
+  controls: BoardControls | null;
+  customer: ReactNode;
+}) {
+  if (!controls && !customer) return null;
   return (
     <Page.Actions>
-      <DayInput
-        value={controls.date}
-        max={localDay(new Date())}
-        onChange={controls.onDate}
-      />
+      {customer}
+      {controls && (
+        <DayInput
+          value={controls.date}
+          max={localDay(new Date())}
+          onChange={controls.onDate}
+        />
+      )}
     </Page.Actions>
   );
 }
@@ -91,6 +106,57 @@ const PREVIEW_NUMBERS = [
   },
 ] as const;
 const PREVIEW_SHAPE = [3, 2, 2, 4, 7, 9, 8, 10, 12, 11, 13, 12, 9, 10];
+
+/**
+ * Once every store's day is in, so the totals don't grow as they land. A
+ * brand with several stores can narrow it to one; across all customers the
+ * bars split by store instead.
+ */
+function OverviewSales({
+  board,
+  canPickStore,
+}: {
+  board: MonitorBoard;
+  canPickStore: boolean;
+}) {
+  const t = useT();
+  const [store, setStore] = useState<string | null>(null);
+  const loaded = board.stores.flatMap((s) => (s.day ? [s] : []));
+  if (loaded.length === 0 || loaded.length !== board.stores.length) return null;
+  const shown = loaded.filter(
+    (s) => store === null || s.store.connectionId === store,
+  );
+  const stores = shown.length > 0 ? shown : loaded;
+  const picker = canPickStore && loaded.length > 1 && (
+    <Combobox
+      options={[
+        { value: "", label: t("monitor.sales.allStores") },
+        ...loaded.map((s) => ({
+          value: s.store.connectionId,
+          label: s.store.title,
+        })),
+      ]}
+      value={store ?? ""}
+      onChange={(next) => setStore(next || null)}
+      width="w-[200px]"
+      placeholder={t("monitor.sales.allStores")}
+      searchPlaceholder={t("monitor.sales.storeSearch")}
+      emptyMessage={t("monitor.customer.empty")}
+    />
+  );
+  return (
+    <SalesStatus
+      days={stores.map((s) => s.day!)}
+      titles={stores.map((s) => s.store.title)}
+      conversion={
+        store === null ? board.kpis.find((k) => k.id === "conversion") : null
+      }
+      picker={picker}
+      // The sites' devices are the brand's, not one of its stores'.
+      devices={canPickStore && store === null ? board.devices : null}
+    />
+  );
+}
 
 function Board({
   board,
@@ -129,6 +195,10 @@ function Board({
       ) : (
         today && board.stores.length > 0 && <AllClear />
       )}
+      <OverviewSales
+        board={board}
+        canPickStore={selection.customer !== "all"}
+      />
       {numbers}
       {more}
     </div>
@@ -193,7 +263,8 @@ export function MonitorPage({
           })
         }
       />
-      {!routeScope && projects.length > 1 && (
+      {/* A customer's view isn't this org's projects; its stores filter the sales. */}
+      {!routeScope && !selection.customer && projects.length > 1 && (
         <ProjectFilter
           projects={projects}
           value={scopeId}
@@ -250,6 +321,20 @@ export function MonitorPage({
             </Locked>
           )}
         </div>
+      </MonitorFrame>
+    );
+  }
+  if (view === "alerts") {
+    return (
+      <MonitorFrame tabs={tabs}>
+        <AlertsView
+          orgSlug={orgSlug}
+          stores={new Set(board.stores.map((s) => s.store.connectionId))}
+          scoped={scopeId !== null}
+          onOpenStore={(store) =>
+            onSelect({ project: selection.project, store })
+          }
+        />
       </MonitorFrame>
     );
   }
@@ -378,7 +463,12 @@ export function MonitorPage({
         scopeId={scopeId}
         today={today}
         onSelect={onSelect}
-        ask={<AskData project={scopeProject?.title ?? null} />}
+        ask={
+          // Asking reads your own org's data, not the customer's.
+          selection.customer ? null : (
+            <AskData project={scopeProject?.title ?? null} />
+          )
+        }
         numbers={
           <OverviewNumbers
             project={scopeProject}
@@ -386,23 +476,26 @@ export function MonitorPage({
             kpis={board.kpis}
             deploys={board.deploys}
             dayStart={board.dayStart}
+            sales={board.stores.length > 0 && board.stores.every((s) => s.day)}
           />
         }
         more={
-          <ConnectMore
-            steps={(["orders", "analytics", "site", "deploys"] as const).map(
-              (source) => ({
-                source,
-                state: stateOf(source),
-                // On the Overview a store is what alerts come from.
-                meta:
-                  source === "orders"
-                    ? t("monitor.connect.ordersAlerts")
-                    : undefined,
-              }),
-            )}
-            link={connectLink(orgSlug, scopeId)}
-          />
+          !selection.customer && (
+            <ConnectMore
+              steps={(["orders", "analytics", "site", "deploys"] as const).map(
+                (source) => ({
+                  source,
+                  state: stateOf(source),
+                  // On the Overview a store is what alerts come from.
+                  meta:
+                    source === "orders"
+                      ? t("monitor.connect.ordersAlerts")
+                      : undefined,
+                }),
+              )}
+              link={connectLink(orgSlug, scopeId)}
+            />
+          )
         }
       />
     );
@@ -426,7 +519,18 @@ export function MonitorPage({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
       {tabs}
-      <Actions controls={controls} />
+      <Actions
+        controls={controls}
+        customer={
+          view === "metrics" && (
+            <MonitorOrgPicker
+              orgSlug={orgSlug}
+              value={selection.customer}
+              onChange={(customer) => onSelect({ view: "metrics", customer })}
+            />
+          )
+        }
+      />
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
         {body}
       </div>

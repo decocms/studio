@@ -494,6 +494,12 @@ export const KEYS = {
     ["task-board-prompts", organizationId] as const,
   taskBoardSprints: (organizationId: string) =>
     ["task-board-sprints", organizationId] as const,
+  planGoalsAll: (organizationId: string) =>
+    ["plan-goals", organizationId] as const,
+  planGoals: (organizationId: string) =>
+    ["plan-goals", organizationId, "list"] as const,
+  planGoalCases: (organizationId: string, goalId: string) =>
+    ["plan-goals", organizationId, "cases", goalId] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>
@@ -859,6 +865,14 @@ export const KEYS = {
   /** Monitor: the registry icons of the sources it reads. */
   monitorSourceIcons: (org: string) =>
     ["monitor", org, "source-icons"] as const,
+  /** Every alerts read of the org, so one event refreshes them all. */
+  alertsAll: (org: string) => ["alerts", org] as const,
+  /** The org's open or acked alerts (`ALERTS_LIST`). */
+  alerts: (org: string, status: "open" | "acked") =>
+    ["alerts", org, status] as const,
+  alertRules: (org: string) => ["alert-rules", org] as const,
+  orderMonitorAdminOrgs: (org: string) =>
+    ["order-monitor-admin-orgs", org] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>

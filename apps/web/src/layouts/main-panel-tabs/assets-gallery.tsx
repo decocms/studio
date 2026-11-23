@@ -23,6 +23,8 @@ import {
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -389,13 +391,9 @@ function EmptyNote({
   description: string;
 }) {
   return (
-    <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 py-8 text-center">
-      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-        <Image01 size={18} className="text-muted-foreground" />
-      </div>
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </div>
+    <Card size="flush">
+      <EmptyState icon={<Image01 />} title={title} description={description} />
+    </Card>
   );
 }
 

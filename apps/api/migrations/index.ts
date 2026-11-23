@@ -5,7 +5,11 @@ import * as migration260demoboardsnapshots from "./260-demo-board-snapshots";
 import * as migration261removeuserregisteredssoproviders from "./261-remove-user-registered-sso-providers";
 import * as migration263cmsdrafts from "./263-cms-drafts";
 import * as migration264decofilependingblocks from "./264-decofile-pending-blocks";
-import * as migration265organizationinvitelinks from "./265-organization-invite-links";
+import * as migration265alerts from "./265-alerts";
+import * as migration266alertrulesettings from "./266-alert-rule-settings";
+import * as migration267orgplanobjective from "./267-org-plan-objective";
+import * as migration268plangoals from "./268-plan-goals";
+import * as migration269organizationinvitelinks from "./269-organization-invite-links";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -569,7 +573,11 @@ const migrations: Record<string, Migration> = {
     migration262automationcardmentiontrigger,
   "263-cms-drafts": migration263cmsdrafts,
   "264-decofile-pending-blocks": migration264decofilependingblocks,
-  "265-organization-invite-links": migration265organizationinvitelinks,
+  "265-alerts": migration265alerts,
+  "266-alert-rule-settings": migration266alertrulesettings,
+  "267-org-plan-objective": migration267orgplanobjective,
+  "268-plan-goals": migration268plangoals,
+  "269-organization-invite-links": migration269organizationinvitelinks,
 };
 
 export default migrations;

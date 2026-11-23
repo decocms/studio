@@ -20,6 +20,7 @@ import type {
 } from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
+import { AGENT_MENTION_LABEL } from "@decocms/shared/agent-mention";
 import type { StudioProvider } from "@/ai-providers/types";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import { runAgentLoop } from "../run-agent-loop";
@@ -111,6 +112,9 @@ const SUBTASK_DESCRIPTION =
   "OMIT agent_id to clone yourself (a fresh subagent with your exact tools and instructions, empty context). " +
   "Pass agent_id to delegate to a different specialized agent, or to create an ephemeral subagent for a " +
   "concrete MCP connection. Use IDs exactly as listed in <available-agents> or <available-connections>.\n\n" +
+  `A user message carrying \`[${AGENT_MENTION_LABEL}: <name> (agent_id: <id>)]\` means the user @-mentioned that agent: ` +
+  "delegate that task to it by passing its agent_id, and include the full relevant context from the conversation in " +
+  "the prompt — the subagent has no conversation history.\n\n" +
   "Usage notes:\n" +
   "- Every subtask call starts FRESH — no conversation history, no prior runs. Always include full context in the prompt and state exactly what to return (the specific answer/list/paths you need, not a raw dump); never use continuation phrases like 'continue' or 'as before'.\n" +
   "- Clearly tell the subagent whether you expect it to take action or just research.\n" +

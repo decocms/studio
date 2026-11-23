@@ -25,6 +25,7 @@ import { z } from "zod";
 
 type ToolHandler = (
   args: Record<string, unknown>,
+  headers: IncomingMessage["headers"],
 ) => unknown | Promise<unknown>;
 
 export interface TestMcpTool {
@@ -116,7 +117,7 @@ export async function startTestMcpServer(
   // Build a fresh server per request — the streamable transport is designed
   // to be one-shot in stateless mode, mirroring how studio's /mcp/self mounts
   // (see apps/api/src/api/routes/self.ts).
-  const buildServer = (): McpServer => {
+  const buildServer = (headers: IncomingMessage["headers"]): McpServer => {
     const server = new McpServer({ name: "test-mcp", version: "1.0.0" });
     for (const tool of tools) {
       server.registerTool(
@@ -127,7 +128,9 @@ export async function startTestMcpServer(
           ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
         },
         async (args: Record<string, unknown>) => {
-          const result = tool.handler ? await tool.handler(args) : { ok: true };
+          const result = tool.handler
+            ? await tool.handler(args, headers)
+            : { ok: true };
           const text =
             typeof result === "string" ? result : JSON.stringify(result);
           // Only emit structuredContent when the tool declares an
@@ -184,7 +187,7 @@ export async function startTestMcpServer(
           return;
         }
 
-        const server = buildServer();
+        const server = buildServer(req.headers);
         // Stateless mode so each request stands alone — matches studio's
         // per-request server pattern in self.ts.
         const transport = new StreamableHTTPServerTransport({

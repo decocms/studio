@@ -105,6 +105,27 @@ func TestValidateHarnessInputAcceptsMinimalFrame(t *testing.T) {
 	}
 }
 
+// Studio rolls out ahead of the sandbox image: a field this daemon does not know passes validation and reaches the runner as sent.
+func TestUnknownInputFieldIsAcceptedAndForwarded(t *testing.T) {
+	input := strings.Replace(minimalHarnessInput,
+		`"workspace": {"cwd": null}`,
+		`"workspace": {"cwd": "/repo", "branch": null}, "notYetKnown": {"enabled": true}`, 1)
+	if reason := ValidateHarnessInput(json.RawMessage(input)); reason != "" {
+		t.Fatalf("an unknown field was rejected: %s", reason)
+	}
+	var forwarded map[string]json.RawMessage
+	if err := json.Unmarshal(rebaseInput(json.RawMessage(input), "/app"), &forwarded); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(forwarded["workspace"]); !strings.Contains(got, `"/app/repo"`) {
+		t.Fatalf("the workspace was not rebased, so the re-encode path did not run: %s", got)
+	}
+	var unknown struct{ Enabled bool }
+	if json.Unmarshal(forwarded["notYetKnown"], &unknown) != nil || !unknown.Enabled {
+		t.Fatalf("the unknown field did not survive the re-encode: %s", forwarded["notYetKnown"])
+	}
+}
+
 // An envelope without `harnessId` (older Studio) still runs claude-code.
 func TestDispatchCarriesTheEnvelopeHarness(t *testing.T) {
 	const token = "tkn"

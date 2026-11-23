@@ -135,6 +135,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Read back by the harness runner, which records it with every run.
+          build-args: |
+            STUDIO_SANDBOX_IMAGE_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Multi-arch to match every sibling image (Studio API, orgfs-sidecar,

@@ -111,13 +111,16 @@ const RETIRE_MARGIN_MS = 2 * 60 * 60_000;
 const KEEP_UNSAVED_MAX_MS = 30 * 24 * 60 * 60_000;
 /**
  * Exits 0 when the sandbox's repo has nothing git's remote lacks: no changed
- * or untracked file, no commit outside a remote-tracking ref. Local only, so
+ * or untracked file, no commit outside a remote-tracking ref. A sandbox with
+ * no repository still has the directory, without `.git`, and has nothing to
+ * lose. Local only, so
  * an expired push token can't make a clean VM look unsaved. Any git failure
  * exits non-zero, which keeps the VM.
  */
 const NOTHING_UNSAVED = `docker exec ${CONTAINER} sh -c ${shellQuote(
   [
     `cd ${WORKDIR}/repo 2>/dev/null || exit 0`,
+    `[ -e .git ] || exit 0`,
     `s=$(git -c safe.directory='*' status --porcelain) || exit 1`,
     `c=$(git -c safe.directory='*' log --branches --not --remotes -1 --format=%H) || exit 1`,
     `[ -z "$s" ] && [ -z "$c" ]`,
@@ -155,7 +158,11 @@ export interface FreestyleSandboxProviderOptions {
    * into the base snapshot, so code in any of these sandboxes can read it.
    */
   commitSigning?: { email: string; privateKey: string };
-  /** Pause a VM after this long without network activity. Default 5 min. */
+  /**
+   * Pause a VM after this long without network activity. Default 2 min: a
+   * live run's dispatch heartbeat writes every 15s, so only a VM nobody is
+   * using goes this quiet.
+   */
   idleTimeoutSeconds?: number;
   /**
    * Also pause a running VM once its daemon has gone this long unused. The
@@ -166,7 +173,9 @@ export interface FreestyleSandboxProviderOptions {
   idlePauseMs?: number;
   /**
    * Freestyle deletes a VM after this long without running, with no shutdown
-   * sync. Default 1 day. A plan that caps it lower gets its cap.
+   * sync. Default 4 hours: 95% of follow-ups in a chat arrive within 3, and the
+   * retire sweep keeps any VM with unsaved work. A plan that caps it lower
+   * gets its cap.
    */
   autoDeleteSeconds?: number;
   /**
@@ -258,9 +267,9 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.allowUserNamespaces = opts.allowUserNamespaces ?? false;
     this.commitSigning = opts.commitSigning;
-    this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
+    this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 2 * 60;
     this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
-    this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
+    this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 4 * 60 * 60;
     this.daemonBootTimeoutMs =
       opts.daemonBootTimeoutMs ?? DAEMON_BOOT_TIMEOUT_MS;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";

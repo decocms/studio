@@ -33,6 +33,75 @@ export const harnessRunResultSchema = z.object({
 });
 export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 
+/** The serialized size a run context may have; the runner trims to it and Studio drops anything larger. */
+export const HARNESS_RUN_CONTEXT_MAX_BYTES = 4096;
+
+const contextText = z.string().max(256);
+const contextCount = z.number().int().nonnegative();
+const contextNames = z.looseObject({
+  count: contextCount,
+  names: z.array(contextText).optional(),
+});
+
+/**
+ * What a claude-code run was given: `messageMetadata.context` on the run's
+ * `finish` chunk, stored with the rest of that metadata. Names and counts
+ * only, never prompt text, environment, paths or ids.
+ *
+ * Optional end to end: a runner that predates it sends none. Loose objects,
+ * so a newer runner's extra fields survive a Studio that does not know them.
+ * `names` (and `servers`) are absent when the runner dropped the list to fit
+ * {@link HARNESS_RUN_CONTEXT_MAX_BYTES}; `truncated` says that happened.
+ *
+ * `tools` are the tools offered that the CLI did not report as deferred, and
+ * `deferredTools` the ones it did. It reports deferral for MCP tools only, so
+ * a deferred built-in is listed under `tools`. `skills.org` counts the skills
+ * the organization or the checkout owns, which are never named.
+ */
+export const harnessRunContextSchema = z.looseObject({
+  runner: z.looseObject({
+    version: contextText,
+    image: contextText.optional(),
+    cli: contextText.optional(),
+  }),
+  model: contextText.optional(),
+  effort: contextText.optional(),
+  permissionMode: contextText.optional(),
+  tools: contextNames.optional(),
+  deferredTools: contextNames.optional(),
+  skills: z
+    .looseObject({
+      count: contextCount,
+      org: contextCount.optional(),
+      names: z.array(contextText).optional(),
+    })
+    .optional(),
+  mcpServers: z
+    .looseObject({
+      count: contextCount,
+      servers: z
+        .array(z.looseObject({ name: contextText, status: contextText }))
+        .optional(),
+    })
+    .optional(),
+  agents: contextNames.optional(),
+  memory: z.boolean().optional(),
+  systemPromptAppendChars: contextCount.optional(),
+  truncated: z.boolean().optional(),
+});
+
+/** Why a run context cannot be stored, or `null` when it can. */
+export function harnessRunContextRejection(context: unknown): string | null {
+  const parsed = harnessRunContextSchema.safeParse(context);
+  if (!parsed.success) {
+    return parsed.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.code}`)
+      .join(", ");
+  }
+  const size = Buffer.byteLength(JSON.stringify(context));
+  return size > HARNESS_RUN_CONTEXT_MAX_BYTES ? `${size} bytes` : null;
+}
+
 const chatMessageSchema = z.record(z.string(), z.unknown());
 
 const modelSelectionSchema = z
@@ -121,6 +190,24 @@ export const harnessStreamInputSchema = z
     studioCli: z
       .object({ org: z.string().min(1) })
       .strict()
+      .optional(),
+    /**
+     * Claude Code's own memory for this run. Absent = the harness default, a
+     * folder local to the sandbox, which is what a Studio that predates this
+     * field sends.
+     *
+     * Per run and never in the sandbox env: the folder belongs to one member.
+     * Studio sends `directory` relative to the org `home` volume. The daemon
+     * replaces it with the absolute path once that folder answers on the
+     * mount, or turns memory off; the runner treats any other path as off.
+     */
+    memory: z
+      .discriminatedUnion("enabled", [
+        z.object({ enabled: z.literal(false) }).strict(),
+        z
+          .object({ enabled: z.literal(true), directory: z.string().min(1) })
+          .strict(),
+      ])
       .optional(),
     mode: z.enum([
       "default",

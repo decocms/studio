@@ -1,5 +1,4 @@
-import type { OrderMonitorVerdict } from "@decocms/shared/order-monitor";
-import { type Kysely, sql } from "kysely";
+import type { Kysely } from "kysely";
 import type { Database } from "./types";
 
 /** An ingest install: one store the order monitor watches. */
@@ -8,6 +7,10 @@ export interface MonitoredStore {
   connectionId: string;
   /** Who installed it; the sweep reads the org's plan as this user. */
   createdBy: string;
+  /** The install's title, which names the store in an alert. */
+  title: string;
+  /** For the alert's link to the store's chart. */
+  orgSlug: string;
 }
 
 export interface OrderMonitorStateRow {
@@ -22,7 +25,6 @@ export interface OrderMonitorStateRow {
 
 export interface StoredOrderMonitorState extends OrderMonitorStateRow {
   connectionId: string;
-  task: { id: string; keySeq: number } | null;
 }
 
 /**
@@ -34,17 +36,56 @@ export class OrderMonitorStorage {
 
   async listIngestInstalls(ingestUrl: string): Promise<MonitoredStore[]> {
     const rows = await this.db
-      .selectFrom("connections")
-      .select(["id", "organization_id", "created_by"])
-      .where("connection_url", "=", ingestUrl)
-      .where("status", "=", "active")
-      .orderBy("id")
+      .selectFrom("connections as c")
+      .innerJoin("organization as o", "o.id", "c.organization_id")
+      .select([
+        "c.id",
+        "c.organization_id",
+        "c.created_by",
+        "c.title",
+        "o.slug",
+      ])
+      .where("c.connection_url", "=", ingestUrl)
+      .where("c.status", "=", "active")
+      .orderBy("c.id")
       .execute();
     return rows.map((r) => ({
       organizationId: r.organization_id,
       connectionId: r.id,
       createdBy: r.created_by,
+      title: r.title,
+      orgSlug: r.slug,
     }));
+  }
+
+  /** The orgs with an active ingest install, by name: what an admin org can look into. */
+  async listMonitoredOrgs(
+    ingestUrl: string,
+  ): Promise<{ id: string; slug: string; name: string }[]> {
+    return this.db
+      .selectFrom("connections as c")
+      .innerJoin("organization as o", "o.id", "c.organization_id")
+      .select(["o.id", "o.slug", "o.name"])
+      .where("c.connection_url", "=", ingestUrl)
+      .where("c.status", "=", "active")
+      .distinct()
+      .orderBy("o.name")
+      .execute();
+  }
+
+  /** The org an active ingest install belongs to; null when it isn't one. */
+  async findInstallOrg(
+    connectionId: string,
+    ingestUrl: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("connections")
+      .select("organization_id")
+      .where("id", "=", connectionId)
+      .where("connection_url", "=", ingestUrl)
+      .where("status", "=", "active")
+      .executeTakeFirst();
+    return row?.organization_id ?? null;
   }
 
   /** The org's active ingest installs, by title. */
@@ -69,25 +110,18 @@ export class OrderMonitorStorage {
     connectionId?: string,
   ): Promise<StoredOrderMonitorState[]> {
     let query = this.db
-      .selectFrom("order_monitor_state as s")
-      .leftJoin("task_board_items as t", (join) =>
-        join
-          .onRef("t.id", "=", "s.task_board_item_id")
-          .onRef("t.organization_id", "=", "s.organization_id"),
-      )
+      .selectFrom("order_monitor_state")
       .select([
-        "s.connection_id",
-        "s.rule",
-        "s.status",
-        "s.since",
-        "s.evaluated_at",
-        "s.verdict",
-        "s.prev_status",
-        "t.id as task_id",
-        "t.key_seq as task_key_seq",
+        "connection_id",
+        "rule",
+        "status",
+        "since",
+        "evaluated_at",
+        "verdict",
+        "prev_status",
       ])
-      .where("s.organization_id", "=", organizationId);
-    if (connectionId) query = query.where("s.connection_id", "=", connectionId);
+      .where("organization_id", "=", organizationId);
+    if (connectionId) query = query.where("connection_id", "=", connectionId);
     const rows = await query.execute();
     return rows.map((r) => ({
       connectionId: r.connection_id,
@@ -97,14 +131,10 @@ export class OrderMonitorStorage {
       evaluatedAt: r.evaluated_at,
       verdict: r.verdict,
       prevStatus: r.prev_status,
-      task:
-        r.task_id && r.task_key_seq !== null
-          ? { id: r.task_id, keySeq: r.task_key_seq }
-          : null,
     }));
   }
 
-  /** Writes the verdicts; the incident link is `setIncidentTask`'s. */
+  /** Writes the verdicts. */
   async upsertStates(
     organizationId: string,
     connectionId: string,
@@ -134,21 +164,6 @@ export class OrderMonitorStorage {
           prev_status: (eb) => eb.ref("excluded.prev_status"),
         }),
       )
-      .execute();
-  }
-
-  async setIncidentTask(
-    organizationId: string,
-    connectionId: string,
-    rule: string,
-    taskBoardItemId: string | null,
-  ): Promise<void> {
-    await this.db
-      .updateTable("order_monitor_state")
-      .set({ task_board_item_id: taskBoardItemId })
-      .where("organization_id", "=", organizationId)
-      .where("connection_id", "=", connectionId)
-      .where("rule", "=", rule)
       .execute();
   }
 
@@ -189,42 +204,5 @@ export class OrderMonitorStorage {
     if (agentId) query = query.where("id", "=", agentId);
     const rows = await query.execute();
     return rows.flatMap((r) => (r.repository_id ? [r.repository_id] : []));
-  }
-
-  /** The org's owners and admins: who an incident card subscribes. */
-  async listOrgAdmins(organizationId: string): Promise<string[]> {
-    const rows = await this.db
-      .selectFrom("member")
-      .select(["userId", "role"])
-      .where("organizationId", "=", organizationId)
-      .execute();
-    return rows
-      .filter((m) =>
-        m.role.split(",").some((r) => r === "owner" || r === "admin"),
-      )
-      .map((m) => m.userId);
-  }
-
-  /** Merges incident flags into the rule's verdict. */
-  async setVerdictFlags(
-    organizationId: string,
-    connectionId: string,
-    rule: string,
-    flags: Partial<
-      Pick<
-        OrderMonitorVerdict,
-        "ingestIncident" | "crossCheckPending" | "crossCheckSince"
-      >
-    >,
-  ): Promise<void> {
-    await this.db
-      .updateTable("order_monitor_state")
-      .set({
-        verdict: sql<string>`verdict || ${JSON.stringify(flags)}::jsonb`,
-      })
-      .where("organization_id", "=", organizationId)
-      .where("connection_id", "=", connectionId)
-      .where("rule", "=", rule)
-      .execute();
   }
 }

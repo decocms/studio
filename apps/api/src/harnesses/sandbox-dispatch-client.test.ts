@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
-import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { getDecopilotId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { connectionGrantsFor } from "./org-mcp-grants";
 import { withModelMetadata } from "./with-model-metadata";
 import {
   cancelDaemonRun,
@@ -13,6 +14,7 @@ import {
   isRunSuperseded,
   isStudioOwnedConnection,
   orgOutputFallbackInstruction,
+  runConnectionCandidates,
   sandboxStateInstruction,
   selectRunConnections,
   runStudioSurface,
@@ -22,6 +24,7 @@ import {
   RunSupersededError,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
+import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { sandboxPathsAsUploads } from "@/tools/task-board/description-uploads";
 
 function bodyOf(text: string): ReadableStream<Uint8Array> {
@@ -64,6 +67,188 @@ describe("isStudioOwnedConnection", () => {
 
   test("does not exclude a real user-configured connection", () => {
     expect(isStudioOwnedConnection(orgId, "conn_abc123")).toBe(false);
+  });
+});
+
+describe("runConnectionCandidates", () => {
+  const organization = { id: "org_1", slug: "example-org" };
+  const homeAgent = getDecopilotId(organization.id);
+  const chatThread = {
+    id: "thrd_1",
+    trigger_id: null,
+    metadata: { runtime: "sandbox" },
+  };
+  const connections = [
+    { id: "conn_a", status: "active" },
+    { id: "conn_b", status: "active" },
+    { id: "conn_excluded", status: "active" },
+    { id: "conn_inactive", status: "error" },
+    { id: WellKnownOrgMCPId.SELF(organization.id), status: "active" },
+  ];
+  type Args = Parameters<typeof runConnectionCandidates>[0];
+  /** One dispatch on the default agent; `linked` is what the board-link lookup answers, or throws. */
+  const dispatch = async (
+    overrides: Partial<Args> & { flags?: Record<string, unknown> | null } = {},
+    linked: string[] | Error = [],
+  ) => {
+    const { flags = {}, ...args } = overrides;
+    const lookups: string[] = [];
+    let lists = 0;
+    const { candidates, homeChat } = await runConnectionCandidates({
+      organization,
+      agentId: homeAgent,
+      runClass: undefined,
+      agentRead: Promise.resolve({ connections: [] }),
+      settingsRead: Promise.resolve({
+        flags,
+        coding_agent_mcp_excluded: ["conn_excluded"],
+      }),
+      threadRead: Promise.resolve(chatThread),
+      listConnections: async () => {
+        lists++;
+        return connections;
+      },
+      linkedTaskIds: async (threadId) => {
+        lookups.push(threadId);
+        if (linked instanceof Error) throw linked;
+        return linked;
+      },
+      ...args,
+    });
+    return { ids: candidates.map((c) => c.id), homeChat, lookups, lists };
+  };
+  const everyOrgConnection = ["conn_a", "conn_b"];
+  const ownOnly = Promise.resolve({
+    connections: [{ connection_id: "conn_a" }],
+  });
+
+  test("flag unset: a home chat gets every active, non-excluded, non-Studio connection", async () => {
+    for (const flags of [
+      {},
+      null,
+      { home_chat_org_connections: null },
+      { home_chat_org_connections: true },
+    ]) {
+      expect(await dispatch({ flags })).toEqual({
+        ids: everyOrgConnection,
+        homeChat: true,
+        lookups: ["thrd_1"],
+        lists: 1,
+      });
+    }
+    expect(
+      (await dispatch({ settingsRead: Promise.resolve(null) })).ids,
+    ).toEqual(["conn_a", "conn_b", "conn_excluded"]);
+  });
+
+  test("only an explicit false turns it off, without asking the board", async () => {
+    const off = await dispatch({ flags: { home_chat_org_connections: false } });
+    expect(off.ids).toEqual([]);
+    expect(off.lookups).toEqual([]);
+  });
+
+  test("a project chat gets only its agent's connections and never asks the board", async () => {
+    const run = await dispatch({ agentId: "vir_project", agentRead: ownOnly });
+    expect(run.ids).toEqual(["conn_a"]);
+    expect(run.homeChat).toBe(false);
+    expect(run.lookups).toEqual([]);
+  });
+
+  test("board and reviewer runs never ask the board, even on a linked thread", async () => {
+    for (const runClass of ["new_task", "reviewer", "retry"]) {
+      const run = await dispatch({ runClass, agentRead: ownOnly }, ["tbi_1"]);
+      expect(run.ids).toEqual(["conn_a"]);
+      expect(run.lookups).toEqual([]);
+    }
+  });
+
+  test("Jira and trigger threads never ask the board", async () => {
+    for (const thread of [
+      { id: "thrd_1", trigger_id: null, metadata: { source: "jira" } },
+      { id: "thrd_1", trigger_id: "trg_1", metadata: {} },
+    ]) {
+      const run = await dispatch({ threadRead: Promise.resolve(thread) });
+      expect(run.ids).toEqual([]);
+      expect(run.lookups).toEqual([]);
+    }
+  });
+
+  test("an automation's manual Run, which has no trigger id, is not a home chat and never asks the board", async () => {
+    const thread = {
+      id: "thrd_1",
+      trigger_id: null,
+      metadata: { runtime: "sandbox", [AUTOMATION_THREAD_KEY]: "auto_1" },
+    };
+    const run = await dispatch({
+      threadRead: Promise.resolve(thread),
+      agentRead: ownOnly,
+    });
+    expect(run.ids).toEqual(["conn_a"]);
+    expect(run.lookups).toEqual([]);
+  });
+
+  test("a thread that is missing or cannot be read is not a home chat", async () => {
+    for (const read of [
+      () => Promise.resolve(null),
+      () => Promise.reject(new Error("read failed")),
+    ]) {
+      const run = await dispatch({ threadRead: read() });
+      expect(run.ids).toEqual([]);
+      expect(run.lookups).toEqual([]);
+    }
+  });
+
+  test("a chat on the default agent whose thread is linked to a card is not a home chat", async () => {
+    const run = await dispatch({}, ["tbi_1"]);
+    expect(run.ids).toEqual([]);
+    expect(run.homeChat).toBe(false);
+    expect(run.lookups).toEqual(["thrd_1"]);
+  });
+
+  test("a board-link lookup that throws leaves the run its agent's connections and logs one line", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const run = await dispatch(
+        { agentRead: ownOnly },
+        new Error("lookup failed for thrd_1 in org_1"),
+      );
+      expect(run.ids).toEqual(["conn_a"]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const line = String(warn.mock.calls[0]?.[0]);
+      expect(line).toContain("home chat board-link lookup failed");
+      expect(line).not.toContain("thrd_1");
+      expect(line).not.toContain("org_1");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("the org-wide opt-in still gives a board run every connection", async () => {
+    const run = await dispatch({
+      runClass: "new_task",
+      flags: { coding_agent_org_mcps: true, home_chat_org_connections: false },
+    });
+    expect(run.ids).toEqual(everyOrgConnection);
+    expect(run.lookups).toEqual([]);
+  });
+
+  test("an org without a slug gets no candidates and reads nothing", async () => {
+    expect(await dispatch({ organization: { id: "org_1" } })).toEqual({
+      ids: [],
+      homeChat: false,
+      lookups: [],
+      lists: 0,
+    });
+  });
+
+  test("a non-admin dispatcher is cut to what their role grants", async () => {
+    expect(
+      connectionGrantsFor({
+        role: "support",
+        roleStatements: [{ conn_a: ["LIST_ORDERS"] }],
+        connectionIds: (await dispatch()).ids,
+      }),
+    ).toEqual({ conn_a: ["LIST_ORDERS"] });
   });
 });
 
@@ -253,6 +438,21 @@ describe("harnessSessionKey", () => {
         }),
       ),
     ).not.toBe(harnessSessionKey(turn()));
+  });
+
+  // A kept CLI process holds one memory folder for its whole life.
+  test("a different memory, or none, never reuses a kept session", () => {
+    const mine = { enabled: true, directory: "users/user_1" };
+    const keys = [
+      harnessSessionKey(turn()),
+      harnessSessionKey(turn({ memory: { enabled: false } })),
+      harnessSessionKey(turn({ memory: mine })),
+      harnessSessionKey(
+        turn({ memory: { enabled: true, directory: "users/user_2" } }),
+      ),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(harnessSessionKey(turn({ memory: { ...mine } }))).toBe(keys[2]!);
   });
 });
 
@@ -1068,28 +1268,90 @@ describe("describeTermination — eviction", () => {
 });
 
 describe("sandboxStateInstruction", () => {
+  const withRepo = {
+    cwd: "/repo",
+    repo: { owner: "acme", name: "web", linked: true },
+    branch: "sandbox/thread-thrd_abc",
+  } as const;
+  const emptyCheckoutDir = {
+    cwd: "/repo",
+    branch: "sandbox/thread-thrd_abc",
+  } as const;
+  const sharedSandbox = { cwd: null };
+  const noRepository = [emptyCheckoutDir, sharedSandbox];
+
   // The whole point is that Studio ANSWERS this rather than making the model
   // find out: both wrong guesses cost the run minutes (a needless cold start,
   // or polling a port nothing listens on).
   test("a warm pod is told not to install or start a second server", () => {
-    const text = sandboxStateInstruction(true);
-    expect(text).toContain("WARM");
-    expect(text).toContain("already running");
-    expect(text).not.toContain("cold start");
+    expect(sandboxStateInstruction(true, withRepo)).toBe(
+      "Your sandbox is WARM: the repository is cloned, its dependencies are " +
+        "already installed, and the dev server is already running and " +
+        "hot-reloading your edits. Do not install anything and do not start a " +
+        "second server — find the running one's port (`ss -ltnp`) and use it.",
+    );
   });
 
-  test("a cold pod is told nothing is installed", () => {
-    const text = sandboxStateInstruction(false);
-    expect(text).toContain("CHECKOUT");
-    expect(text).toContain("nothing is installed");
-    expect(text).toContain("cold start");
+  test("a cold pod with a repository is told nothing is installed", () => {
+    expect(sandboxStateInstruction(false, withRepo)).toBe(
+      "Your sandbox is a bare CHECKOUT: nothing is installed and no dev server " +
+        "is running. Usually you don't need one — read the code path end to " +
+        "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
+        "change rendered, install and start the server ONCE in the background " +
+        "and poll until it answers; it is a cold start, so expect minutes.",
+    );
   });
 
-  // No hedging in either branch — a "may be running" would put the model right
+  // Told it had a checkout, a chat with no repository went looking for one.
+  test("a run with no repository is not told it has a checkout", () => {
+    for (const workspace of noRepository) {
+      const text = sandboxStateInstruction(false, workspace);
+      expect(text).toStartWith("No repository is attached to this run.");
+      for (const absent of ["CHECKOUT", "dev server", "tests", "LIVE site"]) {
+        expect(text).not.toContain(absent);
+      }
+    }
+  });
+
+  test("a run with no repository is told what outlives the sandbox", () => {
+    for (const workspace of noRepository) {
+      const text = sandboxStateInstruction(false, workspace);
+      expect(text).toContain("outside `/app/org/` is deleted with the sandbox");
+      expect(text).toContain("`/app/org/output/`");
+    }
+  });
+
+  test("a run in an empty checkout directory is told how to attach a repository", () => {
+    const text = sandboxStateInstruction(false, emptyCheckoutDir);
+    expect(text).toContain("you can still write and run code in it");
+    expect(text).toContain("the Studio tool `TASK_ADD_REPO`");
+    expect(text).toContain("with no arguments it lists them");
+    expect(text).toContain("Never clone with an access token typed into a");
+  });
+
+  // `TASK_ADD_REPO` clones into the run's own checkout directory, which a run on a shared sandbox does not have.
+  test("a run on a shared sandbox is not pointed at TASK_ADD_REPO", () => {
+    const text = sandboxStateInstruction(false, sharedSandbox);
+    expect(text).not.toContain("TASK_ADD_REPO");
+    expect(text).not.toContain("working directory");
+  });
+
+  // Only a claim that names a repository adopts a warm pod, so the pod wins over a workspace read before it.
+  test("a warm pod keeps the warm text whatever the workspace says", () => {
+    for (const workspace of noRepository) {
+      expect(sandboxStateInstruction(true, workspace)).toBe(
+        sandboxStateInstruction(true, withRepo),
+      );
+    }
+  });
+
+  // No hedging in any branch — a "may be running" would put the model right
   // back to checking, which is what this replaced.
-  test("neither branch hedges", () => {
+  test("no branch hedges", () => {
     for (const warm of [true, false]) {
-      expect(sandboxStateInstruction(warm)).not.toContain("may");
+      for (const workspace of [withRepo, ...noRepository]) {
+        expect(sandboxStateInstruction(warm, workspace)).not.toContain("may");
+      }
     }
   });
 });

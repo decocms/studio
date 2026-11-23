@@ -1337,6 +1337,7 @@ func main() {
 			d.orgFsLinks.AdoptStrayRepoSkills()
 			d.orgFsLinks.SaveSession(info.Harness, info.ThreadId)
 		},
+		MemoryDir: d.orgFsLinks.MemoryDir,
 	}
 
 	fsDeps := routes.FsDeps{

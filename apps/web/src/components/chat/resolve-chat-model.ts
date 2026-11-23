@@ -1,3 +1,7 @@
+import {
+  ChatTierSchema,
+  DEFAULT_CHAT_TIER,
+} from "@decocms/shared/organization/schema";
 import { pickSimpleModeDefaults } from "@/sdk";
 import type {
   AiProviderKey,
@@ -40,17 +44,24 @@ export function findModel(
   } as AiProviderModel;
 }
 
+/** A stored tier counts as a choice only where the tier picker renders. */
+export function chosenChatTier(
+  stored: unknown,
+  canChooseTier: boolean,
+): SimpleTier | null {
+  if (!canChooseTier) return null;
+  const tier = ChatTierSchema.safeParse(stored);
+  return tier.success ? tier.data : null;
+}
+
 /**
  * Pick the active chat tier from the user's stored choice, defaulting to
- * "smart". All three chat tiers are always selectable — the backend's
+ * a shared one. All three chat tiers are always selectable — the backend's
  * resolveTier() falls back to SDK provider defaults when the org's tier
  * slot is unset, so we don't need to gate on slot configuration here.
  */
-export function resolveActiveTier(stored: SimpleTier | null): SimpleTier {
-  if (stored === "fast" || stored === "smart" || stored === "thinking") {
-    return stored;
-  }
-  return "smart";
+export function resolveActiveTier(chosen: SimpleTier | null): SimpleTier {
+  return chosen ?? DEFAULT_CHAT_TIER;
 }
 
 /**

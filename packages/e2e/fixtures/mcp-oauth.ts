@@ -47,6 +47,7 @@ function generatePkcePair(): { verifier: string; challenge: string } {
 
 export async function mintMcpAccessToken(
   request: APIRequestContext,
+  scope: string = SCOPES,
 ): Promise<MintedMcpAccessToken> {
   // Never actually connected to — only compared for exact string equality by
   // the authorize endpoint's redirect_uri check. A fixed placeholder is safe
@@ -82,7 +83,7 @@ export async function mintMcpAccessToken(
         redirect_uri: redirectUri,
         response_type: "code",
         state,
-        scope: SCOPES,
+        scope,
         code_challenge: pkce.challenge,
         code_challenge_method: "S256",
       },
@@ -110,7 +111,7 @@ export async function mintMcpAccessToken(
     );
   }
   const consentRes = await request.post("/api/auth/custom/mcp-consent", {
-    data: { client_id: clientId, scope: SCOPES },
+    data: { client_id: clientId, scope },
   });
   if (!consentRes.ok()) {
     throw new Error(

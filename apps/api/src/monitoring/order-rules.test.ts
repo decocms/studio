@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { ORDER_MONITOR_DEFAULT_THRESHOLDS } from "@decocms/shared/order-monitor";
 import {
   dstBuckets,
   doneBuckets,
@@ -24,6 +25,8 @@ function store(
 ): StoreDay {
   const day = (s: Partial<DaySeries>): DaySeries => ({
     placed: s.placed ?? flat(10),
+    revenue: s.revenue ?? flat(1000),
+    items: s.items ?? flat(20),
     canceled: s.canceled ?? flat(0.5),
     denied: s.denied ?? flat(0.2),
   });
@@ -93,6 +96,35 @@ describe("evaluateStore", () => {
       store({ placed: withDip(flat(10), 44, 48, 0) }),
     );
     expect(outage.orders_drop.status).toBe("alert");
+  });
+
+  it("alerts at the org's own thresholds", () => {
+    const thresholds = {
+      ...ORDER_MONITOR_DEFAULT_THRESHOLDS,
+      orders_drop: { threshold: 30, minVolume: 20 },
+      denied_spike: { threshold: 30, minVolume: 10 },
+    };
+    // 10 of 40 expected: 25 %, a warning by default, an alert under 30 %.
+    const dip = store({ placed: withDip(flat(10), 44, 48, 2.5) });
+    expect(evaluateStore(dip, thresholds).orders_drop).toMatchObject({
+      status: "alert",
+      alertAt: 12,
+    });
+    // An hour expecting fewer orders than the org's minimum isn't judged.
+    expect(
+      evaluateStore(dip, {
+        ...thresholds,
+        orders_drop: { threshold: 30, minVolume: 100 },
+      }).orders_drop.status,
+    ).toBe("low-volume");
+    // 20 denials vs 0.8 expected: alerts by default, warns at 30×.
+    const wave = store({ denied: withDip(flat(0.2), 44, 48, 5) });
+    expect(evaluateStore(wave).denied_spike.status).toBe("alert");
+    expect(evaluateStore(wave, thresholds).denied_spike.status).toBe("warning");
+    // The chart's bands are the same thresholds.
+    expect(buildDayView(dip, new Date(0), thresholds).orders.alertAt[0]).toBe(
+      12,
+    );
   });
 
   it("does not judge a quiet hour", () => {
@@ -209,6 +241,65 @@ describe("buildDayView", () => {
     expect(v.headline.d1).toBe(960);
     expect(v.orders.warnAt[0]).toBeCloseTo(18);
     expect(v.verdicts?.orders_drop.timezone).toBe("UTC");
+  });
+
+  it("reports the sales so far beside the same time on W-1, M-1 and Y-1, and projects the close", () => {
+    // Today: 1.5× the usual orders, R$ 100 a bucket so far; Y-1 never reached the lake.
+    const s = store({ placed: flat(15), revenue: flat(100) });
+    s.days[364] = { ...s.days[364], placed: flat(0) };
+    const { forecast } = buildDayView(s, at);
+    expect(forecast.soFar.today).toEqual({
+      orders: 720,
+      revenue: 4800,
+      items: 960,
+    });
+    expect(forecast.soFar.w1).toEqual({
+      orders: 480,
+      revenue: 48000,
+      items: 960,
+    });
+    expect(forecast.soFar.y1).toBeNull();
+    expect(forecast.revenue.today[11]).toBe(400);
+    expect(forecast.revenue.today[12]).toBeNull();
+    expect(forecast.revenue.w1[20]).toBe(4000);
+    const p = forecast.projection!;
+    expect(p.close.orders).toBe(48 * 15 + 1.5 * 48 * 10);
+    expect(p.orders[11]).toBe(0);
+    expect(p.orders[12]).toBe(60);
+    expect(p.revenue[12]).toBe(1.5 * 4 * 1000);
+    expect(p.initial).toEqual({ orders: 960, revenue: 96000 });
+    // Flat reference days agree, so every path lands on the projection.
+    expect(p.paths.map((x) => x.daysAgo)).toEqual([1, 7, 14, 21, 28]);
+    for (const x of p.paths) {
+      expect(x.orders[23]).toBe(1.5 * 48 * 10);
+      expect(x.orders[11]).toBe(0);
+      expect(x.orders[12]).toBe(60);
+    }
+  });
+
+  it("spreads the projection between the quietest and busiest reference day", () => {
+    const s = store({ placed: flat(10) });
+    s.days[7] = { ...s.days[7], placed: flat(5) };
+    s.days[14] = { ...s.days[14], placed: flat(20) };
+    const p = buildDayView(s, at).forecast.projection!;
+    // Level 1; the rest of the day is 48 buckets.
+    const close = (d: number) =>
+      p.paths.find((x) => x.daysAgo === d)!.orders[23];
+    expect(close(7)).toBe(48 * 5);
+    expect(close(14)).toBe(48 * 20);
+    expect(p.close.orders).toBe(48 * 10 + 48 * 10);
+  });
+
+  it("leaves a reference day the lake holds only part of out of the baseline and M-1", () => {
+    // M-1 sits at the backfill's edge: a few orders of a whole day.
+    const s = store({});
+    s.days[28] = { ...s.days[28], placed: withDip(flat(0), 90, 96, 1) };
+    const v = buildDayView(s, at);
+    expect(v.forecast.soFar.m1).toBeNull();
+    expect(v.forecast.projection!.paths.map((x) => x.daysAgo)).toEqual([
+      1, 7, 14, 21,
+    ]);
+    expect(v.orders.expected[20]).toBe(40);
   });
 
   it("projects from the reference days the lake holds while history loads", () => {

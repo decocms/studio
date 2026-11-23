@@ -21,6 +21,7 @@ import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import { recordTaskActivity } from "./activity";
 import {
   resolveTaskRepoChoice,
+  type TaskRepo,
   type TaskRepoChoice,
 } from "./claude-code-task-run";
 import {
@@ -145,6 +146,84 @@ export function reviewerThreadId(fenceKey: string): string {
   return `thrd_${digest}`;
 }
 
+/** What a reviewer run reads: its persona, the user turn, and the system text. */
+export function buildReviewerPrompt(args: {
+  task: Pick<TaskBoardItem, "id" | "title" | "description" | "repo">;
+  kind: ReviewerKind;
+  repo: TaskRepo | null;
+  pinnedRepo: string | null;
+  priorReviewAt: number;
+  reviewToken: string;
+}): { instructions: string; prompt: string; system: string } {
+  const { task, kind, repo, pinnedRepo, priorReviewAt, reviewToken } = args;
+  // Who this run IS: replaces the org agent's instructions, which describe the
+  // Super Agent that wrote the PR.
+  const instructions = [
+    REVIEWER_FOCUS[kind],
+    "",
+    "You are running AUTONOMOUSLY — no human is watching this run. Making the " +
+      "approve / request-changes call IS your job; you are the decision-maker, " +
+      "not an assistant asking a human to decide. NEVER use `AskUserQuestion` to ask " +
+      'whether to approve, or to confirm an obvious call ("Approve the PR?"). ' +
+      "Reserve `AskUserQuestion` for a genuine, unresolvable blocker only a human can " +
+      "clear (e.g. a missing credential, or a requirement so ambiguous you " +
+      "truly cannot judge the outcome) — that should be rare. When in doubt " +
+      "between asking and deciding, DECIDE.",
+    "",
+    "Do NOT merge the pull request — it merges once people have checked the " +
+      "task in QA and cleared it for release. Pushing fixes to the PR's own branch is expected of " +
+      "you; opening a second pull request, force-pushing, or touching any " +
+      "other ref is not.",
+  ].join("\n");
+
+  // The user turn the thread shows: the task under review.
+  const description = task.description
+    ? uploadsAsSandboxPaths(task.description)
+    : null;
+  const prompt = [
+    task.title,
+    description,
+    task.description && description
+      ? sandboxUploadHint(task.description, description)
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const system = [
+    "The user message is the task whose pull request you review.",
+    "",
+    "How to work:",
+    "- Call `TASK_BOARD_ITEM_PRS_GET` with the task id below to find the pull request under review.",
+    repo
+      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab; Bitbucket has no CLI — use the REST API with \`curl\` and \`$BITBUCKET_TOKEN\`) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
+      : `- Your working directory is EMPTY. Call \`TASK_ADD_REPO\` ${
+          pinnedRepo
+            ? `with id \`${pinnedRepo}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
+            : `with the id of the PR's repository FIRST;`
+        } it clones the repository and waits for the checkout, and \`git\` and its CLI are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`,
+    `- ${PR_DIFF_RECIPE}`,
+    ...(priorReviewAt > 0
+      ? [
+          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`TASK_BOARD_COMMENT_LIST\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
+        ]
+      : []),
+    "- Record what you validated with `TASK_BOARD_COMMENT_CREATE` BEFORE your decision; a comment is internal by default.",
+    '- Post the comment for the person reviewing the task with `audience: "human"`, with the before/after screenshots embedded inline as markdown images referencing their /app/org/output path.',
+    "- End the run by calling `TASK_BOARD_REVIEW_DECISION` exactly once with the task id, " +
+      `reviewer "${kind}", the reviewToken below, and your decision:`,
+    "  - `approve` when it's good to ship. Include a short summary of what you verified.",
+    "  - NEVER approve on inspection alone: approve only a change you exercised at the PR's latest commit. If you could not exercise it at all, `request_changes` saying which paths you tried and what blocked them — whatever the board's rules say.",
+    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes, written for that person: if you posted no comment for them, these notes are shown to them as they are.",
+    "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't move the task to QA.",
+    "- `TASK_BOARD_REVIEW_DECISION` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.",
+    "",
+    `(task id: ${task.id})`,
+    `(reviewToken: ${reviewToken})`,
+  ].join("\n");
+  return { instructions, prompt, system };
+}
+
 /**
  * Enqueue a single reviewer run: a fresh thread (titled `<Reviewer>: <task>`),
  * a "delegated to <reviewer>" timeline entry, and the review prompt dispatched
@@ -184,71 +263,14 @@ export async function enqueueReviewerForTask(
   const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());
   const pinnedRepo = pinnedRepoId(task.repo, choice);
 
-  // Who this run IS: replaces the org agent's instructions, which describe the
-  // Super Agent that wrote the PR.
-  const instructions = [
-    REVIEWER_FOCUS[kind],
-    "",
-    "You are running AUTONOMOUSLY — no human is watching this run. Making the " +
-      "approve / request-changes call IS your job; you are the decision-maker, " +
-      "not an assistant asking a human to decide. NEVER use `user_ask` to ask " +
-      'whether to approve, or to confirm an obvious call ("Approve the PR?"). ' +
-      "Reserve `user_ask` for a genuine, unresolvable blocker only a human can " +
-      "clear (e.g. a missing credential, or a requirement so ambiguous you " +
-      "truly cannot judge the outcome) — that should be rare. When in doubt " +
-      "between asking and deciding, DECIDE.",
-    "",
-    "Do NOT merge the pull request — it merges once people have checked the " +
-      "task in QA and cleared it for release. Pushing fixes to the PR's own branch is expected of " +
-      "you; opening a second pull request, force-pushing, or touching any " +
-      "other ref is not.",
-  ].join("\n");
-
-  // The user turn the thread shows: the task under review.
-  const description = task.description
-    ? uploadsAsSandboxPaths(task.description)
-    : null;
-  const prompt = [
-    task.title,
-    description,
-    task.description && description
-      ? sandboxUploadHint(task.description, description)
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
-  const system = [
-    "The user message is the task whose pull request you review.",
-    "",
-    "How to work:",
-    "- Call `mcp__studio__TASK_BOARD_ITEM_PRS_GET` with the task id below to find the pull request under review.",
-    repo
-      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab; Bitbucket has no CLI — use the REST API with \`curl\` and \`$BITBUCKET_TOKEN\`) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
-      : `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
-          pinnedRepo
-            ? `with id \`${pinnedRepo}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
-            : `with the id of the PR's repository FIRST;`
-        } it clones the repository and waits for the checkout, and \`git\` and its CLI are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`,
-    `- ${PR_DIFF_RECIPE}`,
-    ...(priorReviewAt > 0
-      ? [
-          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes, and there are more commits since (a human re-delegated the card, or your own fixes from that round are in the history). Read your own previous notes with \`mcp__studio__TASK_BOARD_COMMENT_LIST\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
-        ]
-      : []),
-    "- Record what you validated with `mcp__studio__TASK_BOARD_COMMENT_CREATE` BEFORE your decision; a comment is internal by default.",
-    '- Post the comment for the person reviewing the task with `audience: "human"`, with the before/after screenshots embedded inline as markdown images referencing their /app/org/output path.',
-    "- End the run by calling `mcp__studio__TASK_BOARD_REVIEW_DECISION` exactly once with the task id, " +
-      `reviewer "${kind}", the reviewToken below, and your decision:`,
-    "  - `approve` when it's good to ship. Include a short summary of what you verified.",
-    "  - NEVER approve on inspection alone: approve only a change you exercised at the PR's latest commit. If you could not exercise it at all, `request_changes` saying which paths you tried and what blocked them — whatever the board's rules say.",
-    "  - `request_changes` ONLY for something you cannot settle here — it hands the task to a human, it does not start another agent round. Include specific, actionable notes, written for that person: if you posted no comment for them, these notes are shown to them as they are.",
-    "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't move the task to QA.",
-    "- `mcp__studio__TASK_BOARD_REVIEW_DECISION` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.",
-    "",
-    `(task id: ${task.id})`,
-    `(reviewToken: ${reviewToken})`,
-  ].join("\n");
+  const { instructions, prompt, system } = buildReviewerPrompt({
+    task,
+    kind,
+    repo,
+    pinnedRepo,
+    priorReviewAt,
+    reviewToken,
+  });
 
   // Create + link the reviewer thread and dispatch its run (shared plumbing).
   const fenceKey = reviewFenceKey(task.id, kind, cycleAt, attempt);

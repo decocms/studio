@@ -80,6 +80,7 @@ const SHAPE: Record<KpiId, Shape> = {
   errors: "bars",
   cancellations: "bars",
   audience: "area",
+  pageviews: "area",
   conversion: "band",
   latency: "threshold",
 };
@@ -91,6 +92,7 @@ const BETTER: Record<KpiId, "up" | "down"> = {
   orders: "up",
   conversion: "up",
   audience: "up",
+  pageviews: "up",
   latency: "down",
   errors: "down",
   cancellations: "down",

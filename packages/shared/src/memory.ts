@@ -8,8 +8,19 @@ export type MemoryScope = "organization" | "user";
 /** Characters of each index folded into a prompt; the rest is read on demand. */
 export const MEMORY_INJECT_CAP = 16_000;
 
+/**
+ * A member's own folder on the `home` volume. Sandbox chats point Claude Code's
+ * memory at it, so its `MEMORY.md` is the index Settings → Memory edits and the
+ * topic files Claude Code writes sit beside it.
+ */
+export function userMemoryDir(userId: string): string {
+  return `users/${userId}`;
+}
+
 export function memoryPath(scope: MemoryScope, userId: string): string {
-  return scope === "organization" ? "MEMORY.md" : `users/${userId}/MEMORY.md`;
+  return scope === "organization"
+    ? "MEMORY.md"
+    : `${userMemoryDir(userId)}/MEMORY.md`;
 }
 
 /** Starter content seeded on first load so the agent's later read never misses. */

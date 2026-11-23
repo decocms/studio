@@ -23,17 +23,26 @@ const daysAgo = `dateDiff('day', toDate(hour, {tz:String}), toDate(${AT}, {tz:St
 // summed from the hours) for the headline.
 const HOURLY_SQL = `
   SELECT ${daysAgo} AS days_ago, toHour(hour, {tz:String}) AS h,
-    uniqMerge(visitors) AS visitors, sum(conversions) AS conversions
+    uniqMerge(visitors) AS visitors, sum(pageviews) AS pageviews, sum(conversions) AS conversions
   FROM customer_lake.site_traffic_hourly FINAL
   WHERE ${WHERE}
   GROUP BY days_ago, h`;
 
 // A reference day counts up to the same hour of the day as now.
 const HEADLINE_SQL = `
-  SELECT ${daysAgo} AS days_ago, uniqMerge(visitors) AS visitors, sum(conversions) AS conversions
+  SELECT ${daysAgo} AS days_ago, uniqMerge(visitors) AS visitors,
+    sum(pageviews) AS pageviews, sum(conversions) AS conversions
   FROM customer_lake.site_traffic_hourly FINAL
   WHERE ${WHERE} AND toHour(hour, {tz:String}) <= toHour(${AT}, {tz:String})
   GROUP BY days_ago`;
+
+// Today only, for the sales chart's split by device.
+const DEVICES_SQL = `
+  SELECT toHour(hour, {tz:String}) AS h, device,
+    sum(conversions) AS conversions, sum(revenue) AS revenue
+  FROM customer_lake.site_traffic_hourly FINAL
+  WHERE ${WHERE} AND ${daysAgo} = 0
+  GROUP BY h, device`;
 
 /** The local day of `at` in `timezone`; null when no site has synced a row in its window. */
 export async function loadSiteTraffic(
@@ -47,13 +56,20 @@ export async function loadSiteTraffic(
     tz: timezone,
     site: siteId,
   };
-  const [hourly, headline] = await Promise.all([
+  const [hourly, headline, byDevice] = await Promise.all([
     queryCustomerLake(organizationId, HOURLY_SQL, params),
     queryCustomerLake(organizationId, HEADLINE_SQL, params),
+    // The split is extra: without it the chart keeps its one series.
+    queryCustomerLake(organizationId, DEVICES_SQL, params).catch((err) => {
+      console.warn("[site-traffic] devices read failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }),
   ]);
   if (hourly.length === 0) return null;
 
-  type Measure = "visitors" | "conversions";
+  type Measure = "visitors" | "pageviews" | "conversions";
   const series = (measure: Measure, day: number) => {
     const out = new Array<number>(24).fill(0);
     for (const row of hourly) {
@@ -88,12 +104,87 @@ export async function loadSiteTraffic(
     };
   };
 
+  const devices = new Map<
+    string,
+    { conversions: number[]; revenue: number[] }
+  >();
+  for (const row of byDevice) {
+    const id = String(row.device || "unknown");
+    let d = devices.get(id);
+    if (!d) {
+      d = {
+        conversions: new Array(24).fill(0),
+        revenue: new Array(24).fill(0),
+      };
+      devices.set(id, d);
+    }
+    d.conversions[Number(row.h)] = Number(row.conversions);
+    d.revenue[Number(row.h)] = Number(row.revenue);
+  }
+
   return {
     visitors: day("visitors"),
+    pageviews: day("pageviews"),
     conversions: day("conversions"),
     headline: {
       visitors: total("visitors"),
+      pageviews: total("pageviews"),
       conversions: total("conversions"),
     },
+    devices: [...devices].map(([id, d]) => ({ id, ...d })),
+  };
+}
+
+/** Several orgs' traffic added up; null when none has any. Different orgs' sites share no visitors, so their uniques add. */
+export function addSiteTraffic(
+  days: readonly (SiteTrafficDay | null)[],
+): SiteTrafficDay | null {
+  const xs = days.filter((d): d is SiteTrafficDay => d !== null);
+  if (xs.length === 0) return null;
+  type Measure = "visitors" | "pageviews" | "conversions";
+  const add = (pick: (d: SiteTrafficDay) => number) =>
+    xs.reduce((s, d) => s + pick(d), 0);
+  const hourly = (pick: (d: SiteTrafficDay) => (number | null)[]) =>
+    Array.from({ length: 24 }, (_, h) =>
+      xs.every((d) => pick(d)[h] === null) ? null : add((d) => pick(d)[h] ?? 0),
+    );
+  const full = (pick: (d: SiteTrafficDay) => number[]) =>
+    Array.from({ length: 24 }, (_, h) => add((d) => pick(d)[h] ?? 0));
+  const measure = (m: Measure) => ({
+    today: hourly((d) => d[m].today),
+    d1: full((d) => d[m].d1),
+    w1: full((d) => d[m].w1),
+    y1: full((d) => d[m].y1),
+  });
+  const head = (m: Measure) => ({
+    today: add((d) => d.headline[m].today),
+    d1: add((d) => d.headline[m].d1),
+    w1: add((d) => d.headline[m].w1),
+    y1: add((d) => d.headline[m].y1),
+  });
+  const devices = new Map<
+    string,
+    { conversions: number[]; revenue: number[] }
+  >();
+  for (const x of xs.flatMap((d) => d.devices ?? [])) {
+    const d = devices.get(x.id) ?? {
+      conversions: new Array(24).fill(0),
+      revenue: new Array(24).fill(0),
+    };
+    devices.set(x.id, {
+      conversions: d.conversions.map((v, h) => v + (x.conversions[h] ?? 0)),
+      revenue: d.revenue.map((v, h) => v + (x.revenue[h] ?? 0)),
+    });
+  }
+  return {
+    visitors: measure("visitors"),
+    pageviews: measure("pageviews"),
+    conversions: measure("conversions"),
+    headline: {
+      visitors: head("visitors"),
+      pageviews: head("pageviews"),
+      conversions: head("conversions"),
+    },
+    devices: [...devices].map(([id, d]) => ({ id, ...d })),
   };
 }

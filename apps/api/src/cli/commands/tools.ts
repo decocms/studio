@@ -79,7 +79,13 @@ export async function toolsCommand(options: ToolsOptions): Promise<number> {
       console.error(errorMessage(err));
       return 1;
     }
-    return writeResponse(res, session, options.output);
+    // Read after the body is streamed to stdout, which stays the full result.
+    const copy = res.ok ? res.clone() : null;
+    const code = await writeResponse(res, session, options.output);
+    const failure = copy ? toolErrorText(await copy.text()) : null;
+    if (failure === null) return code;
+    console.error(failure);
+    return 1;
   }
 
   const res = await studioFetch(session, base, {
@@ -134,6 +140,34 @@ type JsonSchema = Record<string, unknown>;
 
 const isSchema = (value: unknown): value is JsonSchema =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const MAX_ERROR_TEXT_CHARS = 2000;
+
+/**
+ * The error text of a 2xx tool result that is itself an error (`isError: true`,
+ * as a connection's tool reports failure), or `null` for any other body.
+ */
+export function toolErrorText(body: string): string | null {
+  let result: unknown;
+  try {
+    result = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (!isSchema(result) || result.isError !== true) return null;
+  const parts = Array.isArray(result.content) ? result.content : [];
+  const text = parts
+    .map((part) =>
+      isSchema(part) && typeof part.text === "string" ? part.text : "",
+    )
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (!text) return "Tool error: the result has isError: true.";
+  return text.length > MAX_ERROR_TEXT_CHARS
+    ? `Tool error: ${text.slice(0, MAX_ERROR_TEXT_CHARS)}… (full text on stdout)`
+    : `Tool error: ${text}`;
+}
 
 const oneLine = (text: string) => text.trim().replace(/\s+/g, " ");
 

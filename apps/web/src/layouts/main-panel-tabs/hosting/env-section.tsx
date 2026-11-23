@@ -217,7 +217,8 @@ export function EnvSection({
           <EmptyState
             icon={<Code02 className="size-5" />}
             title={t("mainPanelTabs.hostingTab.noEnv")}
-            className="py-10"
+            description={t("mainPanelTabs.hostingTab.noEnvDescription")}
+            size="inline"
             buttonComponent={addButton}
           />
         </ListCard>

@@ -17,6 +17,7 @@ import type {
   OrderMonitorStore,
   SiteTrafficDay,
 } from "@decocms/shared/order-monitor";
+import { useMonitorOrg } from "@/components/monitor/monitor-org-context";
 import { KEYS } from "@/lib/query-keys";
 import { orderMonitorWatchView } from "./watch-sse-pool";
 
@@ -50,6 +51,16 @@ function subjectOf(event: MessageEvent | undefined): string {
 
 const base = (orgSlug: string) =>
   `/api/${encodeURIComponent(orgSlug)}/order-monitor/stores`;
+
+/** `url` with the org it looks into, from an admin org (`?org=`). */
+function withOrg(url: string, viewOrg: string | undefined): string {
+  if (!viewOrg) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}org=${encodeURIComponent(viewOrg)}`;
+}
+
+/** Cache keys of another org's reads stay apart from your own org's. */
+const keyOrg = (orgSlug: string, viewOrg: string | undefined) =>
+  viewOrg ? `${orgSlug}@${viewOrg}` : orgSlug;
 
 /** One stable subscribe per org, so the shared stream isn't re-opened per render. */
 const subscribers = new Map<string, () => () => void>();
@@ -127,13 +138,15 @@ function useOrderMonitorLive(orgSlug: string, enabled: boolean): void {
 }
 
 export function useOrderMonitorStores(orgSlug: string, enabled: boolean) {
+  const viewOrg = useMonitorOrg();
   useOrderMonitorLive(orgSlug, enabled);
   return useQuery({
-    queryKey: KEYS.orderMonitorStores(orgSlug),
+    queryKey: KEYS.orderMonitorStores(keyOrg(orgSlug, viewOrg)),
     queryFn: ({ signal }) =>
-      fetchJson<{ stores: OrderMonitorStore[] }>(base(orgSlug), signal).then(
-        (body) => body.stores,
-      ),
+      fetchJson<{ stores: OrderMonitorStore[] }>(
+        withOrg(base(orgSlug), viewOrg),
+        signal,
+      ).then((body) => body.stores),
     enabled: enabled && !!orgSlug,
     refetchInterval: FALLBACK_REFETCH_MS,
     retry: false,
@@ -145,13 +158,21 @@ function orderMonitorDayQuery(
   orgSlug: string,
   connectionId: string,
   at: string | undefined,
+  viewOrg: string | undefined,
 ) {
   const query = at ? `?at=${encodeURIComponent(at)}` : "";
   return {
-    queryKey: KEYS.orderMonitorDay(orgSlug, connectionId, at ?? "now"),
+    queryKey: KEYS.orderMonitorDay(
+      keyOrg(orgSlug, viewOrg),
+      connectionId,
+      at ?? "now",
+    ),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       fetchJson<OrderMonitorDay>(
-        `${base(orgSlug)}/${encodeURIComponent(connectionId)}/day${query}`,
+        withOrg(
+          `${base(orgSlug)}/${encodeURIComponent(connectionId)}/day${query}`,
+          viewOrg,
+        ),
         signal,
       ),
     // A past instant doesn't change; "now" moves with the sweep.
@@ -166,9 +187,10 @@ export function useOrderMonitorDay(
   connectionId: string,
   at: string | undefined,
 ) {
+  const viewOrg = useMonitorOrg();
   useOrderMonitorLive(orgSlug, true);
   return useQuery({
-    ...orderMonitorDayQuery(orgSlug, connectionId, at),
+    ...orderMonitorDayQuery(orgSlug, connectionId, at, viewOrg),
     // Another day of the same store, not another store's chart.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[3] === connectionId ? previous : undefined,
@@ -180,10 +202,11 @@ export function useOrderMonitorDays(
   orgSlug: string,
   days: { connectionId: string; at: string | undefined }[],
 ) {
+  const viewOrg = useMonitorOrg();
   useOrderMonitorLive(orgSlug, days.length > 0);
   return useQueries({
     queries: days.map((d) =>
-      orderMonitorDayQuery(orgSlug, d.connectionId, d.at),
+      orderMonitorDayQuery(orgSlug, d.connectionId, d.at, viewOrg),
     ),
   });
 }
@@ -203,13 +226,15 @@ export function useOrderMonitorPushes(
   at: string | undefined,
   virtualMcpId: string | undefined,
 ) {
+  const viewOrg = useMonitorOrg();
   const params = new URLSearchParams();
   if (at) params.set("at", at);
   if (virtualMcpId) params.set("virtualMcpId", virtualMcpId);
+  if (viewOrg) params.set("org", viewOrg);
   const search = params.size > 0 ? `?${params}` : "";
   return useQuery({
     queryKey: KEYS.orderMonitorPushes(
-      orgSlug,
+      keyOrg(orgSlug, viewOrg),
       connectionId,
       at ?? "now",
       virtualMcpId ?? "",
@@ -231,9 +256,11 @@ export function useSiteTraffic(
   opts: { tz: string; at: string | undefined; site: string | null },
   enabled: boolean,
 ) {
+  const viewOrg = useMonitorOrg();
   const params = new URLSearchParams({ tz: opts.tz });
   if (opts.at) params.set("at", opts.at);
   if (opts.site) params.set("site", opts.site);
+  if (viewOrg) params.set("org", viewOrg);
   return useQuery({
     queryKey: KEYS.siteTraffic(orgSlug, params.toString()),
     queryFn: ({ signal }) =>
@@ -243,6 +270,24 @@ export function useSiteTraffic(
       ).then((body) => body.traffic),
     enabled: enabled && !!orgSlug,
     refetchInterval: opts.at ? false : FALLBACK_REFETCH_MS,
+    retry: false,
+  });
+}
+
+/** Whether this org's members may look into other orgs' Monitor, and which. */
+export function useOrderMonitorAdminOrgs(orgSlug: string) {
+  return useQuery({
+    queryKey: KEYS.orderMonitorAdminOrgs(orgSlug),
+    queryFn: ({ signal }) =>
+      fetchJson<{
+        isAdmin: boolean;
+        orgs: { id: string; slug: string; name: string }[];
+      }>(
+        `/api/${encodeURIComponent(orgSlug)}/order-monitor/admin-orgs`,
+        signal,
+      ),
+    enabled: !!orgSlug,
+    staleTime: 5 * 60_000,
     retry: false,
   });
 }

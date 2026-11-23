@@ -53,11 +53,11 @@ function fakeClient(opts: { autoDeleteCap?: boolean } = {}) {
 }
 
 describe("FreestyleSandboxProvider", () => {
-  test("creates VMs that are deleted after a day paused", async () => {
+  test("creates VMs that are deleted after 4 hours paused", async () => {
     const { client, creates } = fakeClient();
     const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
     await provider.ensure(ID);
-    expect(creates.at(-1)?.autoDeleteSeconds).toBe(24 * 60 * 60);
+    expect(creates.at(-1)?.autoDeleteSeconds).toBe(4 * 60 * 60);
     provider.close();
   });
 
@@ -995,6 +995,10 @@ describe("retireIdle", () => {
       git(repo, "fetch", "-q", "origin");
       expect(check(repo)).toBe(0);
       expect(check(join(root, "never-cloned"))).toBe(0);
+      const repoless = join(root, "repoless");
+      mkdirSync(join(repoless, ".deco"), { recursive: true });
+      writeFileSync(join(repoless, "org"), "org\n");
+      expect(check(repoless)).toBe(0);
 
       writeFileSync(join(repo, "b.txt"), "b\n");
       expect(check(repo)).not.toBe(0);

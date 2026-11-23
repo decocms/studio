@@ -60,6 +60,7 @@ export const PROJECT_ROUTE = {
   calendar: "/$org/projects/$agentId/calendar",
   experiments: "/$org/projects/$agentId/experiments",
   plan: "/$org/projects/$agentId/plan",
+  businessCase: "/$org/projects/$agentId/plan/case",
   monitoring: "/$org/projects/$agentId/monitoring",
 } as const;
 

@@ -1,14 +1,20 @@
-import { expect, it, mock } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
+import type { SiteTrafficDay } from "@decocms/shared/order-monitor";
 
 let hourly: Record<string, unknown>[] = [];
 let headline: Record<string, unknown>[] = [];
+let devices: Record<string, unknown>[] = [];
 
 mock.module("../customer-lake/client", () => ({
   queryCustomerLake: async (_org: string, sql: string) =>
-    sql.includes("AS h,") ? hourly : headline,
+    sql.includes("device")
+      ? devices
+      : sql.includes("AS h,")
+        ? hourly
+        : headline,
 }));
 
-const { loadSiteTraffic } = await import("./site-traffic");
+const { addSiteTraffic, loadSiteTraffic } = await import("./site-traffic");
 
 // 14:30 in São Paulo.
 const AT = new Date("2026-10-28T17:30:00Z");
@@ -41,4 +47,69 @@ it("leaves today's hours after now empty and takes the headline from the day's u
   expect(day?.conversions.today[0]).toBe(1);
   expect(day?.conversions.w1[20]).toBe(2);
   expect(day?.headline.conversions).toEqual({ today: 1, d1: 0, w1: 0, y1: 0 });
+});
+
+it("splits today's purchases and revenue by device", async () => {
+  hourly = [{ days_ago: "0", h: "10", visitors: "5", conversions: "3" }];
+  headline = [];
+  devices = [
+    { h: "10", device: "mobile", conversions: "2", revenue: "300" },
+    { h: "10", device: "desktop", conversions: "1", revenue: "200" },
+  ];
+  const day = await loadSiteTraffic("org", AT, "America/Sao_Paulo", "");
+  const mobile = day?.devices.find((d) => d.id === "mobile");
+  expect(mobile?.conversions[10]).toBe(2);
+  expect(mobile?.revenue[10]).toBe(300);
+  expect(day?.devices.map((d) => d.id).sort()).toEqual(["desktop", "mobile"]);
+  devices = [];
+});
+
+const flat = (n: number) => new Array<number>(24).fill(n);
+const upTo = (n: number, hour: number) =>
+  flat(n).map((v, h) => (h <= hour ? v : null));
+
+function day(n: number, hour: number): SiteTrafficDay {
+  const series = {
+    today: upTo(n, hour),
+    d1: flat(n),
+    w1: flat(n),
+    y1: flat(n),
+  };
+  const head = { today: n, d1: 2 * n, w1: 3 * n, y1: 4 * n };
+  return {
+    visitors: series,
+    pageviews: series,
+    conversions: series,
+    headline: { visitors: head, pageviews: head, conversions: head },
+    devices: [{ id: "mobile", conversions: flat(n), revenue: flat(10 * n) }],
+  };
+}
+
+describe("addSiteTraffic", () => {
+  it("adds several orgs' sites up, hour by hour and in the headline", () => {
+    const sum = addSiteTraffic([day(10, 11), null, day(5, 13)])!;
+    expect(sum.visitors.today[11]).toBe(15);
+    // An hour only one org has reached counts that org alone.
+    expect(sum.visitors.today[13]).toBe(5);
+    expect(sum.visitors.today[14]).toBeNull();
+    expect(sum.pageviews.w1[20]).toBe(15);
+    expect(sum.headline.conversions).toEqual({
+      today: 15,
+      d1: 30,
+      w1: 45,
+      y1: 60,
+    });
+  });
+
+  it("adds devices up by name", () => {
+    const sum = addSiteTraffic([day(10, 11), day(5, 13)])!;
+    expect(sum.devices).toEqual([
+      { id: "mobile", conversions: flat(15), revenue: flat(150) },
+    ]);
+  });
+
+  it("has nothing when no org has traffic", () => {
+    expect(addSiteTraffic([null, null])).toBeNull();
+    expect(addSiteTraffic([])).toBeNull();
+  });
 });

@@ -559,6 +559,33 @@ describe("turn framing", () => {
     ]);
   });
 
+  test("what the run was given rides on the finish chunk next to usage", () => {
+    const context = {
+      runner: { version: "0.0.0" },
+      tools: { count: 1, names: ["Bash"] },
+      skills: { count: 0, names: [] },
+      mcpServers: { count: 0, servers: [] },
+      agents: { count: 0, names: [] },
+      systemPromptAppendChars: 10,
+    };
+    const result = {
+      type: "result" as const,
+      subtype: "success",
+      is_error: false,
+      usage: { input_tokens: 1, output_tokens: 2 },
+    };
+    const [, finish] = turnFinishChunks(result, 0, undefined, false, context);
+    const metadata = (
+      finish as { messageMetadata?: { usage?: unknown; context?: unknown } }
+    ).messageMetadata;
+    expect(metadata?.context).toEqual(context);
+    expect(metadata?.usage).toMatchObject({ inputTokens: 1, outputTokens: 2 });
+    // A run whose context could not be built finishes exactly as before.
+    expect(turnFinishChunks(result, 0, undefined, false, null)).toEqual(
+      turnFinishChunks(result),
+    );
+  });
+
   test("the running model's limits ride on the finish chunk for the context meter", () => {
     const modelUsage = {
       "claude-haiku-5": {

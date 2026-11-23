@@ -1,0 +1,206 @@
+---
+name: business-case
+description: Turn an idea for a change to an online store (a button, a page section, shipping, checkout, search) into a business case the person can take to their team — the measured problem, who already does it, where in the store it gets solved, the money at stake, effort, tracking and the A/B test. Builds it together with the person, one question at a time, on a live canvas. Use when someone describes a store improvement, however vague ("I want to improve search"), and wants a plan, a business case or material to convince their team.
+---
+
+# business-case — from an idea to a case the team can approve
+
+Someone had an idea for their store ("show the delivery date on the product
+page", "I want to improve search"). Before anyone builds it, they need to
+convince their team: is the problem real, how big is it, who already does
+this, where in the store it gets solved, how much work is it, and how will we
+know it worked.
+
+You build that case **with** them. Studio shows the case as a canvas of cards
+next to the chat, and every command below updates it live. The person watches
+it fill in while you talk.
+
+Write in the language the person wrote in.
+
+## Quick reference
+
+| Task | How |
+| --- | --- |
+| Open the canvas | `bun /app/org/public/core/business-case/business-case-canvas.mjs init --path <case> --title <t> --request <their words> --area <area> [--objective <goal>]` |
+| Mark the card you are asking about | `... business-case-canvas.mjs ask --path <case> --card <key> --question <the question, as you ask it>` |
+| Fill a card | `... business-case-canvas.mjs set --path <case> --card <key> --summary <text> [--bullet <text>]... [--source "<label>\|<url>"]... [--assumption <text>]` |
+| Where the change lives (`approach`) | add `--layer <layer>` to `set`, once per part of the store, at most 4 |
+| Numbers the canvas draws (`problem`, `effort`) | add `--metric "<label>\|<value>\|<unit>"` to `set`, units `percent`, `seconds`, `days`, `brl`, `count` |
+| Money at stake on the canvas | `set --card money ... --base <people/month> --delta-pp <x> --value <R$ per conversion> [--gap-pp <gap>] --base-label <what base counts> --value-label <what value is>` |
+| A/B test on the canvas | `set --card abTest ... --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
+| Close the case | `... business-case-canvas.mjs finish --path <case>` |
+| Try money numbers before setting them | `bun /app/org/public/core/business-case/business-case-math.mjs money --base <people/month> --delta-pp <x> --value <R$ per conversion> --gap-pp <gap>` |
+| Try A/B numbers before setting them | `bun /app/org/public/core/business-case/business-case-math.mjs ab-test --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
+
+`<case>` is the path the message gives you
+(`/app/org/home/plans/cases/<chat id>.json`). Without one, use the chat id.
+Never write the case JSON by hand; always go through the canvas script. The
+canvas runs the math itself when you give `set` its inputs, so the big numbers
+on the person's screen always come from the math. Use the math script only to
+try inputs; never redo the arithmetic yourself.
+
+### The cards
+
+| Key | Card | What fills it |
+| --- | --- | --- |
+| `problem` | The problem, measured | The funnel step, its rate, the comparison, source and window. `--metric` the store's rate first, then each benchmark in the same unit |
+| `scope` | What we will change | The option chosen, on which page and device; options set aside |
+| `money` | Money at stake | The math inputs (`--base`, `--delta-pp`, `--value`, `--gap-pp`) with short captions |
+| `competitors` | Who already does it | One bullet per competitor actually checked, with the URL as source |
+| `approach` | How we will do it | The direction in one or two plain sentences: which part of the store the change lives in, and why there. `--layer` for each part. Bullets: what each part has to do, in broad terms. Sources: what you checked that points there |
+| `measurement` | How we measure | Primary metric, guardrails, events that exist and events to add |
+| `abTest` | A/B test and timeline | The math inputs (`--baseline`, `--effect-pp`, `--weekly`, `--exposure`) |
+| `effort` | Effort and deliveries | Front-end, back-end, QA days as `--metric "Front-end\|3\|days"`, sized from the parts `approach` names |
+| `risks` | Risks | What could get worse and what to watch |
+| `unknowns` | What we still don't know | Each gap and how to close it |
+
+Areas: `pdp`, `search`, `category`, `home`, `cart`, `checkout`, `shipping`,
+`performance`, `paid-media`, `other`.
+
+Layers, the parts of the store a change can touch: `code` (the store's code:
+pages and sections that exist), `component` (a new component), `catalog`
+(product and catalog data in the commerce platform), `content` (CMS content),
+`platform` (commerce platform settings: search, promotions, checkout), `data`
+(the data warehouse or analytics), `integration` (a third-party app or API),
+`other`.
+
+A card's `summary` is one or two sentences a manager reads in five seconds.
+Bullets are short. Keep the detail in the chat, not on the card.
+
+The canvas opens with a verdict: "<title> could bring R$ X a month", then the
+effort in days and the A/B test in weeks. Those come only from `money`'s math
+inputs, `effort`'s `days` metrics and `abTest`'s math inputs. When the data for
+one is missing, leave its inputs out and say so in `unknowns`: the canvas shows
+nothing rather than a guess. Captions are a few words (`--base-label "carts a
+month"`, `--value-label "revenue per extra order"`), at most 60 characters.
+
+## Rules
+
+1. **Every number carries its source and window.** "33% start checkout
+   (store data lake, last 7 days)". A number you did not read from a source
+   does not go in the case.
+2. **Missing data is said, not guessed.** If the funnel, the traffic or the
+   competitors are not available, fill `unknowns` with what is missing and
+   how to get it. A short, honest case beats a complete invented one.
+3. **The promise is small and named.** The gain (`delta-pp`) is a step on one
+   funnel stage, between 0.3 and 3 percentage points and never more than the
+   gap you measured. The full gap appears only as a ceiling, never as the
+   expected result. The script enforces this; quote its `notes` when it moves
+   your number.
+4. **An idea is a hypothesis, not a proof.** Say what would make it wrong
+   next to what supports it. Only the A/B test proves it.
+5. **Ask when the request does not say where and what.** "I want to improve
+   search" does not say what in search; ask. Everything else you can assume:
+   assume it, and write the assumption on the card (`--assumption`).
+6. **One question at a time, with options.** Use your question tool,
+   as a choice with 3 to 5 concrete options, the recommended
+   one first. Build the options from what you know about this store (its
+   pages, its data, its sector), not from a generic list. Never ask in plain
+   prose what the tool can ask, and never ask two things in one question.
+7. If the person stated a store goal, check the idea against it and say
+   whether it moves that goal.
+8. **The how is a direction, not a spec.** `approach` names the part of the
+   store where the problem gets solved ("the catalog", "the warehouse data",
+   "a new component on the PDP"), never files, fields or queries. Working out
+   exactly what to change is the job of the task that executes the case.
+
+## Workflow
+
+### 1. Frame — before anything else
+
+Run `init` right away, before reading data or searching: the person is
+looking at an empty canvas. Title is the change as an action ("Suggest terms
+when search finds nothing"); while the request is vague, use their words
+("Improve search").
+
+### 2. Converse — until you know where and what
+
+If the message says the person already answered questions before the chat
+(the Plan page's guided intro), do not ask them again: `set` the cards those
+answers cover (`scope` first, then `approach`, `measurement`, `effort` or `risks`; a
+skipped or vague answer becomes an `--assumption`), sharpen the title with
+`init`, and go to step 3. Ask in the chat only when something still blocks
+the case.
+
+If the request already says where and what ("a fit guide on the PDP would
+raise conversion"), skip to step 3.
+
+Otherwise, for each question:
+
+1. `ask --card scope --question "<the question>"` (or the card the question
+   fills), so the card shows the question while it waits for the person.
+2. Ask with your question tool. Example for "I want to improve search": *"What
+   bothers you most in search?"* → "Searches that find nothing", "Weak
+   autocomplete", "Filters hard to use", "Results in a bad order".
+3. With the answer, `set` the card and, when the scope is clearer, run
+   `init` again with a sharper `--title` (the cards stay).
+
+Two or three questions are usually enough. Stop asking once you know the
+page, the device and the change; the rest is research.
+
+### 3. Build — fill the cards as you learn
+
+Fill each card the moment you have its content; do not wait to finish
+everything. The person sees the canvas grow.
+
+1. **Measure the step** (`problem`). Look for the store's funnel and orders
+   with the tools this organization has (for example the data lake query
+   tool for orders and the GA4 funnel, or Deco Analytics for page funnels,
+   scroll and clicks). Get, for the step and device: people reaching it per
+   week, the rate that passes, the same rate on the other device when it
+   helps, and the average order value. If none of it is reachable, say so in
+   `unknowns` and go on.
+2. **Look at the page and at competitors** (`competitors`). Open the store's
+   page when you can and describe what is there today. Check two to five
+   competitors with web search or by opening their pages; write only what
+   you actually saw, with the URL as the source.
+3. **Find where to act** (`approach`). The case is only as good as this
+   call: a team that starts in the wrong place loses the days in `effort`.
+   Check where the problem actually lives with the tools this organization
+   has, instead of assuming it is code. For example:
+   - the platform's search finds the product when the term is corrected →
+     `platform` (search settings), or `code` if the page just doesn't show
+     the correction;
+   - the product exists but its data is missing or wrong → `catalog`;
+   - the page has nowhere to show it → `component`;
+   - the number the page shows comes from a table or a report → `data`.
+
+   Write the direction as the summary, a `--layer` per part, and what you
+   checked as sources. When what you checked does not settle it, name the
+   candidate places in the summary, add an `--assumption` for the one you
+   lean to, and put the open question in `unknowns`.
+4. **Run the numbers** (`money`, `abTest`). Give these inputs to `set`; the
+   canvas runs the math and keeps the result. When the math moves one of your
+   inputs, the script prints a `note:` line: say so in the chat and set the
+   card again with a summary and `--assumption` that match the number it kept.
+   - `money`: `base` = people reaching the step per month (weekly × 30/7);
+     `value` = what one more conversion at that step is worth (average order
+     value × share of people who buy after that step); `delta-pp` = your
+     small, defensible gain; `gap-pp` = the measured gap, when there is one.
+   - `ab-test`: `baseline` = the step's current rate; `effect-pp` = the same
+     gain; `weekly` = people reaching the step per week; `exposure` = the share
+     of them who would actually see the change (1 if everyone). If it is not
+     measurable in 8 weeks, say so and what would make it measurable.
+5. **Effort, measurement, risks** (`effort`, `measurement`, `risks`).
+   Front-end, back-end and QA days for the parts `approach` names. Primary
+   metric and guardrails (revenue per visitor, conversion of the next step).
+   What could get worse.
+6. **What is still unknown** (`unknowns`): every gap left, with how to close
+   it.
+
+If the person answers something mid-way that changes the scope, update
+`scope` (and `init` the title) and redo only the cards it affects.
+
+### When the person asks about an unknown
+
+The canvas lets the person send one of the `unknowns` to the chat ("Let's
+find out: …"). Look into it with the tools you have. When you find the
+answer, update the cards it changes and `set --card unknowns` again without
+that item. When you cannot, say why and keep it. A ready case stays ready.
+
+### 4. Close
+
+1. Once the last card is filled, run `finish`. The case is ready and the
+   person sees the whole canvas.
+2. Reply with three lines: the money at stake, the effort in days, and the
+   test duration.

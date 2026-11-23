@@ -23,6 +23,7 @@
 
 import { z } from "zod";
 import { signUpViaApi } from "../fixtures/auth-api";
+import { mintMcpAccessToken } from "../fixtures/mcp-oauth";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import {
   startTestMcpServer,
@@ -41,6 +42,18 @@ test.describe("MCP proxy roundtrip", () => {
           description: "Returns pong + the input.",
           inputSchema: { from: z.string() },
           handler: (args) => ({ pong: true, from: args.from }),
+        },
+        {
+          name: "caller",
+          handler: (_args, headers) => {
+            const token = headers["x-studio-token"];
+            if (typeof token !== "string")
+              throw new Error("Missing Studio token");
+            const payload = JSON.parse(
+              Buffer.from(token.split(".")[1]!, "base64url").toString(),
+            );
+            return { id: payload.user.id, email: payload.user.email };
+          },
         },
       ],
     });
@@ -102,6 +115,47 @@ test.describe("MCP proxy roundtrip", () => {
 
     await ctx.dispose();
   });
+
+  for (const includeEmail of [true, false]) {
+    test(`forwards the OAuth caller ${includeEmail ? "with" : "without"} email according to scope`, async ({
+      playwright,
+      request,
+    }) => {
+      const browser = await newApiContext(playwright);
+      const user = await signUpViaApi(browser);
+      const connection = await createHttpConnection(browser, user.orgSlug, {
+        title: "Caller identity",
+        url: mcpServer.url,
+      });
+      const { accessToken } = await mintMcpAccessToken(
+        browser,
+        includeEmail ? undefined : "openid profile",
+      );
+      await browser.dispose();
+      const response = await request.post(
+        `/api/${user.orgSlug}/mcp/${connection.id}`,
+        {
+          headers: {
+            Accept: "application/json, text/event-stream",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          data: {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name: "caller", arguments: {} },
+          },
+        },
+      );
+      expect(response.status(), await response.text()).toBe(200);
+      const { result } = await response.json();
+      expect(result?.isError).not.toBe(true);
+      expect(JSON.parse(result.content[0].text)).toEqual({
+        id: user.userId,
+        ...(includeEmail ? { email: user.email } : {}),
+      });
+    });
+  }
 
   test("repeated tools/list does not re-handshake downstream on every poll", async ({
     playwright,

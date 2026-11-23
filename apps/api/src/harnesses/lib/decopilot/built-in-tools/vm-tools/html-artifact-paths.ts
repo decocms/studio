@@ -9,6 +9,7 @@
  * The Studio web UI previews (and for decks, edits) the same files.
  */
 
+import { matchBusinessCasePath } from "@decocms/shared/business-case";
 import { orgRelativePath } from "@decocms/shared/organization/home-mount";
 
 const DECK_ENTRY_PATTERN = /^(decks|pages)\/([a-z0-9][a-z0-9._-]*)\.html$/i;
@@ -71,13 +72,38 @@ export function matchOwnHtmlArtifact(
   entry: HtmlArtifactChangeEntry,
   scope: HtmlArtifactEmitScope,
 ): HtmlArtifactRef | null {
-  if (entry.kind !== "file" || entry.deletedAt) return null;
+  return isOwnFileEntry(entry, scope)
+    ? matchHtmlArtifactEntry(entry.path)
+    : null;
+}
+
+/**
+ * The Plan page's business case for this run: `plans/cases/<chat id>.json`
+ * named after the current thread and written by its owner. The name check
+ * keeps a member's other chats from opening each other's cases, which the
+ * same-user fallback alone would allow for unstamped writes.
+ */
+export function matchOwnBusinessCase(
+  entry: HtmlArtifactChangeEntry,
+  scope: HtmlArtifactEmitScope,
+): string | null {
+  return scope.threadId != null &&
+    matchBusinessCasePath(entry.path) === scope.threadId &&
+    isOwnFileEntry(entry, scope)
+    ? entry.path
+    : null;
+}
+
+function isOwnFileEntry(
+  entry: HtmlArtifactChangeEntry,
+  scope: HtmlArtifactEmitScope,
+): boolean {
+  if (entry.kind !== "file" || entry.deletedAt) return false;
   const ownedByThread =
     scope.threadId != null && entry.threadId === scope.threadId;
   const ownedByUserFallback =
     entry.threadId == null && entry.updatedBy === scope.ownerId;
-  if (!ownedByThread && !ownedByUserFallback) return null;
-  return matchHtmlArtifactEntry(entry.path);
+  return ownedByThread || ownedByUserFallback;
 }
 
 /**

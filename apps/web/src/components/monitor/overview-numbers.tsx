@@ -212,7 +212,10 @@ export function OverviewNumbers({
   kpis: board,
   deploys,
   dayStart,
+  sales = false,
 }: {
+  /** The sales card is above: it already shows orders and conversion. */
+  sales?: boolean;
   /** The site the Overview is on; none across the org. */
   project: SiteProject | undefined;
   today: boolean;
@@ -262,6 +265,18 @@ export function OverviewNumbers({
     label: string,
     help: string,
   ): OverviewNumber | false => {
+    // The lake's hours, when the board has them: today so far against the
+    // reference days, opened into the same chart as orders.
+    const lake = boardCard(
+      metric === "visitors" ? "audience" : "pageviews",
+      label,
+      metric === "visitors"
+        ? t("monitor.overview.visitorsHelpToday")
+        : t("monitor.overview.pageviewsHelpToday"),
+      fmtInt,
+      { whole: true },
+    );
+    if (lake) return lake;
     if (trafficLoading) return pending(metric, label, help);
     // Across the org, or on a past day, the board's own visitors stand in.
     if (!kpis && !otherSummary) {
@@ -360,12 +375,13 @@ export function OverviewNumbers({
 
   // Only numbers with a figure, a change and a shape are drawn here.
   const candidates: (OverviewNumber | false)[] = [
-    boardCard(
-      "orders",
-      t("monitor.overview.orders"),
-      t("monitor.overview.ordersHelpStore"),
-      fmtInt,
-    ),
+    !sales &&
+      boardCard(
+        "orders",
+        t("monitor.overview.orders"),
+        t("monitor.overview.ordersHelpStore"),
+        fmtInt,
+      ),
     trafficCard(
       "visitors",
       t("monitor.overview.visitors"),
@@ -387,13 +403,14 @@ export function OverviewNumbers({
       fmtInt,
       { better: "down" },
     ),
-    boardCard(
-      "conversion",
-      t("monitor.overview.conversion"),
-      t("monitor.overview.conversionHelp"),
-      (v) => `${(v * 100).toFixed(2)}%`,
-      { rate: true },
-    ),
+    !sales &&
+      boardCard(
+        "conversion",
+        t("monitor.overview.conversion"),
+        t("monitor.overview.conversionHelp"),
+        (v) => `${(v * 100).toFixed(2)}%`,
+        { rate: true },
+      ),
     boardCard(
       "errors",
       t("monitor.overview.errors"),

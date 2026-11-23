@@ -10,9 +10,15 @@
  * better; the backtest re-checks them. The spike thresholds are not calibrated yet.
  */
 
+import {
+  ORDER_MONITOR_DEFAULT_THRESHOLDS,
+  type OrderMonitorThresholds,
+} from "@decocms/shared/order-monitor";
 import type {
   OrderMonitorDay,
+  OrderMonitorForecast,
   OrderMonitorRule as Rule,
+  OrderMonitorSales,
   OrderMonitorSeries,
   OrderMonitorStatus as Status,
   OrderMonitorVerdict,
@@ -21,29 +27,13 @@ import type {
 export { ORDER_MONITOR_RULES as RULES } from "@decocms/shared/order-monitor";
 export type { Rule, Status };
 
-/**
- * Which rules open a task on the org's board. Off = shadow: the verdict is
- * written and the transition logged, nothing else. Each one goes on after its
- * thresholds are backtested on every monitored store (scripts/order-monitor-backtest.ts)
- * and its shadow transitions are checked against what actually happened.
- */
-export const NOTIFY: Record<Rule, boolean> = {
-  orders_drop: false,
-  denied_spike: false,
-  cancel_spike: false,
-};
-
 const WINDOW = 4; // 15-minute buckets = last 60 minutes
 export const BUCKETS_PER_DAY = 96;
 const WARN_BELOW = 0.3; // warning when the hour brings < 30% of expected
-const ALERT_BELOW = 0.15; // alert when < 15% of expected
-const MIN_EXPECTED = 20; // at night an hour with few orders is normal; don't judge
 const MIN_LEVEL_BASE = 30; // orders the reference days need before today's level is trusted
-
-// ponytail: uncalibrated. The shadow backtest on every monitored store sets these.
+// What alerts is the org's (`ORDER_MONITOR_DEFAULT_THRESHOLDS` until it sets
+// its own); the warning band is only drawn, so it stays fixed.
 const SPIKE_WARN_TIMES = 3;
-const SPIKE_ALERT_TIMES = 5;
-const MIN_SPIKE = 10; // fewer cancellations or denials than this in an hour is never a spike
 
 /** Days back from the evaluated day. D-1 and W-1..W-4 are the baseline; Y-1 is shown, never judged. */
 const BASELINE_DAYS = [1, 7, 14, 21, 28] as const;
@@ -54,12 +44,17 @@ export type DayAgo = (typeof DAYS_AGO)[number];
 /** Per 15-minute bucket of one local day. */
 export interface DaySeries {
   placed: number[];
+  /** What the placed orders total, in the store's currency, and their items. Only the sales status reads them. */
+  revenue: number[];
+  items: number[];
   canceled: number[];
   denied: number[];
 }
 
 export interface StoreDay {
   timezone: string;
+  /** The orders' currency; null when the day has none. */
+  currency?: string | null;
   /** Fully elapsed buckets of day 0 (ingest grace included). */
   done: number;
   days: Record<DayAgo, DaySeries>;
@@ -81,10 +76,7 @@ export interface StoreDay {
 }
 
 /** `from`/`to` are bucket indexes of day 0, `to` exclusive; `from` is negative while the window reaches into the day before. */
-export type Verdict = Omit<
-  OrderMonitorVerdict,
-  "timezone" | "ingestIncident" | "crossCheckPending" | "crossCheckSince"
->;
+export type Verdict = Omit<OrderMonitorVerdict, "timezone">;
 
 const sum = (a: number[], from = 0, to = a.length) =>
   a.slice(Math.max(0, from), to).reduce((s, v) => s + v, 0);
@@ -112,15 +104,27 @@ const withEve = (
   ...day.days[d][kind],
 ];
 
+/** A reference day under this share of the others' median is one the lake holds only part of. */
+const PARTIAL_DAY = 0.2;
+
 /**
  * The reference days the lake holds: not still backfilling, and with orders.
  * A day without a single order is one the ingest never saw, and as a zero it
- * would drag the median down to nothing.
+ * would drag the median down to nothing. A day the backfill's edge cut short
+ * is as wrong, and as M-1 it reads as +700%.
  */
-const referenceDays = (day: StoreDay) =>
-  BASELINE_DAYS.filter(
+const referenceDays = (day: StoreDay) => {
+  const seen = BASELINE_DAYS.filter(
     (d) => !day.backfill?.days.includes(d) && sum(day.days[d].placed) > 0,
   );
+  const totals = new Map(seen.map((d) => [d, sum(day.days[d].placed)]));
+  return seen.filter(
+    (d) =>
+      totals.get(d)! >=
+      PARTIAL_DAY *
+        median(seen.filter((o) => o !== d).map((o) => totals.get(o)!)),
+  );
+};
 
 function series(day: StoreDay, kind: Kind) {
   return {
@@ -176,9 +180,10 @@ function spike(
   expected: number,
   window: { from: number; to: number; level: number },
   judged: boolean,
+  { threshold, minVolume }: { threshold: number; minVolume: number },
 ): Verdict {
-  const warnAt = Math.max(MIN_SPIKE, SPIKE_WARN_TIMES * expected);
-  const alertAt = Math.max(MIN_SPIKE, SPIKE_ALERT_TIMES * expected);
+  const warnAt = Math.max(minVolume, SPIKE_WARN_TIMES * expected);
+  const alertAt = Math.max(minVolume, threshold * expected);
   const status: Status = !judged
     ? "low-volume"
     : observed >= alertAt
@@ -199,7 +204,10 @@ function hasEventHistory(day: StoreDay): boolean {
 }
 
 /** Every rule's verdict for one store, over the hour that ended at `day.done`. */
-export function evaluateStore(day: StoreDay): Record<Rule, Verdict> {
+export function evaluateStore(
+  day: StoreDay,
+  thresholds: OrderMonitorThresholds = ORDER_MONITOR_DEFAULT_THRESHOLDS,
+): Record<Rule, Verdict> {
   const placed = series(day, "placed");
   // Indexes into the series with the eve in front.
   const to = day.done + WINDOW;
@@ -213,10 +221,10 @@ export function evaluateStore(day: StoreDay): Record<Rule, Verdict> {
   const expected = lv * baseSum(placed.refs, from, to);
   const observed = sum(placed.today, from, to);
   const warnAt = WARN_BELOW * expected;
-  const alertAt = ALERT_BELOW * expected;
+  const alertAt = (thresholds.orders_drop.threshold / 100) * expected;
   const drop: Verdict = {
     status:
-      dst || expected < MIN_EXPECTED
+      dst || expected < thresholds.orders_drop.minVolume
         ? "low-volume"
         : observed < alertAt
           ? "alert"
@@ -232,35 +240,105 @@ export function evaluateStore(day: StoreDay): Record<Rule, Verdict> {
 
   const recent = recentLevel(placed.today, placed.refs, from, to, lv);
   const judged = !dst && hasEventHistory(day);
-  const rate = (kind: "canceled" | "denied") => {
+  const rate = (kind: "canceled" | "denied", rule: Rule) => {
     const s = series(day, kind);
     return spike(
       sum(s.today, from, to),
       recent * baseSum(s.refs, from, to),
       window,
       judged,
+      thresholds[rule],
     );
   };
   return {
     orders_drop: drop,
-    denied_spike: rate("denied"),
-    cancel_spike: rate("canceled"),
+    denied_spike: rate("denied", "denied_spike"),
+    cancel_spike: rate("canceled", "cancel_spike"),
   };
 }
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const hourly = (a: number[], h: number) => sum(a, h * 4, h * 4 + 4);
 
+type Measure = "placed" | "revenue";
+
+/**
+ * The day's projection: the monitor's baseline scaled by today's level, per
+ * clock hour still to come, its close, and the baseline's own whole day, which
+ * is what the day was projected at before its first order.
+ */
+function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
+  const refs = {
+    placed: series(day, "placed").refs,
+    revenue: series(day, "revenue").refs,
+  };
+  if (refs.placed.length === 0) return null;
+  // ponytail: revenue rides the orders' level, so a day with a bigger ticket
+  // shows it only in what's already in; give revenue its own level if that misleads.
+  const ahead = (m: Measure, from: number, to: number) =>
+    lv * baseSum(refs[m], from + WINDOW, to + WINDOW);
+  const rest = (m: Measure) =>
+    HOURS.map((h) => {
+      const from = Math.max(day.done, h * 4);
+      return from < h * 4 + 4 ? ahead(m, from, h * 4 + 4) : 0;
+    });
+  const close = (m: Measure) =>
+    sum(day.days[0][m], 0, day.done) + ahead(m, day.done, BUCKETS_PER_DAY);
+  const initial = (m: Measure) =>
+    baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW);
+  // The cloud around it: what each reference day brought from now on, at
+  // today's level, summed up to the end of each hour.
+  const path = (r: number[]) =>
+    HOURS.map(
+      (h) =>
+        lv * sum(r, day.done + WINDOW, Math.max(day.done, h * 4 + 4) + WINDOW),
+    );
+  return {
+    orders: rest("placed"),
+    revenue: rest("revenue"),
+    close: { orders: close("placed"), revenue: close("revenue") },
+    initial: { orders: initial("placed"), revenue: initial("revenue") },
+    paths: referenceDays(day).map((daysAgo, i) => ({
+      daysAgo,
+      orders: path(refs.placed[i]!),
+      revenue: path(refs.revenue[i]!),
+    })),
+  };
+}
+
+/** Day `d` up to the same time of day as day 0; null when the lake has no order of it. */
+function salesSoFar(day: StoreDay, d: DayAgo): OrderMonitorSales | null {
+  const s = day.days[d];
+  const partial =
+    (BASELINE_DAYS as readonly number[]).includes(d) &&
+    !referenceDays(day).includes(d as (typeof BASELINE_DAYS)[number]);
+  if (
+    d !== 0 &&
+    (sum(s.placed) === 0 || day.backfill?.days.includes(d) || partial)
+  ) {
+    return null;
+  }
+  return {
+    orders: sum(s.placed, 0, day.done),
+    revenue: sum(s.revenue, 0, day.done),
+    items: sum(s.items, 0, day.done),
+  };
+}
+
 /**
  * The Monitor chart's view of one store day, per clock hour. Expected is the
  * baseline scaled by the verdict's level; past `done` it is the day's
  * projection. Thresholds mirror the rules', per hour instead of per window.
  */
-export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
+export function buildDayView(
+  day: StoreDay,
+  at: Date,
+  thresholds: OrderMonitorThresholds = ORDER_MONITOR_DEFAULT_THRESHOLDS,
+): OrderMonitorDay {
   const today = day.days[0];
   const placed = series(day, "placed");
   const canceled = series(day, "canceled");
-  const verdicts = evaluateStore(day);
+  const verdicts = evaluateStore(day, thresholds);
   // The level the verdict used: the hours before its window, so an outage
   // hour doesn't pull the expected line down with it.
   const lv = verdicts.orders_drop.level;
@@ -287,7 +365,7 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
 
   const expected = HOURS.map((h) => lv * baseHour(placed.refs, h));
   const judged = (e: number, share: number) =>
-    e < MIN_EXPECTED ? null : share * e;
+    e < thresholds.orders_drop.minVolume ? null : share * e;
   // Elapsed hours scale by the orders around them, as the rule does.
   const cancelLevel = HOURS.map((h) =>
     h * 4 + 4 <= day.done
@@ -298,7 +376,7 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
     HOURS.map((h) =>
       hasHistory
         ? Math.max(
-            MIN_SPIKE,
+            thresholds.cancel_spike.minVolume,
             times * cancelLevel[h]! * baseHour(canceled.refs, h),
           )
         : null,
@@ -318,7 +396,9 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
       ...hourSeries((d) => day.days[d].placed),
       expected,
       warnAt: expected.map((e) => judged(e, WARN_BELOW)),
-      alertAt: expected.map((e) => judged(e, ALERT_BELOW)),
+      alertAt: expected.map((e) =>
+        judged(e, thresholds.orders_drop.threshold / 100),
+      ),
     },
     cancellations: {
       canceled: hourSeries((d) => cancels(d, "canceled")),
@@ -329,7 +409,7 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
         y1: preInstall(364) && !!day.approximate?.[364],
       },
       canceledWarnAt: cancelBand(SPIKE_WARN_TIMES),
-      canceledAlertAt: cancelBand(SPIKE_ALERT_TIMES),
+      canceledAlertAt: cancelBand(thresholds.cancel_spike.threshold),
     },
     headline: {
       projected:
@@ -338,6 +418,17 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
       d1: sum(day.days[1].placed),
       w1: sum(day.days[7].placed),
       y1: sum(day.days[364].placed),
+    },
+    forecast: {
+      currency: day.currency ?? null,
+      revenue: hourSeries((d) => day.days[d].revenue),
+      soFar: {
+        today: salesSoFar(day, 0)!,
+        w1: salesSoFar(day, 7),
+        m1: salesSoFar(day, 28),
+        y1: salesSoFar(day, 364),
+      },
+      projection: projection(day, lv),
     },
     verdicts: {
       orders_drop: withZone(verdicts.orders_drop),

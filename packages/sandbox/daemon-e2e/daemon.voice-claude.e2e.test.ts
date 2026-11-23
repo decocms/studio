@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { TEXT_MODE_PROMPT, VOICE_MODE_PROMPT } from "@decocms/shared/voice";
+import { TEXT_MODE_PROMPT, voiceModePrompt } from "@decocms/shared/voice";
 import {
   jsonAuthHeaders,
   startDaemon,
@@ -110,7 +110,9 @@ test.skipIf(process.env.DAEMON_E2E_CLAUDE_VOICE !== "1")(
                   { type: "text", text },
                   {
                     type: "text",
-                    text: voiceMode ? VOICE_MODE_PROMPT : TEXT_MODE_PROMPT,
+                    text: voiceMode
+                      ? voiceModePrompt("claude-code")
+                      : TEXT_MODE_PROMPT,
                   },
                 ],
               },
@@ -160,13 +162,17 @@ test.skipIf(process.env.DAEMON_E2E_CLAUDE_VOICE !== "1")(
       expect(requests.length).toBeGreaterThanOrEqual(2);
       expect(
         requests.some((request) =>
-          JSON.stringify(request.messages).includes(VOICE_MODE_PROMPT),
+          JSON.stringify(request.messages).includes(
+            voiceModePrompt("claude-code"),
+          ),
         ),
       ).toBe(true);
       const voiceRequestCount = requests.length;
       await dispatch(false, "Explain the change in text");
       const followup = requests.slice(voiceRequestCount).at(-1)!;
-      expect(JSON.stringify(followup.system)).not.toContain(VOICE_MODE_PROMPT);
+      expect(JSON.stringify(followup.system)).not.toContain(
+        voiceModePrompt("claude-code"),
+      );
       expect(JSON.stringify(followup.messages)).toContain(
         "Change the homepage title",
       );

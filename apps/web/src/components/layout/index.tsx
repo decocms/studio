@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { createContext, use } from "react";
+import { createContext, use, useState } from "react";
+import { useRouterState } from "@tanstack/react-router";
 import {
   SidebarInset,
   SidebarLayout,
@@ -20,6 +21,7 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
 import { useT } from "@/i18n/use-t.ts";
+import { isAppTakeoverVisit } from "@/layouts/main-panel-tabs/tab-id";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 
 const LayoutContext = createContext<{
@@ -52,10 +54,26 @@ function LayoutRoot({
     true,
   );
   const resize = useSidebarResize();
+  /** An app a project opens as takes the frame: the sidebar hides for that
+   *  visit without touching the saved preference, and comes back on ask. */
+  const takeover = useRouterState({
+    select: (state) => isAppTakeoverVisit(state.location.state),
+  });
+  const [revealed, setRevealed] = useState(false);
+  if (!takeover && revealed) setRevealed(false);
+  const open = takeover && !revealed ? false : sidebarOpen;
+  const onOpenChange = (next: boolean) => {
+    if (!takeover) {
+      setSidebarOpen(next);
+      return;
+    }
+    setRevealed(next);
+    if (next && !sidebarOpen) setSidebarOpen(true);
+  };
 
   return (
     <LayoutContext value={{ isMobile, resize }}>
-      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+      <SidebarProvider open={open} onOpenChange={onOpenChange}>
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           {notice}
           <div className="flex flex-1 flex-row min-h-0">

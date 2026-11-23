@@ -29,6 +29,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { PreviewProgressBar } from "./preview-progress-bar";
 import { watchServeContentReload } from "./serve-content-reload";
+import { guardFrameFocus } from "./preview-focus-guard";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -139,6 +140,8 @@ import {
   PathParamPickerChip,
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
+import { blogPathOptions } from "./blog-path-options";
+import { BlogPathParamChip } from "./blog-path-param-chip";
 import { buildPreviewLabel } from "./preview-label";
 import {
   cmsEditorActivation,
@@ -523,6 +526,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const beginNavigation = () => {
     setNavigating(true);
+    // The page about to load may take focus from the field being edited.
+    if (previewIframeRef.current) guardFrameFocus(previewIframeRef.current);
     if (navTimerRef.current) clearTimeout(navTimerRef.current);
     // Safety net: clear the indicator even if onLoad never fires (network
     // failure, cross-origin redirect) so it can't get stuck on forever.
@@ -689,10 +694,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Path templates: pages like `/blog/:slug` expose inputs in the page popover. `currentPath` keeps the template (so the page stays matched); the
   // iframe navigates to the template with the user's values filled in.
-  const pathParamValues =
-    (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
-  const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
-
   // Special selectors for path params: each `:param`/`*` is classified from the
   // loaders the current page uses (product/category, app-agnostic) and bound to
   // whatever product-search / category loader the running site actually ships.
@@ -716,6 +717,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (sources.length > 0) pathParamSources[token.name] = sources;
     }
   }
+  // Blog routes have no store loader to pick from: offer the blog's own posts,
+  // categories and authors, and open on the newest post until one is picked.
+  const blogPathOptionsFor = (path: string) =>
+    decofile ? blogPathOptions(decofile, path, meta) : [];
+  const blogOptions = currentPageKey ? blogPathOptionsFor(currentPath) : [];
+  const pathParamValues =
+    (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ??
+    blogOptions[0]?.values ??
+    {};
+  const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
   const pickerSandboxRef =
     virtualMcpId && branch
       ? {
@@ -1638,6 +1649,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** The swap is in the page: what a reload's load would have ended. */
   const swapEnded = useEffectEvent(() => {
     endNavigation();
+    if (previewIframeRef.current) guardFrameFocus(previewIframeRef.current);
     // The page shows the swapped URL as a load of it would.
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read by the content reload effect
     if (swap) loadedSrcRef.current = swap.shown;
@@ -1802,10 +1814,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
   };
 
-  const setPathParamValue = (name: string, value: string) => {
+  const setPathParamValue = (name: string, value: string) =>
+    setPathParamValues({ ...pathParamValues, [name]: value });
+
+  const setPathParamValues = (nextValues: Record<string, string>) => {
     if (!currentPageKey) return;
     const pageKey = currentPageKey;
-    const nextValues = { ...pathParamValues, [name]: value };
     // Guard against a stale onLoad from the previous URL resetting currentPath.
     intendedPathRef.current = fillPathTemplate(currentPath, nextValues);
     setPathParamsByPage((prev) => ({ ...prev, [pageKey]: nextValues }));
@@ -1828,7 +1842,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.
     const params = pathParamsByPage[page.key] ?? {};
-    const target = fillPathTemplate(page.path, params);
+    const target = fillPathTemplate(
+      page.path,
+      pathParamsByPage[page.key] ??
+        blogPathOptionsFor(page.path)[0]?.values ??
+        {},
+    );
     // Show the loading indicator only when the iframe will actually reload —
     // re-selecting the current page leaves `iframeSrc` unchanged (no onLoad).
     if (activeGlobalSection || normPath(target) !== normPath(resolvedPath)) {
@@ -2240,6 +2259,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     if (token.type === "text")
                       return <span key={`text-${i}`}>{token.text}</span>;
                     const sources = pathParamSources[token.name];
+                    if (!sources && blogOptions.length > 0) {
+                      return (
+                        <BlogPathParamChip
+                          key={`${currentPageKey}:${token.name}`}
+                          paramName={token.name}
+                          template={currentPath}
+                          value={pathParamValues[token.name] ?? ""}
+                          options={blogOptions}
+                          onPick={setPathParamValues}
+                          onCommit={(value) =>
+                            setPathParamValue(token.name, value)
+                          }
+                        />
+                      );
+                    }
                     return sources && pickerSandboxRef ? (
                       <PathParamPickerChip
                         key={`${currentPageKey}:${token.name}`}
@@ -2641,7 +2675,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}
                           onError={iframeRecovery.handleError}
-                          onLoad={() => {
+                          onLoad={(event) => {
+                            // The site's scripts run now and may take focus.
+                            guardFrameFocus(event.currentTarget);
                             // A held Fast Preview pointer may go in now.
                             setFrameNavigation(frameNavigationLoaded);
                             // A Blocks v8 page may now swap a new URL of itself in.

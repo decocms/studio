@@ -98,7 +98,6 @@ async function skipIfUpstreamUnreachable(
 /** MCP servers that support OAuth - all should pass OAuth discovery tests */
 const MCP_SERVERS = [
   { url: "https://mcp.stripe.com/", name: "Stripe" },
-  { url: "https://sites-openrouter.deco.site/mcp", name: "OpenRouter" },
   { url: "https://mcp.notion.com/mcp", name: "Notion" },
   { url: "https://api.githubcopilot.com/mcp/", name: "GitHub Copilot" },
   { url: "https://mcp.vercel.com", name: "Vercel" },

@@ -24,6 +24,7 @@ import type {
 } from "@decocms/shared/project-sidebar";
 import type {
   OrgFlags,
+  PlanObjective,
   SubmoduleCredential,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
@@ -211,6 +212,8 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Per-host PATs every sandbox in the org installs in its git config.
   submodule_credentials: JsonArray<SubmoduleCredential[]> | null;
+  // The store goal on the Plan page. See migration 267.
+  plan_objective: JsonObject<PlanObjective> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -225,6 +228,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   submodule_credentials: SubmoduleCredential[] | null;
+  plan_objective: PlanObjective | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -308,6 +312,65 @@ export interface OrderMonitorStateTable {
     string | null | undefined,
     string | null
   >;
+}
+
+/** Something a detector saw, open until a person or an agent acks it (migration 265). */
+export interface AlertTable {
+  id: string;
+  organization_id: string;
+  source: string;
+  subject_id: ColumnType<string, string | undefined, string>;
+  rule: string;
+  title: string;
+  body: ColumnType<string, string | undefined, string>;
+  link: ColumnType<string | null, string | null | undefined, string | null>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  acked_at: ColumnType<Date | null, never, Date | string | null>;
+  acked_by: ColumnType<string | null, never, string | null>;
+  ack_note: ColumnType<string | null, never, string | null>;
+  task_board_item_id: ColumnType<string | null, never, string | null>;
+}
+
+/** One of an org's Plan goals (migration 268). */
+export interface PlanGoalTable {
+  id: string;
+  organization_id: string;
+  statement: string;
+  source_label: string | null;
+  source_quote: string | null;
+  created_by: string;
+  updated_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  archived_at: ColumnType<Date | null, never, Date | string | null>;
+}
+
+/** The goal a member's Plan page opens on (migration 268). */
+export interface MemberPlanStateTable {
+  user_id: string;
+  organization_id: string;
+  active_goal_id: string | null;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** Which goal a business case chat went toward (migration 268). */
+export interface PlanGoalCaseTable {
+  organization_id: string;
+  thread_id: string;
+  goal_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** An org's thresholds for one alert rule (migration 266). */
+export interface AlertRuleSettingsTable {
+  organization_id: string;
+  source: string;
+  rule: string;
+  threshold: number;
+  min_volume: number;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_by: string | null;
 }
 
 /**
@@ -2613,6 +2676,11 @@ export interface Database {
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
+  alerts: AlertTable;
+  alert_rule_settings: AlertRuleSettingsTable;
+  plan_goals: PlanGoalTable;
+  member_plan_state: MemberPlanStateTable;
+  plan_goal_cases: PlanGoalCaseTable;
 
   // Automations tables
   automations: AutomationTable;

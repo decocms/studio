@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   FIXED_SYSTEM_TABS,
+  formatCaseTabId,
   formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
@@ -12,6 +13,7 @@ import {
   isPerThreadTab,
   normalizePanelSegment,
   parseAutomationTabId,
+  parseCaseTabId,
   parseDeckTabId,
   parseFileTabId,
   parseLibraryFileTabId,
@@ -21,6 +23,10 @@ import {
   resolveTabClickTarget,
   isAutomationsPillActive,
   resolveAutomationsPillClickTarget,
+  isAppTakeoverVisit,
+  isProjectOverviewVisit,
+  withAppTakeoverState,
+  withProjectOverviewState,
 } from "./tab-id";
 
 describe("normalizePanelSegment", () => {
@@ -143,6 +149,25 @@ describe("deck tab id", () => {
 
   test("deck tabs are per-thread", () => {
     expect(isPerThreadTab(formatDeckTabId("decks/a.html"))).toBe(true);
+  });
+});
+
+describe("business case tab id", () => {
+  test("round-trips case paths", () => {
+    const path = "plans/cases/0b7c-41a2.json";
+    expect(parseCaseTabId(formatCaseTabId(path))).toEqual({ path });
+  });
+
+  test("other tabs, an empty or malformed id → null", () => {
+    expect(parseCaseTabId("plan")).toBeNull();
+    expect(parseCaseTabId(formatDeckTabId("decks/a.html"))).toBeNull();
+    expect(parseCaseTabId(undefined)).toBeNull();
+    expect(parseCaseTabId("case:")).toBeNull();
+    expect(parseCaseTabId("case:%E0%A4%A")).toBeNull();
+  });
+
+  test("case tabs are per-thread", () => {
+    expect(isPerThreadTab(formatCaseTabId("plans/cases/a.json"))).toBe(true);
   });
 });
 
@@ -628,5 +653,35 @@ describe("code tab id", () => {
   test("an open code path is per-thread (scoped to the task's sandbox/branch), but the bare tab is not", () => {
     expect(isPerThreadTab(formatCodeTabId("src/index.ts"))).toBe(true);
     expect(isPerThreadTab("code")).toBe(false);
+  });
+});
+
+describe("project landing history state", () => {
+  test("the Overview row's state asks for the Overview", () => {
+    expect(isProjectOverviewVisit(withProjectOverviewState({ key: "a" }))).toBe(
+      true,
+    );
+    expect(isAppTakeoverVisit(withProjectOverviewState({}))).toBe(false);
+    // Overview opened from inside the app's frame must not inherit it.
+    expect(
+      isAppTakeoverVisit(withProjectOverviewState(withAppTakeoverState({}))),
+    ).toBe(false);
+  });
+
+  test("an app landing's state asks for the takeover", () => {
+    expect(isAppTakeoverVisit(withAppTakeoverState({ key: "a" }))).toBe(true);
+    expect(isProjectOverviewVisit(withAppTakeoverState({}))).toBe(false);
+    expect(
+      isProjectOverviewVisit(
+        withAppTakeoverState(withProjectOverviewState({})),
+      ),
+    ).toBe(false);
+  });
+
+  test("any other state asks for neither", () => {
+    for (const state of [undefined, null, {}, { projectOverview: "yes" }]) {
+      expect(isProjectOverviewVisit(state)).toBe(false);
+      expect(isAppTakeoverVisit(state)).toBe(false);
+    }
   });
 });

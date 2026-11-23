@@ -29,7 +29,6 @@ import {
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
-import { STUDIO_TOOL_NAMESPACE_FACT } from "./jira-run-prompt";
 import {
   sandboxUploadHint,
   uploadsAsSandboxPaths,
@@ -248,7 +247,7 @@ export function buildClaudeCodeTaskPrompt(
   // A Jira run is told nothing beyond the issue, the pod's own facts, and the
   // instruction its column rule carries. Everything a person could write —
   // how to finish, how to report, how to review — is in that instruction,
-  // where they can read and change it (see `jira-run-prompt.ts`).
+  // where they can read and change it (the image's `jira-execute` / `jira-review` skills).
   const jiraRun = opts?.source?.kind === "jira";
   // What the thread shows as the user's turn: the task, and the rule's own
   // instruction when one dispatched it. Everything else is system text.
@@ -282,7 +281,7 @@ export function buildClaudeCodeTaskPrompt(
       ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. It is hosted on ${cli.name}, so ${cli.cli ? `\`git\` and \`${cli.cli}\` are` : "`git` is"} authenticated there${cli.cli ? "" : " (Bitbucket has no CLI; `$BITBUCKET_TOKEN` is the bearer for its REST API)"}. ${SHALLOW_CHECKOUT_NOTE}`
       : [
           "Your working directory is EMPTY: nothing has been cloned yet. If the task " +
-            "needs a repository, FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
+            "needs a repository, FIRST call `TASK_ADD_REPO` with the " +
             "id of the repository this task is about. It clones that repository " +
             "into your working directory and waits for the checkout, so once it returns the " +
             "repository is there on its own branch, with `git` and that " +
@@ -298,11 +297,11 @@ export function buildClaudeCodeTaskPrompt(
             : []),
           opts?.repoChoices?.length
             ? "Start with the one the task is about. If it turns out to need a change in " +
-              "another of them too, call `mcp__studio__TASK_ADD_REPO` again — repositories " +
+              "another of them too, call `TASK_ADD_REPO` again — repositories " +
               "accumulate, so a second call adds a checkout beside the first rather than " +
               "replacing it. Each lands in its own directory and keeps its own git remote, " +
               "so open one change request per repository you changed."
-            : "Call `mcp__studio__TASK_ADD_REPO` with no arguments to list the organization's repositories. A task that needs no code (research, answering a question) needs none of them.",
+            : "Call `TASK_ADD_REPO` with no arguments to list the organization's repositories. A task that needs no code (research, answering a question) needs none of them.",
         ].join("\n"),
     "",
     MIXED_PROVIDER_NOTE,
@@ -346,7 +345,6 @@ export function buildClaudeCodeTaskPrompt(
   }
 
   if (jiraRun) {
-    lines.push(STUDIO_TOOL_NAMESPACE_FACT, "");
     return { system: lines.join("\n").trim(), message };
   }
 
@@ -367,7 +365,7 @@ export function buildClaudeCodeTaskPrompt(
   lines.push(
     // A tool call, NOT a line in the PR body: the first version of this read
     // the body back, and one hand-edited body lost the routes silently.
-    `- If your change adds or edits pages a person can open, report their paths with \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` (id "${task.id}", \`previewRoutes: ["/some-page"]\`) — paths only, no host. The card joins them onto the deploy preview so a reviewer opens the page directly. Skip it when the change has no visible route.`,
+    `- If your change adds or edits pages a person can open, report their paths with \`TASK_BOARD_ITEM_UPDATE\` (id "${task.id}", \`previewRoutes: ["/some-page"]\`) — paths only, no host. The card joins them onto the deploy preview so a reviewer opens the page directly. Skip it when the change has no visible route.`,
     // Deliberately NOT "then move it to In Review". Linking the PR is what
     // starts the review and moves the card (`openReviewCycleIfInProgress`),
     // so the model never has to.
@@ -376,11 +374,11 @@ export function buildClaudeCodeTaskPrompt(
     // waiting had no reviewer to pick it up and no signal that a human should —
     // every such card sat untouched. Done is the terminal lane, and the comment
     // is what a human reads to disagree and reopen it.
-    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\` with \`audience: "human"\`) and move it to "done". There is nothing for a reviewer to review, so leaving it for one would strand it.`,
+    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`TASK_BOARD_COMMENT_CREATE\` with \`audience: "human"\`) and move it to "done". There is nothing for a reviewer to review, so leaving it for one would strand it.`,
     // Comments are how runs hand context to each other, and the task feed hides
     // them by default, so handoff stays as technical as it needs to be. The
     // person reviewing the task reads the one comment marked "human".
-    `- Anything the reviewer agent should know (a decision you made, something you found and deliberately left alone, a question) goes on the task as a comment: \`mcp__studio__TASK_BOARD_COMMENT_CREATE\` with taskBoardItemId "${task.id}". Comments are internal by default, for other agents only. Read what's already there first with \`mcp__studio__TASK_BOARD_COMMENT_LIST\` — a comment may be addressed to you.`,
+    `- Anything the reviewer agent should know (a decision you made, something you found and deliberately left alone, a question) goes on the task as a comment: \`TASK_BOARD_COMMENT_CREATE\` with taskBoardItemId "${task.id}". Comments are internal by default, for other agents only. Read what's already there first with \`TASK_BOARD_COMMENT_LIST\` — a comment may be addressed to you.`,
     `- Before you finish, post ONE comment with \`audience: "human"\` for the person who will review this task. They do not read code: say what changed for whoever uses the product, where to see it (the page or flow), and anything they need to decide. No file names, code, commands or engineering jargon (a link to the ${cli.changeRequest} is fine). Write it in the language the task is written in. When the task needed no code change, the comment explaining why is this one.`,
     "",
     `(task id: ${task.id})`,

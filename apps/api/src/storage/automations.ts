@@ -25,6 +25,9 @@ import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
 // Input Types
 // ============================================================================
 
+/** Thread metadata key naming the automation that created the thread; a manual Run has no trigger id to tell it by. */
+export const AUTOMATION_THREAD_KEY = "automation_id";
+
 export interface CreateAutomationInput {
   organization_id: string;
   name: string;
@@ -854,7 +857,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         virtual_mcp_id: automation.virtual_mcp_id,
         harness_id: harnessId,
         // A headless agent run needs a pod, so it is a sandbox session whatever the project defaults to.
-        metadata: JSON.stringify({ runtime: "sandbox" }),
+        metadata: JSON.stringify({
+          runtime: "sandbox",
+          [AUTOMATION_THREAD_KEY]: automation.id,
+        }),
         hidden: false,
         // Pin v2 (the only write path). Automation runs don't go through the
         // routes.ts first-message site that pins user-message threads v2, so

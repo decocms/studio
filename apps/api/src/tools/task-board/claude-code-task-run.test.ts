@@ -96,13 +96,9 @@ describe("buildClaudeCodeTaskPrompt", () => {
       expect(prompt).not.toContain("org/output/");
     });
 
-    // The one thing the author of that skill text cannot know: a skill names
-    // tools bare so it works on either harness, and this is what stops a bare
-    // name from costing the run a tool search.
-    test("is told the Studio tool namespace as a fact", () => {
-      const prompt = build(task, repo, jira);
-      expect(prompt).toContain("namespaced `mcp__studio__`");
-      expect(prompt).toContain("mcp__studio__JIRA_COMMENT_ADD");
+    // How a bare tool name is called is the runner's sentence, not this one's.
+    test("names no Studio tool namespace", () => {
+      expect(build(task, repo, jira)).not.toContain("mcp__studio__");
     });
 
     // The pod's own facts stay: nobody writing a column rule knows the repo,
@@ -132,7 +128,7 @@ describe("buildClaudeCodeTaskPrompt", () => {
 
   test("a board run keeps its board tools", () => {
     const prompt = build(task, repo);
-    expect(prompt).toContain("mcp__studio__TASK_BOARD_COMMENT_CREATE");
+    expect(prompt).toContain("TASK_BOARD_COMMENT_CREATE");
     expect(prompt).not.toContain("JIRA_");
   });
 
@@ -178,7 +174,7 @@ describe("buildClaudeCodeTaskPrompt", () => {
     const prompt = build(task, repo);
     expect(prompt).not.toContain("must be REACHABLE");
     expect(prompt).not.toContain("qa-screenshot");
-    expect(prompt).not.toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
+    expect(prompt).not.toContain("TASK_BOARD_ITEM_PRS_GET");
   });
 
   // Inverted: this used to say "move it to review anyway so a human can close
@@ -192,7 +188,7 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(prompt).toContain('move it to "done"');
     expect(prompt).not.toContain("leave it for a reviewer anyway");
     // And it has to leave the reason where a human will read it.
-    expect(prompt).toContain("mcp__studio__TASK_BOARD_COMMENT_CREATE");
+    expect(prompt).toContain("TASK_BOARD_COMMENT_CREATE");
   });
 
   test("reviewer feedback leads, and updates the existing PR", () => {

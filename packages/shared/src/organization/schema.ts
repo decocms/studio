@@ -49,6 +49,12 @@ export const ChatTierSchema = z.enum(["fast", "smart", "thinking"]);
 
 export type ChatTier = z.infer<typeof ChatTierSchema>;
 
+/**
+ * The tier an interactive chat runs when the person picked none. The chat
+ * route and the composer both read it, so they cannot disagree.
+ */
+export const DEFAULT_CHAT_TIER: ChatTier = "thinking";
+
 export const SimpleModeConfigSchema = z.object({
   tiers: z.object({
     fast: ModelSlotSchema,
@@ -145,6 +151,25 @@ export type DefaultHomeAgentsConfig = z.infer<
   typeof DefaultHomeAgentsConfigSchema
 >;
 
+/** Longest store goal a person can write: one sentence, not a document. */
+export const PLAN_OBJECTIVE_MAX_LENGTH = 280;
+
+/**
+ * The store goal shown at the top of the Plan page and sent with every business
+ * case the page asks for. Who and when are set by the server, never by the
+ * caller.
+ */
+export const PlanObjectiveSchema = z.object({
+  statement: z
+    .string()
+    .max(PLAN_OBJECTIVE_MAX_LENGTH)
+    .describe("The store goal in one sentence, in the person's own words."),
+  updated_by: z.string().describe("Id of the user who last wrote the goal."),
+  updated_at: z.string().datetime().describe("ISO 8601 timestamp"),
+});
+
+export type PlanObjective = z.infer<typeof PlanObjectiveSchema>;
+
 /**
  * Org-level boolean toggles, stored in the `organization_settings.flags`
  * jsonb bag. THE single source of truth: adding a flag is one line here —
@@ -226,6 +251,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow Studio surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
     ),
+  home_chat_org_connections: z
+    .boolean()
+    .optional()
+    .describe(
+      "Let a chat a person drives on the organization home reach every active connection the sender's role allows, through Studio rather than mounted as MCP servers. On by default (see DEFAULT_ON_FLAGS); turn it off to leave a home chat with only the connections attached to the default agent. Connections in `coding_agent_mcp_excluded` stay out either way. Board, reviewer, Jira and automation runs are not affected.",
+    ),
   coding_agents_claude_code: z
     .boolean()
     .optional()
@@ -255,6 +286,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "Forward a sandbox run's metadata (such as a webhook trigger's run_metadata) to the MCP tools it calls, as hosted Decopilot runs do. Off by default.",
+    ),
+  sandbox_chat_user_memory: z
+    .boolean()
+    .optional()
+    .describe(
+      "Sandbox chats keep Claude Code's memory in the member's own folder of the organization filesystem, shared by all their chats, and runs started by the task board or an automation get no memory. On by default (see DEFAULT_ON_FLAGS). Off, every sandbox run keeps the harness default: a memory folder local to its sandbox.",
     ),
   sandbox_repo_snapshots: z
     .boolean()
@@ -346,6 +383,18 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Hide the `deco-cms/blog` app's own blocks (`blog/*`) everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible, plus, in the inserter, the sections under the blog app's `customSectionPaths`. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
     ),
+  plan_page_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "The Plan page: the store goal, which Jev picks from the store's data while it is empty, and a composer that turns an idea into a business case written by the agent. Off by default; with it off, Plan stays a coming-soon page.",
+    ),
+  plan_goals_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Plan goals: the Plan page offers the organization's list of goals instead of a single store goal. Any member adds a goal or picks the one they work toward, and each business case is tied to a goal. Needs plan_page_enabled. Off by default; with it off, the Plan page keeps the single store goal.",
+    ),
   blog_view_enabled: z
     .boolean()
     .optional()
@@ -370,6 +419,8 @@ export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "cheap_reviewer_model",
   "chat_harness_sandbox_only",
   "cms_auto_commit",
+  "home_chat_org_connections",
+  "sandbox_chat_user_memory",
 ]);
 
 /**

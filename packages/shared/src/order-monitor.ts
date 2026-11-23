@@ -26,13 +26,27 @@ export interface OrderMonitorVerdict {
   alertAt: number;
   level: number;
   timezone: string;
-  /** The lake saw a drop VTEX did not: our ingest stopped, not the store's sales. */
-  ingestIncident?: boolean;
-  /** The card waits on VTEX to confirm the drop; the sweep retries the open. */
-  crossCheckPending?: boolean;
-  /** When the open started waiting on VTEX; the wait is bounded from here. */
-  crossCheckSince?: string;
 }
+
+/**
+ * What makes a rule alert, per org. `orders_drop`: the hour brought less than
+ * `threshold` % of expected, judged once `minVolume` orders were expected.
+ * The spikes: `threshold` times expected, and at least `minVolume` in the hour.
+ */
+export interface OrderMonitorThreshold {
+  threshold: number;
+  minVolume: number;
+}
+export type OrderMonitorThresholds = Record<
+  OrderMonitorRule,
+  OrderMonitorThreshold
+>;
+
+export const ORDER_MONITOR_DEFAULT_THRESHOLDS: OrderMonitorThresholds = {
+  orders_drop: { threshold: 15, minVolume: 20 },
+  denied_spike: { threshold: 5, minVolume: 10 },
+  cancel_spike: { threshold: 5, minVolume: 10 },
+};
 
 export interface OrderMonitorRuleState {
   rule: OrderMonitorRule;
@@ -40,8 +54,6 @@ export interface OrderMonitorRuleState {
   since: string;
   evaluatedAt: string;
   verdict: OrderMonitorVerdict;
-  /** The open incident's card, when there is one. */
-  task: { id: string; keySeq: number } | null;
 }
 
 export interface OrderMonitorStore {
@@ -102,6 +114,22 @@ export interface OrderMonitorDay {
     w1: number;
     y1: number;
   };
+  /** The day's sales status: what's in so far beside the same time of day on W-1, M-1 (4 weeks back) and Y-1, and where the day is heading. */
+  forecast: {
+    /** The orders' currency (ISO 4217); null when the day has no orders yet. */
+    currency: string | null;
+    /** Revenue per clock hour, as `orders`. */
+    revenue: OrderMonitorSeries;
+    /** Up to `done`; a reference day is null when the lake has no order of it. */
+    soFar: {
+      today: OrderMonitorSales;
+      w1: OrderMonitorSales | null;
+      m1: OrderMonitorSales | null;
+      y1: OrderMonitorSales | null;
+    };
+    /** The baseline × today's level, as `headline.projected`; null without reference days. */
+    projection: OrderMonitorForecast | null;
+  };
   verdicts: Record<OrderMonitorRule, OrderMonitorVerdict>;
   /** Hours of history the ingest still has queued; null once it's all in. Days not in yet are left out of the baseline. */
   backfill: { pending: number; total: number } | null;
@@ -109,18 +137,46 @@ export interface OrderMonitorDay {
   channels: OrderMonitorChannel[];
 }
 
+export interface OrderMonitorSales {
+  orders: number;
+  /** In the store's currency. */
+  revenue: number;
+  items: number;
+}
+
+/** What the rest of a store's day should bring. */
+export interface OrderMonitorForecast {
+  /** Per clock hour, what is still to come of it after `done`; 0 for hours gone. */
+  orders: number[];
+  revenue: number[];
+  /** Where the day closes: so far plus the rest. */
+  close: { orders: number; revenue: number };
+  /** The projection before the day's first order: the baseline's whole day. */
+  initial: { orders: number; revenue: number };
+  /**
+   * How far the rest could go: what each reference day (`daysAgo`) brought
+   * from `done` up to each clock hour's end, at today's level. Cumulative,
+   * unlike `orders`; 0 for hours gone. The UI draws its quantiles as bands,
+   * after adding stores up day by day.
+   */
+  paths: { daysAgo: number; orders: number[]; revenue: number[] }[];
+}
+
 /** The org's sites' traffic (Deco Analytics, read from the data lake), per clock hour of the local day. */
 export interface SiteTrafficDay {
   /** Unique visitors in each hour. */
   visitors: OrderMonitorSeries;
+  pageviews: OrderMonitorSeries;
   /** Purchases the sites reported to the collector. */
   conversions: OrderMonitorSeries;
   /** Today so far, and each reference day up to the same hour. Visitors are
    *  the day's uniques, not the hours summed. */
   headline: {
     visitors: { today: number; d1: number; w1: number; y1: number };
+    pageviews: { today: number; d1: number; w1: number; y1: number };
     conversions: { today: number; d1: number; w1: number; y1: number };
-  };
+  } /** Today's purchases and their revenue per clock hour, by the device the sites saw them on. */;
+  devices: { id: string; conversions: number[]; revenue: number[] }[];
 }
 
 export interface OrderMonitorPush {

@@ -10,6 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { MCP_APP_ALLOW_HEADER } from "@decocms/shared/mcp-apps/permissions";
 import { sleep } from "@decocms/shared/std";
 import { jetstreamManager } from "@nats-io/jetstream";
 import { getSettings } from "../settings";
@@ -31,9 +32,18 @@ import {
   setDemoBoardResetRuntime,
 } from "@/tools/demo-board/dbos-demo-board-reset";
 import {
+  kickOrderIngestBackfill,
+  registerOrderIngestBackfillWorkflow,
+  setOrderIngestBackfillRuntime,
+} from "@/monitoring/dbos-order-ingest-backfill";
+import {
   registerOrderMonitorWorkflow,
   setOrderMonitorRuntime,
 } from "@/monitoring/dbos-order-monitor";
+import {
+  registerTrafficMonitorWorkflow,
+  setTrafficMonitorRuntime,
+} from "@/monitoring/dbos-traffic-monitor";
 import {
   registerSubscriptionSweepWorkflow,
   setSubscriptionSweepRuntime,
@@ -85,6 +95,7 @@ import {
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
 import mcpConsentRoutes from "./routes/mcp-consent";
+import mcpUserinfoRoutes from "./routes/mcp-userinfo";
 import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
 import { createUserFsRoutes } from "./routes/user-fs";
 import { USER_FS_API_PREFIX } from "@/file-storage/user-fs";
@@ -1322,8 +1333,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization", "mcp-protocol-version"],
-      // Expose WWW-Authenticate so OAuth discovery works from cross-origin clients
-      exposeHeaders: ["WWW-Authenticate"],
+      // Expose WWW-Authenticate so OAuth discovery works from cross-origin
+      // clients, and the MCP app iframe `allow` value next to its HTML.
+      exposeHeaders: ["WWW-Authenticate", MCP_APP_ALLOW_HEADER],
     }),
   );
 
@@ -1543,6 +1555,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom/mcp-consent", mcpConsentRoutes);
+  // Served here: the mcp() plugin advertises this path but has no handler.
+  app.route("/api/auth/mcp/userinfo", mcpUserinfoRoutes);
   app.route("/api/auth/custom", authRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
@@ -1681,6 +1695,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Every 5 minutes: each ingest-installed store's order flow vs its baseline.
   setOrderMonitorRuntime({ db: database.db });
 
+  // Every 5 minutes: each analytics site's last hour of traffic vs its baseline.
+  setTrafficMonitorRuntime({ db: database.db });
+
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
 
@@ -1715,6 +1732,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // it only writes a module-level pointer, no DBOS API calls.
   // The actual dispatch (and its dispatch-run deps) lives on the thread-gate
   // runtime now — automations invoke its shared `runDispatchSteps` body.
+  // Once: the order ingest for VTEX connections that had their keys before saving installed it.
+  setOrderIngestBackfillRuntime({
+    db: database.db,
+    contextFactory: automationContextFactory,
+  });
   setAutomationRuntime({
     storage: automationsStorage,
     studioContextFactory: automationContextFactory,
@@ -1981,6 +2003,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerTaskBoardArchiveSweepWorkflow();
   registerDemoBoardResetWorkflow();
   registerOrderMonitorWorkflow();
+  registerOrderIngestBackfillWorkflow();
+  registerTrafficMonitorWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerBoardTransitionWorkflows();
@@ -2558,6 +2582,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     // so parallel-booting replicas collapse via OAOO).
     kickPublicSetsBootSync().catch((err) => {
       console.error("[org-fs] public-sets boot sync kick failed:", err);
+    });
+
+    // Fixed workflow id: runs once, whichever replica boots first.
+    kickOrderIngestBackfill().catch((err) => {
+      console.error("[order-ingest] backfill kick failed:", err);
     });
   };
 

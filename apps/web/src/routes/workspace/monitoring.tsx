@@ -15,6 +15,7 @@ import {
   type MonitorView,
   useSiteProjects,
 } from "@/components/monitor/monitor-views";
+import { MonitorOrgContext } from "@/components/monitor/monitor-org-context";
 import { useLiveBoard } from "@/components/monitor/use-live-board";
 import {
   DESTINATION_ROUTE,
@@ -54,6 +55,10 @@ function useMonitorSearch(): MonitorSelection {
     project:
       "project" in search && typeof search.project === "string"
         ? search.project
+        : undefined,
+    customer:
+      "customer" in search && typeof search.customer === "string"
+        ? search.customer
         : undefined,
   };
 }
@@ -100,13 +105,14 @@ function LiveMonitoring({
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
-  // The filter's pick narrows the whole board, its totals included.
+  // The filter's pick narrows the whole board, its totals included; another
+  // org's board has none of your projects to narrow by.
   const picked = useSiteProjects().some((p) => p.id === selection.project)
     ? selection.project
     : undefined;
   const { board, loading, error } = useLiveBoard(
     orgSlug,
-    scopeId ?? picked ?? null,
+    selection.customer ? null : (scopeId ?? picked ?? null),
     selection.date,
   );
   return (
@@ -135,12 +141,17 @@ function MonitoringContent() {
 
   const onSelect = (selected: MonitorSelection) => {
     // Filters only make sense within one project's Analytics sections.
-    const next =
+    const picked =
       selected.view === "audience" &&
       selection.view === "audience" &&
       selected.project === selection.project
         ? { ...selected, ...segment }
         : selected;
+    // The customer sticks until the picker changes it.
+    const next =
+      "customer" in selected
+        ? picked
+        : { ...picked, customer: selection.customer };
     if (routeId) {
       void navigate({
         to: PROJECT_ROUTE.monitoring,
@@ -156,14 +167,21 @@ function MonitoringContent() {
     }
   };
 
+  // Another org's numbers are the Overview's only: the other tabs read your own.
+  const customer =
+    (selection.view ?? "metrics") === "metrics"
+      ? selection.customer
+      : undefined;
   return (
-    <LiveMonitoring
-      orgSlug={org.slug}
-      scopeId={scopeId}
-      orgWide={routeId !== null && scopeId === null}
-      selection={selection}
-      onSelect={onSelect}
-    />
+    <MonitorOrgContext.Provider value={customer}>
+      <LiveMonitoring
+        orgSlug={org.slug}
+        scopeId={scopeId}
+        orgWide={routeId !== null && scopeId === null}
+        selection={{ ...selection, customer }}
+        onSelect={onSelect}
+      />
+    </MonitorOrgContext.Provider>
   );
 }
 

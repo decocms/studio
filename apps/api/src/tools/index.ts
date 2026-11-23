@@ -20,6 +20,8 @@ import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
 import * as DemoBoardTools from "./demo-board";
 import * as NotificationTools from "./notifications";
+import * as AlertTools from "./alerts";
+import * as PlanGoalTools from "./plan-goals";
 import * as TagTools from "./tags";
 import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
@@ -65,11 +67,26 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
   OrganizationTools.ORGANIZATION_BLOCKS_EDITOR_SET,
+  OrganizationTools.ORGANIZATION_PLAN_OBJECTIVE_SET,
+  OrganizationTools.ORGANIZATION_PLAN_OBJECTIVE_FIND,
+  OrganizationTools.PLAN_CASE_NEXT_QUESTION,
+  PlanGoalTools.PLAN_GOAL_LIST,
+  PlanGoalTools.PLAN_GOAL_CREATE,
+  PlanGoalTools.PLAN_GOAL_UPDATE,
+  PlanGoalTools.PLAN_GOAL_ARCHIVE,
+  PlanGoalTools.PLAN_ACTIVE_GOAL_SET,
+  PlanGoalTools.PLAN_GOAL_CASE_RECORD,
+  PlanGoalTools.PLAN_GOAL_CASES,
+  PlanGoalTools.PLAN_GOAL_SUGGEST,
   OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
+  AlertTools.ALERTS_LIST,
+  AlertTools.ALERT_ACK,
+  AlertTools.ALERT_RULES_LIST,
+  AlertTools.ALERT_RULE_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
   // The cross-org `org` param is applied at each tool's own definition, NOT
   // here — the Super Agent imports these tools directly (see
@@ -106,6 +123,7 @@ export const CORE_TOOLS = [
   DemoBoardTools.DEMO_BOARD_STATUS,
   // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
   ChatTools.GENERATE_IMAGE,
+  ChatTools.GENERATE_TEXT,
   ChatTools.WEB_SEARCH,
   ChatTools.DEEP_RESEARCH,
   ChatTools.SUGGEST_TASK,

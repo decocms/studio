@@ -3,6 +3,8 @@ import type {
   AiProviderKey,
   ProviderId,
 } from "../types/ai-providers";
+import type { SimpleModeTier } from "../../organization/schema";
+import { CLAUDE_OPUS, CLAUDE_SONNET } from "./claude-lineup";
 
 /** Decision models accept text but cannot generate a chat response. */
 export function isDecisionModel(model: {
@@ -78,14 +80,16 @@ export function getFastModel(providerId: ProviderId): string | null {
  * in Simple Model Mode.
  */
 export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
-  anthropic: ["claude-sonnet-5", "claude-sonnet"],
+  anthropic: [CLAUDE_SONNET.anthropic, "claude-sonnet-5", "claude-sonnet"],
   openrouter: [
+    CLAUDE_SONNET.openrouter,
     "anthropic/claude-sonnet-5",
     "anthropic/claude-sonnet",
     "anthropic/claude-opus-4.8",
     "google/gemini-3-pro",
   ],
   deco: [
+    CLAUDE_SONNET.openrouter,
     "anthropic/claude-sonnet-5",
     "anthropic/claude-sonnet",
     "anthropic/claude",
@@ -101,6 +105,7 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
 export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   {
     anthropic: [
+      CLAUDE_OPUS.anthropic,
       "claude-opus-4-8",
       "claude-sonnet-5",
       "claude-sonnet",
@@ -108,6 +113,7 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       "claude-fable-5",
     ],
     openrouter: [
+      CLAUDE_OPUS.openrouter,
       "anthropic/claude-opus-4.8:extended",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-5:extended",
@@ -117,6 +123,7 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       "anthropic/claude-fable-5",
     ],
     deco: [
+      CLAUDE_OPUS.openrouter,
       "anthropic/claude-opus",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet",
@@ -354,6 +361,30 @@ export function pickSimpleModeDefaults(
   }
 
   return result;
+}
+
+/**
+ * The default pick for one tier. `resolveTier` and the web both read it, so a
+ * page showing what an unset slot resolves to cannot name another model.
+ */
+export function simpleModeDefaultSlot(
+  defaults: SimpleModeDefaults,
+  tier: SimpleModeTier,
+): SimpleModeModelSlot | null {
+  switch (tier) {
+    case "fast":
+      return defaults.chat.fast;
+    case "smart":
+      return defaults.chat.smart;
+    case "thinking":
+      return defaults.chat.thinking;
+    case "image":
+      return defaults.image;
+    case "web_search":
+      return defaults.webSearch;
+    case "deep_research":
+      return defaults.deepResearch;
+  }
 }
 
 /**

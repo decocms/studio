@@ -64,7 +64,11 @@ import {
   useVirtualMCPNonBlocking,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
-import { bumpUsageOptimistically } from "@/hooks/use-entitlements";
+import {
+  bumpUsageOptimistically,
+  useFeature,
+  useFeaturesSettled,
+} from "@/hooks/use-entitlements";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
 
@@ -74,6 +78,7 @@ import {
   type AiProviderModel,
 } from "../../hooks/collections/use-ai-providers";
 import { useContext as useContextHook } from "../../hooks/use-context";
+import { savedStoreGoal } from "@/components/plan/saved-store-goal";
 import {
   usePreferences,
   readToolApprovalLevel,
@@ -131,7 +136,10 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
   return s.kind;
 }
 
-import { useChatNavigation } from "./hooks/use-chat-navigation";
+import {
+  useChatNavigation,
+  type NavigateToTaskOptions,
+} from "./hooks/use-chat-navigation";
 import {
   useOrgFlag,
   useSandboxOnlyChats,
@@ -161,9 +169,14 @@ import {
 import { textFromParts } from "./queue-items";
 import { withLiveRunId } from "./live-messages";
 import { useMessageQueueActions } from "./use-message-queue";
-import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
+import {
+  formatCaseTabId,
+  formatDeckTabId,
+} from "@/layouts/main-panel-tabs/tab-id";
+import { businessCaseQueryKey } from "@/components/plan/business-case/use-business-case";
 import { useEffectiveSimpleMode } from "../../hooks/use-user-model-preferences";
 import {
+  chosenChatTier,
   findModel,
   pickFallbackChatModel,
   resolveActiveTier,
@@ -236,14 +249,19 @@ export interface ChatTaskContextValue {
   virtualMcpId: string;
   /** The thread the route names, or `null` on a route that names none. */
   taskId: string | null;
-  openTask: (taskId: string) => void;
+  /** `tabId` opens that view beside the thread. */
+  openTask: (taskId: string, opts?: { tabId?: string }) => void;
   /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
    *  coding session; `branch` overrides the carried-over current branch. */
   createTask: (opts?: { runtime?: ThreadRuntime; branch?: string }) => string;
+  /** `id` names the new thread when the message must mention it; `tabId`
+   *  opens that view beside it instead of carrying the current one. */
   createTaskWithMessage: (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
-  }) => void;
+    id?: string;
+    tabId?: string;
+  }) => Promise<boolean>;
   activeTask: Task | null;
   /** True iff the thread row has captured a `harness_id` — i.e. the first
    *  message has been processed and the runtime is pinned for life. */
@@ -291,6 +309,8 @@ export interface ChatPrefsContextValue {
   resetInteraction: () => void;
   /** The currently selected tier in Simple Model Mode */
   simpleModeTier: SimpleTier;
+  /** The tier a chat request carries: unset when the person picked none. */
+  requestTier: SimpleTier | undefined;
   setSimpleModeTier: (tier: SimpleTier) => void;
 }
 
@@ -421,7 +441,11 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
     null,
   );
-  const activeTier = resolveActiveTier(storedTier);
+  // Same condition as `TierTrigger`: the picker renders only then.
+  const modelChoice = useFeature("model_choice");
+  const featuresSettled = useFeaturesSettled();
+  const chosenTier = chosenChatTier(storedTier, modelChoice && featuresSettled);
+  const activeTier = resolveActiveTier(chosenTier);
 
   // AI provider keys + models
   const keys = useHostedAiProviderKeys();
@@ -437,6 +461,15 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     useAiProviderModels(effectiveKeyId ?? undefined);
 
   const { models: simpleChatModels } = useAiProviderModels(activeChatKeyId);
+  // Mirrors the server's `resolveDefaultChatTier`: Smart backs an unpicked default.
+  const defaultFallbackSlot = chosenTier ? null : simpleMode.tiers.smart;
+  const defaultFallbackKeyId = keys.some(
+    (key) => key.id === defaultFallbackSlot?.keyId,
+  )
+    ? defaultFallbackSlot?.keyId
+    : undefined;
+  const { models: defaultFallbackModels } =
+    useAiProviderModels(defaultFallbackKeyId);
   const imageKeyId = keys.some(
     (key) => key.id === simpleMode.tiers.image?.keyId,
   )
@@ -459,7 +492,16 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
 
   const selectedModel: AiProviderModel | null =
     findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
-    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
+    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels) ??
+    findModel(
+      defaultFallbackSlot,
+      keys,
+      defaultFallbackModels,
+      defaultFallbackSlot?.title,
+    ) ??
+    (chosenTier
+      ? null
+      : pickFallbackChatModel("smart", keys, effectiveKeyId, allKeyModels));
   const isModelsLoading = isModelsQueryLoading;
 
   const imageModels = allKeyModels.filter((m) =>
@@ -618,6 +660,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     tiptapDocRef,
     resetInteraction: () => {},
     simpleModeTier: activeTier,
+    requestTier: chosenTier ?? undefined,
     setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
   };
 
@@ -659,17 +702,15 @@ export function ChatContextProvider({
   const effectiveVirtualMcpId = urlVirtualMcpId;
 
   // Context prompt (uses effective agent)
-  const contextPrompt = useContextHook(effectiveVirtualMcpId);
+  const contextPrompt = useContextHook();
 
-  const navigateToTask = (
-    taskId: string,
-    opts?: { virtualMcpId?: string; autosend?: boolean; keepView?: boolean },
-  ) => {
+  const navigateToTask = (taskId: string, opts?: NavigateToTaskOptions) => {
     markTaskRead(taskId);
     rawNavigateToTask(taskId, {
       virtualMcpId: opts?.virtualMcpId,
       autosend: opts?.autosend,
       keepView: opts?.keepView,
+      tabId: opts?.tabId,
     });
   };
 
@@ -743,8 +784,10 @@ export function ChatContextProvider({
   const createTaskWithMessage = (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
+    id?: string;
+    tabId?: string;
   }) => {
-    const newId = crypto.randomUUID();
+    const newId = params.id ?? crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const sameAgent = targetVmcp === virtualMcpId;
     const carryBranch = sameAgent ? carryOverBranch : null;
@@ -758,28 +801,31 @@ export function ChatContextProvider({
       ...(blog?.runtime ? { runtime: blog.runtime } : {}),
       ...(branch ? { branch } : {}),
     });
-    void threadActions
+    const open = () =>
+      navigateToTask(newId, {
+        virtualMcpId: params.virtualMcpId,
+        autosend: true,
+        keepView: targetVmcp === virtualMcpId,
+        tabId: params.tabId,
+      });
+    return threadActions
       .create({
         id: newId,
         virtual_mcp_id: targetVmcp,
         ...(branch ? { branch } : {}),
         ...(blog?.runtime ? { runtime: blog.runtime } : {}),
       })
-      .then(() => {
-        clearThreadIntent(sessionStorage, locator, newId);
-        navigateToTask(newId, {
-          virtualMcpId: params.virtualMcpId,
-          autosend: true,
-          keepView: targetVmcp === virtualMcpId,
-        });
-      })
-      .catch(() => {
-        navigateToTask(newId, {
-          virtualMcpId: params.virtualMcpId,
-          autosend: true,
-          keepView: targetVmcp === virtualMcpId,
-        });
-      });
+      .then(
+        () => {
+          clearThreadIntent(sessionStorage, locator, newId);
+          open();
+          return true;
+        },
+        () => {
+          open();
+          return false;
+        },
+      );
   };
 
   // ---- Build context values ----
@@ -849,7 +895,7 @@ function useThreadlessStream(): ChatStreamContextValue {
     messages: NO_MESSAGES,
     status: "ready",
     sendMessage: async (params) => {
-      createTaskWithMessage({ message: toSendMessageParams(params) });
+      void createTaskWithMessage({ message: toSendMessageParams(params) });
     },
     editQueuedMessage: async () => false,
     stop: () => {},
@@ -920,7 +966,7 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
     setChatMode,
     appContexts,
     setTiptapDoc,
-    simpleModeTier: activeTier,
+    requestTier,
   } = useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
@@ -1044,6 +1090,8 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
   useEffect(() => {
+    // Open each case once; later writes only refresh it.
+    const openedCases = new Set<string>();
     const observer: ThreadObserver = {
       // Auto-titler emits `data-thread-title` chunks as the turn streams. Mirror
       // the new title into the manager's thread row so the tasks panel updates
@@ -1077,6 +1125,20 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
             queryKey: KEYS.orgFsRecent(cb.orgId),
           });
           cb.openPanel(formatDeckTabId(path));
+          return;
+        }
+        // Plan's business case: the canvas refetches on every write.
+        if (chunk.type === "data-business-case-updated") {
+          const data = (chunk as unknown as { data: { path?: string } }).data;
+          if (!data?.path) return;
+          const cb = cbRef.current;
+          cb.queryClient.invalidateQueries({
+            queryKey: businessCaseQueryKey(cb.orgId, data.path),
+          });
+          if (!openedCases.has(data.path)) {
+            openedCases.add(data.path);
+            cb.openPanel(formatCaseTabId(data.path));
+          }
           return;
         }
         // `load_repo` finished cloning a repo into the thread's sandbox. Patch
@@ -1181,6 +1243,11 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
         cb.queryClient.invalidateQueries({
           queryKey: KEYS.homeNextActions(cb.orgSlug),
         });
+        if (savedStoreGoal(message.parts ?? [])) {
+          void cb.queryClient.invalidateQueries({
+            queryKey: KEYS.organizationSettings(cb.orgId),
+          });
+        }
 
         const serverThreadId = (message.metadata as Metadata | undefined)
           ?.thread_id;
@@ -1347,7 +1414,7 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
     const requestOptions: RequestOptions = {
       ...(voiceMode || voiceEnabled ? { voiceMode } : {}),
       ...(voiceMode && voiceTranscript ? { voiceTranscript } : {}),
-      tier: activeTier,
+      tier: requestTier,
       mode: modeToSend,
       toolApprovalLevel:
         preferences.toolApprovalLevel ?? readToolApprovalLevel(),

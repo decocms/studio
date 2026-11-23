@@ -2,15 +2,15 @@ import type { StudioContext } from "@/core/studio-context";
 import { orgPinnedModel } from "@/core/plan-feature-gate";
 import {
   ChatTierSchema,
+  DEFAULT_CHAT_TIER,
   type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
 import {
   isHostedProviderId,
   pickSimpleModeDefaults,
+  simpleModeDefaultSlot,
   type AiProviderKey,
   type AiProviderModel,
-  type SimpleModeDefaults,
-  type SimpleModeModelSlot,
 } from "@decocms/shared/sdk";
 
 export class TierUnavailableError extends Error {
@@ -84,26 +84,6 @@ async function fetchModelList(
     return list as unknown as AiProviderModel[];
   } finally {
     if (timer) clearTimeout(timer);
-  }
-}
-
-function pickSlotForTier(
-  tier: SimpleModeTier,
-  defaults: SimpleModeDefaults,
-): SimpleModeModelSlot | null {
-  switch (tier) {
-    case "fast":
-      return defaults.chat.fast;
-    case "smart":
-      return defaults.chat.smart;
-    case "thinking":
-      return defaults.chat.thinking;
-    case "image":
-      return defaults.image;
-    case "web_search":
-      return defaults.webSearch;
-    case "deep_research":
-      return defaults.deepResearch;
   }
 }
 
@@ -205,7 +185,7 @@ export async function resolveTier(
 
   // Fallback: tier slot is unset (or references a deleted key). Build the
   // SDK's default-pick from the org's connected providers + their actual
-  // model catalogs. This matches what the settings page would auto-populate,
+  // model catalogs. This matches what the settings page shows for an unset slot,
   // so chat works on first connect even before the admin saves anything.
   if (keys.length === 0) throw new TierUnavailableError(tier);
 
@@ -230,7 +210,7 @@ export async function resolveTier(
     createdAt: k.createdAt,
   }));
   const defaults = pickSimpleModeDefaults(sdkKeys, modelsByKeyId);
-  const picked = pickSlotForTier(tier, defaults);
+  const picked = simpleModeDefaultSlot(defaults, tier);
   if (!picked) throw new TierUnavailableError(tier);
 
   return {
@@ -242,6 +222,24 @@ export async function resolveTier(
       picked.title,
     ),
   };
+}
+
+/**
+ * The model of an interactive chat whose request named no tier: the default
+ * chat tier, or Smart for an org that has no model for it. An org that only
+ * ever configured Smart must not lose its chat to a default nobody picked. A
+ * tier the person did pick is resolved by `resolveTier` and still fails loudly.
+ */
+export async function resolveDefaultChatTier(
+  ctx: StudioContext,
+  opts?: ResolveTierOptions,
+): Promise<ResolvedTier> {
+  try {
+    return await resolveTier(ctx, DEFAULT_CHAT_TIER, opts);
+  } catch (err) {
+    if (!(err instanceof TierUnavailableError)) throw err;
+    return resolveTier(ctx, "smart", opts);
+  }
 }
 
 /**

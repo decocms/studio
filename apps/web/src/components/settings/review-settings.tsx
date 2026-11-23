@@ -11,6 +11,7 @@ import {
   Cube01,
   FileSearch02,
   GitBranch01,
+  Flag01,
   GitCommit,
   GitMerge,
   Microphone01,
@@ -19,6 +20,7 @@ import {
   Pilcrow01,
   SearchLg,
   Stars02,
+  Target04,
   Terminal,
   UserSquare,
 } from "@untitledui/icons";
@@ -420,6 +422,29 @@ export function ChatSettings() {
  * One section rather than two. They are both answers to "how does this org
  * blog", and a heading per toggle makes the page read like a changelog.
  */
+/** The Plan page: the store goal and the business-case composer. */
+export function PlanSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.plan.sectionTitle")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="plan_page_enabled"
+          icon={<Target04 size={16} />}
+          titleKey="settings.plan.pageTitle"
+          descriptionKey="settings.plan.pageDescription"
+        />
+        <FlagToggle
+          flag="plan_goals_enabled"
+          icon={<Flag01 size={16} />}
+          titleKey="settings.plan.goalsTitle"
+          descriptionKey="settings.plan.goalsDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
 export function BlogSettings() {
   const t = useT();
   return (

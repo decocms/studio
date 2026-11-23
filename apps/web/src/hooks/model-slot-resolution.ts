@@ -1,4 +1,8 @@
 import type { ChatTier } from "@decocms/shared/organization/schema";
+import {
+  simpleModeDefaultSlot,
+  type SimpleModeDefaults,
+} from "@decocms/shared/sdk";
 import type { ModelSlot, SimpleModeConfig } from "./use-organization-settings";
 
 export interface ModelTierPreferences {
@@ -17,31 +21,34 @@ export function firstAvailableModelSlot(
   );
 }
 
+/**
+ * What each tier runs on, in the order `resolveTier` applies: the user's
+ * override (chat tiers only), the org slot, then the default pick. A slot is
+ * null only when no connected provider has a model for that tier.
+ */
 export function resolveEffectiveSimpleMode(
   org: SimpleModeConfig,
   user: ModelTierPreferences,
   availableKeyIds: ReadonlySet<string>,
+  defaults: SimpleModeDefaults,
 ): SimpleModeConfig {
-  const liveOrgSlot = (slot: ModelSlot | null) =>
-    firstAvailableModelSlot([slot], availableKeyIds);
+  const resolve = (
+    tier: keyof SimpleModeConfig["tiers"],
+    userSlot?: ModelSlot | null,
+  ) =>
+    firstAvailableModelSlot(
+      [userSlot, org.tiers[tier], simpleModeDefaultSlot(defaults, tier)],
+      availableKeyIds,
+    );
 
   return {
     tiers: {
-      fast: firstAvailableModelSlot(
-        [user.tiers.fast, org.tiers.fast],
-        availableKeyIds,
-      ),
-      smart: firstAvailableModelSlot(
-        [user.tiers.smart, org.tiers.smart],
-        availableKeyIds,
-      ),
-      thinking: firstAvailableModelSlot(
-        [user.tiers.thinking, org.tiers.thinking],
-        availableKeyIds,
-      ),
-      image: liveOrgSlot(org.tiers.image),
-      web_search: liveOrgSlot(org.tiers.web_search),
-      deep_research: liveOrgSlot(org.tiers.deep_research),
+      fast: resolve("fast", user.tiers.fast),
+      smart: resolve("smart", user.tiers.smart),
+      thinking: resolve("thinking", user.tiers.thinking),
+      image: resolve("image"),
+      web_search: resolve("web_search"),
+      deep_research: resolve("deep_research"),
     },
   };
 }

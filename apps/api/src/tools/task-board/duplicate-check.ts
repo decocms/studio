@@ -30,10 +30,7 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
-import {
-  type DecisionModel,
-  openDecisionModel,
-} from "@/core/evaluate-decisions";
+import { openJev } from "@/core/evaluate-decisions";
 import {
   buildDuplicateDecisions,
   acceptDecisionDuplicates,
@@ -516,7 +513,6 @@ export function acceptBatchDuplicates(
   return accepted;
 }
 
-const JEV_MODEL_ID = "typesafe/jev-1.13";
 /** Jev questions in flight at once, per check. */
 const DECISION_CONCURRENCY = 5;
 /** Earlier drafts of the batch offered to a draft, most alike first. */
@@ -575,26 +571,8 @@ async function askDecisionModel(
   drafts: readonly IndexedDraft[],
   items: readonly TaskBoardItem[],
 ): Promise<DecisionOutcome | null> {
-  let jev: DecisionModel;
-  try {
-    const keys = await ctx.storage.aiProviderKeys.list({
-      organizationId: orgId,
-    });
-    const key =
-      keys.find((entry) => entry.providerId === "openrouter") ??
-      keys.find((entry) => entry.providerId === "deco");
-    if (!key) return null;
-    jev = await openDecisionModel(ctx, {
-      keyId: key.id,
-      modelId: JEV_MODEL_ID,
-    });
-  } catch (error) {
-    console.warn(
-      "[task-board] Decision check unavailable; using fast model",
-      error instanceof Error ? error.message : "unknown error",
-    );
-    return null;
-  }
+  const jev = await openJev(ctx, orgId);
+  if (!jev) return null;
   const verdicts = await mapBounded(
     [...drafts],
     DECISION_CONCURRENCY,

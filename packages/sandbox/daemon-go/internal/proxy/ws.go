@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -58,7 +59,7 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 	}
 	defer upstream.Close()
 
-	serveUpstream(clientConn, clientBuf, r, upstream, deps.OnClientData)
+	serveUpstream(clientConn, clientBuf, r, port, upstream, deps.OnClientData)
 }
 
 // serveUpstream forwards the upgrade request to an already-dialed upstream and
@@ -66,11 +67,11 @@ func ServeWs(w http.ResponseWriter, r *http.Request, deps WsDeps) {
 // write-failure branch below — the dial succeeded but the upstream dropped
 // before the handshake could be forwarded, e.g. a dev server still restarting
 // — is exercisable with a fake `upstream` in tests, without a real TCP dial.
-func serveUpstream(clientConn net.Conn, clientBuf io.Reader, r *http.Request, upstream net.Conn, onClientData func()) {
+func serveUpstream(clientConn net.Conn, clientBuf io.Reader, r *http.Request, port int, upstream net.Conn, onClientData func()) {
 	// Same "connect then close" contract as ServeWs's two failure branches: the
 	// client gets a clean WebSocket close instead of a bare TCP reset it can't
 	// interpret as anything but a broken connection.
-	if err := writeUpgradeRequest(upstream, r); err != nil {
+	if err := writeUpgradeRequest(upstream, r, port); err != nil {
 		if completeHandshake(clientConn, r) == nil {
 			sendClose(clientConn, 1011, "upstream not reachable")
 		}
@@ -132,12 +133,15 @@ func dialLoopbackTCP(port int) (net.Conn, error) {
 	return net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 }
 
-func writeUpgradeRequest(upstream net.Conn, r *http.Request) error {
+func writeUpgradeRequest(upstream net.Conn, r *http.Request, port int) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s HTTP/1.1\r\n", r.Method, r.URL.RequestURI())
 	fmt.Fprintf(&b, "Host: %s\r\n", r.Host)
+	if origin, ok := DevServerOrigin(r, port); ok {
+		fmt.Fprintf(&b, "Origin: %s\r\n", origin)
+	}
 	for k, vv := range r.Header {
-		if strings.EqualFold(k, "Host") {
+		if strings.EqualFold(k, "Host") || strings.EqualFold(k, "Origin") {
 			continue
 		}
 		for _, v := range vv {
@@ -147,6 +151,25 @@ func writeUpgradeRequest(upstream net.Conn, r *http.Request) error {
 	b.WriteString("\r\n")
 	_, err := upstream.Write([]byte(b.String()))
 	return err
+}
+
+// DevServerOrigin returns the Origin to send the dev server for a request whose
+// Origin is the preview host itself. Next 16 refuses dev resources, the HMR
+// WebSocket included, unless the Origin hostname is localhost or listed in
+// `allowedDevOrigins`, and a preview host never is. A same-origin request is
+// the dev server's own page, so it is presented as coming from localhost.
+// Cross-origin requests keep their Origin and stay subject to the dev server's
+// check. ok is false when there is no Origin to send.
+func DevServerOrigin(r *http.Request, port int) (string, bool) {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return "", false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" || !strings.EqualFold(u.Host, r.Host) {
+		return origin, true
+	}
+	return "http://localhost:" + strconv.Itoa(port), true
 }
 
 // completeHandshake answers the client's upgrade with a 101 so the connection
