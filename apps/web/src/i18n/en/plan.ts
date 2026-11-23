@@ -183,6 +183,21 @@ export const plan = {
   "plan.goals.saveError": "Could not save the goal. Try again.",
   "plan.goals.pickError": "Could not switch to that goal. Try again.",
   "plan.goals.archiveError": "Could not archive the goal. Try again.",
+  "plan.goals.suggest.action": "Suggest goals with AI",
+  "plan.goals.suggest.finding":
+    "Reading the brand's files, meetings and messages for its goals…",
+  "plan.goals.suggest.heading": "Goals found in what your team wrote and said",
+  "plan.goals.suggest.description":
+    "Add the ones you work toward. Nothing is saved until you add it.",
+  "plan.goals.suggest.found": "Found in {source}: “{quote}”",
+  "plan.goals.suggest.add": "Add",
+  "plan.goals.suggest.edit": "Edit",
+  "plan.goals.suggest.dismiss": "Dismiss",
+  "plan.goals.suggest.close": "Close",
+  "plan.goals.suggest.notFound":
+    "I could not find a goal in the brand's files and conversations. Write one the way your team would say it.",
+  "plan.goals.suggest.allListed":
+    "Every goal I found is already on your organization's list.",
   "plan.cases.towardGoal": "Toward this goal",
   "plan.cases.towardGoalDescription":
     "Business cases anyone in your organization started toward this goal.",

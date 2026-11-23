@@ -71,6 +71,14 @@ export function usePlanGoalCases(goalId: string | null): string[] | undefined {
   return data;
 }
 
+/** Asks the AI for goals the org does not have yet; proposes, never saves. */
+export function useSuggestPlanGoals() {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: () => studio.call("PLAN_GOAL_SUGGEST", {}),
+  });
+}
+
 export function usePlanGoalActions() {
   const studio = useStudioTools();
   const invalidate = useInvalidatePlanGoals();

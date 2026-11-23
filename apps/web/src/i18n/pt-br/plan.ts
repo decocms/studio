@@ -185,6 +185,22 @@ export const plan = {
   "plan.goals.saveError": "Não deu para salvar o objetivo. Tente de novo.",
   "plan.goals.pickError": "Não deu para trocar de objetivo. Tente de novo.",
   "plan.goals.archiveError": "Não deu para arquivar o objetivo. Tente de novo.",
+  "plan.goals.suggest.action": "Sugerir objetivos com IA",
+  "plan.goals.suggest.finding":
+    "Lendo os arquivos, reuniões e mensagens da marca atrás dos objetivos dela…",
+  "plan.goals.suggest.heading":
+    "Objetivos encontrados no que o seu time escreveu e falou",
+  "plan.goals.suggest.description":
+    "Adicione aqueles em que você trabalha. Nada é salvo até você adicionar.",
+  "plan.goals.suggest.found": "Encontrado em {source}: “{quote}”",
+  "plan.goals.suggest.add": "Adicionar",
+  "plan.goals.suggest.edit": "Editar",
+  "plan.goals.suggest.dismiss": "Descartar",
+  "plan.goals.suggest.close": "Fechar",
+  "plan.goals.suggest.notFound":
+    "Não encontrei um objetivo nos arquivos e conversas da marca. Escreva um do jeito que o seu time falaria.",
+  "plan.goals.suggest.allListed":
+    "Todos os objetivos que encontrei já estão na lista da sua organização.",
   "plan.cases.towardGoal": "Neste objetivo",
   "plan.cases.towardGoalDescription":
     "Business cases que qualquer pessoa da organização criou para este objetivo.",

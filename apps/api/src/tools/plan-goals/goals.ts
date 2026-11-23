@@ -6,7 +6,6 @@
  */
 
 import { z } from "zod";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
 import {
   MAX_OPEN_PLAN_GOALS,
   PlanGoalSchema,
@@ -14,13 +13,9 @@ import {
   PlanGoalStatementSchema,
 } from "@decocms/shared/plan-goals";
 import { defineTool } from "@/core/define-tool";
-import {
-  getUserId,
-  requireAuth,
-  requireOrganization,
-  type StudioContext,
-} from "@/core/studio-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { StoredPlanGoal } from "@/storage/plan-goals";
+import { caller, type PlanGoalCaller } from "./caller";
 import { emitPlanGoalsUpdated } from "./events";
 
 /** Cases the Plan page lists for one goal. */
@@ -34,20 +29,10 @@ const ThreadIdSchema = z
   .max(128)
   .describe("The id of the business case's chat.");
 
-/** The org and the signed-in caller every goal tool acts for. */
-async function caller(ctx: StudioContext) {
-  requireAuth(ctx);
-  await ctx.access.check();
-  const org = requireOrganization(ctx);
-  const userId = getUserId(ctx);
-  if (!userId) throw new Error("A signed-in user is required");
-  return { orgId: org.id, userId, admin: hasAdminRole(ctx.access.getRole()) };
-}
-
 /** The open goal the caller may reword or archive; throws otherwise. */
 async function editableGoal(
   ctx: StudioContext,
-  who: { orgId: string; userId: string; admin: boolean },
+  who: PlanGoalCaller,
   id: string,
 ): Promise<StoredPlanGoal> {
   const goal = await ctx.storage.planGoals.get(who.orgId, id);

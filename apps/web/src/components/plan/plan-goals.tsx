@@ -12,6 +12,7 @@ import {
   ChevronSelectorVertical,
   Edit03,
   Plus,
+  Stars02,
   Target04,
   Users01,
 } from "@untitledui/icons";
@@ -51,6 +52,10 @@ import { usePlanGoalActions, type PlanGoals } from "@/hooks/use-plan-goals";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
+import {
+  GoalSuggestions,
+  useGoalSuggestions,
+} from "./plan-goal-suggestions.tsx";
 import { ObjectiveForm } from "./plan-objective.tsx";
 
 /** Above this many goals the picker gets a search field. */
@@ -92,11 +97,13 @@ function GoalPicker({
   active,
   onPick,
   onNew,
+  onSuggest,
 }: {
   goals: PlanGoal[];
   active: PlanGoal | null;
   onPick: (goal: PlanGoal) => void;
   onNew: () => void;
+  onSuggest: () => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -172,6 +179,16 @@ function GoalPicker({
               <Plus className="size-4" />
               {t("plan.goals.new")}
             </CommandItem>
+            <CommandItem
+              value="__suggest"
+              onSelect={() => {
+                close();
+                onSuggest();
+              }}
+            >
+              <Stars02 className="size-4" />
+              {t("plan.goals.suggest.action")}
+            </CommandItem>
           </CommandGroup>
         </Command>
       </PopoverContent>
@@ -218,6 +235,7 @@ function ArchiveGoal({
 export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
   const t = useT();
   const actions = usePlanGoalActions();
+  const suggestions = useGoalSuggestions();
   const [mode, setMode] = useState<"view" | "create" | "edit">("view");
   const { goals, active } = state;
   const busy =
@@ -243,6 +261,7 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
           <ObjectiveForm
             initial=""
             onDone={goals.length > 0 ? view : undefined}
+            onSuggest={() => suggestions.start("form")}
             saving={actions.create.isPending}
             onSave={(statement, source) =>
               actions.create.mutate(
@@ -297,6 +316,7 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
             goals={goals}
             active={active}
             onNew={() => setMode("create")}
+            onSuggest={() => suggestions.start("picker")}
             onPick={(goal) => {
               if (goal.id === active?.id) return;
               track("plan_goal_picked", { mine: goal.mine, users: goal.users });
@@ -348,6 +368,7 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
         {t("plan.goals.eyebrow")}
       </div>
       {body()}
+      <GoalSuggestions suggestions={suggestions} hasGoal={active !== null} />
     </section>
   );
 }

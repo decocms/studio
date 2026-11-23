@@ -4,10 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { Edit03, Stars02, StopCircle, Target04 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { PLAN_OBJECTIVE_MAX_LENGTH } from "@decocms/shared/organization/schema";
-import {
-  PLAN_GOAL_SOURCE_LIMITS,
-  type PlanGoalSource,
-} from "@decocms/shared/plan-goals";
+import type { PlanGoalSource } from "@decocms/shared/plan-goals";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +26,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { type FindNotice, findFills, findNotice } from "./find-store-goal.ts";
+import { goalSource, keptSource } from "./suggest-goals.ts";
 
 function FindNoticeText({
   notice,
@@ -76,6 +74,16 @@ function FindNoticeText({
     if (!draft) return null;
     return <p className="text-meta">{found}</p>;
   }
+  return <FindMissing notice={notice} />;
+}
+
+/** Why the AI found nothing, what it read and what it could not, and how to give it more. */
+export function FindMissing({
+  notice,
+}: {
+  notice: Extract<FindNotice, { kind: "missing" }>;
+}) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-1 text-sm text-muted-foreground">
       <p className="text-foreground">{t(notice.message)}</p>
@@ -100,10 +108,7 @@ function sourceOf(
   if (notice?.kind !== "found" || notice.statement.trim() !== statement) {
     return null;
   }
-  return {
-    label: notice.source.slice(0, PLAN_GOAL_SOURCE_LIMITS.label),
-    quote: notice.quote.slice(0, PLAN_GOAL_SOURCE_LIMITS.quote),
-  };
+  return goalSource(notice.source, notice.quote);
 }
 
 /** The goal is the organization's, so clearing it asks first. */
@@ -153,6 +158,8 @@ export function ObjectiveForm({
   saving,
   onSave,
   onClear,
+  source = null,
+  onSuggest,
 }: {
   initial: string;
   /** Leaves the form; absent while no goal is saved, so the form is the page. */
@@ -162,6 +169,11 @@ export function ObjectiveForm({
   onSave: (statement: string, source: PlanGoalSource | null) => void;
   /** Offers to clear the goal; absent when there is nothing to clear. */
   onClear?: () => void;
+  /** Where the AI found `initial`; kept while the sentence is unchanged. */
+  source?: PlanGoalSource | null;
+  /** With Plan goals the AI button opens the suggested goals instead of
+   *  looking for one goal here; null hides it. */
+  onSuggest?: (() => void) | null;
 }) {
   const t = useT();
   const [draft, setDraft] = useState(initial);
@@ -175,10 +187,11 @@ export function ObjectiveForm({
   const find = useFindPlanObjective();
   const statement = draft.trim();
   const busy = saving || find.isPending;
+  const kept = keptSource(source, initial, statement);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (statement) onSave(statement, sourceOf(notice, statement));
+    if (statement) onSave(statement, sourceOf(notice, statement) ?? kept);
   };
 
   const edit = (value: string) => {
@@ -262,11 +275,29 @@ export function ObjectiveForm({
               : undefined
           }
         />
+      ) : kept ? (
+        <p className="text-meta">
+          {t("plan.goals.suggest.found", {
+            source: kept.label,
+            quote: kept.quote,
+          })}
+        </p>
       ) : (
         <span className="text-meta">{t("plan.objective.hint")}</span>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        {find.isPending ? (
+        {onSuggest === null ? null : onSuggest ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={saving}
+            onClick={onSuggest}
+          >
+            <Stars02 />
+            {t("plan.goals.suggest.action")}
+          </Button>
+        ) : find.isPending ? (
           <Button type="button" variant="outline" size="sm" onClick={stop}>
             <StopCircle />
             {t("plan.objective.stop")}
