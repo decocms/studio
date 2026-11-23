@@ -117,6 +117,19 @@ describe("resolveThreadToolNames", () => {
     expect(scoped.has("COLLECTION_VIRTUAL_MCP_DELETE")).toBe(false);
   });
 
+  // The dispatch tells any run with no repository to call it (`sandboxStateInstruction`).
+  test("every run's key carries TASK_ADD_REPO, whatever the dispatcher's role", () => {
+    for (const thread of [
+      { title: "Some chat" },
+      { title: "Super Agent: Add an H1" },
+      { title: "Reviewer: Add an H1" },
+      { title: "Jira EX-12: x", metadata: { source: "jira" } },
+      null,
+    ]) {
+      expect(resolveRunScopedToolNames(thread).has("TASK_ADD_REPO")).toBe(true);
+    }
+  });
+
   test("a Jira run's tools come with the run", () => {
     const scoped = resolveRunScopedToolNames({
       title: "Jira EX-12: x",

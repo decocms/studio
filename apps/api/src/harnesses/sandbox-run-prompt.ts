@@ -12,7 +12,7 @@ import type { HarnessUserContext } from "@/harnesses/lib/types";
 import { isUnattendedThread, type MemoryThread } from "@/harnesses/run-memory";
 
 /** A Studio tool, named bare: the runner tells the model how a bare name is called (CLI or mounted server). */
-const studioTool = (name: string) => `the Studio tool \`${name}\``;
+export const studioTool = (name: string) => `the Studio tool \`${name}\``;
 
 const MODE_TOOLS: Partial<Record<ChatMode, { label: string; tool: string }>> = {
   "gen-image": { label: "image generation", tool: "generate_image" },

@@ -62,6 +62,7 @@ import { resolveRunMemory } from "@/harnesses/run-memory";
 import {
   resolveRunIdentity,
   runIdentityParagraph,
+  studioTool,
 } from "@/harnesses/sandbox-run-prompt";
 import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
@@ -774,7 +775,7 @@ export class SandboxDispatchClient {
               // First: it is who the agent's own instructions are addressed to.
               identity,
               wireInput.agent.instructions,
-              sandboxStateInstruction(warmPoolAdopted),
+              sandboxStateInstruction(warmPoolAdopted, wireInput.workspace),
               orgOutputFallbackInstruction(input.threadId),
             ]
               .filter(Boolean)
@@ -980,19 +981,55 @@ export async function* dispatchWithContinuation(args: {
  * turns to learn something already known here, and a wrong guess is expensive
  * in both directions.
  *
+ * Both texts describe a checkout, so a run with no repository gets neither: it
+ * is told there is none, that only the organization filesystem outlives the
+ * sandbox, and, when it stands in the directory a repository is cloned into,
+ * how to attach one. Told it had a checkout, such runs went looking for it,
+ * then cloned from the shell with a token in the command. A warm pod is always
+ * a repository's pod, so it keeps the warm text whatever the workspace says.
+ *
  * Exported for the unit test — it is the whole contract.
  */
-export function sandboxStateInstruction(warmPoolAdopted: boolean): string {
-  return warmPoolAdopted
-    ? "Your sandbox is WARM: the repository is cloned, its dependencies are " +
-        "already installed, and the dev server is already running and " +
-        "hot-reloading your edits. Do not install anything and do not start a " +
-        "second server — find the running one's port (`ss -ltnp`) and use it."
-    : "Your sandbox is a bare CHECKOUT: nothing is installed and no dev server " +
-        "is running. Usually you don't need one — read the code path end to " +
-        "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
-        "change rendered, install and start the server ONCE in the background " +
-        "and poll until it answers; it is a cold start, so expect minutes.";
+export function sandboxStateInstruction(
+  warmPoolAdopted: boolean,
+  workspace: HarnessStreamInput["workspace"],
+): string {
+  if (warmPoolAdopted) {
+    return (
+      "Your sandbox is WARM: the repository is cloned, its dependencies are " +
+      "already installed, and the dev server is already running and " +
+      "hot-reloading your edits. Do not install anything and do not start a " +
+      "second server — find the running one's port (`ss -ltnp`) and use it."
+    );
+  }
+  if (workspace.cwd !== null && workspace.repo) {
+    return (
+      "Your sandbox is a bare CHECKOUT: nothing is installed and no dev server " +
+      "is running. Usually you don't need one — read the code path end to " +
+      "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
+      "change rendered, install and start the server ONCE in the background " +
+      "and poll until it answers; it is a cold start, so expect minutes."
+    );
+  }
+  const inCheckoutDir = workspace.cwd !== null;
+  return [
+    "No repository is attached to this run.",
+    inCheckoutDir
+      ? "Your working directory holds no code; you can still write and run code in it."
+      : null,
+    `What you write outside \`${SANDBOX_ORG_ROOT}/\` is deleted with the sandbox ` +
+      "once it sits idle, so save what the person should keep under " +
+      `\`${SANDBOX_ORG_ROOT}/output/\`.`,
+    inCheckoutDir
+      ? "To work on one of the organization's repositories, call " +
+        `${studioTool("TASK_ADD_REPO")} (with no arguments it lists them): it ` +
+        "clones the repository into your working directory and authenticates " +
+        "`git` and the provider's CLI (`gh` or `glab`). Never clone with an " +
+        "access token typed into a command."
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**

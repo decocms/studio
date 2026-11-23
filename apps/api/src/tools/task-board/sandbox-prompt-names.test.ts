@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { agentMentionContext } from "@decocms/shared/agent-mention";
 import { SANDBOX_STALE_NAMES } from "@decocms/shared/harness/sandbox-stale-names";
 import { REVIEWER_KINDS } from "@decocms/shared/task-board";
+import { sandboxStateInstruction } from "@/harnesses/sandbox-dispatch-client";
 import { voiceRequestContext } from "@decocms/shared/voice";
 import {
   modeInstruction,
@@ -161,6 +162,10 @@ const prompts: Record<string, string> = {
     organization: "Example Org",
     reachesOrgConnections: true,
   }),
+  "sandbox state without a repository": sandboxStateInstruction(false, {
+    cwd: "/repo",
+    branch: "sandbox/thread-t",
+  }),
 };
 
 describe("prompts a sandbox run receives", () => {
@@ -171,6 +176,12 @@ describe("prompts a sandbox run receives", () => {
         expect(text).not.toContain(stale);
     });
   }
+
+  test("a run with no repository is pointed at the tool by its bare name", () => {
+    expect(prompts["sandbox state without a repository"]).toContain(
+      "the Studio tool `TASK_ADD_REPO`",
+    );
+  });
 
   test("configured skills render in the form the Skill tool accepts", () => {
     expect(prompts["builder with repo"]).toContain(

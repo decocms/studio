@@ -1268,28 +1268,90 @@ describe("describeTermination — eviction", () => {
 });
 
 describe("sandboxStateInstruction", () => {
+  const withRepo = {
+    cwd: "/repo",
+    repo: { owner: "acme", name: "web", linked: true },
+    branch: "sandbox/thread-thrd_abc",
+  } as const;
+  const emptyCheckoutDir = {
+    cwd: "/repo",
+    branch: "sandbox/thread-thrd_abc",
+  } as const;
+  const sharedSandbox = { cwd: null };
+  const noRepository = [emptyCheckoutDir, sharedSandbox];
+
   // The whole point is that Studio ANSWERS this rather than making the model
   // find out: both wrong guesses cost the run minutes (a needless cold start,
   // or polling a port nothing listens on).
   test("a warm pod is told not to install or start a second server", () => {
-    const text = sandboxStateInstruction(true);
-    expect(text).toContain("WARM");
-    expect(text).toContain("already running");
-    expect(text).not.toContain("cold start");
+    expect(sandboxStateInstruction(true, withRepo)).toBe(
+      "Your sandbox is WARM: the repository is cloned, its dependencies are " +
+        "already installed, and the dev server is already running and " +
+        "hot-reloading your edits. Do not install anything and do not start a " +
+        "second server — find the running one's port (`ss -ltnp`) and use it.",
+    );
   });
 
-  test("a cold pod is told nothing is installed", () => {
-    const text = sandboxStateInstruction(false);
-    expect(text).toContain("CHECKOUT");
-    expect(text).toContain("nothing is installed");
-    expect(text).toContain("cold start");
+  test("a cold pod with a repository is told nothing is installed", () => {
+    expect(sandboxStateInstruction(false, withRepo)).toBe(
+      "Your sandbox is a bare CHECKOUT: nothing is installed and no dev server " +
+        "is running. Usually you don't need one — read the code path end to " +
+        "end, run the repo's tests, `curl` the LIVE site. If you must see your " +
+        "change rendered, install and start the server ONCE in the background " +
+        "and poll until it answers; it is a cold start, so expect minutes.",
+    );
   });
 
-  // No hedging in either branch — a "may be running" would put the model right
+  // Told it had a checkout, a chat with no repository went looking for one.
+  test("a run with no repository is not told it has a checkout", () => {
+    for (const workspace of noRepository) {
+      const text = sandboxStateInstruction(false, workspace);
+      expect(text).toStartWith("No repository is attached to this run.");
+      for (const absent of ["CHECKOUT", "dev server", "tests", "LIVE site"]) {
+        expect(text).not.toContain(absent);
+      }
+    }
+  });
+
+  test("a run with no repository is told what outlives the sandbox", () => {
+    for (const workspace of noRepository) {
+      const text = sandboxStateInstruction(false, workspace);
+      expect(text).toContain("outside `/app/org/` is deleted with the sandbox");
+      expect(text).toContain("`/app/org/output/`");
+    }
+  });
+
+  test("a run in an empty checkout directory is told how to attach a repository", () => {
+    const text = sandboxStateInstruction(false, emptyCheckoutDir);
+    expect(text).toContain("you can still write and run code in it");
+    expect(text).toContain("the Studio tool `TASK_ADD_REPO`");
+    expect(text).toContain("with no arguments it lists them");
+    expect(text).toContain("Never clone with an access token typed into a");
+  });
+
+  // `TASK_ADD_REPO` clones into the run's own checkout directory, which a run on a shared sandbox does not have.
+  test("a run on a shared sandbox is not pointed at TASK_ADD_REPO", () => {
+    const text = sandboxStateInstruction(false, sharedSandbox);
+    expect(text).not.toContain("TASK_ADD_REPO");
+    expect(text).not.toContain("working directory");
+  });
+
+  // Only a claim that names a repository adopts a warm pod, so the pod wins over a workspace read before it.
+  test("a warm pod keeps the warm text whatever the workspace says", () => {
+    for (const workspace of noRepository) {
+      expect(sandboxStateInstruction(true, workspace)).toBe(
+        sandboxStateInstruction(true, withRepo),
+      );
+    }
+  });
+
+  // No hedging in any branch — a "may be running" would put the model right
   // back to checking, which is what this replaced.
-  test("neither branch hedges", () => {
+  test("no branch hedges", () => {
     for (const warm of [true, false]) {
-      expect(sandboxStateInstruction(warm)).not.toContain("may");
+      for (const workspace of [withRepo, ...noRepository]) {
+        expect(sandboxStateInstruction(warm, workspace)).not.toContain("may");
+      }
     }
   });
 });
