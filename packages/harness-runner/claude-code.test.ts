@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
@@ -13,6 +13,7 @@ import {
   isTransientProviderRejection,
   mcpServersFor,
   memorySettings,
+  skillOverrides,
   promptForRun,
   promptFromUserMessage,
   studioMcpPreflight,
@@ -173,14 +174,14 @@ describe("memorySettings", () => {
 
   test("no field leaves the CLI default untouched", () => {
     expect(memorySettings(undefined)).toBeUndefined();
-    expect(options()).not.toHaveProperty("settings");
+    expect(Object.keys(options().settings ?? {})).toEqual(["skillOverrides"]);
   });
 
   test("off turns Claude Code's memory off", () => {
     expect(memorySettings({ enabled: false })).toEqual({
       autoMemoryEnabled: false,
     });
-    expect(options({ memory: { enabled: false } }).settings).toEqual({
+    expect(options({ memory: { enabled: false } }).settings).toMatchObject({
       autoMemoryEnabled: false,
     });
   });
@@ -192,7 +193,7 @@ describe("memorySettings", () => {
     );
     expect(
       options({ memory: { enabled: true, directory: home } }).settings,
-    ).toEqual(expected);
+    ).toMatchObject(expected);
   });
 
   // The CLI falls back to its sandbox-local folder for a path it rejects.
@@ -298,6 +299,15 @@ describe("buildOptions", () => {
       "ListAgents",
       "SendMessage",
       "Workflow",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "DesignSync",
+      "PushNotification",
+      "RemoteTrigger",
+      "EnterWorktree",
+      "ExitWorktree",
+      "Agent(statusline-setup)",
       "Write",
       "Edit",
     ]);
@@ -320,6 +330,82 @@ describe("buildOptions", () => {
     expect(options().disallowedTools).toEqual(
       expect.arrayContaining(["ListAgents", "SendMessage", "Workflow"]),
     );
+  });
+
+  test("never offers a built-in a pod cannot back, and keeps the ones it can", () => {
+    const { disallowedTools = [] } = options();
+    expect(disallowedTools).toEqual(
+      expect.arrayContaining([
+        "CronCreate",
+        "CronDelete",
+        "CronList",
+        "DesignSync",
+        "PushNotification",
+        "RemoteTrigger",
+        "EnterWorktree",
+        "ExitWorktree",
+        "Agent(statusline-setup)",
+      ]),
+    );
+    for (const kept of [
+      "EnterPlanMode",
+      "ExitPlanMode",
+      "NotebookEdit",
+      "TaskStop",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+    ]) {
+      expect(disallowedTools).not.toContain(kept);
+    }
+  });
+
+  test("hides the bundled skills a pod cannot back, by name, and discovers the rest", () => {
+    const prev = process.env.CLAUDE_CONFIG_DIR;
+    try {
+      process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "config-"));
+      const { skills, settings } = options();
+      expect(skills).toBe("all");
+      expect(settings).toEqual({
+        skillOverrides: {
+          loop: "off",
+          schedule: "off",
+          "workflow-authoring": "off",
+          "keybindings-help": "off",
+          "update-config": "off",
+          "fewer-permission-prompts": "off",
+        },
+      });
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = prev;
+    }
+  });
+
+  // The override is keyed by name alone and would hide theirs too.
+  test("leaves a hidden name on when the org or the checkout has a skill by it", () => {
+    const prev = process.env.CLAUDE_CONFIG_DIR;
+    try {
+      const config = mkdtempSync(join(tmpdir(), "config-"));
+      const cwd = mkdtempSync(join(tmpdir(), "repo-"));
+      process.env.CLAUDE_CONFIG_DIR = config;
+      mkdirSync(join(config, "skills", "schedule"), { recursive: true });
+      mkdirSync(join(cwd, ".claude", "skills", "loop"), { recursive: true });
+      expect(Object.keys(skillOverrides(cwd)).sort()).toEqual([
+        "fewer-permission-prompts",
+        "keybindings-help",
+        "update-config",
+        "workflow-authoring",
+      ]);
+      expect(skillOverrides(undefined)).not.toHaveProperty("schedule");
+      expect(skillOverrides(undefined)).toHaveProperty("loop", "off");
+      expect(options({ workspace: { cwd } }).settings?.skillOverrides).toEqual(
+        skillOverrides(cwd),
+      );
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = prev;
+    }
   });
 
   test("says how a bare Studio tool name is called, in whichever mode the run is", () => {

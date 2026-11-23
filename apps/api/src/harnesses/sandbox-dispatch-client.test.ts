@@ -94,7 +94,7 @@ describe("runConnectionCandidates", () => {
     const { flags = {}, ...args } = overrides;
     const lookups: string[] = [];
     let lists = 0;
-    const candidates = await runConnectionCandidates({
+    const { candidates, homeChat } = await runConnectionCandidates({
       organization,
       agentId: homeAgent,
       runClass: undefined,
@@ -115,7 +115,7 @@ describe("runConnectionCandidates", () => {
       },
       ...args,
     });
-    return { ids: candidates.map((c) => c.id), lookups, lists };
+    return { ids: candidates.map((c) => c.id), homeChat, lookups, lists };
   };
   const everyOrgConnection = ["conn_a", "conn_b"];
   const ownOnly = Promise.resolve({
@@ -131,6 +131,7 @@ describe("runConnectionCandidates", () => {
     ]) {
       expect(await dispatch({ flags })).toEqual({
         ids: everyOrgConnection,
+        homeChat: true,
         lookups: ["thrd_1"],
         lists: 1,
       });
@@ -149,6 +150,7 @@ describe("runConnectionCandidates", () => {
   test("a project chat gets only its agent's connections and never asks the board", async () => {
     const run = await dispatch({ agentId: "vir_project", agentRead: ownOnly });
     expect(run.ids).toEqual(["conn_a"]);
+    expect(run.homeChat).toBe(false);
     expect(run.lookups).toEqual([]);
   });
 
@@ -199,6 +201,7 @@ describe("runConnectionCandidates", () => {
   test("a chat on the default agent whose thread is linked to a card is not a home chat", async () => {
     const run = await dispatch({}, ["tbi_1"]);
     expect(run.ids).toEqual([]);
+    expect(run.homeChat).toBe(false);
     expect(run.lookups).toEqual(["thrd_1"]);
   });
 
@@ -232,6 +235,7 @@ describe("runConnectionCandidates", () => {
   test("an org without a slug gets no candidates and reads nothing", async () => {
     expect(await dispatch({ organization: { id: "org_1" } })).toEqual({
       ids: [],
+      homeChat: false,
       lookups: [],
       lists: 0,
     });

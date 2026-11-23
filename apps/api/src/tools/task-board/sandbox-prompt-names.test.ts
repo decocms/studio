@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { REVIEWER_KINDS } from "@decocms/shared/task-board";
 import {
   modeInstruction,
+  runIdentityParagraph,
   sandboxRunPrompt,
 } from "@/harnesses/sandbox-run-prompt";
 import { DEFAULT_BOARD_PROMPTS } from "@/storage/task-board-default-prompts";
@@ -117,6 +118,19 @@ const prompts: Record<string, string> = {
       previewWatched: true,
     }),
   ].join("\n\n"),
+  "project chat identity": runIdentityParagraph({
+    kind: "project",
+    title: "Example Storefront",
+    description: "Sells example goods online.",
+    organization: "Example Org",
+    connections: ["Code Host"],
+    connectionsViaStudio: true,
+  }),
+  "home chat identity": runIdentityParagraph({
+    kind: "home",
+    organization: "Example Org",
+    reachesOrgConnections: true,
+  }),
 };
 
 describe("prompts a sandbox run receives from the task board", () => {

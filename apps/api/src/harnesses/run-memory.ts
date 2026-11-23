@@ -22,7 +22,7 @@ type RunMemory = { enabled: false } | { enabled: true; directory: string };
 
 const OFF: RunMemory = { enabled: false };
 
-interface MemoryThread {
+export interface MemoryThread {
   title?: string | null;
   metadata?: ThreadMetadata | null;
   trigger_id?: string | null;
@@ -30,7 +30,7 @@ interface MemoryThread {
 }
 
 /** A thread nobody opened: the board's runs (reviewer and Jira included) and an automation's. */
-function isUnattendedThread(thread: MemoryThread): boolean {
+export function isUnattendedThread(thread: MemoryThread): boolean {
   if (thread.trigger_id) return true;
   if (typeof thread.metadata?.[AUTOMATION_THREAD_KEY] === "string") return true;
   if (isBoardRunThread(thread)) return true;
