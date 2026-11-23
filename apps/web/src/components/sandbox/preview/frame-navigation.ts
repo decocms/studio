@@ -20,6 +20,22 @@ export interface HeldFrameNavigation {
 export const HELD_NAVIGATION_RELEASE_MS = 15_000;
 
 /**
+ * How long a held frame's new src must stand still, with no change saving,
+ * before the frame takes it. Each load renders the whole site against a new
+ * draft version, so a burst of saves (a table filled in cell by cell) used to
+ * play back as one full reload per save; now it is one load of the last.
+ */
+export const DRAFT_SETTLE_MS = 1_500;
+
+/**
+ * Whether a held frame lets `wanted` settle ({@link DRAFT_SETTLE_MS}) before
+ * taking it: a save's new draft version of the page, not another page.
+ */
+export function settlesFirst(settled: string, wanted: string): boolean {
+  return settled !== wanted && samePage(settled, wanted);
+}
+
+/**
  * The frame's navigation once `wanted` is the src to show. Without `hold`
  * (not a Fast Preview frame) the frame follows `wanted` at once. The same
  * object comes back when nothing changes, so a render can set it only then.
