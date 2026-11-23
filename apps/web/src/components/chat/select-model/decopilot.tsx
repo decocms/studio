@@ -64,7 +64,19 @@ const TIER_LABEL_KEYS: Record<TierId, TranslationKey> = {
   cheaper: "chat.decopilot.tierCheaper",
 };
 
-// Catalog ids here are in the OpenRouter form, which the Deco AI Gateway shares.
+// One key per model across catalogs: "anthropic/claude-opus-5.5", "claude-opus-5-5" and "claude-opus-5.5" are the same model.
+export function canonicalModelId(modelId: string): string {
+  return modelId.slice(modelId.lastIndexOf("/") + 1).replaceAll(".", "-");
+}
+
+// A rule ends where a part of the id ends, so "claude-opus-4-2" is not a dated "claude-opus-4-20250514".
+function ruleNamesModel(rule: string, modelKey: string): boolean {
+  return (
+    modelKey.startsWith(rule) && !/^[a-z0-9]/i.test(modelKey.slice(rule.length))
+  );
+}
+
+// The tables below are written in the OpenRouter form and compared through canonicalModelId.
 const LEADING_FAST_MODEL = getFastModel("openrouter");
 
 // The product's current defaults lead their tier and the default shortlist.
@@ -74,13 +86,16 @@ const LEADING_MODELS: Record<TierId, string[]> = {
   cheaper: [],
 };
 
-const LEADING_PREFIXES = TIER_IDS.flatMap((tier) => LEADING_MODELS[tier]);
+const LEADING_RULES = TIER_IDS.flatMap((tier) => LEADING_MODELS[tier]).map(
+  canonicalModelId,
+);
 
 function leadingRank(modelId: string): number {
-  const index = LEADING_PREFIXES.findIndex((prefix) =>
-    modelId.startsWith(prefix),
+  const modelKey = canonicalModelId(modelId);
+  const index = LEADING_RULES.findIndex((rule) =>
+    ruleNamesModel(rule, modelKey),
   );
-  return index === -1 ? LEADING_PREFIXES.length : index;
+  return index === -1 ? LEADING_RULES.length : index;
 }
 
 const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
@@ -125,17 +140,18 @@ const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
       "mistralai/mistral-small",
       "mistralai/pixtral",
       "cohere/command-r",
+      "cohere/command-r7b",
     ],
   },
 ];
 
 // Sort rules longest-prefix-first for specificity
 const SORTED_TIER_RULES = TIER_PATTERNS.flatMap(({ tier, prefixes }) =>
-  prefixes.map((prefix) => ({ tier, prefix })),
+  prefixes.map((prefix) => ({ tier, prefix: canonicalModelId(prefix) })),
 ).sort((a, b) => b.prefix.length - a.prefix.length);
 
 // Matches the base prefix but not named sub-variants; date suffixes (digits) are fine
-const EXACT_ONLY_PREFIX = "google/gemini-2.5-pro";
+const EXACT_ONLY_PREFIX = canonicalModelId("google/gemini-2.5-pro");
 
 const tierCache = new Map<string, TierId | null>();
 
@@ -147,12 +163,13 @@ function classifyModel(modelId: string): TierId | null {
   if (modelId.endsWith(":free")) {
     result = "cheaper";
   } else {
+    const modelKey = canonicalModelId(modelId);
     for (const { tier, prefix } of SORTED_TIER_RULES) {
-      if (modelId.startsWith(prefix)) {
-        if (prefix === EXACT_ONLY_PREFIX && modelId.length > prefix.length) {
-          const nextChar = modelId[prefix.length];
+      if (ruleNamesModel(prefix, modelKey)) {
+        if (prefix === EXACT_ONLY_PREFIX && modelKey.length > prefix.length) {
+          const nextChar = modelKey[prefix.length];
           if (nextChar === "-") {
-            const charAfterHyphen = modelId[prefix.length + 1];
+            const charAfterHyphen = modelKey[prefix.length + 1];
             if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue;
           }
         }
@@ -187,7 +204,10 @@ export function groupByTier(
     other: [],
   };
   for (const m of models) {
-    const tier = classifyModel(m.modelId);
+    // An image generator shares its chat sibling's id prefix but is not a pick for these tiers.
+    const tier = m.capabilities.includes("image")
+      ? null
+      : classifyModel(m.modelId);
     groups[tier ?? "other"].push(m);
   }
   for (const key of Object.keys(groups) as Array<TierId | "other">) {
@@ -231,18 +251,29 @@ const DEFAULT_SHORTLIST = new Set([
   "openai/gpt-oss-120b:free",
 ]);
 
-function readShortlist(keyId: string): Set<string> | null {
+const DEFAULT_SHORTLIST_KEYS = new Set(
+  [...DEFAULT_SHORTLIST].map(canonicalModelId),
+);
+
+// The default shortlist in a catalog's own ids, so a direct-provider key matches it and a toggle stores real ids.
+export function defaultShortlistFor(catalog: AiProviderModel[]): Set<string> {
+  const ids = new Set(DEFAULT_SHORTLIST);
+  for (const m of catalog) {
+    if (DEFAULT_SHORTLIST_KEYS.has(canonicalModelId(m.modelId))) {
+      ids.add(m.modelId);
+    }
+  }
+  return ids;
+}
+
+// A stored shortlist is the user's own choice: it is read as stored and the defaults never merge into it.
+export function readShortlist(keyId: string): Set<string> | null {
   try {
     const raw = localStorage.getItem(SHORTLIST_KEY_PREFIX + keyId);
     return raw ? new Set(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
-}
-
-// A stored shortlist is the user's own choice, so the defaults never merge into it.
-export function initialShortlist(keyId: string | undefined): Set<string> {
-  return (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST;
 }
 
 function writeShortlist(keyId: string, ids: Set<string>) {
@@ -532,9 +563,10 @@ function ConnectionModelList({
   const allModels = filterModelsProp
     ? rawModels.filter(filterModelsProp)
     : rawModels.filter(isChatModel);
-  const [shortlistSet, setShortlistSet] = useState<Set<string>>(() =>
-    initialShortlist(keyId),
+  const [storedShortlist, setStoredShortlist] = useState<Set<string> | null>(
+    () => (keyId ? readShortlist(keyId) : null),
   );
+  const shortlistSet = storedShortlist ?? defaultShortlistFor(rawModels);
   const [, startShortlistTransition] = useTransition();
 
   const handleToggle = (modelId: string) => {
@@ -542,8 +574,8 @@ function ConnectionModelList({
     // Deferred: ManageModelItem's local state already gave instant feedback,
     // so this heavier reconciliation can happen in a transition.
     startShortlistTransition(() => {
-      setShortlistSet((current) => {
-        const next = new Set(current);
+      setStoredShortlist((current) => {
+        const next = new Set(current ?? defaultShortlistFor(rawModels));
         if (next.has(modelId)) {
           next.delete(modelId);
         } else {
