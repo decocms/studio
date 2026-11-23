@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { REVIEWER_KINDS } from "@decocms/shared/task-board";
+import { sandboxStateInstruction } from "@/harnesses/sandbox-dispatch-client";
 import {
   modeInstruction,
   runIdentityParagraph,
@@ -131,6 +132,10 @@ const prompts: Record<string, string> = {
     organization: "Example Org",
     reachesOrgConnections: true,
   }),
+  "sandbox state without a repository": sandboxStateInstruction(false, {
+    cwd: "/repo",
+    branch: "sandbox/thread-t",
+  }),
 };
 
 describe("prompts a sandbox run receives from the task board", () => {
@@ -139,6 +144,12 @@ describe("prompts a sandbox run receives from the task board", () => {
       for (const stale of STALE_NAMES) expect(text).not.toContain(stale);
     });
   }
+
+  test("a run with no repository is pointed at the tool by its bare name", () => {
+    expect(prompts["sandbox state without a repository"]).toContain(
+      "the Studio tool `TASK_ADD_REPO`",
+    );
+  });
 
   test("configured skills render in the form the Skill tool accepts", () => {
     expect(prompts["builder with repo"]).toContain(
