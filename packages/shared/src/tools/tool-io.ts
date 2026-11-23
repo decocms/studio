@@ -2410,7 +2410,7 @@ export interface StudioToolIO {
     };
     output: {
       report: string;
-      outcome: "ok" | "failed" | "timeout" | "no-site" | "no-tools";
+      outcome: "ok" | "timeout" | "failed" | "no-site" | "no-tools";
       toolNames: string[];
       evidence: string;
       evidenceUri: string | null;
@@ -2424,8 +2424,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2466,8 +2466,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2509,8 +2509,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2597,8 +2597,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2685,8 +2685,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2745,8 +2745,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2786,8 +2786,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
