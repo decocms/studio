@@ -13,6 +13,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { MCP_LIST_TOOLS_TIMEOUT_MS } from "../../core/constants";
 import { defineTool } from "../../core/define-tool";
+import { InvalidInputError } from "../../core/invalid-input-error";
 import {
   requireOrganization,
   type StudioContext,
@@ -67,6 +68,95 @@ async function toolsOf(
     REVALIDATE_MIN_INTERVAL_MS,
   ).catch(() => null);
   return (tools as Tool[] | null) ?? [];
+}
+
+/** The connection's tool list as Studio already holds it; never asks the connection. */
+async function knownTools(connection: ConnectionEntity): Promise<unknown[]> {
+  if (connection.tools) return connection.tools;
+  return (await getMcpListCache()?.get("tools", connection.id)) ?? [];
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const MAX_NAMED_KEYS = 10;
+const MAX_KEY_CHARS = 64;
+
+function unknownKeysMessage(
+  keys: readonly string[],
+  owner: string,
+  accepted: readonly string[],
+): string {
+  const named = keys
+    .slice(0, MAX_NAMED_KEYS)
+    .map((key) => JSON.stringify(key.slice(0, MAX_KEY_CHARS)));
+  if (keys.length > MAX_NAMED_KEYS) {
+    named.push(`and ${keys.length - MAX_NAMED_KEYS} more`);
+  }
+  return (
+    `Unknown ${keys.length === 1 ? "key" : "keys"} ${named.join(", ")} in ${owner}. ` +
+    (accepted.length > 0
+      ? `Accepted keys: ${accepted.join(", ")}.`
+      : "It accepts no keys.")
+  );
+}
+
+/** A strict input object whose unknown-key error also lists the keys it accepts. */
+function strictInput<Shape extends z.ZodRawShape>(
+  toolName: string,
+  shape: Shape,
+) {
+  return z.strictObject(shape, {
+    error: (issue) =>
+      issue.code === "unrecognized_keys"
+        ? unknownKeysMessage(
+            issue.keys,
+            `${toolName} input`,
+            Object.keys(shape),
+          )
+        : undefined,
+  });
+}
+
+// Combinators and patterns can allow keys `properties` does not list.
+const OPEN_SCHEMA_KEYWORDS = [
+  "patternProperties",
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "$ref",
+  "if",
+];
+
+/**
+ * The top-level keys a JSON Schema allows, or `null` when it does not forbid
+ * extra ones. Only a plain `additionalProperties: false` counts: Studio does
+ * not add strictness the tool's own schema leaves out.
+ */
+export function closedSchemaKeys(schema: unknown): string[] | null {
+  if (!isRecord(schema) || schema.additionalProperties !== false) return null;
+  if (OPEN_SCHEMA_KEYWORDS.some((keyword) => keyword in schema)) return null;
+  return isRecord(schema.properties) ? Object.keys(schema.properties) : [];
+}
+
+/**
+ * The message for arguments a tool's own schema forbids, or `null` when they
+ * pass, the tool is not in `tools`, or its schema allows extra keys.
+ */
+export function unknownArgumentsMessage(
+  tools: readonly unknown[],
+  toolName: string,
+  args: Record<string, unknown>,
+): string | null {
+  const tool = tools.find(
+    (candidate) => isRecord(candidate) && candidate.name === toolName,
+  );
+  const accepted = isRecord(tool) ? closedSchemaKeys(tool.inputSchema) : null;
+  if (!accepted) return null;
+  const unknown = Object.keys(args).filter((key) => !accepted.includes(key));
+  return unknown.length > 0
+    ? unknownKeysMessage(unknown, `arguments for ${toolName}`, accepted)
+    : null;
 }
 
 /** Lowercased words of two or more characters; `_` and `-` split words. */
@@ -144,7 +234,7 @@ export const CONNECTION_TOOLS_SEARCH = defineTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  inputSchema: z.object({
+  inputSchema: strictInput("CONNECTION_TOOLS_SEARCH", {
     query: z
       .string()
       .min(1)
@@ -196,7 +286,7 @@ export const CONNECTION_TOOL_CALL = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  inputSchema: z.object({
+  inputSchema: strictInput("CONNECTION_TOOL_CALL", {
     connectionId: z.string(),
     toolName: z.string(),
     arguments: z
@@ -223,6 +313,12 @@ export const CONNECTION_TOOL_CALL = defineTool({
     if (!connection) {
       throw new Error(`Connection not found: ${input.connectionId}`);
     }
+    const refusal = unknownArgumentsMessage(
+      await knownTools(connection),
+      input.toolName,
+      input.arguments,
+    );
+    if (refusal) throw new InvalidInputError(refusal);
     // Not super-user: the proxy authorizes `{ <connectionId>: [toolName] }`.
     const client = await clientFromConnection(connection, ctx, false);
     const result = await client.callTool({

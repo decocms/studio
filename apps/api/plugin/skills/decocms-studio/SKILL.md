@@ -69,17 +69,32 @@ decocms tools call COLLECTION_THREADS_LIST --org <slug> -d '{"limit":5}'
 decocms tools call <NAME> --org <slug> -d @args.json          # or -d @- for stdin
 ```
 
-`call` prints the tool's JSON result and exits non-zero on failure, with the
-error body still on stdout:
+`call` prints the tool's JSON result on stdout. Exit status 0 means the call
+worked. Any other status is a failure: the reason is on stderr and the body is
+still on stdout.
 
-- `400 {"error":"Invalid input","issues":[...]}`: fix the arguments against `describe`.
+- `400 {"error":"Invalid input","issues":[...]}` or `400 {"error":"Unknown key ..."}`:
+  fix the arguments against `describe`.
 - `403 {"error", "code"?}`: the user lacks the permission, or a `code` names a
   plan or budget refusal. Report it; a retry gets the same answer.
 - `404 Unknown tool`: the name is wrong; search with `tools list`.
+- A result with `"isError": true` and `Tool error: <text>` on stderr: the tool
+  ran and reported a failure, as a connection's tool does. Read the text; do
+  not treat the result as data.
 
 Use the field names exactly as `describe` prints them; add `--json` for the full
-schema. When `describe` lists `destructiveHint` (delete, remove, overwrite),
-get the user's explicit go-ahead for that specific call.
+schema. Most tools drop a key they do not know without an error, so a
+misspelled field can look like a call that worked. When `describe` lists
+`destructiveHint` (delete, remove, overwrite), get the user's explicit
+go-ahead for that specific call.
+
+A connection's own tools (GitHub, Slack, ...) are not in `tools list`. Find one
+with `CONNECTION_TOOLS_SEARCH` (`withSchema: true` returns its input schema),
+then call it with `CONNECTION_TOOL_CALL`, whose input is exactly
+`{"connectionId","toolName","arguments"}`: the connection tool's own fields go
+inside `arguments`. Both refuse a key they do not accept and list the accepted
+ones, and so does `arguments` when the connection tool's schema forbids extra
+keys.
 
 ## 4. REST routes
 
