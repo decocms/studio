@@ -54,11 +54,20 @@ const competitors = filled({
 const READY: BusinessCase = {
   ...base,
   status: "ready",
-  documentPath: "plans/2026-11-19-frete-na-pdp.md",
   cards: {
     problem,
     scope,
     competitors,
+    approach: filled({
+      summary:
+        "Um componente novo de CEP na PDP, usando o cálculo de frete que a plataforma já faz",
+      bullets: [
+        "A plataforma já calcula frete e prazo por CEP",
+        "A PDP de hoje não tem onde mostrar isso",
+      ],
+      sources: [{ label: "Simulação de frete na plataforma" }],
+      layers: ["component", "platform"],
+    }),
     money: filled({
       summary: "Cerca de R$ 114 mil por mês se o abandono cair 1,5 ponto",
       assumption: "Metade do efeito visto nos concorrentes",
@@ -152,11 +161,7 @@ export function BusinessCaseHarness({
 }) {
   return (
     <div style={{ width }} className="bg-background p-8">
-      <BusinessCaseCanvas
-        value={CASES[kind]}
-        onAsk={() => {}}
-        onOpenDocument={() => {}}
-      />
+      <BusinessCaseCanvas value={CASES[kind]} onAsk={() => {}} />
     </div>
   );
 }

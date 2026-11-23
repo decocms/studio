@@ -75,7 +75,7 @@ function truncate(s: string, max: number): string {
 }
 
 /** The `<available-agents>` CSV for `agents`, or "" when there are none. */
-export function agentsCatalog(agents: AgentsBlockEntry[]): string {
+function agentsCatalog(agents: AgentsBlockEntry[]): string {
   if (agents.length === 0) return "";
   const rows = agents.map((a) => {
     const desc = truncate(a.description ?? "", DESCRIPTION_MAX_LEN);

@@ -111,13 +111,16 @@ const RETIRE_MARGIN_MS = 2 * 60 * 60_000;
 const KEEP_UNSAVED_MAX_MS = 30 * 24 * 60 * 60_000;
 /**
  * Exits 0 when the sandbox's repo has nothing git's remote lacks: no changed
- * or untracked file, no commit outside a remote-tracking ref. Local only, so
+ * or untracked file, no commit outside a remote-tracking ref. A sandbox with
+ * no repository still has the directory, without `.git`, and has nothing to
+ * lose. Local only, so
  * an expired push token can't make a clean VM look unsaved. Any git failure
  * exits non-zero, which keeps the VM.
  */
 const NOTHING_UNSAVED = `docker exec ${CONTAINER} sh -c ${shellQuote(
   [
     `cd ${WORKDIR}/repo 2>/dev/null || exit 0`,
+    `[ -e .git ] || exit 0`,
     `s=$(git -c safe.directory='*' status --porcelain) || exit 1`,
     `c=$(git -c safe.directory='*' log --branches --not --remotes -1 --format=%H) || exit 1`,
     `[ -z "$s" ] && [ -z "$c" ]`,

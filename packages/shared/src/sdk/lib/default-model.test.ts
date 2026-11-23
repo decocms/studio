@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import type { AiProviderKey, AiProviderModel } from "../types/ai-providers";
+import { SimpleModeTierSchema } from "../../organization/schema";
 import {
   getFastModel,
   isChatModel,
   pickSimpleModeDefaults,
   selectDefaultModel,
+  simpleModeDefaultSlot,
 } from "./default-model";
 
 const key: AiProviderKey = {
@@ -207,5 +209,25 @@ describe("decision models", () => {
     expect(
       pickSimpleModeDefaults([key], { [key.id]: [decisionModel] }).chat,
     ).toEqual({ fast: null, smart: null, thinking: null });
+  });
+});
+
+describe("default slot per tier", () => {
+  it("reads each tier from its own slot", () => {
+    const slot = (modelId: string) => ({ keyId: key.id, modelId });
+    const defaults = {
+      chat: {
+        fast: slot("fast"),
+        smart: slot("smart"),
+        thinking: slot("thinking"),
+      },
+      image: slot("image"),
+      webSearch: slot("web_search"),
+      deepResearch: slot("deep_research"),
+    };
+
+    for (const tier of SimpleModeTierSchema.options) {
+      expect(simpleModeDefaultSlot(defaults, tier)?.modelId).toBe(tier);
+    }
   });
 });

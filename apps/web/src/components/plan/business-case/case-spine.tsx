@@ -1,19 +1,32 @@
 /**
- * The story under the verdict: four acts on one rail (why, what, is it worth
- * it, how we prove it) and what is still open. Each step shows one line and at
+ * The story under the verdict: five acts on one rail (why, what, how, is it
+ * worth it, how we prove it) and what is still open. Each step shows one line and at
  * most one picture; bullets, sources and assumptions wait behind "details".
  */
 
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import type {
   BusinessCase,
   BusinessCaseCard,
   BusinessCaseCardKey,
+  BusinessCaseLayer,
   BusinessCaseMetric,
 } from "@decocms/shared/business-case";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { ChevronDown, MessageChatCircle } from "@untitledui/icons";
+import {
+  ArrowRight,
+  ChevronDown,
+  Code02,
+  Database01,
+  Dataflow03,
+  DotsHorizontal,
+  File06,
+  MessageChatCircle,
+  Package,
+  PuzzlePiece01,
+  Settings01,
+} from "@untitledui/icons";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { useCaseFormat } from "./case-format.ts";
 import type { ActKey, CaseStory, DotState } from "./case-story.ts";
@@ -37,6 +50,10 @@ const CARD: Record<
   competitors: {
     title: "plan.case.card.competitors",
     question: "plan.case.card.competitorsQuestion",
+  },
+  approach: {
+    title: "plan.case.card.approach",
+    question: "plan.case.card.approachQuestion",
   },
   measurement: {
     title: "plan.case.card.measurement",
@@ -63,6 +80,7 @@ const CARD: Record<
 const ACT_LABEL: Record<ActKey | "open", TranslationKey> = {
   why: "plan.case.act.why",
   what: "plan.case.act.what",
+  how: "plan.case.act.how",
   worth: "plan.case.act.worth",
   prove: "plan.case.act.prove",
   open: "plan.case.act.open",
@@ -344,6 +362,44 @@ function Competitors({ card }: { card: BusinessCaseCard }) {
   );
 }
 
+const LAYER: Record<
+  BusinessCaseLayer,
+  { label: TranslationKey; icon: ComponentType<{ size?: number }> }
+> = {
+  code: { label: "plan.case.layer.code", icon: Code02 },
+  component: { label: "plan.case.layer.component", icon: PuzzlePiece01 },
+  catalog: { label: "plan.case.layer.catalog", icon: Package },
+  content: { label: "plan.case.layer.content", icon: File06 },
+  platform: { label: "plan.case.layer.platform", icon: Settings01 },
+  data: { label: "plan.case.layer.data", icon: Database01 },
+  integration: { label: "plan.case.layer.integration", icon: Dataflow03 },
+  other: { label: "plan.case.layer.other", icon: DotsHorizontal },
+};
+
+/** Where in the store the change lives, one chip per part it touches. */
+function Layers({ card }: { card: BusinessCaseCard }) {
+  const t = useT();
+  if (!card.layers?.length) return null;
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-2">
+      {card.layers.map((layer) => {
+        const { label, icon: Icon } = LAYER[layer];
+        return (
+          <span
+            key={layer}
+            className="flex items-center gap-1.5 rounded-full border bg-card py-0.5 pr-2.5 pl-1 text-xs text-muted-foreground"
+          >
+            <span className="flex size-5 items-center justify-center rounded-full bg-muted text-foreground">
+              <Icon size={12} />
+            </span>
+            {t(label)}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function MoneyChain({ card }: { card: BusinessCaseCard }) {
   const t = useT();
   const format = useCaseFormat();
@@ -488,36 +544,46 @@ function Risk({ card }: { card: BusinessCaseCard }) {
 function OpenQuestions({
   questions,
   onAsk,
+  onAnswerOpen,
 }: {
   questions: string[];
   onAsk?: (question: string) => void;
+  onAnswerOpen?: () => void;
 }) {
   const t = useT();
   return (
-    <ul className="flex flex-col">
-      {questions.map((question, i) => (
-        <li
-          key={i}
-          className={cn(
-            "flex items-start gap-3 py-2 text-sm text-foreground",
-            i > 0 && "border-t border-dashed",
-          )}
-        >
-          <span className="min-w-0 flex-1 text-pretty">{question}</span>
-          {onAsk && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={() => onAsk(question)}
-            >
-              <MessageChatCircle />
-              {t("plan.case.askInChat")}
-            </Button>
-          )}
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-3">
+      {onAnswerOpen && (
+        <Button size="sm" className="group w-fit" onClick={onAnswerOpen}>
+          {t("plan.case.answerOpen")}
+          <ArrowRight className="transition-transform duration-200 group-hover:translate-x-0.5" />
+        </Button>
+      )}
+      <ul className="flex flex-col">
+        {questions.map((question, i) => (
+          <li
+            key={i}
+            className={cn(
+              "flex items-start gap-3 py-2 text-sm text-foreground",
+              i > 0 && "border-t border-dashed",
+            )}
+          >
+            <span className="min-w-0 flex-1 text-pretty">{question}</span>
+            {onAsk && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => onAsk(question)}
+              >
+                <MessageChatCircle />
+                {t("plan.case.askInChat")}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -525,10 +591,12 @@ export function CaseSpine({
   value,
   story,
   onAsk,
+  onAnswerOpen,
 }: {
   value: BusinessCase;
   story: CaseStory;
   onAsk?: (question: string) => void;
+  onAnswerOpen?: () => void;
 }) {
   const t = useT();
   const { cards } = value;
@@ -578,7 +646,13 @@ export function CaseSpine({
         </Step>
       </Act>
 
-      <Act label={t(ACT_LABEL.worth)} number="03" dot={dot("worth")}>
+      <Act label={t(ACT_LABEL.how)} number="03" dot={dot("how")}>
+        <Step cardKey="approach" card={cards.approach}>
+          <Layers card={cards.approach} />
+        </Step>
+      </Act>
+
+      <Act label={t(ACT_LABEL.worth)} number="04" dot={dot("worth")}>
         <Step cardKey="money" card={cards.money}>
           <MoneyChain card={cards.money} />
         </Step>
@@ -590,7 +664,7 @@ export function CaseSpine({
 
       <Act
         label={t(ACT_LABEL.prove)}
-        number="04"
+        number="05"
         dot={dot("prove")}
         last={!showOpen}
       >
@@ -608,7 +682,11 @@ export function CaseSpine({
           last
         >
           {story.openQuestions.length > 0 ? (
-            <OpenQuestions questions={story.openQuestions} onAsk={onAsk} />
+            <OpenQuestions
+              questions={story.openQuestions}
+              onAsk={onAsk}
+              onAnswerOpen={onAnswerOpen}
+            />
           ) : (
             <Step cardKey="unknowns" card={cards.unknowns} />
           )}

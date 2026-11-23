@@ -9,11 +9,12 @@
  *   bun business-case-canvas.mjs set --path <file> --card <key> --summary <text>
  *       [--bullet <text>]... [--source "<label>|<url>"]... [--assumption <text>]
  *       [--metric "<label>|<value>|<unit>"]...            (problem, effort)
+ *       [--layer <layer>]...                               (approach)
  *       [--base <n> --delta-pp <x> --value <v> [--gap-pp <g>]
  *        [--base-label <t>] [--value-label <t>]]          (money)
  *       [--baseline <0..1> --effect-pp <x> --weekly <n>
  *        [--exposure <0..1>] [--direction up|down]]       (abTest)
- *   bun business-case-canvas.mjs finish --path <file> [--document <path>]
+ *   bun business-case-canvas.mjs finish --path <file>
  *   bun business-case-canvas.mjs show --path <file>
  *
  * Prints the case as JSON on stdout. Exits non-zero, writing nothing, when an
@@ -32,6 +33,7 @@ export const CARD_KEYS = [
   "scope",
   "money",
   "competitors",
+  "approach",
   "measurement",
   "abTest",
   "effort",
@@ -61,11 +63,28 @@ export const LIMITS = {
   label: 60,
   question: 300,
   metrics: 4,
+  layers: 4,
 };
 
 export const METRIC_UNITS = ["percent", "seconds", "days", "brl", "count"];
 
 const METRIC_CARDS = ["problem", "effort"];
+
+export const LAYERS = [
+  "code",
+  "component",
+  "catalog",
+  "content",
+  "platform",
+  "data",
+  "integration",
+  "other",
+];
+
+const LAYER_CARD = "approach";
+
+/** Cards a case written before they existed may lack; they read as empty. */
+const LATER_CARDS = ["approach"];
 
 /** The math each card can run, and the flags that feed it. */
 const MATH = {
@@ -85,6 +104,37 @@ const CASE_PATH = /(^|\/)plans\/cases\/[A-Za-z0-9][A-Za-z0-9_-]*\.json$/;
 const HOME_PREFIX = "/app/org/home/";
 
 const emptyCard = () => ({ state: "empty", bullets: [], sources: [] });
+
+/** The case as read from disk, with the cards it predates added empty. */
+function withLaterCards(value) {
+  if (!value?.cards || typeof value.cards !== "object") return value;
+  const missing = LATER_CARDS.filter((key) => !value.cards[key]);
+  if (missing.length === 0) return value;
+  return {
+    ...value,
+    cards: {
+      ...value.cards,
+      ...Object.fromEntries(missing.map((key) => [key, emptyCard()])),
+    },
+  };
+}
+
+function checkLayers(problems, key, layers) {
+  if (key !== LAYER_CARD) {
+    problems.push(`only ${LAYER_CARD} carries layers`);
+    return;
+  }
+  if (layers.length > LIMITS.layers) {
+    problems.push(
+      `${key} has ${layers.length} layers; at most ${LIMITS.layers}`,
+    );
+  }
+  for (const layer of layers) {
+    if (!LAYERS.includes(layer)) {
+      problems.push(`layer "${layer}" must be one of: ${LAYERS.join(", ")}`);
+    }
+  }
+}
 
 const hasContent = (card) =>
   !!card.summary || card.bullets.length > 0 || card.sources.length > 0;
@@ -249,6 +299,7 @@ export function validateCase(value) {
         );
       }
     }
+    if (card.layers !== undefined) checkLayers(problems, key, card.layers);
     if (card.calc !== undefined && card.calc.kind !== key) {
       problems.push(
         `a ${card.calc.kind} calc belongs on the ${card.calc.kind} card`,
@@ -279,7 +330,6 @@ export function validateCase(value) {
       );
     }
   }
-  tooLong(problems, "document", value?.documentPath, LIMITS.item);
   return problems;
 }
 
@@ -313,7 +363,6 @@ function frame(current, args, problems) {
     cards:
       current?.cards ??
       Object.fromEntries(CARD_KEYS.map((key) => [key, emptyCard()])),
-    ...(current?.documentPath ? { documentPath: current.documentPath } : {}),
   };
 }
 
@@ -340,6 +389,7 @@ function fillCard(command, current, args, problems, notes) {
     const metrics = list(args.metric).map((m) =>
       parseMetric(String(m), problems),
     );
+    const layers = [...new Set(list(args.layer).map((l) => String(l).trim()))];
     const math = runMath(key, args, problems);
     notes.push(...(math?.notes ?? []));
     const assumption = last(args.assumption);
@@ -350,6 +400,7 @@ function fillCard(command, current, args, problems, notes) {
       sources: list(args.source).map((s) => parseSource(String(s), problems)),
       ...(assumption ? { assumption } : {}),
       ...(metrics.length > 0 ? { metrics } : {}),
+      ...(layers.length > 0 ? { layers } : {}),
       ...(math ? { calc: math.calc } : {}),
     };
   }
@@ -360,18 +411,13 @@ function fillCard(command, current, args, problems, notes) {
   };
 }
 
-function finish(current, args) {
-  const document = last(args.document);
-  const documentPath = document?.startsWith(HOME_PREFIX)
-    ? document.slice(HOME_PREFIX.length)
-    : (document ?? current.documentPath);
+function finish(current) {
   return {
     ...current,
     status: "ready",
     cards: Object.fromEntries(
       CARD_KEYS.map((key) => [key, settle(current.cards[key])]),
     ),
-    ...(documentPath ? { documentPath } : {}),
   };
 }
 
@@ -394,7 +440,9 @@ export function apply(command, args, now = new Date()) {
   if (command !== "init" && !exists) {
     return { ok: false, problems: [`${path} does not exist; run init first`] };
   }
-  const current = exists ? JSON.parse(readFileSync(path, "utf8")) : null;
+  const current = exists
+    ? withLaterCards(JSON.parse(readFileSync(path, "utf8")))
+    : null;
   if (command === "show") return { ok: true, value: current, write: false };
 
   const problems = [];
@@ -404,7 +452,7 @@ export function apply(command, args, now = new Date()) {
     command === "init"
       ? frame(current, args, problems)
       : command === "finish"
-        ? finish(current, args)
+        ? finish(current)
         : fillCard(command, current, args, problems, notes);
   next.updatedAt = now.toISOString();
   if (problems.length === 0) problems.push(...validateCase(next));
@@ -437,9 +485,10 @@ function main(argv) {
         "  business-case-canvas ask --path <file> --card <key> [--question <text>]\n" +
         '  business-case-canvas set --path <file> --card <key> --summary <text> [--bullet <text>]... [--source "<label>|<url>"]... [--assumption <text>]\n' +
         '      [--metric "<label>|<value>|<unit>"]...  (problem, effort)\n' +
+        `      [--layer <layer>]...  (approach; ${LAYERS.join(", ")})\n` +
         "      [--base <n> --delta-pp <x> --value <v> [--gap-pp <g>] [--base-label <t>] [--value-label <t>]]  (money)\n" +
         "      [--baseline <0..1> --effect-pp <x> --weekly <n> [--exposure <0..1>] [--direction up|down]]  (abTest)\n" +
-        "  business-case-canvas finish --path <file> [--document <path>]\n" +
+        "  business-case-canvas finish --path <file>\n" +
         "  business-case-canvas show --path <file>",
     );
     process.exit(1);

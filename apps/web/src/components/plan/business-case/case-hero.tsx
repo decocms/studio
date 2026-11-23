@@ -6,9 +6,8 @@
 
 import type { BusinessCase } from "@decocms/shared/business-case";
 import { Badge } from "@decocms/ui/components/badge.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { File06 } from "@untitledui/icons";
+import { ArrowRight } from "@untitledui/icons";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { useCaseFormat } from "./case-format.ts";
 import type { CaseStory, HeroKey, HeroTile } from "./case-story.ts";
@@ -189,15 +188,22 @@ export function CaseHero({
   value,
   story,
   invalid,
-  onOpenDocument,
+  onAnswerOpen,
 }: {
   value: BusinessCase;
   story: CaseStory;
   invalid?: boolean;
-  onOpenDocument?: (documentPath: string) => void;
+  /** Opens the flow that asks the open questions one at a time. */
+  onAnswerOpen?: () => void;
 }) {
   const t = useT();
   const open = story.openQuestions.length;
+  const openLabel = t(
+    open === 1
+      ? "plan.case.openQuestions.one"
+      : "plan.case.openQuestions.other",
+    { count: open },
+  );
 
   return (
     <section className="flex flex-col gap-4 rounded-2xl border bg-card p-6 @2xl:p-8">
@@ -206,29 +212,29 @@ export function CaseHero({
         <Badge variant={value.status === "ready" ? "success" : "agent"}>
           {t(STATUS[value.status])}
         </Badge>
-        {open > 0 && (
-          <Badge variant="warning">
-            {t(
-              open === 1
-                ? "plan.case.openQuestions.one"
-                : "plan.case.openQuestions.other",
-              { count: open },
-            )}
-          </Badge>
-        )}
+        {open > 0 &&
+          (onAnswerOpen ? (
+            <Badge
+              asChild
+              variant="warning"
+              className="cursor-pointer hover:bg-warning/20"
+            >
+              <button
+                type="button"
+                title={t("plan.case.answerOpen")}
+                onClick={onAnswerOpen}
+                className="group"
+              >
+                {openLabel}
+                <ArrowRight className="transition-transform duration-200 group-hover:translate-x-0.5" />
+              </button>
+            </Badge>
+          ) : (
+            <Badge variant="warning">{openLabel}</Badge>
+          ))}
         <span className="ml-auto flex items-center gap-2">
           {value.request.area !== "other" && (
             <Badge variant="muted">{t(AREA[value.request.area])}</Badge>
-          )}
-          {value.documentPath && onOpenDocument && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenDocument(value.documentPath ?? "")}
-            >
-              <File06 />
-              {t("plan.case.openDocument")}
-            </Button>
           )}
         </span>
       </div>

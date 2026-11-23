@@ -5,6 +5,7 @@ import { REVIEWER_KINDS } from "@decocms/shared/task-board";
 import { voiceRequestContext } from "@decocms/shared/voice";
 import {
   modeInstruction,
+  runIdentityParagraph,
   sandboxRunPrompt,
 } from "@/harnesses/sandbox-run-prompt";
 import { DEFAULT_BOARD_PROMPTS } from "@/storage/task-board-default-prompts";
@@ -124,7 +125,6 @@ const prompts: Record<string, string> = {
     sandboxRunPrompt({
       mode: "default",
       threadId: "t",
-      agentId: "a",
       userEmail: undefined,
       userContext: {},
       previewWatched: true,
@@ -148,6 +148,19 @@ const prompts: Record<string, string> = {
   ...Object.fromEntries(
     getResources().map((guide) => [`guide resource ${guide.uri}`, guide.text]),
   ),
+  "project chat identity": runIdentityParagraph({
+    kind: "project",
+    title: "Example Storefront",
+    description: "Sells example goods online.",
+    organization: "Example Org",
+    connections: ["Code Host"],
+    connectionsViaStudio: true,
+  }),
+  "home chat identity": runIdentityParagraph({
+    kind: "home",
+    organization: "Example Org",
+    reachesOrgConnections: true,
+  }),
 };
 
 describe("prompts a sandbox run receives", () => {

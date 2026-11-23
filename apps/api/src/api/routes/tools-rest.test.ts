@@ -15,6 +15,22 @@ const threads: Record<string, { title: string; virtual_mcp_id: string }> = {
   thrd_review: { title: "Reviewer: Add an H1", virtual_mcp_id: "vir_review" },
 };
 
+/** A connection whose stored tool schema forbids extra arguments. */
+const strictConnection = {
+  id: "conn_strict",
+  status: "active",
+  tools: [
+    {
+      name: "search_pull_requests",
+      inputSchema: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+  ],
+};
+
 /**
  * Inert collaborators for `defineTool`'s wrapper; the thread lookup and the
  * interests write are what the assertions read.
@@ -51,6 +67,7 @@ function app(auth: StudioContext["auth"], failWith?: unknown) {
     },
     storage: {
       threads: { get: async (id: string) => threads[id] ?? null },
+      connections: { list: async () => ({ items: [strictConnection] }) },
       interests: {
         setForAgent: async (_org: string, agentId: string) => {
           if (failWith !== undefined) throw failWith;
@@ -164,6 +181,40 @@ describe("tools REST for any other caller", () => {
     // Its own input validation answers, so the route did not refuse the name.
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: "Invalid input" });
+  });
+});
+
+describe("tools REST for a connection tool call with unknown keys", () => {
+  it("answers 400 naming a top-level key the tool does not accept", async () => {
+    const res = await call(app({ user }).hono, "CONNECTION_TOOL_CALL", {
+      connection_id: "conn_strict",
+      toolName: "search_pull_requests",
+      arguments: { query: "is:open" },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      error: string;
+      issues: { message: string }[];
+    };
+    expect(body.error).toBe("Invalid input");
+    expect(body.issues.map((issue) => issue.message)).toContain(
+      'Unknown key "connection_id" in CONNECTION_TOOL_CALL input. ' +
+        "Accepted keys: connectionId, toolName, arguments.",
+    );
+  });
+
+  it("answers 400 naming an argument the connection's tool forbids", async () => {
+    const res = await call(app({ user }).hono, "CONNECTION_TOOL_CALL", {
+      connectionId: "conn_strict",
+      toolName: "search_pull_requests",
+      arguments: { q: "is:open" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error:
+        'Unknown key "q" in arguments for search_pull_requests. ' +
+        "Accepted keys: query.",
+    });
   });
 });
 

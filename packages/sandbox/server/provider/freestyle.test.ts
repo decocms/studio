@@ -995,6 +995,10 @@ describe("retireIdle", () => {
       git(repo, "fetch", "-q", "origin");
       expect(check(repo)).toBe(0);
       expect(check(join(root, "never-cloned"))).toBe(0);
+      const repoless = join(root, "repoless");
+      mkdirSync(join(repoless, ".deco"), { recursive: true });
+      writeFileSync(join(repoless, "org"), "org\n");
+      expect(check(repoless)).toBe(0);
 
       writeFileSync(join(repo, "b.txt"), "b\n");
       expect(check(repo)).not.toBe(0);

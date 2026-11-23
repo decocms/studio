@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BUSINESS_CASE_AREAS,
   BUSINESS_CASE_CARD_KEYS,
+  BUSINESS_CASE_LAYERS,
   BUSINESS_CASE_LIMITS,
   BUSINESS_CASE_METRIC_UNITS,
   BusinessCaseSchema,
@@ -13,6 +20,7 @@ import {
 import {
   AREAS,
   CARD_KEYS,
+  LAYERS,
   LIMITS,
   METRIC_UNITS,
 } from "./image/skills/business-case/business-case-canvas.mjs";
@@ -74,6 +82,7 @@ describe("business-case-canvas", () => {
     expect(AREAS).toEqual([...BUSINESS_CASE_AREAS]);
     expect(LIMITS).toEqual({ ...BUSINESS_CASE_LIMITS });
     expect(METRIC_UNITS).toEqual([...BUSINESS_CASE_METRIC_UNITS]);
+    expect(LAYERS).toEqual([...BUSINESS_CASE_LAYERS]);
   });
 
   it("init writes a case the web can read, every card empty", () => {
@@ -161,20 +170,13 @@ describe("business-case-canvas", () => {
     });
   });
 
-  it("finish settles a pending question and links the document", () => {
+  it("finish settles a pending question and marks the case ready", () => {
     init();
     run(["ask", "--path", path, "--card", "risks"]);
-    run([
-      "finish",
-      "--path",
-      path,
-      "--document",
-      "/app/org/home/plans/2026-11-18-busca.md",
-    ]);
+    run(["finish", "--path", path]);
     const value = saved();
     expect(value.status).toBe("ready");
     expect(value.cards.risks.state).toBe("empty");
-    expect(value.documentPath).toBe("plans/2026-11-18-busca.md");
   });
 
   it("rejects an unknown card and writes nothing", () => {
@@ -538,5 +540,73 @@ describe("business-case-canvas", () => {
       "Sem dados de tráfego",
     ]);
     expect(saved().cards.money.calc).toBeUndefined();
+  });
+
+  it("set --layer stores the parts of the store on approach, once each", () => {
+    init();
+    const { code } = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "approach",
+      "--summary",
+      "Ajustar a busca da plataforma e mostrar a correção na página vazia",
+      "--layer",
+      "platform",
+      "--layer",
+      "code",
+      "--layer",
+      "platform",
+    ]);
+    expect(code).toBe(0);
+    expect(saved().cards.approach.layers).toEqual(["platform", "code"]);
+  });
+
+  it("rejects a layer on another card, an unknown layer or too many", () => {
+    init();
+    const set = (card: string, ...layers: string[]) =>
+      run([
+        "set",
+        "--path",
+        path,
+        "--card",
+        card,
+        "--summary",
+        "x",
+        ...layers.flatMap((l) => ["--layer", l]),
+      ]);
+    const scope = set("scope", "code");
+    expect(scope.code).toBe(1);
+    expect(scope.stderr).toContain("only approach carries layers");
+    const unknown = set("approach", "spreadsheet");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("must be one of");
+    const many = set(
+      "approach",
+      ...BUSINESS_CASE_LAYERS.slice(0, BUSINESS_CASE_LIMITS.layers + 1),
+    );
+    expect(many.code).toBe(1);
+    expect(many.stderr).toContain("at most 4");
+  });
+
+  it("fills the approach on a case written before it existed", () => {
+    init();
+    const old = JSON.parse(readFileSync(path, "utf8"));
+    delete old.cards.approach;
+    writeFileSync(path, JSON.stringify(old));
+    const { code } = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "approach",
+      "--summary",
+      "Corrigir os dados no catálogo",
+      "--layer",
+      "catalog",
+    ]);
+    expect(code).toBe(0);
+    expect(saved().cards.approach.state).toBe("filled");
   });
 });

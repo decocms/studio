@@ -34,6 +34,25 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   the daemon needs new part types.
 - Emit a frame per turn, and always emit a final frame — including on a throw.
 - Remember the per-thread session id so a follow-up turn resumes.
+- Send the turn's message. Claude Code gets the text parts joined into one
+  prompt. When the message has `image/*` file parts, it also gets up to 20
+  base64 image blocks after the text, on the first turn of a session, a turn
+  sent to a kept session, and a resumed one. The bytes come from the file's
+  `/app/org/upload/` path in the attachment annotation, not the part's
+  presigned URL, and only when that path, with `..` and symlinks resolved, is
+  inside the uploads directory. Only JPEG, PNG, GIF and WebP up to 3.75 MB are
+  sent, checked by their bytes. Anything else, or a file that cannot be read,
+  is skipped, and the model still has the annotation's path line. One message
+  carries at most 10 MB of image bytes: images are taken in the order attached,
+  and the first one that would cross that total is left to its path line along
+  with every image after it. When the provider refuses that turn's first
+  request with a client error (a 4xx other than 408 and 429) that the CLI does
+  not recover from itself, the turn is resent once as text only. A refused
+  request stays in the CLI's transcript and is sent again on every later turn,
+  so the resend runs on a copy of the session cut before the turn, or on a fresh
+  session when the turn was its first, and the thread's session file moves to
+  it. One log line names the provider host and the status. Codex forwards image
+  parts by URL.
 - Take live messages into the running turn. Claude Code sends each one into
   the SDK's streaming input as a `priority: "next"` user message, which it reads
   between tool rounds; `--replay-user-messages` echoes it back at that point,
@@ -54,6 +73,14 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   `decocms tools call <NAME> --org <slug> [-d '<json>']` command renders as
   the `<NAME>` tool part. Codex read-only runs keep the research-only `studio`
   MCP, because their sandbox blocks network for shell commands.
+- Point Claude Code's own memory at the folder the input names. `memory` is
+  set per run and passed as SDK `settings` (the flag layer, which the CLI reads
+  before the checkout's or the user's settings): `autoMemoryEnabled: false`
+  when it is off, or `autoMemoryDirectory` with the absolute path the daemon
+  resolved on the org mount. Any other path is treated as off, because the CLI
+  falls back to its folder on the sandbox's disk for a path it rejects. An
+  input without the field keeps the CLI default. A kept session is ended
+  instead of reused when the next turn's memory differs.
 - Continue an interrupted turn rather than redoing it. `input.resume` means a
   previous attempt was cut short by infrastructure and its conversation is gone;
   the work itself is in the checkout and in git (a replaced pod clones the branch

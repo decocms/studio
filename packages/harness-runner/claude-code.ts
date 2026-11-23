@@ -17,14 +17,22 @@
  * are the user's own questions and plans (see `interactiveToolHook`).
  */
 
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
+import {
+  forkSession,
+  getSessionMessages,
+  query,
+} from "@anthropic-ai/claude-agent-sdk";
 import { BackgroundTasks } from "./background-tasks";
+import { type ImageBlock, imageBlocksFromUserMessage } from "./image-blocks";
 import type {
   CanUseTool,
   HookCallbackMatcher,
   Options,
   SDKMessage,
   SDKUserMessage,
+  Settings,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
@@ -106,6 +114,44 @@ function turnBudgetInstruction(maxTurns: number): string {
  */
 const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
 
+/** A pod hosts one agent, so these only lead the model to hand the question to itself. */
+const AGENT_TEAM_TOOLS = ["ListAgents", "SendMessage", "Workflow"];
+
+/** Built-ins backed by something a pod lacks: a session that outlives the turn, a claude.ai login, a second checkout. */
+const POD_UNBACKED_TOOLS = [
+  // A schedule fires between turns, when no run is reading the session.
+  "CronCreate",
+  "CronDelete",
+  "CronList",
+  // Syncs claude.ai design projects, through a claude.ai login.
+  "DesignSync",
+  // Notifies the user's terminal or their phone over Remote Control.
+  "PushNotification",
+  // Manages claude.ai routines, through a claude.ai login.
+  "RemoteTrigger",
+  // The daemon checkpoints and previews only the checkout it cloned.
+  "EnterWorktree",
+  "ExitWorktree",
+  // The agent type that edits a terminal status line.
+  "Agent(statusline-setup)",
+];
+
+/** Bundled skills that only drive something a pod lacks, hidden by name so every other skill stays discovered. */
+const POD_UNBACKED_SKILLS = [
+  // Its tools are the scheduling ones disallowed above.
+  "loop",
+  // Its tool is RemoteTrigger.
+  "schedule",
+  // Its tool is Workflow.
+  "workflow-authoring",
+  // There is no terminal to bind keys in.
+  "keybindings-help",
+  // Studio configures the run's Claude Code; nobody keeps a settings.json for it.
+  "update-config",
+  // Nothing prompts under bypassPermissions.
+  "fewer-permission-prompts",
+];
+
 const ORG_FS_INSTRUCTION =
   "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
   "in older messages or skills means `/app/org/...`.";
@@ -134,6 +180,8 @@ interface LiveSession {
   send: (message: SDKUserMessage) => void;
   /** Re-pointed at each turn's translator. */
   gate: { awaitUser: (toolCallId: string) => void };
+  /** The memory the CLI was started with; it never changes inside one process. */
+  memory: string;
 }
 
 const persistent = () => process.env.HARNESS_RUNNER_PERSISTENT === "1";
@@ -164,12 +212,104 @@ function inputChannel(): {
   };
 }
 
-function userTurn(prompt: string): SDKUserMessage {
+/** Images the runner cannot read are left to the annotation's path line. */
+export function userTurn(
+  input: HarnessStreamInputWire,
+  readImages: (
+    userMessage: unknown,
+  ) => ImageBlock[] = imageBlocksFromUserMessage,
+): SDKUserMessage {
+  const prompt = promptForRun(input);
+  const images = readImages(input.userMessage);
   return {
     type: "user",
-    message: { role: "user", content: prompt },
+    message: {
+      role: "user",
+      content:
+        images.length === 0
+          ? prompt
+          : [{ type: "text", text: prompt }, ...images],
+    },
     parent_tool_use_id: null,
+    // Names the turn in the transcript, so a rejected one can be cut out of the session.
+    ...(images.length === 0 ? {} : { uuid: crypto.randomUUID() }),
   } as SDKUserMessage;
+}
+
+const noImages = (): ImageBlock[] => [];
+
+/** A turn that carried image blocks was refused by the provider before it produced anything. */
+class ImageTurnRejected extends Error {
+  constructor(
+    readonly turnUuid: string,
+    readonly rejection: string,
+  ) {
+    super(`provider rejected a turn with image blocks (${rejection})`);
+  }
+}
+
+/**
+ * How the provider refused a request, as `status 400` or the CLI's error
+ * category, when it is a client error that waiting cannot fix; `null` when it
+ * is not (408, 429, 5xx, a connection failure).
+ *
+ * The CLI reports the refusal as a synthetic assistant message. Its text
+ * carries `API Error: <status>` unless the CLI rewrote it (a 413 reads
+ * "Request too large"), and then only the `invalid_request` category is
+ * known to be a client error.
+ *
+ * Exported for the unit test: pure.
+ */
+export function clientRejection(
+  category: string | undefined,
+  text: string,
+): string | null {
+  const status = Number(/\bAPI Error: (\d{3})\b/.exec(text)?.[1]);
+  if (Number.isInteger(status)) {
+    const client = status >= 400 && status < 500;
+    return client && status !== 408 && status !== 429
+      ? `status ${status}`
+      : null;
+  }
+  return category === "invalid_request" ? category : null;
+}
+
+/** The model provider's host, for logs. */
+function providerHost(): string {
+  const base = process.env.ANTHROPIC_BASE_URL;
+  if (!base) return "api.anthropic.com";
+  try {
+    return new URL(base).hostname;
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * A copy of the session that ends just before the turn `turnUuid`, or `null`
+ * when nothing precedes that turn or the session cannot be read.
+ *
+ * A refused request stays in the CLI's transcript, and the CLI sends it again
+ * on every later turn of that session, kept or resumed: measured against the
+ * bundled CLI, a refused image block was in the next two requests as well. So
+ * the session cannot be continued; this cuts a new one from before the turn.
+ */
+async function sessionBeforeTurn(
+  sessionId: string,
+  turnUuid: string,
+): Promise<string | null> {
+  try {
+    const messages = await getSessionMessages(sessionId);
+    const index = messages.findIndex((message) => message.uuid === turnUuid);
+    const previous = index > 0 ? messages[index - 1] : undefined;
+    if (!previous) return null;
+    const fork = await forkSession(sessionId, {
+      upToMessageId: previous.uuid,
+    });
+    return fork.sessionId;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -440,6 +580,55 @@ const planModeGate =
             "Plan mode: do not make changes. Present the plan with ExitPlanMode.",
         };
 
+/**
+ * Hides each pod-unbacked skill from the listing and the Skill tool. The
+ * override is keyed by name alone, so a name the org or the checkout defines is
+ * left on: theirs is the skill that name resolves to. Exported for the unit test.
+ */
+export function skillOverrides(
+  cwd: string | undefined,
+): NonNullable<Settings["skillOverrides"]> {
+  const dirs = [
+    join(claudeConfigDir(), "skills"),
+    ...(cwd ? [join(cwd, ".claude", "skills")] : []),
+  ];
+  return Object.fromEntries(
+    POD_UNBACKED_SKILLS.filter(
+      (name) => !dirs.some((dir) => existsSync(join(dir, name))),
+    ).map((name) => [name, "off" as const]),
+  );
+}
+
+type MemorySettings = Pick<
+  Settings,
+  "autoMemoryEnabled" | "autoMemoryDirectory"
+>;
+
+/**
+ * Claude Code's own memory for this run, as flag-layer settings: the layer the
+ * CLI reads the directory from before the checkout's or the user's settings.
+ * `undefined` leaves the CLI default, for a Studio that sends no `memory`.
+ *
+ * On only with the absolute path the daemon wrote after it found the folder on
+ * the org mount. Anything else is off: the CLI answers a path it rejects by
+ * falling back to its folder on the sandbox's own disk, shared by every run.
+ * Exported for the unit test.
+ */
+export function memorySettings(
+  memory: HarnessStreamInputWire["memory"],
+): MemorySettings | undefined {
+  if (!memory) return undefined;
+  if (!memory.enabled || !isAbsolute(memory.directory)) {
+    return { autoMemoryEnabled: false };
+  }
+  return { autoMemoryEnabled: true, autoMemoryDirectory: memory.directory };
+}
+
+/** What a kept session's memory is compared by before another turn reuses it. */
+function memoryKey(input: HarnessStreamInputWire): string {
+  return JSON.stringify(memorySettings(input.memory) ?? null);
+}
+
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
   input: HarnessStreamInputWire;
@@ -480,8 +669,10 @@ export function buildOptions(args: {
     ...(studioCliPlugin ? [studioCliPlugin] : []),
   ];
   const mcpServers = mcpServersFor(input);
+  const memory = memorySettings(input.memory);
   return {
     ...(cwd ? { cwd } : {}),
+    settings: { skillOverrides: skillOverrides(cwd), ...memory },
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     ...(input.studioCli && studioCliHome
       ? { env: studioCliEnv(process.env, studioCliHome) }
@@ -527,6 +718,8 @@ export function buildOptions(args: {
     disallowedTools: [
       ...new Set([
         ...DEFERRED_RESULT_TOOLS,
+        ...AGENT_TEAM_TOOLS,
+        ...POD_UNBACKED_TOOLS,
         ...(input.agent.disallowedTools ?? []),
       ]),
     ],
@@ -889,6 +1082,9 @@ export async function runClaudeCode(
   emitFrame: EmitFrame,
   turnStartedAt = 0,
   inbox?: LiveMessageInbox,
+  readImages: (
+    userMessage: unknown,
+  ) => ImageBlock[] = imageBlocksFromUserMessage,
 ): Promise<void> {
   // Messages sent while this turn runs. Only with streaming input: a string
   // prompt has nowhere to put them.
@@ -898,7 +1094,7 @@ export async function runClaudeCode(
     inbox.open((message) => liveMessages.accept(message));
   }
   try {
-    await runTurn(input, emitFrame, turnStartedAt, liveMessages);
+    await runTurn(input, emitFrame, turnStartedAt, liveMessages, readImages);
   } finally {
     inbox?.close();
     const unread = liveMessages?.close() ?? [];
@@ -937,6 +1133,7 @@ async function runTurn(
   emitFrame: EmitFrame,
   turnStartedAt: number,
   liveMessages: LiveMessageTurn | null,
+  readImages: (userMessage: unknown) => ImageBlock[],
 ): Promise<void> {
   // ms since the turn reached this process (its start, unless persistent),
   // sent on the first frame to split Studio's TTFT.
@@ -1025,11 +1222,28 @@ async function runTurn(
    */
   let sessionHasQueuedWork = false;
   let studioCliHome: string | undefined;
+  // Off once the provider refused this turn's image blocks: it is then resent as text only.
+  let sendImages = true;
+  // The uuid of the turn the current attempt sent with image blocks, if it did.
+  let imageTurnUuid: string | null = null;
+  /** This turn's message, and whether this attempt sends it with image blocks. */
+  const turnForAttempt = (): SDKUserMessage => {
+    const turn = userTurn(input, sendImages ? readImages : noImages);
+    imageTurnUuid =
+      typeof turn.message.content === "string" ? null : (turn.uuid ?? null);
+    return turn;
+  };
 
   try {
     if (input.studioCli) {
       studioCliHome = await processStudioCliHome();
       await writeStudioCliSession(studioCliHome, input);
+    }
+    // A kept CLI holds the memory folder it started with, so never another one's.
+    if (live && live.memory !== memoryKey(input)) {
+      const stale = live;
+      live = null;
+      await endSession(stale.stream);
     }
     if (live && (await reuseLiveSession(live))) return;
     let forkedForSession = false;
@@ -1040,6 +1254,11 @@ async function runTurn(
       try {
         broken = await attemptTurn();
       } catch (err) {
+        if (err instanceof ImageTurnRejected) {
+          await dropRejectedImages(err);
+          attempt = 0;
+          continue;
+        }
         const msg = err instanceof Error ? err.message : String(err);
         // The SDK refuses a session id that is already in use — a prior run for
         // this thread crashed or double-dispatched and left it locked, so every
@@ -1149,6 +1368,28 @@ async function runTurn(
   }
 
   /**
+   * Stop sending this turn's images and move the run to a session the refused
+   * request is not in: a copy cut before the turn, or a fresh one when the turn
+   * was the session's first. The session file moves now, not when a turn next
+   * completes, so a crash in between cannot resume the session that keeps failing.
+   */
+  async function dropRejectedImages(err: ImageTurnRejected): Promise<void> {
+    const clean = await sessionBeforeTurn(sessionId, err.turnUuid);
+    console.error(
+      `[claude-code] provider ${providerHost()} refused a turn with image ` +
+        `blocks (${err.rejection}) — resending it without them on a ` +
+        `${clean ? "copy of the session cut before it" : "fresh session"}`,
+    );
+    sendImages = false;
+    sessionId = clean ?? crypto.randomUUID();
+    resumeSession = clean !== null;
+    await Bun.write(file, clean ?? "");
+    // What the refused attempt buffered is not part of the next one.
+    pending.length = 0;
+    coalescer.discard();
+  }
+
+  /**
    * Run this turn on the session kept from the last one. False means it failed
    * before doing anything, and a fresh session (resuming the saved transcript)
    * should run it instead.
@@ -1157,7 +1398,7 @@ async function runTurn(
     live = null;
     mark("reused");
     session.gate.awaitUser = (toolCallId) => translator.awaitUser(toolCallId);
-    session.send(userTurn(promptForRun(input)));
+    session.send(turnForAttempt());
     liveMessages?.attach(session.send);
     try {
       await consumeStream(session.stream, session.messages);
@@ -1166,6 +1407,10 @@ async function runTurn(
       return true;
     } catch (err) {
       await endSession(session.stream);
+      if (err instanceof ImageTurnRejected) {
+        await dropRejectedImages(err);
+        return false;
+      }
       if (!canRestartCleanly()) throw err;
       console.error(
         `[claude-code] kept session failed (${err instanceof Error ? err.message : String(err)}) — starting a fresh one`,
@@ -1181,7 +1426,16 @@ async function runTurn(
    */
   async function attemptTurn(): Promise<string | null> {
     mark("query");
-    const channel = persistent() || liveMessages ? inputChannel() : null;
+    const memory = memorySettings(input.memory);
+    console.error(
+      `[claude-code] memory: ${memory ? (memory.autoMemoryEnabled ? "on" : "off") : "default"}`,
+    );
+    const turn = turnForAttempt();
+    // A string prompt cannot carry image blocks.
+    const channel =
+      persistent() || liveMessages || typeof turn.message.content !== "string"
+        ? inputChannel()
+        : null;
     const gate = {
       awaitUser: (toolCallId: string) => translator.awaitUser(toolCallId),
     };
@@ -1195,7 +1449,7 @@ async function runTurn(
         studioCliHome,
       }),
     });
-    channel?.send(userTurn(promptForRun(input)));
+    channel?.send(turn);
     if (channel) liveMessages?.attach(channel.send);
     const messages = stream[Symbol.asyncIterator]();
 
@@ -1203,7 +1457,15 @@ async function runTurn(
       const broken = await consumeStream(stream, messages);
       if (persistent() && channel && broken === null) {
         if (sessionHasQueuedWork) await endSession(stream);
-        else live = { stream, messages, send: channel.send, gate };
+        else {
+          live = {
+            stream,
+            messages,
+            send: channel.send,
+            gate,
+            memory: memoryKey(input),
+          };
+        }
       }
       return broken;
     } catch (err) {
@@ -1225,6 +1487,8 @@ async function runTurn(
     let awaitingBackground = false;
     const background = new BackgroundTasks();
     let result: SdkResultMessage | null = null;
+    // How the provider refused this image turn's first request, until something else starts the turn.
+    let rejection: string | null = null;
     // Not `for await`: leaving that loop at the turn's result would close a
     // session that is kept for the next turn.
     for (;;) {
@@ -1340,6 +1604,31 @@ async function runTurn(
       // A subagent's messages belong to its `subtask` part, not to a step here.
       // The first API message opens the turn on `message_start`, so its text
       // streams out instead of waiting in `pending` for the whole first block.
+      if (
+        imageTurnUuid &&
+        !started &&
+        message.type === "assistant" &&
+        message.parent_tool_use_id === null &&
+        message.error !== undefined
+      ) {
+        rejection = clientRejection(
+          message.error,
+          message.message.content
+            .map((block) => (block.type === "text" ? block.text : ""))
+            .join(""),
+        );
+        // Held back: if the turn ends here it is resent, and this must not have opened it.
+        if (rejection) continue;
+      }
+      if (
+        imageTurnUuid &&
+        rejection &&
+        !started &&
+        message.type === "result" &&
+        message.is_error
+      ) {
+        throw new ImageTurnRejected(imageTurnUuid, rejection);
+      }
       if (
         !started &&
         message.type === "stream_event" &&

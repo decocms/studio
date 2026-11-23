@@ -1442,7 +1442,6 @@ async function prepareRun(
               sandboxRunPrompt({
                 mode: input.mode,
                 threadId: mem.thread.id,
-                agentId: input.agent.id,
                 userEmail: ctx.auth.user?.email,
                 userContext,
                 previewWatched,

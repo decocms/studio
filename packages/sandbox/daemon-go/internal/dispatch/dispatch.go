@@ -131,6 +131,11 @@ type Deps struct {
 	// contract as BeforeRun, and likewise bounded: it must not fail the run.
 	// Optional.
 	AfterRun func(RunInfo)
+	// MemoryDir resolves a run's memory folder, sent relative to the org home
+	// volume, to its absolute path on the mount, or "" when the run must go
+	// without memory. Bounded like BeforeRun, and called after it. Optional; nil
+	// turns memory off for every run that asks for a folder.
+	MemoryDir func(directory string) string
 }
 
 // RunInfo is what the daemon needs from a dispatched run's input to prepare the
@@ -621,6 +626,39 @@ func rebaseInput(input json.RawMessage, appRoot string) json.RawMessage {
 	return out
 }
 
+// resolveMemory rewrites the input's `memory` to what this pod can honor: the
+// folder's absolute path on the org mount, or off. An input without the field
+// is left alone, so the harness keeps its default. Anything it cannot read as
+// a folder to resolve becomes off, never the pod's own disk.
+func resolveMemory(input json.RawMessage, resolve func(directory string) string) json.RawMessage {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(input, &obj); err != nil {
+		return input
+	}
+	raw, ok := obj["memory"]
+	if !ok {
+		return input
+	}
+	var memory struct {
+		Enabled   bool   `json:"enabled"`
+		Directory string `json:"directory"`
+	}
+	resolved := json.RawMessage(`{"enabled":false}`)
+	if json.Unmarshal(raw, &memory) == nil && memory.Enabled && resolve != nil {
+		if dir := resolve(memory.Directory); dir != "" {
+			if enc, err := json.Marshal(map[string]any{"enabled": true, "directory": dir}); err == nil {
+				resolved = enc
+			}
+		}
+	}
+	obj["memory"] = resolved
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return input
+	}
+	return out
+}
+
 func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps Deps) {
 	if !auth.TokenOK(r, deps.DaemonToken()) {
 		jsonError(w, 401, map[string]string{"error": "unauthorized"})
@@ -773,6 +811,12 @@ func (reg *Registry) runHarness(
 	var prepMs map[string]int64
 	if deps.BeforeRun != nil {
 		prepMs = deps.BeforeRun(info)
+	}
+	// After BeforeRun: the folder lives on the home mount it waits for.
+	memoryStarted := time.Now()
+	input = resolveMemory(input, deps.MemoryDir)
+	if prepMs != nil {
+		prepMs["memory"] = time.Since(memoryStarted).Milliseconds()
 	}
 	// Deferred, not placed after RunHarness: every terminal path below returns
 	// early (crash, cancel, unavailable runner), and the run that crashed

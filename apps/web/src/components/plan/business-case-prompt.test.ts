@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { en } from "@/i18n/en/index.ts";
 import { interpolate } from "@/i18n/interpolate.ts";
 import type { TFunction } from "@/i18n/use-t.ts";
-import { businessCasePrompt } from "./business-case-prompt.ts";
+import {
+  businessCasePrompt,
+  openAnswersPrompt,
+} from "./business-case-prompt.ts";
 
 const t: TFunction = (key, vars) => interpolate(en[key], vars);
 
@@ -66,5 +69,36 @@ describe("businessCasePrompt", () => {
     });
     expect(text).toContain("nothing was");
     expect(text).not.toContain("Do not ask them again");
+  });
+});
+
+describe("openAnswersPrompt", () => {
+  it("lists every answer, trimmed, under its question", () => {
+    const text = openAnswersPrompt(t, [
+      { question: " How many people search a month? ", answer: " About 40k " },
+      { question: "Average ticket?", answer: "R$ 320" },
+    ]);
+    expect(text).toContain("Update the case canvas");
+    expect(text).toContain("- How many people search a month?\n  About 40k");
+    expect(text).toContain("- Average ticket?\n  R$ 320");
+  });
+
+  it("marks an empty answer for the agent to research", () => {
+    const text = openAnswersPrompt(t, [
+      { question: "Average ticket?", answer: "R$ 320" },
+      { question: "Conversion after search?", answer: "   " },
+    ]);
+    expect(text).toContain("- Average ticket?\n  R$ 320");
+    expect(text).toContain(
+      "- Conversion after search?\n  (I don't know: research it",
+    );
+  });
+
+  it("still sends the questions when every one was skipped", () => {
+    const text = openAnswersPrompt(t, [
+      { question: "A?", answer: "" },
+      { question: "B?", answer: "" },
+    ]);
+    expect(text.match(/\(I don't know: research it/g)).toHaveLength(2);
   });
 });

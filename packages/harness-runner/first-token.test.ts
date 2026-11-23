@@ -53,6 +53,9 @@ async function* turnMessages(first: boolean, id: string) {
 }
 
 mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+  // The runner imports these too; no test here reaches them.
+  forkSession: async () => ({ sessionId: "" }),
+  getSessionMessages: async () => [],
   query: ({
     prompt,
     options,

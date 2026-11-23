@@ -124,6 +124,14 @@ dispatch gate described below.
   After each run, `SaveSession` copies it back, so a follow-up in a new pod
   resumes the conversation. These are copies, never mounts, because the SDK
   reads the transcript on its startup path.
+- **Memory.** A dispatch whose input carries `memory` with a folder relative
+  to `home` (a member's `users/<id>/`) has it resolved by `MemoryDir` after
+  the home wait: the folder is created and the first byte of its `MEMORY.md`
+  read, within 5 s. On success the input's `memory.directory` becomes the
+  absolute path and Claude Code uses it as its memory folder. Without the home
+  mount, with a path that leaves it, or on a timeout, the input's memory is
+  turned off for that run. The folder is used in place, not copied, so this
+  check is what keeps a wedged mount off the harness's startup path.
 - **Stray skills.** `AdoptStrayRepoSkills` moves untracked
   `<repo>/.claude/skills/*` directories onto the home mount after a run.
 

@@ -3,6 +3,7 @@ import type {
   AiProviderKey,
   ProviderId,
 } from "../types/ai-providers";
+import type { SimpleModeTier } from "../../organization/schema";
 import { CLAUDE_OPUS, CLAUDE_SONNET } from "./claude-lineup";
 
 /** Decision models accept text but cannot generate a chat response. */
@@ -360,6 +361,30 @@ export function pickSimpleModeDefaults(
   }
 
   return result;
+}
+
+/**
+ * The default pick for one tier. `resolveTier` and the web both read it, so a
+ * page showing what an unset slot resolves to cannot name another model.
+ */
+export function simpleModeDefaultSlot(
+  defaults: SimpleModeDefaults,
+  tier: SimpleModeTier,
+): SimpleModeModelSlot | null {
+  switch (tier) {
+    case "fast":
+      return defaults.chat.fast;
+    case "smart":
+      return defaults.chat.smart;
+    case "thinking":
+      return defaults.chat.thinking;
+    case "image":
+      return defaults.image;
+    case "web_search":
+      return defaults.webSearch;
+    case "deep_research":
+      return defaults.deepResearch;
+  }
 }
 
 /**

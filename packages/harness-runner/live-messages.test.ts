@@ -132,6 +132,9 @@ let script: Scripted;
 let lastOptions: Record<string, unknown> = {};
 
 mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+  // The runner imports these too; no test here reaches them.
+  forkSession: async () => ({ sessionId: "" }),
+  getSessionMessages: async () => [],
   query: ({
     prompt,
     options,

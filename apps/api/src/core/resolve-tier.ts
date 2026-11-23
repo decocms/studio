@@ -8,10 +8,9 @@ import {
 import {
   isHostedProviderId,
   pickSimpleModeDefaults,
+  simpleModeDefaultSlot,
   type AiProviderKey,
   type AiProviderModel,
-  type SimpleModeDefaults,
-  type SimpleModeModelSlot,
 } from "@decocms/shared/sdk";
 
 export class TierUnavailableError extends Error {
@@ -85,26 +84,6 @@ async function fetchModelList(
     return list as unknown as AiProviderModel[];
   } finally {
     if (timer) clearTimeout(timer);
-  }
-}
-
-function pickSlotForTier(
-  tier: SimpleModeTier,
-  defaults: SimpleModeDefaults,
-): SimpleModeModelSlot | null {
-  switch (tier) {
-    case "fast":
-      return defaults.chat.fast;
-    case "smart":
-      return defaults.chat.smart;
-    case "thinking":
-      return defaults.chat.thinking;
-    case "image":
-      return defaults.image;
-    case "web_search":
-      return defaults.webSearch;
-    case "deep_research":
-      return defaults.deepResearch;
   }
 }
 
@@ -206,7 +185,7 @@ export async function resolveTier(
 
   // Fallback: tier slot is unset (or references a deleted key). Build the
   // SDK's default-pick from the org's connected providers + their actual
-  // model catalogs. This matches what the settings page would auto-populate,
+  // model catalogs. This matches what the settings page shows for an unset slot,
   // so chat works on first connect even before the admin saves anything.
   if (keys.length === 0) throw new TierUnavailableError(tier);
 
@@ -231,7 +210,7 @@ export async function resolveTier(
     createdAt: k.createdAt,
   }));
   const defaults = pickSimpleModeDefaults(sdkKeys, modelsByKeyId);
-  const picked = pickSlotForTier(tier, defaults);
+  const picked = simpleModeDefaultSlot(defaults, tier);
   if (!picked) throw new TierUnavailableError(tier);
 
   return {

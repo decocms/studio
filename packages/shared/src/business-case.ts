@@ -4,8 +4,7 @@
  * The agent writes it as JSON in the org `home` volume, at
  * `plans/cases/<threadId>.json`, through the business-case skill's
  * `business-case-canvas.mjs` (which mirrors these limits, checked by
- * `packages/sandbox/business-case-canvas.test.ts`). The web reads the same file
- * and renders one card per key, so the case fills in while the chat goes on.
+ * `packages/sandbox/business-case-canvas.test.ts`). The web reads the same file.
  */
 
 import { z } from "zod";
@@ -20,6 +19,7 @@ export const BUSINESS_CASE_CARD_KEYS = [
   "scope",
   "money",
   "competitors",
+  "approach",
   "measurement",
   "abTest",
   "effort",
@@ -45,6 +45,21 @@ export const BUSINESS_CASE_AREAS = [
 
 export type BusinessCaseArea = (typeof BUSINESS_CASE_AREAS)[number];
 
+/** The parts of the store a change can touch: where the approach card says the
+ *  problem gets solved, without naming files or fields. */
+export const BUSINESS_CASE_LAYERS = [
+  "code",
+  "component",
+  "catalog",
+  "content",
+  "platform",
+  "data",
+  "integration",
+  "other",
+] as const;
+
+export type BusinessCaseLayer = (typeof BUSINESS_CASE_LAYERS)[number];
+
 export const BUSINESS_CASE_LIMITS = {
   title: 140,
   text: 600,
@@ -54,6 +69,7 @@ export const BUSINESS_CASE_LIMITS = {
   label: 60,
   question: 300,
   metrics: 4,
+  layers: 4,
 } as const;
 
 /** How a card's metric reads: `percent` is 0–100, `brl` is reais. */
@@ -68,6 +84,9 @@ export const BUSINESS_CASE_METRIC_UNITS = [
 /** The cards that may carry metrics: the problem compares the store with its
  *  benchmarks; effort adds up its days. */
 const BUSINESS_CASE_METRIC_CARDS = ["problem", "effort"] as const;
+
+/** Only the approach names the parts of the store it touches. */
+const BUSINESS_CASE_LAYER_CARD = "approach";
 
 const text = z.string().max(BUSINESS_CASE_LIMITS.text);
 const item = z.string().min(1).max(BUSINESS_CASE_LIMITS.item);
@@ -130,6 +149,10 @@ export const BusinessCaseCardSchema = z.object({
     .array(BusinessCaseMetricSchema)
     .max(BUSINESS_CASE_LIMITS.metrics)
     .optional(),
+  layers: z
+    .array(z.enum(BUSINESS_CASE_LAYERS))
+    .max(BUSINESS_CASE_LIMITS.layers)
+    .optional(),
   calc: z
     .discriminatedUnion("kind", [
       BusinessCaseMoneyCalcSchema,
@@ -139,6 +162,13 @@ export const BusinessCaseCardSchema = z.object({
 });
 
 export type BusinessCaseCard = z.infer<typeof BusinessCaseCardSchema>;
+
+function emptyCard(): BusinessCaseCard {
+  return { state: "empty", bullets: [], sources: [] };
+}
+
+/** Cards a case written before they existed may lack; they read as empty. */
+const LATER_CARDS: readonly BusinessCaseCardKey[] = ["approach"];
 
 export const BusinessCaseSchema = z
   .object({
@@ -154,11 +184,14 @@ export const BusinessCaseSchema = z
     }),
     cards: z.object(
       Object.fromEntries(
-        BUSINESS_CASE_CARD_KEYS.map((key) => [key, BusinessCaseCardSchema]),
+        BUSINESS_CASE_CARD_KEYS.map((key) => [
+          key,
+          LATER_CARDS.includes(key)
+            ? BusinessCaseCardSchema.default(emptyCard)
+            : BusinessCaseCardSchema,
+        ]),
       ) as Record<BusinessCaseCardKey, typeof BusinessCaseCardSchema>,
     ),
-    /** The markdown document for the team, home-volume relative, once written. */
-    documentPath: z.string().max(BUSINESS_CASE_LIMITS.item).optional(),
     updatedAt: z.string().datetime(),
   })
   .superRefine((value, ctx) => {
@@ -172,6 +205,13 @@ export const BusinessCaseSchema = z
           code: "custom",
           path: ["cards", key, "metrics"],
           message: `only ${BUSINESS_CASE_METRIC_CARDS.join(" and ")} carry metrics`,
+        });
+      }
+      if (card.layers && key !== BUSINESS_CASE_LAYER_CARD) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["cards", key, "layers"],
+          message: `only ${BUSINESS_CASE_LAYER_CARD} carries layers`,
         });
       }
       if (card.calc && card.calc.kind !== key) {
@@ -216,11 +256,6 @@ export function emptyBusinessCase(input: {
   threadId?: string;
   now?: Date;
 }): BusinessCase {
-  const empty = (): BusinessCaseCard => ({
-    state: "empty",
-    bullets: [],
-    sources: [],
-  });
   return {
     version: 1,
     title: input.title.slice(0, BUSINESS_CASE_LIMITS.title),
@@ -232,7 +267,7 @@ export function emptyBusinessCase(input: {
       area: input.area ?? "other",
     },
     cards: Object.fromEntries(
-      BUSINESS_CASE_CARD_KEYS.map((key) => [key, empty()]),
+      BUSINESS_CASE_CARD_KEYS.map((key) => [key, emptyCard()]),
     ) as Record<BusinessCaseCardKey, BusinessCaseCard>,
     updatedAt: (input.now ?? new Date()).toISOString(),
   };

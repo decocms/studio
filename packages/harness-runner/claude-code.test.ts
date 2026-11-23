@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
@@ -12,9 +12,12 @@ import {
   planModeStudioCliHook,
   isTransientProviderRejection,
   mcpServersFor,
+  memorySettings,
+  skillOverrides,
   promptForRun,
   promptFromUserMessage,
   studioMcpPreflight,
+  userTurn,
 } from "./claude-code";
 import { UiChunkTranslator } from "./to-ui-chunks";
 
@@ -166,6 +169,52 @@ describe("brokenStudioMcp", () => {
   });
 });
 
+describe("memorySettings", () => {
+  const home = "/app/org/home/users/user_1";
+
+  test("no field leaves the CLI default untouched", () => {
+    expect(memorySettings(undefined)).toBeUndefined();
+    expect(Object.keys(options().settings ?? {})).toEqual(["skillOverrides"]);
+  });
+
+  test("off turns Claude Code's memory off", () => {
+    expect(memorySettings({ enabled: false })).toEqual({
+      autoMemoryEnabled: false,
+    });
+    expect(options({ memory: { enabled: false } }).settings).toMatchObject({
+      autoMemoryEnabled: false,
+    });
+  });
+
+  test("on points Claude Code at the folder the daemon resolved", () => {
+    const expected = { autoMemoryEnabled: true, autoMemoryDirectory: home };
+    expect(memorySettings({ enabled: true, directory: home })).toEqual(
+      expected,
+    );
+    expect(
+      options({ memory: { enabled: true, directory: home } }).settings,
+    ).toMatchObject(expected);
+  });
+
+  // The CLI falls back to its sandbox-local folder for a path it rejects.
+  test("a path the daemon did not resolve is off, never the local folder", () => {
+    for (const directory of ["users/user_1", "~/memory", "./memory", ""]) {
+      expect(memorySettings({ enabled: true, directory })).toEqual({
+        autoMemoryEnabled: false,
+      });
+    }
+  });
+
+  test("two members' runs never share settings", () => {
+    const one = memorySettings({ enabled: true, directory: home });
+    const other = memorySettings({
+      enabled: true,
+      directory: "/app/org/home/users/user_2",
+    });
+    expect(other).not.toEqual(one);
+  });
+});
+
 describe("buildOptions", () => {
   test("asks the SDK for partial messages", () => {
     // Without this the SDK yields only complete assistant messages and a
@@ -244,17 +293,119 @@ describe("buildOptions", () => {
     expect(
       options({ agent: { id: "a", disallowedTools: ["Write", "Edit"] } })
         .disallowedTools,
-    ).toEqual(["Monitor", "ScheduleWakeup", "Write", "Edit"]);
+    ).toEqual([
+      "Monitor",
+      "ScheduleWakeup",
+      "ListAgents",
+      "SendMessage",
+      "Workflow",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "DesignSync",
+      "PushNotification",
+      "RemoteTrigger",
+      "EnterWorktree",
+      "ExitWorktree",
+      "Agent(statusline-setup)",
+      "Write",
+      "Edit",
+    ]);
   });
 
   test("never offers a tool whose result arrives after the turn ends", () => {
     // A run armed a Monitor, ended its turn to wait, and was recorded as
     // completed: the runner had already exited when the event would have fired.
-    expect(options().disallowedTools).toEqual(["Monitor", "ScheduleWakeup"]);
+    expect(options().disallowedTools).toEqual(
+      expect.arrayContaining(["Monitor", "ScheduleWakeup"]),
+    );
     expect(
-      options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
-        .disallowedTools,
-    ).toEqual(["Monitor", "ScheduleWakeup"]);
+      options({
+        agent: { id: "a", disallowedTools: ["Monitor"] },
+      }).disallowedTools.filter((t) => t === "Monitor"),
+    ).toEqual(["Monitor"]);
+  });
+
+  test("never offers the agent-team tools — a pod has no other agent to reach", () => {
+    expect(options().disallowedTools).toEqual(
+      expect.arrayContaining(["ListAgents", "SendMessage", "Workflow"]),
+    );
+  });
+
+  test("never offers a built-in a pod cannot back, and keeps the ones it can", () => {
+    const { disallowedTools = [] } = options();
+    expect(disallowedTools).toEqual(
+      expect.arrayContaining([
+        "CronCreate",
+        "CronDelete",
+        "CronList",
+        "DesignSync",
+        "PushNotification",
+        "RemoteTrigger",
+        "EnterWorktree",
+        "ExitWorktree",
+        "Agent(statusline-setup)",
+      ]),
+    );
+    for (const kept of [
+      "EnterPlanMode",
+      "ExitPlanMode",
+      "NotebookEdit",
+      "TaskStop",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+    ]) {
+      expect(disallowedTools).not.toContain(kept);
+    }
+  });
+
+  test("hides the bundled skills a pod cannot back, by name, and discovers the rest", () => {
+    const prev = process.env.CLAUDE_CONFIG_DIR;
+    try {
+      process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "config-"));
+      const { skills, settings } = options();
+      expect(skills).toBe("all");
+      expect(settings).toEqual({
+        skillOverrides: {
+          loop: "off",
+          schedule: "off",
+          "workflow-authoring": "off",
+          "keybindings-help": "off",
+          "update-config": "off",
+          "fewer-permission-prompts": "off",
+        },
+      });
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = prev;
+    }
+  });
+
+  // The override is keyed by name alone and would hide theirs too.
+  test("leaves a hidden name on when the org or the checkout has a skill by it", () => {
+    const prev = process.env.CLAUDE_CONFIG_DIR;
+    try {
+      const config = mkdtempSync(join(tmpdir(), "config-"));
+      const cwd = mkdtempSync(join(tmpdir(), "repo-"));
+      process.env.CLAUDE_CONFIG_DIR = config;
+      mkdirSync(join(config, "skills", "schedule"), { recursive: true });
+      mkdirSync(join(cwd, ".claude", "skills", "loop"), { recursive: true });
+      expect(Object.keys(skillOverrides(cwd)).sort()).toEqual([
+        "fewer-permission-prompts",
+        "keybindings-help",
+        "update-config",
+        "workflow-authoring",
+      ]);
+      expect(skillOverrides(undefined)).not.toHaveProperty("schedule");
+      expect(skillOverrides(undefined)).toHaveProperty("loop", "off");
+      expect(options({ workspace: { cwd } }).settings?.skillOverrides).toEqual(
+        skillOverrides(cwd),
+      );
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = prev;
+    }
   });
 
   test("says how a bare Studio tool name is called, in whichever mode the run is", () => {
@@ -945,5 +1096,44 @@ describe("studioCli runs", () => {
         ),
       ).toMatchObject({ behavior: "deny" });
     });
+  });
+});
+
+describe("userTurn", () => {
+  const image = {
+    type: "image" as const,
+    source: {
+      type: "base64" as const,
+      media_type: "image/png" as const,
+      data: "iVBORw0KGgo=",
+    },
+  };
+
+  test("text only stays a plain string prompt", () => {
+    expect(userTurn(input(), () => []).message.content).toBe("hi");
+  });
+
+  test("images follow the text, which keeps its path line", () => {
+    const text = "- a.png: /app/org/upload/a.png (tool URL: x)\n\nlook";
+    const turn = userTurn(
+      input({ userMessage: { parts: [{ type: "text", text }] } }),
+      () => [image, image],
+    );
+    expect(turn.message.content).toEqual([
+      { type: "text", text },
+      image,
+      image,
+    ]);
+  });
+
+  test("a resumed turn carries the images and the continuation", () => {
+    const content = userTurn(
+      input({ resume: { reason: "pod evicted" } }),
+      () => [image],
+    ).message.content;
+    expect(Array.isArray(content)).toBe(true);
+    const [text, ...rest] = content as unknown[];
+    expect((text as { text: string }).text).toContain("CONTINUING");
+    expect(rest).toEqual([image]);
   });
 });

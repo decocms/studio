@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeSession } from "../lib/session";
-import { formatToolSignature, toolsCommand } from "./tools";
+import { formatToolSignature, toolErrorText, toolsCommand } from "./tools";
 
 const TOOLS = {
   tools: [
@@ -350,6 +350,36 @@ describe("formatToolSignature", () => {
   });
 });
 
+describe("toolErrorText", () => {
+  it("is null for a body that is not an error result", () => {
+    for (const body of ["", "not json", "[]", "null", '{"isError":false}']) {
+      expect(toolErrorText(body)).toBeNull();
+    }
+  });
+
+  it("says so when an error result carries no text", () => {
+    for (const body of [
+      '{"isError":true}',
+      '{"isError":true,"content":[]}',
+      '{"isError":true,"content":[{"type":"image"},null,{"text":" "}]}',
+    ]) {
+      expect(toolErrorText(body)).toBe(
+        "Tool error: the result has isError: true.",
+      );
+    }
+  });
+
+  it("cuts a long error text and points at stdout", () => {
+    const text = toolErrorText(
+      JSON.stringify({
+        isError: true,
+        content: [{ type: "text", text: "x".repeat(5000) }],
+      }),
+    );
+    expect(text).toBe(`Tool error: ${"x".repeat(2000)}… (full text on stdout)`);
+  });
+});
+
 describe("toolsCommand call", () => {
   it("POSTs the arguments to the tool route", async () => {
     const code = await toolsCommand({
@@ -369,6 +399,66 @@ describe("toolsCommand call", () => {
     expect(calls[0]!.init.method).toBe("POST");
     expect(calls[0]!.init.body).toBe('{"id":"t_1"}');
     expect(stdout()).toBe('{"id":"t_1"}');
+  });
+
+  it("exits 1 on a result that is itself an error, with the result still on stdout", async () => {
+    const result = {
+      content: [
+        { type: "text", text: "Repository not found" },
+        { type: "text", text: "Check the owner." },
+      ],
+      isError: true,
+    };
+    const code = await toolsCommand({
+      dataDir: dir,
+      subcommand: "call",
+      arg: "CONNECTION_TOOL_CALL",
+      org: "my-org",
+      data: '{"connectionId":"c1","toolName":"get_repo"}',
+      fetch: respondWith(result),
+      output,
+    });
+
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout())).toEqual(result);
+    expect(err).toEqual(["Tool error: Repository not found\nCheck the owner."]);
+  });
+
+  it("exits 0 when the result says it is not an error", async () => {
+    for (const result of [
+      { content: [{ type: "text", text: "ok" }], isError: false },
+      { content: [{ type: "text", text: "ok" }] },
+      { items: [{ isError: true }] },
+      { isError: "true" },
+    ]) {
+      chunks = [];
+      const code = await toolsCommand({
+        dataDir: dir,
+        subcommand: "call",
+        arg: "CONNECTION_TOOL_CALL",
+        org: "my-org",
+        fetch: respondWith(result),
+        output,
+      });
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout())).toEqual(result);
+    }
+    expect(err).toEqual([]);
+  });
+
+  it("exits 1 on an HTTP error without reading it as a tool result", async () => {
+    const code = await toolsCommand({
+      dataDir: dir,
+      subcommand: "call",
+      arg: "CONNECTION_TOOL_CALL",
+      org: "my-org",
+      fetch: respondWith({ error: "Invalid input", isError: true }, 400),
+      output,
+    });
+
+    expect(code).toBe(1);
+    expect(stdout()).toBe('{"error":"Invalid input","isError":true}');
+    expect(err).toEqual(["HTTP 400"]);
   });
 
   it("sends {} when no arguments are given", async () => {

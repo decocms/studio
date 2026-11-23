@@ -8,7 +8,10 @@ import {
   type ModelSlot,
   type SimpleModeConfig,
 } from "./use-organization-settings";
-import { useHostedAiProviderKeys } from "./collections/use-ai-providers";
+import {
+  useAutoSimpleModeDefaults,
+  useHostedAiProviderKeys,
+} from "./collections/use-ai-providers";
 import {
   resolveEffectiveSimpleMode,
   type ModelTierPreferences,
@@ -102,7 +105,7 @@ export function useUpdateUserModelPreferences() {
 
 /**
  * The org tier config with the user's chat-tier overrides layered on top.
- * Mirrors the server-side precedence in `resolveTier` (user → org). Only the
+ * Mirrors the precedence in `resolveTier` (user → org → default pick). Only the
  * three chat tiers are overridable; image/web_search/deep_research pass through
  * unchanged. Both the chat model display and the tier picker read this so the
  * UI matches what a run will actually use.
@@ -111,9 +114,11 @@ export function useEffectiveSimpleMode(): SimpleModeConfig {
   const org = useSimpleMode();
   const user = useUserModelPreferences();
   const keys = useHostedAiProviderKeys();
+  const defaults = useAutoSimpleModeDefaults(keys);
   return resolveEffectiveSimpleMode(
     org,
     user,
     new Set(keys.map((key) => key.id)),
+    defaults,
   );
 }
