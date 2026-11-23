@@ -58,6 +58,10 @@ import {
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { resolveRunMemory } from "@/harnesses/run-memory";
+import {
+  resolveRunIdentity,
+  runIdentityParagraph,
+} from "@/harnesses/sandbox-run-prompt";
 import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
@@ -384,8 +388,13 @@ export class SandboxDispatchClient {
     agent: Promise<VirtualMCPEntity | null>,
     threadRead: Promise<Thread | null>,
     settingsRead: Promise<OrganizationSettings | null>,
-  ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps" | "studioCli">> {
-    const [candidates, authority, thread, ownAgent, settings] =
+  ): Promise<
+    Pick<HarnessStreamInputWire, "mcp" | "orgMcps" | "studioCli"> & {
+      /** Who the model is in this chat; null for a run that is not one. */
+      identity: string | null;
+    }
+  > {
+    const [{ candidates, homeChat }, authority, thread, ownAgent, settings] =
       await Promise.all([
         this.orgMcpConnections(organization, agent, settingsRead, threadRead),
         this.dispatcherAuthority(organization.id, dispatcherUserId),
@@ -438,8 +447,23 @@ export class SandboxDispatchClient {
       connections,
       ownIds,
     });
+    const who = resolveRunIdentity({
+      organization,
+      agentId: this.virtualMcpId,
+      agent: ownAgent,
+      runClass: this.ctx.metadata?.runMetadata?.[RUN_CLASS_METADATA_KEY],
+      thread,
+      homeChat,
+      connections,
+      ownIds,
+      mountedIds: new Set(mounted.map((connection) => connection.id)),
+      selfTools,
+    });
+    const identity = who ? runIdentityParagraph(who) : null;
     const cli = studioCli ? { studioCli } : {};
-    if (mounted.length === 0 || !organization.slug) return { mcp, ...cli };
+    if (mounted.length === 0 || !organization.slug) {
+      return { mcp, ...cli, identity };
+    }
     const servers = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
@@ -461,7 +485,7 @@ export class SandboxDispatchClient {
             `dispatching user has no grant for them)`
       }`,
     );
-    return { mcp, orgMcps, ...cli };
+    return { mcp, orgMcps, ...cli, identity };
   }
 
   /**
@@ -552,7 +576,7 @@ export class SandboxDispatchClient {
     agentRead: Promise<VirtualMCPEntity | null>,
     settingsRead: Promise<OrganizationSettings | null>,
     threadRead: Promise<HomeChatThread | null>,
-  ): Promise<ConnectionEntity[]> {
+  ): Promise<{ candidates: ConnectionEntity[]; homeChat: boolean }> {
     return runConnectionCandidates({
       organization,
       agentId: this.virtualMcpId,
@@ -628,6 +652,14 @@ export class SandboxDispatchClient {
     const settingsRead = this.ctx.storage.organizationSettings.get(
       organization.id,
     );
+    const { identity, ...studioSurface } = await this.mcpForRun(
+      organization,
+      input.threadId,
+      input.user.id,
+      agent,
+      threadRead,
+      settingsRead,
+    );
     const wireInput = {
       ...input,
       // Hosted Decopilot's in-process client ignores `mcp` and gets the
@@ -649,14 +681,7 @@ export class SandboxDispatchClient {
       //
       // The org's own MCP connections come alongside it (`orgMcps`), behind
       // the `coding_agent_org_mcps` flag — see `mcpForRun`.
-      ...(await this.mcpForRun(
-        organization,
-        input.threadId,
-        input.user.id,
-        agent,
-        threadRead,
-        settingsRead,
-      )),
+      ...studioSurface,
       ...(await this.memoryForRun(input.user.id, threadRead, settingsRead)),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
@@ -744,6 +769,8 @@ export class SandboxDispatchClient {
           agent: {
             ...wireInput.agent,
             instructions: [
+              // First: it is who the agent's own instructions are addressed to.
+              identity,
               wireInput.agent.instructions,
               sandboxStateInstruction(warmPoolAdopted),
               orgOutputFallbackInstruction(input.threadId),
@@ -1669,6 +1696,7 @@ async function isInteractiveHomeChat(args: {
  * with — its GitHub MCP included.
  *
  * Takes its reads as arguments so the whole decision is unit-tested.
+ * Also answers whether the run is that home chat: its identity paragraph says so.
  */
 export async function runConnectionCandidates<
   T extends {
@@ -1692,9 +1720,9 @@ export async function runConnectionCandidates<
   listConnections: () => Promise<readonly T[]>;
   /** Ids of the task-board items a thread is linked to. */
   linkedTaskIds: (threadId: string) => Promise<readonly string[]>;
-}): Promise<T[]> {
+}): Promise<{ candidates: T[]; homeChat: boolean }> {
   // Also keeps `home_chat_org_connections` off the slug-less path, which would mount every candidate.
-  if (!args.organization.slug) return [];
+  if (!args.organization.slug) return { candidates: [], homeChat: false };
   const [settings, agent] = await Promise.all([
     args.settingsRead,
     args.agentRead,
@@ -1710,7 +1738,7 @@ export async function runConnectionCandidates<
     }),
     args.listConnections(),
   ]);
-  return selectRunConnections({
+  const candidates = selectRunConnections({
     organizationId: args.organization.id,
     orgWide: orgFlagEnabled(settings?.flags, "coding_agent_org_mcps"),
     homeChat,
@@ -1722,6 +1750,7 @@ export async function runConnectionCandidates<
     excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
     connections,
   });
+  return { candidates, homeChat };
 }
 
 /**
