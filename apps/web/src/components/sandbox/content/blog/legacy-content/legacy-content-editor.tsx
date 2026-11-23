@@ -9,7 +9,10 @@ import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { FilePickerDialog } from "@/components/file-picker/file-picker-dialog";
-import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
+import {
+  EDITOR_BLOCK_CLASS,
+  EDITOR_LINK_CLASS,
+} from "@/components/sections-editor/editor-classes";
 import { ImageUrlPopover } from "@/components/sections-editor/fields/image-url-popover";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { RichTextColorControl } from "@/components/sections-editor/rich-text-color-control";
@@ -31,27 +34,15 @@ const PT_FONT_SIZE: FontSizeScale = {
   max: 96,
 };
 
-/**
- * The body's typography. `@tailwindcss/typography` isn't installed here, so
- * `prose` would style nothing; headings step down from h1 like the admin's.
- */
+/** The body's typography; headings step down from h1 like the admin's. */
 const CONTENT_CLASS = [
   "outline-none min-h-80 px-4 py-3 text-[15px] leading-relaxed text-foreground",
-  "[&>*:first-child]:mt-0 [&_p]:my-3",
-  "[&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-3xl [&_h1]:font-bold",
-  "[&_h2]:mb-3 [&_h2]:mt-6 [&_h2]:text-2xl [&_h2]:font-bold",
-  "[&_h3]:mb-2 [&_h3]:mt-5 [&_h3]:text-xl [&_h3]:font-bold",
-  "[&_h4]:mb-2 [&_h4]:mt-4 [&_h4]:text-lg [&_h4]:font-bold",
-  "[&_h5]:mb-2 [&_h5]:mt-4 [&_h5]:text-base [&_h5]:font-bold",
-  "[&_h6]:mb-2 [&_h6]:mt-4 [&_h6]:text-sm [&_h6]:font-bold",
-  "[&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_li>p]:my-1",
-  "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
+  EDITOR_BLOCK_CLASS,
   "[&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-sm",
   "[&_img]:inline-block [&_img]:h-auto [&_img]:max-w-full",
   "[&_img.ProseMirror-selectednode]:outline-2 [&_img.ProseMirror-selectednode]:outline-primary",
   "[&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_td>p]:my-0 [&_th>p]:my-0",
   "[&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:p-2",
-  "[&_strong]:font-bold",
   EDITOR_LINK_CLASS,
 ];
 
