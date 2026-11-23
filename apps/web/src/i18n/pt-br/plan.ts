@@ -13,7 +13,14 @@ export const plan = {
   "plan.objective.save": "Salvar",
   "plan.objective.cancel": "Cancelar",
   "plan.objective.clear": "Apagar objetivo",
+  "plan.objective.clearConfirm.title": "Apagar o objetivo da loja?",
+  "plan.objective.clearConfirm.description":
+    "Isso apaga o objetivo para toda a organização: a página Plan de cada membro e os novos casos de negócio deixam de usá-lo.",
+  "plan.objective.clearConfirm.action": "Apagar objetivo",
   "plan.objective.find": "Buscar com IA",
+  "plan.objective.stop": "Parar",
+  "plan.objective.useFound": "Usar este",
+  "plan.objective.keepMine": "Manter o meu",
   "plan.objective.finding": "Lendo arquivos, reuniões e conversas da marca…",
   "plan.objective.found": "Encontrei em {source}: “{quote}”",
   "plan.objective.notFound":
@@ -98,6 +105,8 @@ export const plan = {
   "plan.case.askInChat": "Perguntar no chat",
   "plan.case.askPrompt": "Vamos descobrir: {question}",
   "plan.case.answerOpen": "Responder as dúvidas",
+  "plan.case.answerOpenUnavailable":
+    "Abra o chat deste caso para responder as dúvidas.",
   "plan.case.openFlow.back": "Voltar ao caso",
   "plan.case.openFlow.counter": "Dúvida {n} de {total}",
   "plan.case.openFlow.skip": "Não sei, descubra para mim",
@@ -105,8 +114,8 @@ export const plan = {
     "(não sei: pesquise, ou assuma e escreva a suposição no card)",
   "plan.case.openFlow.prompt":
     "Aqui estão minhas respostas às dúvidas em aberto do caso. Atualize o canvas do caso com elas: refaça os cards que elas mudam (o problema, o dinheiro, o teste A/B) e tire das incógnitas as dúvidas que respondi. Pesquise as que deixei para você.\n\n{answers}",
-  "plan.case.openFlow.busy":
-    "O chat está ocupado. Suas respostas não foram enviadas; tente de novo quando ele terminar.",
+  "plan.case.openFlow.notSent":
+    "Ainda não deu para enviar suas respostas. Elas estão guardadas; tente de novo em instantes.",
   "plan.case.status.framing": "Enquadrando",
   "plan.case.status.building": "Construindo",
   "plan.case.status.ready": "Pronto",
@@ -195,6 +204,7 @@ export const plan = {
   "plan.guide.continue": "Continuar",
   "plan.guide.skip": "Pular esta",
   "plan.guide.back": "Voltar",
+  "plan.guide.exit": "Sair e guardar as respostas",
   "plan.guide.resume.heading": "Seu último case não abriu",
   "plan.guide.resume.description":
     "Sua ideia e suas respostas estão salvas. Continue de onde parou.",

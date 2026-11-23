@@ -16,6 +16,7 @@ import { BUILDING, Question, Thinking } from "../guide/guide-screens.tsx";
 import { BusinessCaseCanvas } from "./business-case-canvas.tsx";
 import { readCaseSeed } from "./case-seed.ts";
 import { caseView, userAskQuestion } from "./case-view.ts";
+import { type OpenFlowProgress, startOpenFlow } from "./open-flow.ts";
 import { OpenQuestionsFlow } from "./open-questions-flow.tsx";
 import { useBusinessCase } from "./use-business-case.ts";
 
@@ -34,16 +35,18 @@ function CaseLoading({ label }: { label?: string }) {
 }
 
 /** Sends a message to the chat this case belongs to, when that chat is the
- *  one beside the tab and free to take it. */
+ *  one beside the tab. A busy chat queues it behind the running turn.
+ *  False when the chat would drop it: another send is still going out. */
 function useCaseChat(path: string) {
   const chat = useOptionalChatStream();
   const task = useOptionalChatTask();
   const threadId = matchBusinessCasePath(path);
-  if (!chat || !threadId || task?.taskId !== threadId || chat.isStreaming) {
-    return undefined;
-  }
-  return (text: string) =>
+  if (!chat || !threadId || task?.taskId !== threadId) return undefined;
+  return (text: string) => {
+    if (chat.isSendInFlight()) return false;
     void chat.sendMessage({ parts: [{ type: "text", text }] });
+    return true;
+  };
 }
 
 /** The agent's pending question on the guided intro's screen; the answer
@@ -84,8 +87,10 @@ export function BusinessCaseTab({ path }: { path: string }) {
   const task = useOptionalChatTask();
   const read = useBusinessCase(path);
   const send = useCaseChat(path);
-  /** The open questions being answered, as they were when the flow opened. */
-  const [answering, setAnswering] = useState<string[] | null>(null);
+  /** The open questions being answered, kept while the person is on the
+   *  canvas so coming back resumes them. */
+  const [progress, setProgress] = useState<OpenFlowProgress | null>(null);
+  const [answering, setAnswering] = useState(false);
   const value = read.data?.value ?? readCaseSeed(sessionStorage, path);
 
   if (!value) {
@@ -111,22 +116,27 @@ export function BusinessCaseTab({ path }: { path: string }) {
   });
 
   // Ahead of the view: the agent may reopen the case before the last beat ends.
-  if (answering) {
+  if (answering && progress) {
     return (
       <Page>
         <OpenQuestionsFlow
           title={value.title}
-          questions={answering}
+          progress={progress}
+          onProgress={setProgress}
           onDone={(answers) => {
+            const sent = send?.(openAnswersPrompt(t, answers)) ?? false;
             track("plan_case_open_questions_answered", {
               questions: answers.length,
               skipped: answers.filter((a) => !a.answer.trim()).length,
+              sent,
             });
-            // The chat may have got busy while the person was answering.
-            if (send) send(openAnswersPrompt(t, answers));
-            else toast.error(t("plan.case.openFlow.busy"));
+            if (!sent) toast.error(t("plan.case.openFlow.notSent"));
+            return sent;
           }}
-          onClose={() => setAnswering(null)}
+          onClose={(finished) => {
+            if (finished) setProgress(null);
+            setAnswering(false);
+          }}
         />
       </Page>
     );
@@ -150,7 +160,8 @@ export function BusinessCaseTab({ path }: { path: string }) {
                   track("plan_case_open_questions_opened", {
                     questions: questions.length,
                   });
-                  setAnswering(questions);
+                  setProgress(startOpenFlow(questions, progress));
+                  setAnswering(true);
                 })
               }
             />

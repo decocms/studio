@@ -6,6 +6,11 @@
 
 import type { BusinessCase } from "@decocms/shared/business-case";
 import { Badge } from "@decocms/ui/components/badge.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowRight } from "@untitledui/icons";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
@@ -230,7 +235,17 @@ export function CaseHero({
               </button>
             </Badge>
           ) : (
-            <Badge variant="warning">{openLabel}</Badge>
+            // Answers go to the case's chat, which is not the one open here.
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="warning" tabIndex={0}>
+                  {openLabel}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("plan.case.answerOpenUnavailable")}
+              </TooltipContent>
+            </Tooltip>
           ))}
         <span className="ml-auto flex items-center gap-2">
           {value.request.area !== "other" && (

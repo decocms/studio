@@ -11,7 +11,14 @@ export const plan = {
   "plan.objective.save": "Save",
   "plan.objective.cancel": "Cancel",
   "plan.objective.clear": "Clear goal",
+  "plan.objective.clearConfirm.title": "Clear the store goal?",
+  "plan.objective.clearConfirm.description":
+    "This removes the goal for everyone in the organization: every member's Plan page and every new business case stop using it.",
+  "plan.objective.clearConfirm.action": "Clear goal",
   "plan.objective.find": "Find with AI",
+  "plan.objective.stop": "Stop",
+  "plan.objective.useFound": "Use this",
+  "plan.objective.keepMine": "Keep mine",
   "plan.objective.finding": "Reading the brand's files, meetings and messages…",
   "plan.objective.found": "Found in {source}: “{quote}”",
   "plan.objective.notFound":
@@ -96,6 +103,8 @@ export const plan = {
   "plan.case.askInChat": "Ask in the chat",
   "plan.case.askPrompt": "Let's find out: {question}",
   "plan.case.answerOpen": "Answer the open questions",
+  "plan.case.answerOpenUnavailable":
+    "Open this case's chat to answer its open questions.",
   "plan.case.openFlow.back": "Back to the case",
   "plan.case.openFlow.counter": "Open question {n} of {total}",
   "plan.case.openFlow.skip": "I don't know, find out for me",
@@ -103,8 +112,8 @@ export const plan = {
     "(I don't know: research it, or assume it and write the assumption on the card)",
   "plan.case.openFlow.prompt":
     "Here are my answers to the case's open questions. Update the case canvas with them: rework the cards they change (the problem, the money, the A/B test) and take the questions I answered off the unknowns. Research the ones I left for you.\n\n{answers}",
-  "plan.case.openFlow.busy":
-    "The chat is busy. Your answers were not sent; try again when it finishes.",
+  "plan.case.openFlow.notSent":
+    "Could not send your answers yet. They are kept; try again in a moment.",
   "plan.case.status.framing": "Framing",
   "plan.case.status.building": "Building",
   "plan.case.status.ready": "Ready",
@@ -194,6 +203,7 @@ export const plan = {
   "plan.guide.continue": "Continue",
   "plan.guide.skip": "Skip this one",
   "plan.guide.back": "Back",
+  "plan.guide.exit": "Leave and keep my answers",
   "plan.guide.resume.heading": "Your last case did not open",
   "plan.guide.resume.description":
     "Your idea and answers are saved. Pick up where you left off.",

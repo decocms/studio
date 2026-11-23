@@ -32,3 +32,13 @@ export function findNotice(result: GoalFinding): FindNotice {
     unread: result.unread,
   };
 }
+
+/**
+ * Whether a goal Find with AI found can go straight into the input: only
+ * while the person has not written their own (empty, or still the saved
+ * goal). Otherwise it is offered beside what they wrote.
+ */
+export function findFills(draft: string, saved: string): boolean {
+  const mine = draft.trim();
+  return !mine || mine === saved.trim();
+}

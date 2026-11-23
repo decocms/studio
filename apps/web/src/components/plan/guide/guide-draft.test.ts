@@ -56,6 +56,7 @@ describe("guide draft", () => {
       step: 1,
       idea: "Free shipping over R$ 300",
       answers: [{ question: "Where should it show?", answer: "Cart" }],
+      asked: [{ text: "Where should it show?", options: [] }],
       title: "Free shipping over R$ 300 in the cart",
       view: { phase: "thinking" },
     });

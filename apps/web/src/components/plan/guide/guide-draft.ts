@@ -109,6 +109,11 @@ export function guideFromDraft(draft: GuideDraft): GuideState {
     step: draft.answers.length,
     idea: draft.idea,
     answers: draft.answers,
+    // The draft keeps no options: going back re-asks the text alone.
+    asked: draft.answers.map(({ question }) => ({
+      text: question,
+      options: [],
+    })),
     title: draft.title,
     view: draft.done
       ? { phase: "building", guided: draft.done.guided }

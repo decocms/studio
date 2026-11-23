@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { findNotice } from "./find-store-goal.ts";
+import { findFills, findNotice } from "./find-store-goal.ts";
 
 describe("findNotice", () => {
   it("shows the goal with the quote and where it was found", () => {
@@ -47,5 +47,21 @@ describe("findNotice", () => {
       read: [],
       unread: ["deck.pdf"],
     });
+  });
+});
+
+describe("findFills", () => {
+  it("fills an input the person has not written in", () => {
+    expect(findFills("", "")).toBe(true);
+    expect(findFills("  \n ", "Grow the app")).toBe(true);
+  });
+
+  it("fills an input that still holds the saved goal", () => {
+    expect(findFills("Grow the app ", "Grow the app")).toBe(true);
+  });
+
+  it("keeps a goal the person wrote or edited", () => {
+    expect(findFills("Cut returns", "")).toBe(false);
+    expect(findFills("Grow the app in 2027", "Grow the app")).toBe(false);
   });
 });
