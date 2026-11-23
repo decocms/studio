@@ -82,9 +82,13 @@ function scalarMatchesField(fieldValue: unknown, scalar: unknown): boolean {
   return fieldValue === scalar;
 }
 
-export class AutomationEventDispatcher {
-  private static MAX_EVENT_PAYLOAD_BYTES = 1_048_576; // 1MB
+/**
+ * Characters of trigger payload the model reads, about 60k tokens. At 1 MB a
+ * webhook's payload alone overflowed the context and every run failed at once.
+ */
+export const MAX_TRIGGER_PAYLOAD_CHARS = 200_000;
 
+export class AutomationEventDispatcher {
   constructor(
     private storage: AutomationsStorage,
     private fire: EventFireFn,
@@ -229,12 +233,10 @@ export class AutomationEventDispatcher {
     data: unknown;
   }): ContextMessage[] {
     let serialized = JSON.stringify(event.data, null, 2) ?? "null";
-    const truncated =
-      serialized.length > AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES;
+    const truncated = serialized.length > MAX_TRIGGER_PAYLOAD_CHARS;
     if (truncated) {
       serialized =
-        serialized.slice(0, AutomationEventDispatcher.MAX_EVENT_PAYLOAD_BYTES) +
-        "\n[TRUNCATED]";
+        serialized.slice(0, MAX_TRIGGER_PAYLOAD_CHARS) + "\n[TRUNCATED]";
     }
     return [
       {

@@ -1,4 +1,7 @@
-export { AutomationEventDispatcher } from "./automation-event-dispatcher";
+export {
+  AutomationEventDispatcher,
+  MAX_TRIGGER_PAYLOAD_CHARS,
+} from "./automation-event-dispatcher";
 export {
   AUTOMATIONS_PARTITION_CONCURRENCY,
   AUTOMATIONS_POLL_INTERVAL_MS,
