@@ -1,9 +1,19 @@
 import { setupComponentTest } from "../../../../test/setup"; // happy-dom + jest-dom matchers
 setupComponentTest();
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { fireEvent, render } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { ModelTierSection, pickBrowseModels } from "./decopilot";
+import { getFastModel } from "@decocms/shared/sdk";
+import {
+  CLAUDE_OPUS,
+  CLAUDE_SONNET,
+} from "@decocms/shared/sdk/lib/claude-lineup";
+import {
+  groupByTier,
+  initialShortlist,
+  ModelTierSection,
+  pickBrowseModels,
+} from "./decopilot";
 import type { AiProviderModel } from "../../../hooks/collections/use-ai-providers";
 
 function makeModel(overrides: Partial<AiProviderModel> = {}): AiProviderModel {
@@ -107,5 +117,117 @@ describe("pickBrowseModels", () => {
       shortlisted,
       other,
     ]);
+  });
+});
+
+const fastDefault = getFastModel("openrouter") ?? "";
+
+function catalogModel(modelId: string, title: string): AiProviderModel {
+  return makeModel({ modelId, title });
+}
+
+// Listed out of order so the grouping, not the input, decides what leads.
+const catalog = [
+  catalogModel("meta-llama/llama-4-maverick", "Meta: Llama 4 Maverick"),
+  catalogModel("anthropic/claude-sonnet-4.6", "Anthropic: Claude Sonnet 4.6"),
+  catalogModel("anthropic/claude-haiku-4.5", "Anthropic: Claude Haiku 4.5"),
+  catalogModel("openai/gpt-5.3-codex", "OpenAI: GPT-5.3 Codex"),
+  catalogModel(CLAUDE_SONNET.openrouter, "Anthropic: Claude Sonnet Current"),
+  catalogModel("google/gemini-2.5-flash", "Google: Gemini 2.5 Flash"),
+  catalogModel("anthropic/claude-opus-4.8", "Anthropic: Claude Opus 4.8"),
+  catalogModel(fastDefault, "Fast default"),
+  catalogModel(CLAUDE_OPUS.openrouter, "Anthropic: Claude Opus Current"),
+  catalogModel(
+    `${CLAUDE_OPUS.openrouter}:extended`,
+    "Anthropic: Claude Opus Current (extended)",
+  ),
+];
+
+const ids = (models: AiProviderModel[]) => models.map((m) => m.modelId);
+
+describe("groupByTier", () => {
+  it("reads a fast default from the shared preference list", () => {
+    expect(fastDefault).not.toBe("");
+  });
+
+  it("puts the current Claude lineup at the head of Smarter, older Claude after it", () => {
+    expect(ids(groupByTier(catalog).smarter)).toEqual([
+      CLAUDE_OPUS.openrouter,
+      `${CLAUDE_OPUS.openrouter}:extended`,
+      CLAUDE_SONNET.openrouter,
+      "anthropic/claude-opus-4.8",
+      "anthropic/claude-sonnet-4.6",
+      "openai/gpt-5.3-codex",
+    ]);
+  });
+
+  it("puts the shared fast default at the head of Faster", () => {
+    expect(ids(groupByTier(catalog).faster)).toEqual([
+      fastDefault,
+      "anthropic/claude-haiku-4.5",
+    ]);
+  });
+
+  it("keeps every model in exactly one group", () => {
+    const groups = groupByTier(catalog);
+    expect(ids(groups.cheaper)).toEqual(["google/gemini-2.5-flash"]);
+    expect(ids(groups.other)).toEqual(["meta-llama/llama-4-maverick"]);
+    const grouped = Object.values(groups).flatMap(ids);
+    expect(grouped.toSorted()).toEqual(ids(catalog).toSorted());
+  });
+});
+
+describe("initialShortlist", () => {
+  const keyId = "aik_example";
+  const storageKey = `studio:model-shortlist:${keyId}`;
+
+  afterEach(() => {
+    localStorage.removeItem(storageKey);
+  });
+
+  it("defaults to the current lineup, the fast default and the older Claude models", () => {
+    const shortlist = initialShortlist(keyId);
+    for (const modelId of [
+      CLAUDE_OPUS.openrouter,
+      CLAUDE_SONNET.openrouter,
+      fastDefault,
+      "anthropic/claude-opus-4.8",
+      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-haiku-4.5",
+    ]) {
+      expect(shortlist.has(modelId)).toBe(true);
+    }
+  });
+
+  it("browses the default shortlist with the current lineup first", () => {
+    const browsed = pickBrowseModels(catalog, initialShortlist(undefined), "");
+    expect(ids(groupByTier(browsed).smarter)).toEqual([
+      CLAUDE_OPUS.openrouter,
+      CLAUDE_SONNET.openrouter,
+      "anthropic/claude-opus-4.8",
+      "anthropic/claude-sonnet-4.6",
+      "openai/gpt-5.3-codex",
+    ]);
+  });
+
+  it("returns a stored shortlist as stored, without adding the defaults", () => {
+    const stored = ["anthropic/claude-opus-4.8", "openai/gpt-5.3-codex"];
+    localStorage.setItem(storageKey, JSON.stringify(stored));
+    expect([...initialShortlist(keyId)]).toEqual(stored);
+    expect(
+      ids(pickBrowseModels(catalog, initialShortlist(keyId), "")).toSorted(),
+    ).toEqual(stored.toSorted());
+  });
+
+  it("still finds a model outside a stored shortlist by search", () => {
+    localStorage.setItem(storageKey, JSON.stringify(["openai/gpt-5.3-codex"]));
+    expect(pickBrowseModels(catalog, initialShortlist(keyId), "opus")).toEqual(
+      catalog,
+    );
+  });
+
+  it("falls back to the defaults when the stored value is unreadable", () => {
+    localStorage.setItem(storageKey, "{not json");
+    expect(initialShortlist(keyId).has(CLAUDE_OPUS.openrouter)).toBe(true);
   });
 });
