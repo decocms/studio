@@ -8,6 +8,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { z } from "zod";
+import type { StudioToolInput } from "@decocms/shared/tools/tool-io";
 import { mcpClientQueryOptions, useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -44,6 +45,22 @@ export function usePlanDiagnosisStatus(): DiagnosisStatusState {
     queryFn: () => studio.call("PLAN_DIAGNOSIS_STATUS", {}),
   });
   return diagnosisStatusState(query, () => void query.refetch());
+}
+
+/** Binds the engine to a BigQuery connection and GA4 dataset, then rereads
+ *  the status so the section moves on to the store view. */
+export function useDiagnosisSetup() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StudioToolInput<"PLAN_DIAGNOSIS_SETUP">) =>
+      studio.call("PLAN_DIAGNOSIS_SETUP", input),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: KEYS.planDiagnosisStatus(org.id),
+      }),
+  });
 }
 
 function useEngine() {
