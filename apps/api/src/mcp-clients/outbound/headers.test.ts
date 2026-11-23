@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildAuthorizationHeaderValue,
+  principalProfile,
   sanitizeCustomHeaders,
   serializeRunMetadataHeader,
   stripBindingMetadata,
@@ -198,5 +199,63 @@ describe("sanitizeCustomHeaders", () => {
         "X-Oversized": "x".repeat(9 * 1024),
       }),
     ).toEqual({ "X-Api-Key": "abc123" });
+  });
+});
+
+describe("principalProfile", () => {
+  const users = (row: { email: string; name: string } | null) => ({
+    findById: async (id: string, requester: string) =>
+      id === "u_1" && requester === "u_1" && row ? { id, ...row } : null,
+  });
+  const ctx = (
+    auth: Record<string, unknown>,
+    row: { email: string; name: string } | null = {
+      email: "ana@example.com",
+      name: "Ana",
+    },
+  ) => ({ auth, storage: { users: users(row) } }) as never;
+
+  test("a browser session keeps its own email without a lookup", async () => {
+    expect(
+      await principalProfile(
+        ctx({ user: { id: "u_1", email: "b@example.com", name: "B" } }, null),
+      ),
+    ).toEqual({ id: "u_1", email: "b@example.com", name: "B" });
+  });
+
+  test("an id-only user (CLI, MCP OAuth, Studio JWT) gets its email", async () => {
+    expect(await principalProfile(ctx({ user: { id: "u_1" } }))).toEqual({
+      id: "u_1",
+      email: "ana@example.com",
+      name: "Ana",
+    });
+  });
+
+  test("an API key gets its owner's email", async () => {
+    expect(
+      await principalProfile(ctx({ apiKey: { id: "k", userId: "u_1" } })),
+    ).toEqual({ id: "u_1", email: "ana@example.com", name: "Ana" });
+  });
+
+  test("no principal: nothing, so the superUser fallback stays id-only", async () => {
+    expect(await principalProfile(ctx({}))).toBeUndefined();
+  });
+
+  test("a failed lookup still returns the id", async () => {
+    const failing = {
+      auth: { user: { id: "u_1" } },
+      storage: {
+        users: {
+          findById: async () => {
+            throw new Error("db down");
+          },
+        },
+      },
+    } as never;
+    expect(await principalProfile(failing)).toEqual({
+      id: "u_1",
+      email: undefined,
+      name: undefined,
+    });
   });
 });

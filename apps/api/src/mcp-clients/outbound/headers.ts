@@ -173,6 +173,30 @@ export async function buildRequestHeaders(
   );
 }
 
+/**
+ * The calling user for the downstream token. Only browser sessions carry the
+ * email and name; CLI, API key, MCP OAuth and Studio JWT sign-ins carry just
+ * the id, and downstream servers identify people by email, so read the
+ * profile. Never for the superUser fallback: the connection's creator is not
+ * the caller.
+ */
+export async function principalProfile(
+  ctx: Pick<StudioContext, "auth"> & {
+    storage: Pick<StudioContext["storage"], "users">;
+  },
+): Promise<{ id: string; email?: string; name?: string } | undefined> {
+  const user = ctx.auth.user;
+  const id = user?.id ?? ctx.auth.apiKey?.userId;
+  if (!id) return undefined;
+  if (user?.email) return { id, email: user.email, name: user.name };
+  const profile = await ctx.storage.users.findById(id, id).catch(() => null);
+  return {
+    id,
+    email: profile?.email ?? undefined,
+    name: user?.name ?? profile?.name ?? undefined,
+  };
+}
+
 async function _buildRequestHeaders(
   connection: ConnectionEntity,
   ctx: StudioContext,
@@ -191,10 +215,9 @@ async function _buildRequestHeaders(
   );
 
   const ctxUser = ctx.auth.user;
+  const principal = await principalProfile(ctx);
   const userId =
-    ctxUser?.id ??
-    ctx.auth.apiKey?.userId ??
-    (superUser ? connection.created_by : undefined);
+    principal?.id ?? (superUser ? connection.created_by : undefined);
 
   // Issue short-lived JWT with configuration permissions
   // JWT can be decoded directly by downstream to access payload
@@ -208,8 +231,8 @@ async function _buildRequestHeaders(
         sub: userId,
         user: {
           id: userId,
-          email: ctxUser?.email,
-          name: ctxUser?.name,
+          email: principal?.email,
+          name: principal?.name,
           role: ctxUser?.role,
         },
         metadata: {
