@@ -9,6 +9,7 @@ import {
   fmtInt,
   kn,
   n0,
+  PanelsFailed,
   RankedList,
   rowsOf,
   SectionEmpty,
@@ -42,6 +43,11 @@ export function EventsSection(props: SectionProps) {
 
   return (
     <>
+      <PanelsFailed
+        data={view.data}
+        isFetching={view.isFetching}
+        onRetry={() => view.refetch()}
+      />
       <RankedList
         title={t("monitor.analytics.panels.events")}
         rows={kn(rowsOf(data, "events"))}

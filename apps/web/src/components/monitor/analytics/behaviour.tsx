@@ -20,6 +20,7 @@ import {
   num,
   Panel,
   PanelTable,
+  PanelsFailed,
   RankedList,
   type Row,
   rowsOf,
@@ -40,6 +41,11 @@ export function BehaviourSection(props: SectionProps) {
 
   return (
     <>
+      <PanelsFailed
+        data={view.data}
+        isFetching={view.isFetching}
+        onRetry={() => view.refetch()}
+      />
       <Group title={t("monitor.analytics.panels.group.acquisition")}>
         <div className="grid gap-4 md:grid-cols-2">
           <RankedList

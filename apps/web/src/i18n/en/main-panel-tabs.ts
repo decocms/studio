@@ -456,6 +456,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle": "No heatmap visits here",
   "mainPanelTabs.analyticsTab.heatmap.noViewsDescription":
     "No visit to this page on {device} in the period. Try another period or device.",
+  "mainPanelTabs.analyticsTab.heatmap.failedTitle": "Couldn't load the heatmap",
+  "mainPanelTabs.analyticsTab.heatmap.failedDescription":
+    "The analytics database didn't respond. Try again in a few minutes.",
   "mainPanelTabs.analyticsTab.heatmap.tipClicks": "Clicks",
   "mainPanelTabs.analyticsTab.heatmap.tipShare": "Of the page's clicks",
   "mainPanelTabs.analyticsTab.heatmap.tipVisits": "Of visits clicked",

@@ -10,6 +10,7 @@ import {
   fmtPct,
   num,
   Panel,
+  PanelsFailed,
   PrevChange,
   rowsOf,
   SectionError,
@@ -120,6 +121,11 @@ export function DecoOverview(props: SectionProps) {
 
   return (
     <>
+      <PanelsFailed
+        data={view.data}
+        isFetching={view.isFetching}
+        onRetry={() => view.refetch()}
+      />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {tiles.map((tile) => (
           <Panel

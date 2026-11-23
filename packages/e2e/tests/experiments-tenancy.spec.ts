@@ -35,7 +35,7 @@ interface ListOut {
 }
 interface ResultsOut {
   available: boolean;
-  reason: "not_configured" | "no_site_data" | null;
+  reason: "not_configured" | "no_site_data" | "load_failed" | null;
   analyticsSite: string;
   results: unknown;
 }

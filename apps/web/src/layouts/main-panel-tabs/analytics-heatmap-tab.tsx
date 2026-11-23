@@ -244,7 +244,7 @@ export function HeatmapView({
     <div
       className={cn("flex min-w-0 flex-col gap-4", fill && "min-h-0 flex-1")}
     >
-      {!model && controls}
+      {(!model || model.failed) && controls}
       {query.isLoading ? (
         <div className="flex flex-col gap-3">
           <Skeleton className="h-10 w-full" />
@@ -260,6 +260,23 @@ export function HeatmapView({
         <p className="text-sm text-muted-foreground">
           {t("mainPanelTabs.analyticsTab.emptyView")}
         </p>
+      ) : model.failed ? (
+        <EmptyState
+          icon={<CursorClick01 />}
+          title={t(k("failedTitle"))}
+          description={t(k("failedDescription"))}
+          buttonComponent={
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={query.isFetching}
+              onClick={() => query.refetch()}
+            >
+              {query.isFetching && <Spinner size="xs" />}
+              {t(k("timeoutRetry"))}
+            </Button>
+          }
+        />
       ) : (
         <Viewer
           // A new page, device or domain list is a new document: remount the frame and its handshake.

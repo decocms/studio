@@ -2475,7 +2475,7 @@ export interface StudioToolIO {
     };
     output: {
       report: string;
-      outcome: "ok" | "failed" | "timeout" | "no-site" | "no-tools";
+      outcome: "ok" | "timeout" | "failed" | "no-site" | "no-tools";
       toolNames: string[];
       evidence: string;
       evidenceUri: string | null;
@@ -2489,8 +2489,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2531,8 +2531,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2574,8 +2574,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2662,8 +2662,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2750,8 +2750,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2810,8 +2810,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2851,8 +2851,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -3531,8 +3531,8 @@ export interface StudioToolIO {
         icon?: string | null | undefined;
         updated_by?: string | undefined;
         updated_at?: string | undefined;
-        created_at?: string | undefined;
         created_by?: string | undefined;
+        created_at?: string | undefined;
         organization_id?: string | undefined;
         app_name?: string | null | undefined;
         app_id?: string | null | undefined;
@@ -7166,7 +7166,7 @@ export interface StudioToolIO {
     };
     output: {
       available: boolean;
-      reason: "not_configured" | "no_site_data" | null;
+      reason: "not_configured" | "no_site_data" | "load_failed" | null;
       analyticsSite: string;
       results: {
         visitors: { default: number; variant: number };

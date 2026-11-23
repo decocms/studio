@@ -33,7 +33,10 @@ describe("toTenantAnalyticsPayload", () => {
     ],
     worker: { limits: {} },
     install: { bundles: {} },
-    panelErrors: { kpis: "timeout" },
+    panelErrors: {
+      kpis: "the warehouse refused the query (HTTP 503)",
+      somethingNew: "timeout",
+    },
     meterCheck: [{ ratio: 1 }],
     somethingNew: [{ k: "x" }],
     usageScope: {
@@ -48,6 +51,7 @@ describe("toTenantAnalyticsPayload", () => {
     const out = toTenantAnalyticsPayload(upstream, "site-a");
     expect(Object.keys(out).sort()).toEqual(
       [
+        "failedPanels",
         "heatmapValue",
         "hmValue",
         "kpis",
@@ -59,6 +63,24 @@ describe("toTenantAnalyticsPayload", () => {
       ].sort(),
     );
     expect(out.kpisPrev).toEqual([{ visitors: 2, covered: 0.789 }]);
+  });
+
+  // A failed panel arrives as `[]`; without its name the tab reads it as no data.
+  it("names failed panels it forwards, never their messages", () => {
+    const out = toTenantAnalyticsPayload(upstream, "site-a");
+    expect(out.failedPanels).toEqual(["kpis"]);
+    expect(out.panelErrors).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("warehouse");
+  });
+
+  it("omits failedPanels when every panel answered", () => {
+    const { panelErrors: _, ...ok } = upstream;
+    expect(toTenantAnalyticsPayload(ok, "site-a")).not.toHaveProperty(
+      "failedPanels",
+    );
+    expect(
+      toTenantAnalyticsPayload({ ...ok, panelErrors: ["kpis"] }, "site-a"),
+    ).not.toHaveProperty("failedPanels");
   });
 
   it("narrows sites to the requested site and reduces the scope report", () => {
@@ -86,7 +108,12 @@ describe("toTenantAnalyticsPayload", () => {
     // dropped key is a map with no dots on it and no error in any log.
     expect(read).toContain("liveGeo");
     // `data` is the BFF envelope's own field; the rest are handled apart.
-    const handledApart = new Set(["data", "sites", "usageScope"]);
+    const handledApart = new Set([
+      "data",
+      "sites",
+      "usageScope",
+      "failedPanels",
+    ]);
     const missing = read.filter(
       (k) => k && !ANALYTICS_PAYLOAD_KEYS.has(k) && !handledApart.has(k),
     );

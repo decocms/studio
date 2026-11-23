@@ -85,8 +85,11 @@ export const EXPERIMENT_RESULTS = defineTool({
     available: z.boolean(),
     /** Why `results` is null: the deployment has no analytics backend, or it
      *  does but this site reports no traffic (e.g. a migrated site whose
-     *  analytics live under another slug — see `analyticsSiteSlug`). */
-    reason: z.enum(["not_configured", "no_site_data"]).nullable(),
+     *  analytics live under another slug — see `analyticsSiteSlug`), or the
+     *  analytics backend failed to answer (`load_failed`, worth retrying). */
+    reason: z
+      .enum(["not_configured", "no_site_data", "load_failed"])
+      .nullable(),
     /** The site slug analytics was actually read for (the override, if any). */
     analyticsSite: z.string(),
     /** Which backend answered; absent when none did. */
@@ -221,6 +224,9 @@ export const EXPERIMENT_RESULTS = defineTool({
         ? { since: input.since, until: input.until }
         : {}),
     });
+    if (deco === "failed") {
+      return { ...unavailable, reason: "load_failed" as const };
+    }
     return deco
       ? {
           available: true,

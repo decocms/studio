@@ -127,6 +127,9 @@ export const experiments = {
   "experiments.results.noSiteData":
     "Nenhum tráfego de analytics encontrado para {site}. O site pode ainda não estar enviando eventos de analytics, ou o tráfego dele é registrado sob outro site.",
   "experiments.results.empty": "Ainda sem participantes neste experimento.",
+  "experiments.results.loadFailed":
+    "Não foi possível carregar os resultados: o banco de analytics não respondeu. Tente de novo em alguns minutos.",
+  "experiments.results.retry": "Tentar de novo",
   "experiments.results.control": "Controle",
   "experiments.results.test": "Teste",
   "experiments.results.variant": "Variante",

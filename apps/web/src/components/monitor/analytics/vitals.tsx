@@ -23,6 +23,7 @@ import {
   num,
   Panel,
   PanelTable,
+  PanelsFailed,
   type Row,
   ratioPct,
   rowsOf,
@@ -179,14 +180,24 @@ export function VitalsSection(props: SectionProps) {
   if (view.isLoading) return <SectionSkeleton tiles={5} />;
   if (view.error) return <SectionError error={view.error} />;
   const data = view.data;
+  const failed = (
+    <PanelsFailed
+      data={data}
+      isFetching={view.isFetching}
+      onRetry={() => view.refetch()}
+    />
+  );
   const v = firstRow(data, "vitals");
   if (!v || !n0(v.samples)) {
     return (
-      <SectionEmpty
-        icon={<Speedometer02 size={20} />}
-        title={t("monitor.analytics.panels.vitals.empty")}
-        description={t("monitor.analytics.panels.vitals.emptyDesc")}
-      />
+      <>
+        {failed}
+        <SectionEmpty
+          icon={<Speedometer02 size={20} />}
+          title={t("monitor.analytics.panels.vitals.empty")}
+          description={t("monitor.analytics.panels.vitals.emptyDesc")}
+        />
+      </>
     );
   }
 
@@ -205,6 +216,7 @@ export function VitalsSection(props: SectionProps) {
 
   return (
     <>
+      {failed}
       <Panel
         title={t("monitor.analytics.panels.vitals.assessment")}
         aside={
