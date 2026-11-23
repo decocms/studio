@@ -31,14 +31,17 @@ export function OpenQuestionsFlow({
   title: string;
   progress: OpenFlowProgress;
   onProgress: (next: OpenFlowProgress) => void;
-  /** Every answer, in order; an empty one was left for the agent. */
-  onDone: (answers: GuideAnswer[]) => void;
+  /** Every answer, in order; an empty one was left for the agent. False
+   *  when they could not be sent: the flow stays on the last question. */
+  onDone: (answers: GuideAnswer[]) => boolean;
   /** `finished` once the answers went out; otherwise they stay saved. */
   onClose: (finished: boolean) => void;
 }) {
   const t = useT();
   const { questions, answers, step } = progress;
   const [building, setBuilding] = useState(false);
+  /** A failed send re-mounts the last question, which had started leaving. */
+  const [attempt, setAttempt] = useState(0);
 
   const answer = (text: string) => {
     if (building) return;
@@ -48,9 +51,14 @@ export function OpenQuestionsFlow({
       onProgress({ questions, answers: next, step: step + 1 });
       return;
     }
-    onDone(
+    const sent = onDone(
       questions.map((question, i) => ({ question, answer: next[i] ?? "" })),
     );
+    if (!sent) {
+      onProgress({ questions, answers: next, step });
+      setAttempt((n) => n + 1);
+      return;
+    }
     setBuilding(true);
     void sleep(BUILDING_MS).then(() => onClose(true));
   };
@@ -99,7 +107,7 @@ export function OpenQuestionsFlow({
             <Thinking phrases={BUILDING} offset={0} building />
           ) : (
             <Question
-              key={step}
+              key={`${step}:${attempt}`}
               view={{
                 question: { text: questions[step]!, options: [] },
                 reaction: t("plan.case.openFlow.counter", {

@@ -35,16 +35,18 @@ function CaseLoading({ label }: { label?: string }) {
 }
 
 /** Sends a message to the chat this case belongs to, when that chat is the
- *  one beside the tab and free to take it. */
+ *  one beside the tab. A busy chat queues it behind the running turn.
+ *  False when the chat would drop it: another send is still going out. */
 function useCaseChat(path: string) {
   const chat = useOptionalChatStream();
   const task = useOptionalChatTask();
   const threadId = matchBusinessCasePath(path);
-  if (!chat || !threadId || task?.taskId !== threadId || chat.isStreaming) {
-    return undefined;
-  }
-  return (text: string) =>
+  if (!chat || !threadId || task?.taskId !== threadId) return undefined;
+  return (text: string) => {
+    if (chat.isSendInFlight()) return false;
     void chat.sendMessage({ parts: [{ type: "text", text }] });
+    return true;
+  };
 }
 
 /** The agent's pending question on the guided intro's screen; the answer
@@ -122,13 +124,14 @@ export function BusinessCaseTab({ path }: { path: string }) {
           progress={progress}
           onProgress={setProgress}
           onDone={(answers) => {
+            const sent = send?.(openAnswersPrompt(t, answers)) ?? false;
             track("plan_case_open_questions_answered", {
               questions: answers.length,
               skipped: answers.filter((a) => !a.answer.trim()).length,
+              sent,
             });
-            // The chat may have got busy while the person was answering.
-            if (send) send(openAnswersPrompt(t, answers));
-            else toast.error(t("plan.case.openFlow.busy"));
+            if (!sent) toast.error(t("plan.case.openFlow.notSent"));
+            return sent;
           }}
           onClose={(finished) => {
             if (finished) setProgress(null);
