@@ -42,6 +42,14 @@ import {
   type LiveMessageInbox,
 } from "./live-messages";
 import {
+  buildRunContext,
+  capRunContext,
+  readToolState,
+  type InitFacts,
+  type RunContext,
+  type ToolState,
+} from "./run-context";
+import {
   isPlainObject,
   processStudioCliHome,
   studioCliEnv,
@@ -629,6 +637,24 @@ function memoryKey(input: HarnessStreamInputWire): string {
   return JSON.stringify(memorySettings(input.memory) ?? null);
 }
 
+/** What the run appends to Claude Code's own system prompt. */
+function systemPromptAppend(input: HarnessStreamInputWire): string {
+  const maxTurns = maxTurnsFromEnv();
+  return [
+    input.agent.instructions,
+    skillsInstruction(),
+    ORG_FS_INSTRUCTION,
+    input.studioCli
+      ? studioCliInstruction(input.studioCli.org)
+      : input.mcp.url
+        ? studioMcpInstruction(`mcp__${ENVS.STUDIO_MCP_SERVER_NAME}__`)
+        : undefined,
+    maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
   input: HarnessStreamInputWire;
@@ -646,22 +672,8 @@ export function buildOptions(args: {
       : []),
   ];
   const cwd = input.workspace.cwd ?? undefined;
-  const instructions = input.agent.instructions;
   const model = process.env[ENVS.MODEL_ENV];
   const maxTurns = maxTurnsFromEnv();
-  const instructionsWithSkills = [
-    instructions,
-    skillsInstruction(),
-    ORG_FS_INSTRUCTION,
-    input.studioCli
-      ? studioCliInstruction(input.studioCli.org)
-      : input.mcp.url
-        ? studioMcpInstruction(`mcp__${ENVS.STUDIO_MCP_SERVER_NAME}__`)
-        : undefined,
-    maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
-  ]
-    .filter(Boolean)
-    .join("\n\n");
   const executable = process.env[ENVS.EXECUTABLE_ENV];
   const studioCliPlugin = input.studioCli ? studioCliPluginDir() : null;
   const pluginDirs = [
@@ -689,7 +701,7 @@ export function buildOptions(args: {
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: instructionsWithSkills,
+      append: systemPromptAppend(input),
     },
     // Two sources, both wired by the daemon. The org's writable skills are
     // `~/.claude/skills`, symlinked onto the org-fs mount and discovered from
@@ -1221,6 +1233,9 @@ async function runTurn(
    * next Studio turn.
    */
   let sessionHasQueuedWork = false;
+  // The first `init` of the run: a retry or an image resend starts another session with the same options.
+  let runInit: InitFacts | null = null;
+  let toolState: ToolState | null = null;
   let studioCliHome: string | undefined;
   // Off once the provider refused this turn's image blocks: it is then resent as text only.
   let sendImages = true;
@@ -1558,6 +1573,7 @@ async function runTurn(
       // instructions". The init message is the only place that distinguishes
       // the two, so log it.
       if (message.type === "system" && message.subtype === "init") {
+        runInit ??= message;
         const studioToolCount = message.tools.filter((tool) =>
           tool.startsWith("mcp__"),
         ).length;
@@ -1665,6 +1681,8 @@ async function runTurn(
       await Bun.write(file, sessionId);
       startTurn(messageId ?? `msg_${message.uuid}`);
       result = mergeTurnResults(result, message as SdkResultMessage);
+      // Read here, not at `init`: an http MCP server is still `pending` then.
+      if (runInit) toolState ??= await readToolState(stream);
       // A message folded in without an echo still shows, at the turn's end.
       for (const uuid of message.user_message_uuids ?? []) {
         const id = liveMessages?.markRead(uuid) ?? null;
@@ -1711,10 +1729,35 @@ async function runTurn(
           translator.contextTokens,
           process.env[ENVS.MODEL_ENV],
           translator.isAwaitingUser(),
+          runContext(),
         ),
       ],
     });
     return null;
+  }
+
+  /** What this run was given, or `null`: recording it must never fail the run. */
+  function runContext(): RunContext | null {
+    if (!runInit) return null;
+    try {
+      const memory = memorySettings(input.memory);
+      return capRunContext(
+        buildRunContext(
+          runInit,
+          {
+            effort: effortFromEnv(),
+            memory: memory ? memory.autoMemoryEnabled === true : undefined,
+            systemPromptAppendChars: systemPromptAppend(input).length,
+          },
+          toolState ?? {},
+        ),
+      );
+    } catch (err) {
+      console.error(
+        `[claude-code] run context not recorded: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
   }
 
   /** Close whatever the turn had emitted, then report what ended it. */

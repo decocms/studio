@@ -279,6 +279,11 @@ RUN mkdir -p /home/sandbox/.claude /home/sandbox/.codex /home/sandbox/.agents \
   && ln -s /home/sandbox/.claude/skills /home/sandbox/.agents/skills \
   && chown -R sandbox:sandbox /home/sandbox/.claude /home/sandbox/.codex /home/sandbox/.agents
 
+# The version this image is released as (release-studio-sandbox.yaml passes
+# it). The harness runner records it with every run; empty on any other build.
+ARG STUDIO_SANDBOX_IMAGE_VERSION=""
+ENV STUDIO_SANDBOX_IMAGE_VERSION=${STUDIO_SANDBOX_IMAGE_VERSION}
+
 ENV IS_SANDBOX=1
 USER sandbox
 EXPOSE 9000
