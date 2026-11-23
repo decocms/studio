@@ -55,6 +55,7 @@ import { usePlanGoalActions, type PlanGoals } from "@/hooks/use-plan-goals";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
+import { goalPeople, PlanGoalDuplicates } from "./plan-goal-duplicates.tsx";
 import { ObjectiveForm } from "./plan-objective.tsx";
 
 /** Above this many goals the picker gets a search field. */
@@ -199,12 +200,6 @@ function SimilarGoals({
 }) {
   const t = useT();
   const locale = useDateFnsLocale();
-  const people = (n: number) =>
-    n === 0
-      ? t("plan.goals.similar.peopleNone")
-      : n === 1
-        ? t("plan.goals.similar.peopleOne")
-        : t("plan.goals.similar.peopleMany", { n });
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-3">
       <p className="text-sm text-foreground">{t("plan.goals.similar.title")}</p>
@@ -219,7 +214,7 @@ function SimilarGoals({
                 addSuffix: true,
                 locale,
               }),
-              people: people(goal.users),
+              people: goalPeople(t, goal.users),
             })}
           </p>
           <Button
@@ -472,6 +467,7 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
             </>
           )}
         </div>
+        <PlanGoalDuplicates goals={goals} />
       </div>
     );
   };

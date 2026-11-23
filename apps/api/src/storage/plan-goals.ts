@@ -32,6 +32,41 @@ function iso(value: Date | string): string {
   return new Date(value).toISOString();
 }
 
+/**
+ * The open goal `id` stands for, share-locked until the transaction ends so a
+ * merge or an archive waits for the write that depends on it: the goal
+ * itself, or the goal it was merged into. One row is locked at a time, so it
+ * never deadlocks with a merge, which locks two. A goal that closes while
+ * this waits is read again. Null when neither is open.
+ */
+async function lockOpenGoal(
+  trx: Kysely<Database>,
+  organizationId: string,
+  id: string,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const goal = await trx
+      .selectFrom("plan_goals")
+      .select(["id", "merged_into_id"])
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", id)
+      .where("archived_at", "is", null)
+      .executeTakeFirst();
+    if (!goal) return null;
+    const locked = await trx
+      .selectFrom("plan_goals")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", goal.merged_into_id ?? goal.id)
+      .where("archived_at", "is", null)
+      .where("merged_into_id", "is", null)
+      .forShare()
+      .executeTakeFirst();
+    if (locked) return locked.id;
+  }
+  return null;
+}
+
 /** The id the seed from the single store goal always takes, so two first
  *  reads at once insert one goal. */
 export function seededGoalId(organizationId: string): string {
@@ -259,54 +294,130 @@ export class PlanGoalStorage {
     return oldest?.id ?? null;
   }
 
-  /** Make an open goal the member's. False when the org has no such goal. */
+  /**
+   * Make a goal the member's: the goal itself while open, or the goal it was
+   * merged into. Null when the org has no such open goal.
+   */
   async setActive(
     organizationId: string,
     userId: string,
     goalId: string,
-  ): Promise<boolean> {
-    const { rows } = await sql<{ user_id: string }>`
-      INSERT INTO member_plan_state (user_id, organization_id, active_goal_id)
-      SELECT ${userId}, ${organizationId}, g.id
-        FROM plan_goals g
-       WHERE g.organization_id = ${organizationId}
-         AND g.id = ${goalId}
-         AND g.archived_at IS NULL
-         AND g.merged_into_id IS NULL
-      ON CONFLICT (user_id, organization_id)
-      DO UPDATE SET active_goal_id = EXCLUDED.active_goal_id,
-                    updated_at = now()
-      RETURNING user_id
-    `.execute(this.db);
-    return rows.length > 0;
+  ): Promise<string | null> {
+    return await this.db.transaction().execute(async (trx) => {
+      const id = await lockOpenGoal(trx, organizationId, goalId);
+      if (!id) return null;
+      await trx
+        .insertInto("member_plan_state")
+        .values({
+          user_id: userId,
+          organization_id: organizationId,
+          active_goal_id: id,
+        })
+        .onConflict((oc) =>
+          oc.columns(["user_id", "organization_id"]).doUpdateSet({
+            active_goal_id: id,
+            updated_at: new Date().toISOString(),
+          }),
+        )
+        .execute();
+      return id;
+    });
   }
 
   /**
-   * Tie a case chat to the open goal it was started toward. The first link
-   * stands: recording the same chat again changes nothing. False when the
-   * org has no such open goal.
+   * Tie a case chat to the goal it was started toward, or to the goal that
+   * one was merged into. The first link stands: recording the same chat again
+   * changes nothing. Null when the org has no such open goal.
    */
   async recordCase(params: {
     organizationId: string;
     threadId: string;
     goalId: string;
     userId: string;
-  }): Promise<boolean> {
-    const goal = await this.get(params.organizationId, params.goalId);
-    if (!goal?.open) return false;
-    await this.db
-      .insertInto("plan_goal_cases")
-      .values({
-        organization_id: params.organizationId,
-        thread_id: params.threadId,
-        goal_id: params.goalId,
-        user_id: params.userId,
-      })
-      .onConflict((oc) =>
-        oc.columns(["organization_id", "thread_id"]).doNothing(),
-      )
-      .execute();
-    return true;
+  }): Promise<string | null> {
+    return await this.db.transaction().execute(async (trx) => {
+      const id = await lockOpenGoal(trx, params.organizationId, params.goalId);
+      if (!id) return null;
+      await trx
+        .insertInto("plan_goal_cases")
+        .values({
+          organization_id: params.organizationId,
+          thread_id: params.threadId,
+          goal_id: id,
+          user_id: params.userId,
+        })
+        .onConflict((oc) =>
+          oc.columns(["organization_id", "thread_id"]).doNothing(),
+        )
+        .execute();
+      return id;
+    });
+  }
+
+  /**
+   * Merge `sourceId` into `targetId`, both open goals of the org, in one
+   * transaction: the target takes the approved `statement`, the source leaves
+   * every list pointing at the target, and whoever worked toward the source,
+   * every case started toward it and every goal merged into it earlier now
+   * resolve to the target. Case files are not touched; they keep the sentence
+   * they were written with. False when either goal is missing, not open, or
+   * they are the same goal.
+   */
+  async merge(
+    organizationId: string,
+    sourceId: string,
+    targetId: string,
+    statement: string,
+    by: string,
+  ): Promise<boolean> {
+    if (sourceId === targetId) return false;
+    return await this.db.transaction().execute(async (trx) => {
+      const rows = await trx
+        .selectFrom("plan_goals")
+        .select(["id", "archived_at", "merged_into_id"])
+        .where("organization_id", "=", organizationId)
+        .where("id", "in", [sourceId, targetId])
+        .orderBy("id")
+        .forUpdate()
+        .execute();
+      const open = rows.filter(
+        (row) => row.archived_at === null && row.merged_into_id === null,
+      );
+      if (open.length !== 2) return false;
+
+      const now = new Date().toISOString();
+      await trx
+        .updateTable("plan_goals")
+        .set({ statement, updated_by: by, updated_at: now })
+        .where("organization_id", "=", organizationId)
+        .where("id", "=", targetId)
+        .execute();
+      await trx
+        .updateTable("plan_goals")
+        .set({ merged_into_id: targetId, updated_by: by, updated_at: now })
+        .where("organization_id", "=", organizationId)
+        .where("id", "=", sourceId)
+        .execute();
+      await trx
+        .updateTable("plan_goals")
+        .set({ merged_into_id: targetId })
+        .where("organization_id", "=", organizationId)
+        .where("merged_into_id", "=", sourceId)
+        .execute();
+      await trx
+        .updateTable("member_plan_state")
+        .set({ active_goal_id: targetId, updated_at: now })
+        .where("organization_id", "=", organizationId)
+        .where("active_goal_id", "=", sourceId)
+        .execute();
+      await trx
+        .updateTable("plan_goal_cases")
+        .set({ goal_id: targetId })
+        .where("organization_id", "=", organizationId)
+        .where("goal_id", "=", sourceId)
+        .execute();
+      return true;
+    });
   }
 
   /** The case chats started toward a goal, newest first. */

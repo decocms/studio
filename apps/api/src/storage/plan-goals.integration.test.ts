@@ -169,12 +169,12 @@ describe("PlanGoalStorage", () => {
     const foreign = await create("Foreign", ANA, OTHER_ORG);
 
     expect(await goals.activeGoalId(ORG, ANA)).toBe(oldest);
-    expect(await goals.setActive(ORG, ANA, picked)).toBe(true);
+    expect(await goals.setActive(ORG, ANA, picked)).toBe(picked);
     expect(await goals.activeGoalId(ORG, ANA)).toBe(picked);
     expect(await goals.activeGoalId(ORG, BIA)).toBe(oldest);
 
-    expect(await goals.setActive(ORG, ANA, foreign)).toBe(false);
-    expect(await goals.setActive(ORG, ANA, "goal_missing")).toBe(false);
+    expect(await goals.setActive(ORG, ANA, foreign)).toBeNull();
+    expect(await goals.setActive(ORG, ANA, "goal_missing")).toBeNull();
     expect(await goals.activeGoalId(ORG, ANA)).toBe(picked);
   });
 
@@ -242,7 +242,7 @@ describe("PlanGoalStorage", () => {
         goalId: goal,
         userId: ANA,
       }),
-    ).toBe(false);
+    ).toBeNull();
     expect(
       await goals.recordCase({
         organizationId: ORG,
@@ -250,7 +250,7 @@ describe("PlanGoalStorage", () => {
         goalId: foreign,
         userId: ANA,
       }),
-    ).toBe(false);
+    ).toBeNull();
   });
 
   it("archives once, clears everyone's pick of it, and keeps its cases", async () => {
@@ -333,5 +333,261 @@ describe("PlanGoalStorage", () => {
         .execute();
       expect(rows).toEqual([]);
     }
+  });
+
+  describe("merge", () => {
+    const mergedInto = async (id: string) =>
+      (
+        await database.db
+          .selectFrom("plan_goals")
+          .select("merged_into_id")
+          .where("id", "=", id)
+          .executeTakeFirstOrThrow()
+      ).merged_into_id;
+
+    /** Hold a row lock on a goal, as a merge in another request would. */
+    const holdLock = async (id: string) => {
+      let release = () => {};
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let locked = () => {};
+      const isLocked = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+      const done = database.db.transaction().execute(async (trx) => {
+        await trx
+          .selectFrom("plan_goals")
+          .select("id")
+          .where("id", "=", id)
+          .forUpdate()
+          .execute();
+        locked();
+        await released;
+      });
+      await isLocked;
+      return async () => {
+        release();
+        await done;
+      };
+    };
+
+    const waitingOnLocks = async (count: number) => {
+      for (let i = 0; i < 200; i++) {
+        const { rows } = await sql<{ n: string }>`
+          SELECT count(*) AS n FROM pg_stat_activity
+           WHERE datname = current_database() AND wait_event_type = 'Lock'
+        `.execute(database.db);
+        if (Number(rows[0]?.n) >= count) return;
+        await Bun.sleep(10);
+      }
+      throw new Error(`expected ${count} sessions waiting on a lock`);
+    };
+
+    it("keeps one goal with the approved sentence and moves its people and cases to it", async () => {
+      const target = await create("Grow app sales", ANA);
+      const source = await create("Sell more on the app", BIA);
+      const other = await create("Cut returns");
+      await goals.setActive(ORG, ANA, target);
+      await goals.setActive(ORG, BIA, source);
+      await goals.recordCase({
+        organizationId: ORG,
+        threadId: "t1",
+        goalId: source,
+        userId: BIA,
+      });
+      await goals.recordCase({
+        organizationId: ORG,
+        threadId: "t2",
+        goalId: target,
+        userId: ANA,
+      });
+
+      expect(
+        await goals.merge(
+          ORG,
+          source,
+          target,
+          "Make the app our main channel",
+          BIA,
+        ),
+      ).toBe(true);
+
+      const list = await goals.list(ORG, ANA, false);
+      expect(list.map((goal) => goal.id)).toEqual([target, other]);
+      expect(list[0]).toMatchObject({
+        statement: "Make the app our main channel",
+        updated_by: BIA,
+        created_by: ANA,
+        users: 2,
+      });
+      expect(await goals.activeGoalId(ORG, BIA)).toBe(target);
+      expect((await goals.caseThreadIds(ORG, target, 10)).sort()).toEqual([
+        "t1",
+        "t2",
+      ]);
+      expect(await goals.caseThreadIds(ORG, source, 10)).toEqual([]);
+      expect((await goals.get(ORG, source))?.open).toBe(false);
+      expect(await mergedInto(source)).toBe(target);
+      expect(await goals.updateStatement(ORG, source, "Too late", BIA)).toBe(
+        false,
+      );
+      expect(await goals.archive(ORG, source, BIA)).toBe(false);
+    });
+
+    it("resolves a merged goal to the one it went into, even after that one merges again", async () => {
+      const a = await create("A");
+      const b = await create("B");
+      const c = await create("C");
+      expect(await goals.merge(ORG, a, b, "B", ANA)).toBe(true);
+
+      expect(await goals.setActive(ORG, ANA, a)).toBe(b);
+      expect(
+        await goals.recordCase({
+          organizationId: ORG,
+          threadId: "t1",
+          goalId: a,
+          userId: ANA,
+        }),
+      ).toBe(b);
+
+      expect(await goals.merge(ORG, b, c, "C", ANA)).toBe(true);
+      expect(await mergedInto(a)).toBe(c);
+      expect(await goals.setActive(ORG, BIA, a)).toBe(c);
+      expect(await goals.activeGoalId(ORG, ANA)).toBe(c);
+      expect(await goals.caseThreadIds(ORG, c, 10)).toEqual(["t1"]);
+
+      await goals.archive(ORG, c, ANA);
+      expect(await goals.setActive(ORG, ANA, a)).toBeNull();
+      expect(
+        await goals.recordCase({
+          organizationId: ORG,
+          threadId: "t2",
+          goalId: a,
+          userId: ANA,
+        }),
+      ).toBeNull();
+    });
+
+    it("refuses the same goal twice, a missing goal, another org's goal, and goals no longer open", async () => {
+      const goal = await create("Stays as it is");
+      const foreign = await create("Foreign", ANA, OTHER_ORG);
+      const archived = await create("Archived");
+      await goals.archive(ORG, archived, ANA);
+      const merged = await create("Merged");
+      const survivor = await create("Survivor");
+      await goals.merge(ORG, merged, survivor, "Survivor", ANA);
+
+      expect(await goals.merge(ORG, goal, goal, "Same", ANA)).toBe(false);
+      expect(await goals.merge(ORG, goal, "goal_missing", "X", ANA)).toBe(
+        false,
+      );
+      expect(await goals.merge(ORG, goal, foreign, "X", ANA)).toBe(false);
+      expect(await goals.merge(ORG, foreign, goal, "X", ANA)).toBe(false);
+      expect(await goals.merge(OTHER_ORG, goal, survivor, "X", ANA)).toBe(
+        false,
+      );
+      expect(await goals.merge(ORG, goal, archived, "X", ANA)).toBe(false);
+      expect(await goals.merge(ORG, archived, goal, "X", ANA)).toBe(false);
+      expect(await goals.merge(ORG, goal, merged, "X", ANA)).toBe(false);
+      expect(await goals.merge(ORG, merged, goal, "X", ANA)).toBe(false);
+
+      expect(await goals.get(ORG, goal)).toMatchObject({
+        statement: "Stays as it is",
+        open: true,
+      });
+      expect(await goals.get(OTHER_ORG, foreign)).toMatchObject({
+        statement: "Foreign",
+        open: true,
+      });
+      expect(await goals.get(ORG, survivor)).toMatchObject({
+        statement: "Survivor",
+        open: true,
+      });
+    });
+
+    it("rejects a blank merged sentence at the database and changes nothing", async () => {
+      const source = await create("Source");
+      const target = await create("Target");
+      await expect(
+        goals.merge(ORG, source, target, "  ", ANA),
+      ).rejects.toThrow();
+      expect((await goals.get(ORG, source))?.open).toBe(true);
+      expect((await goals.get(ORG, target))?.statement).toBe("Target");
+    });
+
+    it("lets only one of two merges of the same goal at once win", async () => {
+      const source = await create("Source");
+      const first = await create("First");
+      const second = await create("Second");
+      const results = await Promise.all([
+        goals.merge(ORG, source, first, "First", ANA),
+        goals.merge(ORG, source, second, "Second", BIA),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(await mergedInto(source)).toBe(results[0] ? first : second);
+    });
+
+    it("leaves one goal when two people merge the same pair in opposite directions", async () => {
+      const a = await create("A");
+      const b = await create("B");
+      const results = await Promise.all([
+        goals.merge(ORG, a, b, "Kept B", ANA),
+        goals.merge(ORG, b, a, "Kept A", BIA),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      const list = await goals.list(ORG, ANA, false);
+      expect(list).toHaveLength(1);
+      expect(list[0]?.statement).toBe(results[0] ? "Kept B" : "Kept A");
+    });
+
+    it("never lets a merge and an archive of the goal that goes away both win", async () => {
+      const source = await create("Source");
+      const target = await create("Target");
+      const [merged, archived] = await Promise.all([
+        goals.merge(ORG, source, target, "Merged", ANA),
+        goals.archive(ORG, source, ANA),
+      ]);
+      expect(merged).toBe(!archived);
+      expect((await goals.list(ORG, ANA, false)).map((g) => g.id)).toEqual([
+        target,
+      ]);
+    });
+
+    it("archives the surviving goal after a merge that started first, never mid-merge", async () => {
+      const source = await create("Source");
+      const target = await create("Target");
+      const [merged, archived] = await Promise.all([
+        goals.merge(ORG, source, target, "Merged", ANA),
+        goals.archive(ORG, target, ANA),
+      ]);
+      expect(archived).toBe(true);
+      expect((await goals.list(ORG, ANA, false)).map((g) => g.id)).toEqual(
+        merged ? [] : [source],
+      );
+      expect(await mergedInto(source)).toBe(merged ? target : null);
+    });
+
+    it("moves a case recorded while the merge holds its goals to the surviving goal", async () => {
+      const source = await create("Source");
+      const target = await create("Target");
+      // Hold the goal the merge locks second, so it waits holding the first.
+      const release = await holdLock(source > target ? source : target);
+      const merging = goals.merge(ORG, source, target, "Merged", ANA);
+      await waitingOnLocks(1);
+      const recording = goals.recordCase({
+        organizationId: ORG,
+        threadId: "t1",
+        goalId: source,
+        userId: BIA,
+      });
+      await waitingOnLocks(2);
+      await release();
+
+      expect(await merging).toBe(true);
+      expect(await recording).toBe(target);
+      expect(await goals.caseThreadIds(ORG, target, 10)).toEqual(["t1"]);
+      expect(await goals.caseThreadIds(ORG, source, 10)).toEqual([]);
+    });
   });
 });

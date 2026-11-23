@@ -144,6 +144,67 @@ export function prefilterSimilarGoals<T extends GoalText>(
   return { exact, candidates };
 }
 
+/** Pairs of existing goals offered to the model in one consolidation check. */
+export const MAX_ASKED_PAIRS = 8;
+
+/**
+ * Below this overlap two existing goals are not offered as a pair: unlike the
+ * check on create, nobody asked, so the proposal should stay rare and right.
+ */
+const MIN_PAIR_OVERLAP = 0.3;
+
+/** The same key for a pair whichever goal comes first. */
+export function planGoalPairKey(a: string, b: string): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+/**
+ * Pairs of goals that could be the same goal. `exact` are the same sentence
+ * once normalized; `candidates` overlap by at least `minOverlap`, best first,
+ * at most `max`. Pairs whose key is in `skip`, or that `allowed` refuses, are
+ * left out before the cap, so they never crowd out the rest.
+ */
+export function prefilterGoalPairs<T extends GoalText>(
+  goals: readonly T[],
+  options: {
+    skip?: ReadonlySet<string>;
+    allowed?: (a: T, b: T) => boolean;
+    max?: number;
+    minOverlap?: number;
+  } = {},
+): { exact: [T, T][]; candidates: [T, T][] } {
+  const {
+    skip = new Set<string>(),
+    allowed = () => true,
+    max = MAX_ASKED_PAIRS,
+    minOverlap = MIN_PAIR_OVERLAP,
+  } = options;
+  const texts = goals.map((goal) => ({
+    goal,
+    normalized: normalizeGoalStatement(goal.statement),
+    tokens: goalTokens(goal.statement),
+  }));
+  const exact: [T, T][] = [];
+  const scored: { pair: [T, T]; score: number }[] = [];
+  texts.forEach((a, i) => {
+    for (const b of texts.slice(i + 1)) {
+      if (skip.has(planGoalPairKey(a.goal.id, b.goal.id))) continue;
+      if (!allowed(a.goal, b.goal)) continue;
+      if (a.normalized && a.normalized === b.normalized) {
+        exact.push([a.goal, b.goal]);
+        continue;
+      }
+      const score = tokenOverlap(a.tokens, b.tokens);
+      if (score >= minOverlap) scored.push({ pair: [a.goal, b.goal], score });
+    }
+  });
+  const candidates = scored
+    .sort((x, y) => y.score - x.score)
+    .slice(0, max)
+    .map(({ pair }) => pair);
+  return { exact, candidates };
+}
+
 /** Two goal sentences the model is asked about. */
 export interface GoalPair {
   a: string;

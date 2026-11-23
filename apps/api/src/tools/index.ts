@@ -73,6 +73,8 @@ export const CORE_TOOLS = [
   PlanGoalTools.PLAN_GOAL_LIST,
   PlanGoalTools.PLAN_GOAL_CREATE,
   PlanGoalTools.PLAN_GOAL_SIMILAR,
+  PlanGoalTools.PLAN_GOAL_DUPLICATES,
+  PlanGoalTools.PLAN_GOAL_MERGE,
   PlanGoalTools.PLAN_GOAL_UPDATE,
   PlanGoalTools.PLAN_GOAL_ARCHIVE,
   PlanGoalTools.PLAN_ACTIVE_GOAL_SET,

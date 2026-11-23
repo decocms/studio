@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   filterPlanGoals,
   groupPlanGoals,
+  planGoalMergeOrder,
   PlanGoalStatementSchema,
   PLAN_GOAL_MAX_LENGTH,
   type PlanGoal,
@@ -80,5 +81,28 @@ describe("PlanGoalStatementSchema", () => {
       PlanGoalStatementSchema.safeParse("x".repeat(PLAN_GOAL_MAX_LENGTH))
         .success,
     ).toBe(true);
+  });
+});
+
+describe("planGoalMergeOrder", () => {
+  test("keeps the goal more people work toward, whichever comes first", () => {
+    const busy = goal({ id: "b", users: 3 });
+    const quiet = goal({ id: "a", users: 1 });
+    expect(planGoalMergeOrder(busy, quiet)).toEqual({
+      target: busy,
+      source: quiet,
+    });
+    expect(planGoalMergeOrder(quiet, busy)).toEqual({
+      target: busy,
+      source: quiet,
+    });
+  });
+
+  test("between equals keeps the older goal, then the lower id", () => {
+    const older = goal({ id: "z", created_at: "2026-01-01T00:00:00.000Z" });
+    const newer = goal({ id: "a", created_at: "2026-03-01T00:00:00.000Z" });
+    expect(planGoalMergeOrder(newer, older).target).toBe(older);
+    const twin = goal({ id: "y", created_at: older.created_at });
+    expect(planGoalMergeOrder(older, twin).target).toBe(twin);
   });
 });

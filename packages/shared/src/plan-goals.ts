@@ -13,6 +13,10 @@ export const PLAN_GOAL_MAX_LENGTH = PLAN_OBJECTIVE_MAX_LENGTH;
 /** Goals an org can have open at once, so the picker stays a list to read. */
 export const MAX_OPEN_PLAN_GOALS = 50;
 
+/** Pairs of goals a member said are not the same that are remembered and
+ *  skipped by the next consolidation check; the oldest go first. */
+export const MAX_DISMISSED_PLAN_GOAL_PAIRS = 200;
+
 /** Pushed on the org's watch stream whenever a goal, or who uses one, changes. */
 export const PLAN_GOALS_UPDATED_EVENT = "plan.goals.updated";
 
@@ -97,6 +101,22 @@ export function groupPlanGoals(goals: readonly PlanGoal[]): {
     yours: sorted.filter((goal) => goal.mine),
     others: sorted.filter((goal) => !goal.mine),
   };
+}
+
+/**
+ * Which of two goals a merge keeps: the one more people work toward, so fewer
+ * people see their goal change, then the older one.
+ */
+export function planGoalMergeOrder<
+  T extends Pick<PlanGoal, "id" | "users" | "created_at">,
+>(a: T, b: T): { target: T; source: T } {
+  const keepA =
+    a.users !== b.users
+      ? a.users > b.users
+      : a.created_at !== b.created_at
+        ? a.created_at < b.created_at
+        : a.id < b.id;
+  return keepA ? { target: a, source: b } : { target: b, source: a };
 }
 
 /** Case-insensitive search over the statement; a blank query keeps all. */

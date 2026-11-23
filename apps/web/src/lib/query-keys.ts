@@ -500,6 +500,10 @@ export const KEYS = {
     ["plan-goals", organizationId, "list"] as const,
   planGoalCases: (organizationId: string, goalId: string) =>
     ["plan-goals", organizationId, "cases", goalId] as const,
+  /** Outside `planGoalsAll`: picking a goal must not ask the model again;
+   *  `goals` changes only when a goal is added, reworded or leaves the list. */
+  planGoalDuplicates: (organizationId: string, goals: string) =>
+    ["plan-goal-duplicates", organizationId, goals] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>

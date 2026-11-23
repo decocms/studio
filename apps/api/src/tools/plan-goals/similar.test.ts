@@ -5,8 +5,11 @@ import {
   askSameGoals,
   buildSameGoalPrompt,
   goalTokens,
+  MAX_ASKED_PAIRS,
   MAX_SIMILAR_CANDIDATES,
   normalizeGoalStatement,
+  planGoalPairKey,
+  prefilterGoalPairs,
   prefilterSimilarGoals,
   tokenOverlap,
 } from "./similar";
@@ -126,6 +129,53 @@ describe("prefilterSimilarGoals", () => {
       exact: [],
       candidates: [],
     });
+  });
+});
+
+describe("prefilterGoalPairs", () => {
+  const goals = [
+    goal("g1", "Make the app our main sales channel in 2027"),
+    goal("g2", "Cut the return rate on apparel below 12%"),
+    goal("g3", "make the APP our main sales channel in 2027!"),
+    goal("g4", "Turn the app into our main sales channel"),
+    goal("g5", "Lower CAC on paid social"),
+  ];
+  const ids = (pairs: [{ id: string }, { id: string }][]) =>
+    pairs.map(([a, b]) => planGoalPairKey(a.id, b.id));
+
+  it("finds the same sentence and close rewordings, and nothing unrelated", () => {
+    const { exact, candidates } = prefilterGoalPairs(goals);
+    expect(ids(exact)).toEqual(["g1:g3"]);
+    expect(ids(candidates)).toEqual(["g1:g4", "g3:g4"]);
+  });
+
+  it("leaves out dismissed and refused pairs before the cap", () => {
+    const { exact, candidates } = prefilterGoalPairs(goals, {
+      skip: new Set([planGoalPairKey("g3", "g1")]),
+      allowed: (a, b) => a.id !== "g3" && b.id !== "g3",
+      max: 1,
+    });
+    expect(exact).toEqual([]);
+    expect(ids(candidates)).toEqual(["g1:g4"]);
+  });
+
+  it("caps the pairs offered to the model", () => {
+    const many = Array.from({ length: 12 }, (_, i) =>
+      goal(`g${i}`, `Grow online revenue ${i}`),
+    );
+    const { candidates } = prefilterGoalPairs(many);
+    expect(candidates).toHaveLength(MAX_ASKED_PAIRS);
+  });
+
+  it("pairs nothing with fewer than two goals", () => {
+    expect(prefilterGoalPairs([goals[0]!])).toEqual({
+      exact: [],
+      candidates: [],
+    });
+  });
+
+  it("keys a pair the same whichever goal comes first", () => {
+    expect(planGoalPairKey("b", "a")).toBe(planGoalPairKey("a", "b"));
   });
 });
 

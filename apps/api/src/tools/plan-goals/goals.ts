@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import {
+  MAX_DISMISSED_PLAN_GOAL_PAIRS,
   MAX_OPEN_PLAN_GOALS,
   PlanGoalSchema,
   PlanGoalSourceSchema,
@@ -22,13 +23,24 @@ import {
 } from "@/core/studio-context";
 import type { StoredPlanGoal } from "@/storage/plan-goals";
 import { emitPlanGoalsUpdated } from "./events";
-import { confirmSameGoals, prefilterSimilarGoals } from "./similar";
+import {
+  confirmSameGoals,
+  planGoalPairKey,
+  prefilterGoalPairs,
+  prefilterSimilarGoals,
+} from "./similar";
 
 /** Cases the Plan page lists for one goal. */
 const MAX_GOAL_CASES = 50;
 
 /** How long creating a goal may wait on the model's "same goal?" answer. */
 const SIMILAR_TIMEOUT_MS = 4_000;
+
+/** Nobody waits on a consolidation proposal, so the model gets longer. */
+const DUPLICATES_TIMEOUT_MS = 10_000;
+
+/** Pairs proposed for a merge at once; more come after these are handled. */
+const MAX_DUPLICATE_PAIRS = 10;
 
 const GoalIdSchema = z.string().min(1).max(128).describe("A goal's id.");
 
@@ -207,6 +219,126 @@ export const PLAN_GOAL_SIMILAR = defineTool({
   },
 });
 
+export const PLAN_GOAL_DUPLICATES = defineTool({
+  name: "PLAN_GOAL_DUPLICATES",
+  description:
+    "Pairs of the organization's open Plan goals that look like the same goal, to propose merging them. Only pairs the caller may merge: where they created either goal, or any pair for an admin. The same sentence typed differently always pairs; a reworded one pairs when the fast model is sure. Proposes only; nothing merges until a person approves it with PLAN_GOAL_MERGE.",
+  annotations: {
+    title: "Find Duplicate Plan Goals",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: z.object({
+    dismissed: z
+      .array(z.string().min(1).max(300))
+      .max(MAX_DISMISSED_PLAN_GOAL_PAIRS)
+      .default([])
+      .describe("Keys of pairs the caller already said are not the same."),
+  }),
+  outputSchema: z.object({
+    pairs: z
+      .array(
+        z.object({
+          key: z.string().describe("The same for the pair in either order."),
+          a: SimilarGoalSchema,
+          b: SimilarGoalSchema,
+        }),
+      )
+      .describe("The same sentence first, then the ones the model matched."),
+  }),
+  handler: async (input, ctx, call) => {
+    const who = await caller(ctx);
+    const goals = await ctx.storage.planGoals.list(
+      who.orgId,
+      who.userId,
+      who.admin,
+    );
+    const { exact, candidates } = prefilterGoalPairs(goals, {
+      skip: new Set(input.dismissed),
+      allowed: (a, b) =>
+        who.admin || a.created_by === who.userId || b.created_by === who.userId,
+    });
+    const asked = candidates.slice(
+      0,
+      Math.max(0, MAX_DUPLICATE_PAIRS - exact.length),
+    );
+    const same = await confirmSameGoals(
+      ctx,
+      who.orgId,
+      asked.map(([a, b]) => ({ a: a.statement, b: b.statement })),
+      DUPLICATES_TIMEOUT_MS,
+      call?.signal,
+    );
+    return {
+      pairs: [...exact, ...asked.filter((_, i) => same[i])]
+        .slice(0, MAX_DUPLICATE_PAIRS)
+        .map(([a, b]) => ({
+          key: planGoalPairKey(a.id, b.id),
+          a: SimilarGoalSchema.parse(a),
+          b: SimilarGoalSchema.parse(b),
+        })),
+    };
+  },
+});
+
+export const PLAN_GOAL_MERGE = defineTool({
+  name: "PLAN_GOAL_MERGE",
+  description:
+    "Merge two of the organization's open Plan goals into one, after a person approved the merged sentence. The target keeps its id and takes the sentence; the source leaves the list, and whoever worked toward it and every business case started toward it move to the target. Case files keep the sentence they were written with. Only the creator of either goal, or an admin, may.",
+  annotations: {
+    title: "Merge Plan Goals",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  inputSchema: z.object({
+    source_id: GoalIdSchema.describe("The goal that goes away."),
+    target_id: GoalIdSchema.describe("The goal that stays."),
+    statement: PlanGoalStatementSchema.describe(
+      "The merged goal's sentence, as the person approved it.",
+    ),
+  }),
+  outputSchema: z.object({ id: z.string() }),
+  handler: async (input, ctx) => {
+    const who = await caller(ctx);
+    if (input.source_id === input.target_id) {
+      throw new Error("Pick two different goals to merge.");
+    }
+    const [source, target] = await Promise.all([
+      ctx.storage.planGoals.get(who.orgId, input.source_id),
+      ctx.storage.planGoals.get(who.orgId, input.target_id),
+    ]);
+    if (!source?.open) throw new Error(`Goal not found: ${input.source_id}`);
+    if (!target?.open) throw new Error(`Goal not found: ${input.target_id}`);
+    if (
+      !who.admin &&
+      source.created_by !== who.userId &&
+      target.created_by !== who.userId
+    ) {
+      throw new Error(
+        "Only the person who created one of these goals, or an admin, can merge them.",
+      );
+    }
+    const merged = await ctx.storage.planGoals.merge(
+      who.orgId,
+      input.source_id,
+      input.target_id,
+      input.statement,
+      who.userId,
+    );
+    if (!merged) {
+      throw new Error(
+        "One of these goals was archived or merged in the meantime. Reload and try again.",
+      );
+    }
+    emitPlanGoalsUpdated(who.orgId, input.target_id);
+    return { id: input.target_id };
+  },
+});
+
 export const PLAN_GOAL_UPDATE = defineTool({
   name: "PLAN_GOAL_UPDATE",
   description:
@@ -268,7 +400,7 @@ export const PLAN_GOAL_ARCHIVE = defineTool({
 export const PLAN_ACTIVE_GOAL_SET = defineTool({
   name: "PLAN_ACTIVE_GOAL_SET",
   description:
-    "Pick the Plan goal the caller works toward; their Plan page opens on it.",
+    "Pick the Plan goal the caller works toward; their Plan page opens on it. A goal merged into another picks the one it was merged into.",
   annotations: {
     title: "Pick Plan Goal",
     readOnlyHint: false,
@@ -280,21 +412,21 @@ export const PLAN_ACTIVE_GOAL_SET = defineTool({
   outputSchema: z.object({ goal_id: z.string() }),
   handler: async (input, ctx) => {
     const who = await caller(ctx);
-    const set = await ctx.storage.planGoals.setActive(
+    const goalId = await ctx.storage.planGoals.setActive(
       who.orgId,
       who.userId,
       input.goal_id,
     );
-    if (!set) throw new Error(`Goal not found: ${input.goal_id}`);
-    emitPlanGoalsUpdated(who.orgId, input.goal_id);
-    return { goal_id: input.goal_id };
+    if (!goalId) throw new Error(`Goal not found: ${input.goal_id}`);
+    emitPlanGoalsUpdated(who.orgId, goalId);
+    return { goal_id: goalId };
   },
 });
 
 export const PLAN_GOAL_CASE_RECORD = defineTool({
   name: "PLAN_GOAL_CASE_RECORD",
   description:
-    "Record that a business case chat was started toward a Plan goal. The first record of a chat stands.",
+    "Record that a business case chat was started toward a Plan goal, or toward the goal it was merged into. The first record of a chat stands.",
   annotations: {
     title: "Record Plan Case Goal",
     readOnlyHint: false,
@@ -306,15 +438,15 @@ export const PLAN_GOAL_CASE_RECORD = defineTool({
   outputSchema: z.object({ goal_id: z.string() }),
   handler: async (input, ctx) => {
     const who = await caller(ctx);
-    const recorded = await ctx.storage.planGoals.recordCase({
+    const goalId = await ctx.storage.planGoals.recordCase({
       organizationId: who.orgId,
       threadId: input.thread_id,
       goalId: input.goal_id,
       userId: who.userId,
     });
-    if (!recorded) throw new Error(`Goal not found: ${input.goal_id}`);
-    emitPlanGoalsUpdated(who.orgId, input.goal_id);
-    return { goal_id: input.goal_id };
+    if (!goalId) throw new Error(`Goal not found: ${input.goal_id}`);
+    emitPlanGoalsUpdated(who.orgId, goalId);
+    return { goal_id: goalId };
   },
 });
 

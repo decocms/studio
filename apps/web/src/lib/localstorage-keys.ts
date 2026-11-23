@@ -29,6 +29,9 @@ export const LOCALSTORAGE_KEYS = {
   /** The assignee filter the org's task board opens on for this user. */
   taskBoardAssignee: (orgId: string, userId: string) =>
     `studio:task-board-assignee:${orgId}:${userId}`,
+  /** The pairs of Plan goals this browser was told are not the same, per org. */
+  planGoalPairsDismissed: (orgId: string) =>
+    `studio:plan-goal-pairs-dismissed:${orgId}`,
   /** One entry per org holding the apps last opened in it — see
    *  `lib/recent-apps.ts`. */
   recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,

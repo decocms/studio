@@ -193,6 +193,18 @@ export const plan = {
   "plan.goals.similar.peopleMany": "{n} pessoas",
   "plan.goals.similar.use": "Usar esse",
   "plan.goals.similar.createAnyway": "Criar o meu mesmo assim",
+  "plan.goals.duplicates.notice": "{n} objetivos parecem ser a mesma coisa.",
+  "plan.goals.duplicates.review": "Revisar",
+  "plan.goals.duplicates.title": "Estes objetivos são o mesmo?",
+  "plan.goals.duplicates.description":
+    "Se forem, junte os dois em um só. Quem trabalha em qualquer um deles, e os business cases criados para eles, passam para o objetivo unido.",
+  "plan.goals.duplicates.statement": "Objetivo unido",
+  "plan.goals.duplicates.remaining": "{n} pares para revisar",
+  "plan.goals.duplicates.notSame": "Não são o mesmo",
+  "plan.goals.duplicates.merge": "Juntar",
+  "plan.goals.duplicates.merged": "Objetivos unidos.",
+  "plan.goals.duplicates.mergeError":
+    "Não deu para juntar os objetivos. Tente de novo.",
   "plan.cases.towardGoal": "Neste objetivo",
   "plan.cases.towardGoalDescription":
     "Business cases que qualquer pessoa da organização criou para este objetivo.",

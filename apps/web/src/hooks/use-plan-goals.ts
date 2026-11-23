@@ -1,12 +1,24 @@
 /** The organization's Plan goals (`PLAN_GOAL_*`), kept live over the watch stream. */
 
 import { useSyncExternalStore } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PlanGoal } from "@decocms/shared/plan-goals";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { z } from "zod";
+import {
+  MAX_DISMISSED_PLAN_GOAL_PAIRS,
+  planGoalMergeOrder,
+  type PlanGoal,
+} from "@decocms/shared/plan-goals";
 import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io";
 import { useProjectContext } from "@/sdk";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useLocalStorage } from "./use-local-storage";
 import { planGoalsWatchView } from "./watch-sse-pool";
 
 const NO_GOALS: PlanGoal[] = [];
@@ -99,5 +111,61 @@ export function usePlanGoalActions() {
     mutationFn: (input: ToolInput<"PLAN_GOAL_SIMILAR">) =>
       studio.call("PLAN_GOAL_SIMILAR", input),
   });
-  return { create, update, archive, pick, similar };
+  const merge = useMutation({
+    mutationFn: (input: ToolInput<"PLAN_GOAL_MERGE">) =>
+      studio.call("PLAN_GOAL_MERGE", input),
+    onSettled: invalidate,
+  });
+  return { create, update, archive, pick, similar, merge };
+}
+
+/** Two open goals proposed for a merge: `target` stays, `source` goes. */
+export interface PlanGoalPair {
+  key: string;
+  target: PlanGoal;
+  source: PlanGoal;
+}
+
+const DismissedPairsSchema = z.array(z.string());
+
+/**
+ * Pairs of open goals that look like the same goal and that the member may
+ * merge, minus the ones they said are not the same in this browser. Asked
+ * again only when a goal is added, reworded or leaves the list.
+ */
+export function usePlanGoalDuplicates(goals: PlanGoal[]) {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const [dismissed, setDismissed] = useLocalStorage<string[]>(
+    LOCALSTORAGE_KEYS.planGoalPairsDismissed(org.id),
+    (stored) => DismissedPairsSchema.catch([]).parse(stored ?? []),
+  );
+  const signature = goals
+    .map((goal) => `${goal.id}@${goal.updated_at}`)
+    .sort()
+    .join(",");
+  const { data } = useQuery({
+    queryKey: KEYS.planGoalDuplicates(org.id, signature),
+    enabled: goals.length > 1,
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      studio.call("PLAN_GOAL_DUPLICATES", {
+        dismissed: dismissed.slice(-MAX_DISMISSED_PLAN_GOAL_PAIRS),
+      }),
+  });
+  const byId = new Map(goals.map((goal) => [goal.id, goal]));
+  const pairs: PlanGoalPair[] = (data?.pairs ?? []).flatMap((pair) => {
+    const a = byId.get(pair.a.id);
+    const b = byId.get(pair.b.id);
+    if (!a || !b || dismissed.includes(pair.key)) return [];
+    return [{ key: pair.key, ...planGoalMergeOrder(a, b) }];
+  });
+  const dismiss = (key: string) =>
+    setDismissed((prev) =>
+      [...prev.filter((other) => other !== key), key].slice(
+        -MAX_DISMISSED_PLAN_GOAL_PAIRS,
+      ),
+    );
+  return { pairs, dismiss };
 }

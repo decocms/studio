@@ -65,6 +65,8 @@ const ALL_TOOL_NAMES = [
   "PLAN_GOAL_LIST",
   "PLAN_GOAL_CREATE",
   "PLAN_GOAL_SIMILAR",
+  "PLAN_GOAL_DUPLICATES",
+  "PLAN_GOAL_MERGE",
   "PLAN_GOAL_UPDATE",
   "PLAN_GOAL_ARCHIVE",
   "PLAN_ACTIVE_GOAL_SET",
@@ -470,6 +472,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "PLAN_GOAL_SIMILAR",
     description: "Find Plan goals that already say the same thing",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_DUPLICATES",
+    description: "Propose Plan goals to merge",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_MERGE",
+    description: "Merge two Plan goals into one",
     category: "Organizations",
   },
   {
@@ -2006,6 +2018,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "PLAN_GOAL_CREATE",
       // Any member checks for a goal like theirs; asks the fast tier, saves nothing.
       "PLAN_GOAL_SIMILAR",
+      // Merging is checked against either goal's creator inside the handler.
+      "PLAN_GOAL_DUPLICATES",
+      "PLAN_GOAL_MERGE",
       "PLAN_GOAL_UPDATE",
       "PLAN_GOAL_ARCHIVE",
       "PLAN_ACTIVE_GOAL_SET",

@@ -428,6 +428,32 @@ export interface StudioToolIO {
       }[];
     };
   };
+  PLAN_GOAL_DUPLICATES: {
+    input: { dismissed?: string[] | undefined };
+    output: {
+      pairs: {
+        key: string;
+        a: {
+          id: string;
+          statement: string;
+          created_by: string;
+          created_at: string;
+          users: number;
+        };
+        b: {
+          id: string;
+          statement: string;
+          created_by: string;
+          created_at: string;
+          users: number;
+        };
+      }[];
+    };
+  };
+  PLAN_GOAL_MERGE: {
+    input: { source_id: string; target_id: string; statement: string };
+    output: { id: string };
+  };
   PLAN_GOAL_UPDATE: {
     input: { id: string; statement: string };
     output: { id: string };

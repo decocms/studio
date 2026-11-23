@@ -191,6 +191,17 @@ export const plan = {
   "plan.goals.similar.peopleMany": "{n} people",
   "plan.goals.similar.use": "Use that one",
   "plan.goals.similar.createAnyway": "Create mine anyway",
+  "plan.goals.duplicates.notice": "{n} goals look like the same thing.",
+  "plan.goals.duplicates.review": "Review",
+  "plan.goals.duplicates.title": "Are these the same goal?",
+  "plan.goals.duplicates.description":
+    "If they are, merge them into one. Everyone working toward either goal, and the business cases started toward them, move to the merged goal.",
+  "plan.goals.duplicates.statement": "Merged goal",
+  "plan.goals.duplicates.remaining": "{n} pairs to review",
+  "plan.goals.duplicates.notSame": "Not the same",
+  "plan.goals.duplicates.merge": "Merge",
+  "plan.goals.duplicates.merged": "Goals merged.",
+  "plan.goals.duplicates.mergeError": "Could not merge the goals. Try again.",
   "plan.cases.towardGoal": "Toward this goal",
   "plan.cases.towardGoalDescription":
     "Business cases anyone in your organization started toward this goal.",
