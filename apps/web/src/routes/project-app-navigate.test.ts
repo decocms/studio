@@ -172,9 +172,10 @@ function argsBlock(args: string) {
 
 describe("resolveAppArgs", () => {
   test("returns the args of a navigate message carrying a JSON object", () => {
-    expect(resolveAppArgs(argsBlock('{"view":"list","q":"x"}'))).toBe(
-      '{"view":"list","q":"x"}',
-    );
+    expect(resolveAppArgs(argsBlock('{"view":"list","q":"x"}'))).toEqual({
+      view: "list",
+      q: "x",
+    });
   });
 
   test("ignores args that are not a JSON object", () => {
@@ -207,5 +208,27 @@ describe("parseAppArgs", () => {
     expect(
       parseAppArgs(JSON.stringify({ q: "x".repeat(2000) })),
     ).toBeUndefined();
+  });
+});
+
+describe("parseAppArgs", () => {
+  test("accepts an object from the router's search parsing", () => {
+    expect(parseAppArgs({ view: "list" })).toEqual({ view: "list" });
+  });
+
+  test("accepts a JSON string from links written before args was an object", () => {
+    expect(parseAppArgs('{"view":"list"}')).toEqual({ view: "list" });
+  });
+
+  test("rejects missing, non-object and invalid values", () => {
+    expect(parseAppArgs(undefined)).toBeUndefined();
+    expect(parseAppArgs("")).toBeUndefined();
+    expect(parseAppArgs("{oops")).toBeUndefined();
+    expect(parseAppArgs([1, 2])).toBeUndefined();
+    expect(parseAppArgs(42)).toBeUndefined();
+  });
+
+  test("rejects oversized objects", () => {
+    expect(parseAppArgs({ q: "x".repeat(2000) })).toBeUndefined();
   });
 });

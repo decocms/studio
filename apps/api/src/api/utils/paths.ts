@@ -29,6 +29,8 @@ const PATH_PREFIXES = {
   WELL_KNOWN: "/.well-known",
   ORG: "/org/",
   REPORT: "/report/",
+  FILE_LINK: "/f/",
+  SHORT_LINK: "/s/",
 } as const;
 
 /** Static file extensions that should be served as-is (internal use only) */
@@ -72,6 +74,8 @@ export function isServerPath(path: string): boolean {
     path.startsWith(PATH_PREFIXES.OAUTH_PROXY) ||
     path.startsWith(PATH_PREFIXES.ORG) ||
     path.startsWith(PATH_PREFIXES.REPORT) ||
+    path.startsWith(PATH_PREFIXES.FILE_LINK) ||
+    path.startsWith(PATH_PREFIXES.SHORT_LINK) ||
     isSystemPath(path)
   );
 }

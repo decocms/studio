@@ -38,6 +38,7 @@ import {
   blogSearchShape,
 } from "@/components/sandbox/content/blog/blog-search-params";
 import { isProjectOverviewVisit } from "@/layouts/main-panel-tabs/tab-id";
+import { parseAppArgs } from "@/routes/project-app-navigate";
 
 const rootRoute = createRootRoute({
   /** No `<Providers>` here: the entry (`index.web.tsx`) wraps
@@ -1005,7 +1006,11 @@ const agentCdnRedirectRoute = createRoute({
   },
 });
 
-const appArgsSearchSchema = z.object({ args: z.string().optional() });
+// An object, not a JSON string: the default search serializer would encode a
+// JSON string a second time.
+const appArgsSearchSchema = z.object({
+  args: z.unknown().transform(parseAppArgs).optional(),
+});
 
 const agentAppRoute = createRoute({
   pendingComponent: ChatLayoutPending,

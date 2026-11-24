@@ -17,7 +17,7 @@ function formatExpiry(iso: string) {
   });
 }
 
-function CopyRow({ url }: { url: string }) {
+export function CopyRow({ url }: { url: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
 

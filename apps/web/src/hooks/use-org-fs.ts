@@ -493,6 +493,13 @@ export function useOrgFsPublicSets() {
   });
 }
 
+/** Absolute share link for a file: `/f/:org/:volume/:path`, which redirects to
+ *  the read proxy. Readable because the path keeps its `/` separators. */
+export function shareFileUrl(orgSlug: string, volume: string, path: string) {
+  const segments = [orgSlug, volume, ...path.split("/").filter(Boolean)];
+  return `${window.location.origin}/f/${segments.map(encodeURIComponent).join("/")}`;
+}
+
 /** Same-origin byte URL for a file — usable as a download href. */
 export function useOrgFsDownloadUrl(volume: string) {
   const { org } = useProjectContext();

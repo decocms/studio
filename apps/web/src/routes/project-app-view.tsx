@@ -23,7 +23,7 @@ import {
 import { useChatStream, useChatPrefs } from "@/components/chat/context.tsx";
 import { usePanelActions } from "@/layouts/shell-layout";
 import {
-  parseAppArgs,
+  type AppArgs,
   resolveAppArgs,
   resolveAppNavigateTarget,
 } from "@/routes/project-app-navigate.ts";
@@ -52,7 +52,7 @@ function AppRenderer({
   connectionId: string;
   orgId?: string;
   args?: Record<string, unknown>;
-  searchArgs?: string;
+  searchArgs?: AppArgs;
 }) {
   const navigate = useNavigate();
   const { sendMessage } = useChatStream();
@@ -78,7 +78,7 @@ function AppRenderer({
   const [initialSearchArgs] = useState(searchArgs);
   const toolInput = {
     ...args,
-    ...(tool.annotations?.readOnlyHint && parseAppArgs(initialSearchArgs)),
+    ...(tool.annotations?.readOnlyHint && initialSearchArgs),
   };
   const { data: toolResult } = useMCPToolCall({
     client,
@@ -170,7 +170,7 @@ export function AppViewContent({
   connectionId: string;
   toolName: string;
   args?: Record<string, unknown>;
-  searchArgs?: string;
+  searchArgs?: AppArgs;
 }) {
   const { org } = useProjectContext();
   const client = useMCPClient({

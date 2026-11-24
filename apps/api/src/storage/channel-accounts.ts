@@ -42,7 +42,7 @@ export const CHANNEL_CLAIM_TTL_SECONDS = 15 * 60;
 const likePrefix = (prefix: string) =>
   `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
-/** Channel accounts and the claims that create them (migration 270). */
+/** Channel accounts and the claims that create them (migration 271). */
 export class ChannelAccountStorage {
   constructor(private readonly db: Kysely<Database>) {}
 

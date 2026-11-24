@@ -281,6 +281,19 @@ const sharedProxy = {
     secure: false,
     ws: true,
   },
+  // Readable file share links (`/f/:org/:volume/:path`). Anchored so org
+  // slugs starting with "f" stay with the SPA.
+  "^/f/": {
+    target: appServerTarget,
+    changeOrigin: false,
+    secure: false,
+  },
+  // Short share links (`/s/<label>-<id>`).
+  "^/s/": {
+    target: appServerTarget,
+    changeOrigin: false,
+    secure: false,
+  },
   // The report's Markdown mirror; the report page itself stays with the SPA.
   "^/report/[^/]+\\.md$": {
     target: appServerTarget,

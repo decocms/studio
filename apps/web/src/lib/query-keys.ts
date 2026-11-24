@@ -724,6 +724,9 @@ export const KEYS = {
     claimId: string,
     userId: string | null,
   ) => ["channel-account-claim", orgSlug, claimId, userId] as const,
+  // Short link for a page (scoped by org and the page's path)
+  shortLink: (orgId: string, targetPath: string) =>
+    ["short-link", orgId, targetPath] as const,
 
   // Public preview of a shareable invite link (scoped by token and viewer)
   inviteLinkPreview: (token: string, userId: string | null) =>

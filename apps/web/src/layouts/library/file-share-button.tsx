@@ -6,8 +6,8 @@
  * (anyone with the link AND the password — the `/read` proxy serves a form
  * first). On a folder the mode governs the whole subtree (the read proxy
  * resolves the most-specific published ancestor). Changing mode never moves
- * anything — the same `/api/:org/fs/:volume/read?path=…` link just changes who
- * it works for.
+ * anything — the same `/f/:org/:volume/:path` link just changes who it works
+ * for.
  *
  * Two surfaces share one body (`ShareControls`): `FileShareButton` (the
  * preview-toolbar popover) and `ShareDialog` (opened from Library cards).
@@ -49,9 +49,11 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import {
   type ShareMode,
+  shareFileUrl,
   useOrgFsSetShareMode,
   useOrgFsStat,
 } from "@/hooks/use-org-fs";
+import { useProjectContext } from "@/sdk";
 
 export interface ShareTarget {
   volume: string;
@@ -62,8 +64,6 @@ export interface ShareTarget {
   shareMode: ShareMode;
   /** Last-known effective-public (own or inherited) — seeds the inherited note. */
   effectivePublic: boolean;
-  /** Absolute proxy link to copy. Files only; folders have no single URL. */
-  url?: string;
 }
 
 const MODES = [
@@ -96,9 +96,9 @@ function ShareControls({
   kind,
   shareMode,
   effectivePublic,
-  url,
 }: ShareTarget) {
   const t = useT();
+  const { org } = useProjectContext();
   const setShareMode = useOrgFsSetShareMode(volume);
   // Read live state so the control reflects the optimistic change immediately
   // (the mutation writes this exact stat key), seeding from the snapshot.
@@ -107,6 +107,8 @@ function ShareControls({
   const effective = entry?.effectivePublic ?? effectivePublic;
   const inherited = effective && ownMode === "private";
   const isDir = kind === "dir";
+  // Folders have no single URL to copy.
+  const url = isDir ? undefined : shareFileUrl(org.slug, volume, path);
   const subject = isDir ? "folder" : "file";
 
   const [showPassword, setShowPassword] = useState(false);
@@ -287,14 +289,12 @@ export function FileShareButton({
   path,
   shareMode,
   effectivePublic,
-  url,
   placement = "bar",
 }: {
   volume: string;
   path: string;
   shareMode: ShareMode;
   effectivePublic: boolean;
-  url: string;
   placement?: ToolbarPlacement;
 }) {
   const t = useT();
@@ -324,7 +324,6 @@ export function FileShareButton({
           kind="file"
           shareMode={shareMode}
           effectivePublic={effectivePublic}
-          url={url}
         />
       </PopoverContent>
     </Popover>
