@@ -6,6 +6,10 @@ import {
 } from "@decocms/shared/thread/session-runtime";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import {
+  type PrDraftPreview,
+  usePrDraftPreview,
+} from "@/hooks/use-pr-draft-preview";
 import { useVirtualMCP } from "@/sdk";
 
 export interface SessionRuntime {
@@ -22,15 +26,21 @@ export interface SessionRuntime {
   /** What a NEW chat on this project would be stamped with. A different
    *  question — never use it to decide what the current session is. */
   projectDefault: ThreadRuntime;
-  /** The URL a CMS session renders against, or `null`. Ungated: a project can
-   *  have one without the Fast Preview switch being on. */
+  /** The URL a CMS session renders against (a pull request draft's deploy
+   *  preview once known), or `null`. Ungated by the Fast Preview switch. */
   previewServerUrl: string | null;
+  /** Where a publish lands: the project's preview server, whatever the draft
+   *  renders on. */
+  productionUrl: string | null;
+  /** Set on a pull request draft (`Release.preview`). Until its preview is
+   *  `ready` it renders on `productionUrl`. */
+  pullRequestDraft: PrDraftPreview | null;
 }
 
 /**
  * The one hook every surface asks "what runtime am I in?".
  *
- * Three fields, one call, so a surface cannot read the project's answer when
+ * One call, so a surface cannot read the project's answer when
  * it meant the session's. Outside a thread (`useOptionalChatTask` returns
  * null) `runtime` degrades to the project default, which is the only honest
  * answer when there is no session.
@@ -46,12 +56,21 @@ export function useSessionRuntime(
   // A `/watch` synthetic carries no metadata, so its missing stamp is "not
   // loaded", not "unstamped" — the same distinction `Task.partial` exists for.
   const threadLoaded = !!thread && !thread.partial;
+  const runtime = readThreadRuntime(thread?.metadata, metadata);
+  const productionUrl = resolvePreviewServerUrl(metadata);
+  const prDraft = usePrDraftPreview({
+    project,
+    branch: task?.currentBranch ?? null,
+    runtime,
+  });
   return {
-    runtime: readThreadRuntime(thread?.metadata, metadata),
+    runtime,
     // A stamp is self-sufficient. Without one, the answer is the project
     // default — which is only authoritative once BOTH rows have landed.
     resolved: !!stamp || (threadLoaded && !!project),
     projectDefault: defaultThreadRuntime(metadata),
-    previewServerUrl: resolvePreviewServerUrl(metadata),
+    previewServerUrl: prDraft?.url ?? productionUrl,
+    productionUrl,
+    pullRequestDraft: prDraft,
   };
 }

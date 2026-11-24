@@ -22,6 +22,7 @@ interface FormShape {
     previewServerUrl: string;
     fastPreview: boolean;
     fastPreviewInPlace: boolean;
+    pullRequestDrafts: boolean;
   };
 }
 
@@ -40,6 +41,7 @@ function Harness({
         previewServerUrl,
         fastPreview,
         fastPreviewInPlace: false,
+        pullRequestDrafts: false,
       },
     },
   });
@@ -62,6 +64,9 @@ describe("PreviewSettingsRows", () => {
     expect(queryByText("Fast Preview")).toBeInTheDocument();
     expect(getByRole("switch", { name: "Fast Preview" })).toBeChecked();
     expect(queryByText("Instant preview (experimental)")).toBeInTheDocument();
+    expect(
+      getByRole("switch", { name: "Pull request drafts" }),
+    ).not.toBeChecked();
   });
 
   it("v7 with Fast Preview off: the switch, no in-place render", () => {
@@ -73,6 +78,7 @@ describe("PreviewSettingsRows", () => {
     expect(
       queryByText("Instant preview (experimental)"),
     ).not.toBeInTheDocument();
+    expect(queryByText("Pull request drafts")).not.toBeInTheDocument();
   });
 
   it("Blocks v8: no Fast Preview switch; in-place render is always offered", () => {

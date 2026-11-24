@@ -12,13 +12,11 @@ import { describe, expect, it } from "bun:test";
 import { GitProviderError } from "@/git-providers";
 import {
   asHeadSha,
-  cardLifecycle,
-  isRateLimitError,
   isTrustedPreviewHost,
-  previewMatchesHead,
   previewUrlFromChecks,
   previewUrlFromComments,
-} from "./prs-get";
+} from "@/git-providers/preview-url";
+import { cardLifecycle, isRateLimitError, previewMatchesHead } from "./prs-get";
 
 /** A completed, successful CI run — the shape both providers map into. */
 const run = (

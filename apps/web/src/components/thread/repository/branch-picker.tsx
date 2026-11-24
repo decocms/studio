@@ -72,12 +72,14 @@ import { useBlogView } from "@/hooks/use-blog-view";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { pickerCurrent } from "./branch-picker-current.ts";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { LocalUrlForm } from "./local-url-form.tsx";
 import { V8LocalhostRow } from "./localhost-row.tsx";
 import { matchesBranchSearch, useBranches } from "./use-branches";
-import { useOpenPrs } from "./use-pr-data.ts";
+import { pullRequestHasPreview, useOpenPrs } from "./use-pr-data.ts";
 import {
   nextDraftName,
   nextReleaseColor,
@@ -133,6 +135,10 @@ interface Props {
    *  production. When provided, the Advanced adopt uses this (a
    *  `createTask({ runtime: "sandbox" })`) instead of `onChange` + a release. */
   onAdoptBranch?: (branch: string) => void;
+  /** Set where an open pull request opens as a pull request draft: a CMS
+   *  session on its branch, rendered on its deploy preview, so nothing boots.
+   *  The PRs tab names the draft, then hands the branch here. */
+  onOpenPullRequestDraft?: (branch: string) => void;
   disabled?: boolean;
   /** When true, picking/creating opens a *new* chat on the branch rather than
    *  switching in place (the current thread's branch is fixed). */
@@ -167,6 +173,7 @@ export function BranchPicker({
   onChange,
   onCreateBranch,
   onAdoptBranch,
+  onOpenPullRequestDraft,
   disabled = false,
   spawnsNewChat = false,
   placement = "chat",
@@ -190,8 +197,13 @@ export function BranchPicker({
   const [pendingDiscard, setPendingDiscard] = useState<StoreDraft | null>(null);
   // Scroll the selected row into view when the popover opens.
   const selectedRowRef = useRef<HTMLDivElement>(null);
-  const { releases, createRelease, renameRelease, deleteRelease } =
-    useReleases(virtualMcpId);
+  const {
+    releases,
+    createRelease,
+    createPullRequestRelease,
+    renameRelease,
+    deleteRelease,
+  } = useReleases(virtualMcpId);
   const startDraft = useStartDraft({
     virtualMcpId,
     userLabel,
@@ -301,7 +313,16 @@ export function BranchPicker({
     const draft = storeDrafts.some((d) => d.name === branch)
       ? { runtime: "cms" as const }
       : releases.find((r) => r.branch === branch);
-    onChange(branch, draft && { runtime: draft.runtime });
+    if (
+      onOpenPullRequestDraft &&
+      draft &&
+      "preview" in draft &&
+      draft.preview === "pull-request"
+    ) {
+      onOpenPullRequestDraft(branch);
+    } else {
+      onChange(branch, draft && { runtime: draft.runtime });
+    }
     setOpen(false);
   };
 
@@ -343,6 +364,46 @@ export function BranchPicker({
       }).catch(reportReleaseError);
     }
     onChange(branch);
+    setAdvanced(false);
+    setOpen(false);
+  };
+
+  // PRs tab: a pull request draft when it has a preview, else its code.
+  const queryClient = useQueryClient();
+  const [checkingPr, setCheckingPr] = useState<string | null>(null);
+  const adoptPullRequest = async (branch: string, name: string) => {
+    if (!onOpenPullRequestDraft) {
+      adoptBranch(branch, name);
+      return;
+    }
+    if (checkingPr) return;
+    setCheckingPr(branch);
+    const hasPreview = await pullRequestHasPreview(queryClient, {
+      orgId,
+      orgSlug,
+      target,
+      owner,
+      repo,
+      branch,
+    });
+    setCheckingPr(null);
+    if (!hasPreview) {
+      adoptBranch(branch, name);
+      return;
+    }
+    clearLocal();
+    if (!releases.some((r) => r.branch === branch) && atReleaseCap) {
+      toast.error(capReachedMessage);
+      return;
+    }
+    createPullRequestRelease({
+      branch,
+      name: name.trim() || branch,
+      color: nextReleaseColor(releases.length),
+      createdBy: userId,
+      createdAt: new Date().toISOString(),
+    }).catch(reportReleaseError);
+    onOpenPullRequestDraft(branch);
     setAdvanced(false);
     setOpen(false);
   };
@@ -617,6 +678,10 @@ export function BranchPicker({
             onSaveLocal={activateLocal}
             onBack={() => setAdvanced(false)}
             onAdopt={adoptBranch}
+            onAdoptPullRequest={(branch, name) =>
+              void adoptPullRequest(branch, name)
+            }
+            checkingPr={checkingPr}
             draftKind={draftKind}
           />
         ) : (
@@ -1062,6 +1127,8 @@ function AdvancedPicker({
   onSaveLocal,
   onBack,
   onAdopt,
+  onAdoptPullRequest,
+  checkingPr,
   draftKind,
 }: {
   /** A Blocks v8 site (its "Blocks v8 site" switch): no Local tab, Localhost is in
@@ -1083,6 +1150,9 @@ function AdvancedPicker({
   onSaveLocal: (url: string | null) => void;
   onBack: () => void;
   onAdopt: (branch: string, name: string) => void;
+  onAdoptPullRequest: (branch: string, name: string) => void;
+  /** The pull request whose preview is being looked up before it opens. */
+  checkingPr: string | null;
   /** The site's views don't offer Blog drafts: adopting one there would be
    *  sent straight back to the site's own draft. */
   draftKind: DraftKind | null;
@@ -1256,11 +1326,19 @@ function AdvancedPicker({
                         key={pr.number}
                         value={`#${pr.number} ${pr.title} ${pr.head}`}
                         className="cursor-pointer"
+                        disabled={checkingPr !== null}
                         onSelect={() =>
-                          onAdopt(pr.head, decodeHtmlEntities(pr.title))
+                          onAdoptPullRequest(
+                            pr.head,
+                            decodeHtmlEntities(pr.title),
+                          )
                         }
                       >
-                        <GitPullRequest className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        {checkingPr === pr.head ? (
+                          <Spinner className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <GitPullRequest className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        )}
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="truncate">
                             {decodeHtmlEntities(pr.title)}

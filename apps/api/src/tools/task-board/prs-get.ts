@@ -12,6 +12,11 @@ import {
   type CheckRun,
   type ChecksSummary,
 } from "@/git-providers";
+import {
+  asHeadSha,
+  changeRequestPreviewUrl,
+  isTrustedPreviewHost,
+} from "@/git-providers/preview-url";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import {
   isCardNotReady,
@@ -166,136 +171,6 @@ function clientFor(
   );
 }
 
-/** Whether `url`'s HOST is a known preview-deploy host — a strict hostname
- *  check, NOT a substring match. The preview is lifted from comments, which
- *  external contributors can write, and the result is shown as a trusted
- *  "Open preview" button AND handed to the autonomous QA reviewer to
- *  navigate. So a decoy like `https://evil.example.com/x?y=.decocdn.com` must
- *  be rejected. Exported for the unit test. */
-export function isTrustedPreviewHost(url: string): boolean {
-  let hostname: string;
-  try {
-    hostname = new URL(url).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  return (
-    hostname === "deco.site" ||
-    hostname.endsWith(".decocdn.com") ||
-    hostname.endsWith(".deco-cx.workers.dev") ||
-    hostname.endsWith(".deco.site") ||
-    hostname.endsWith(".vercel.app") ||
-    hostname.endsWith(".vtex.app")
-  );
-}
-
-/** deco's Cloudflare account subdomain — the middle label of every
- *  `*.workers.dev` preview host these sites deploy to.
- *  ponytail: hardcoded; make it configurable if sites land in another account. */
-const WORKERS_DEV_SUBDOMAIN = "deco-cx";
-
-/**
- * The preview URL a CI run points at. Two shapes, both real:
- *
- * - Cloudflare's "Workers Builds: <worker>" run reports the deployed version
- *   in its own summary, which is exact and present even when its comment omits
- *   the preview column;
- * - every other provider just links the deploy from the run (a check run's
- *   details URL, a commit status's target URL).
- *
- * Exported for the pure-logic unit test.
- */
-export function previewUrlFromChecks(runs: CheckRun[]): string | null {
-  for (const run of runs) {
-    const worker = /^Workers Builds:\s*([a-z0-9][a-z0-9-]*)\s*$/i.exec(
-      run.name,
-    )?.[1];
-    const version = run.summary
-      ? /Version ID:\s*([0-9a-f]{8})/i.exec(run.summary)?.[1]
-      : null;
-    if (!worker || !version) continue;
-    const url = `https://${version}-${worker}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`;
-    if (isTrustedPreviewHost(url)) return url;
-  }
-  // Then the generic one: a trusted host anywhere in the run's own link or its
-  // report. Reported alongside the stale-card bug — the deploy bot sometimes
-  // posts no comment at all, and only the check knows the url. Successful runs
-  // win, so a retried deploy does not hand back the broken attempt's.
-  const isSuccess = (run: CheckRun) => run.conclusion === "success";
-  for (const run of [
-    ...runs.filter(isSuccess),
-    ...runs.filter((r) => !isSuccess(r)),
-  ]) {
-    const url =
-      (run.url && isTrustedPreviewHost(run.url) ? run.url : null) ??
-      firstTrustedUrl(run.summary);
-    if (url) return url;
-  }
-  return null;
-}
-
-/** The first url in `text` on a trusted preview host. The character class stops
- *  at `)`/`]` so a markdown link's url does not absorb its syntax. */
-function firstTrustedUrl(text: unknown): string | null {
-  if (typeof text !== "string") return null;
-  return (
-    (text.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find(
-      isTrustedPreviewHost,
-    ) ?? null
-  );
-}
-
-/**
- * Pull the preview URL out of the change request's comments — where the deploy
- * bot actually posts it. Known shapes: Cloudflare Workers'
- * `cloudflare-workers-and-pages[bot]` (a table with a "Commit Preview URL" AND
- * a "Branch Preview URL" — prefer the branch one, stable across the change
- * request's commits), deco.cx's `decobot` (a single "Visit Preview" markdown
- * link), and Vercel's `[Preview](url)` markdown link.
- *
- * Sorted newest-first by `updatedAt` (falling back to `createdAt`, then array
- * order), so a stale early comment can't win over a later re-deploy. By
- * `updatedAt` rather than `createdAt` because Vercel and Cloudflare edit ONE
- * sticky comment in place on each push: `createdAt` stays frozen at its first
- * post, so ranking by it could let an unrelated later human comment (that
- * happens to mention a matching host) outrank the bot's freshly edited one.
- * Exported for the pure-logic unit test.
- */
-export function previewUrlFromComments(
-  comments: { body: string; createdAt?: string; updatedAt?: string }[],
-): string | null {
-  const recency = (c: { createdAt?: string; updatedAt?: string }): number =>
-    Date.parse(c.updatedAt ?? "") || Date.parse(c.createdAt ?? "");
-  const sorted = comments
-    .map((c, index) => ({ c, index }))
-    .sort((a, b) => {
-      const aTime = recency(a.c);
-      const bTime = recency(b.c);
-      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return a.index - b.index;
-      return bTime - aTime;
-    })
-    .map(({ c }) => c);
-  for (const comment of sorted) {
-    const body = comment.body;
-    if (!body) continue;
-    // Cloudflare's comment carries both a per-commit and a per-branch preview —
-    // prefer the branch URL, which stays valid as the branch gets new commits.
-    const branch = body.match(/href=['"]([^'"]+)['"][^>]*>\s*Branch Preview/i);
-    if (branch?.[1] && isTrustedPreviewHost(branch[1])) return branch[1];
-    const url = firstTrustedUrl(body);
-    if (url) return url;
-  }
-  return null;
-}
-
-/** A git commit sha, validated 7–40 hex — also what keeps a malformed value
- *  from reaching the deployment lookup built from it. */
-export function asHeadSha(sha: unknown): string | null {
-  return typeof sha === "string" && /^[0-9a-fA-F]{7,40}$/.test(sha)
-    ? sha
-    : null;
-}
-
 /** One linked change request, as the card renders it. */
 type PrLiveState = {
   title: string | null;
@@ -429,9 +304,7 @@ async function fetchPrLiveState(
     };
   }
 
-  let previewUrl =
-    previewUrlFromChecks(detail.checkRuns) ??
-    previewUrlFromComments(detail.comments);
+  let previewUrl = changeRequestPreviewUrl(detail);
   if (!previewUrl) {
     /**
      * Last resort: a deployment's own environment URL. Some hosts (VTEX
@@ -445,7 +318,8 @@ async function fetchPrLiveState(
           namespace,
           `deployed:${headSha}`,
           `${prLabel(pr)} (deployment preview)`,
-          () => client.readDeployedUrl(headSha),
+          () =>
+            client.readDeployment(headSha).then((deployment) => deployment.url),
         )
       : null;
     previewUrl = deployed && isTrustedPreviewHost(deployed) ? deployed : null;

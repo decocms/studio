@@ -36,6 +36,7 @@ function changeRequest(state: "open" | "closed" | "merged") {
       comments: [],
       unresolvedConversations: 0,
       reviewBlocked: false,
+      preview: { state: "none" as const, url: null },
     },
   };
 }

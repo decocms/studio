@@ -2410,7 +2410,7 @@ export interface StudioToolIO {
     };
     output: {
       report: string;
-      outcome: "ok" | "failed" | "timeout" | "no-site" | "no-tools";
+      outcome: "ok" | "timeout" | "failed" | "no-site" | "no-tools";
       toolNames: string[];
       evidence: string;
       evidenceUri: string | null;
@@ -2424,8 +2424,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2466,8 +2466,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2509,8 +2509,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2597,8 +2597,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2685,8 +2685,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2745,8 +2745,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -2786,8 +2786,8 @@ export interface StudioToolIO {
             report: string;
             outcome?:
               | "ok"
-              | "failed"
               | "timeout"
+              | "failed"
               | "no-site"
               | "no-tools"
               | undefined;
@@ -4089,10 +4089,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -4400,10 +4402,12 @@ export interface StudioToolIO {
                     createdBy?: string | undefined;
                     createdAt?: string | undefined;
                     runtime?: "cms" | "sandbox" | undefined;
+                    preview?: "pull-request" | undefined;
                   }[]
                 | null
                 | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
+              pullRequestDrafts?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -4623,10 +4627,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -4890,10 +4896,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -5148,10 +5156,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -5413,10 +5423,12 @@ export interface StudioToolIO {
                     createdBy?: string | undefined;
                     createdAt?: string | undefined;
                     runtime?: "cms" | "sandbox" | undefined;
+                    preview?: "pull-request" | undefined;
                   }[]
                 | null
                 | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
+              pullRequestDrafts?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -5644,10 +5656,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -5900,10 +5914,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -7603,10 +7619,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -9523,6 +9541,10 @@ export interface StudioToolIO {
         }[];
         unresolvedConversations: number;
         reviewBlocked: boolean;
+        preview: {
+          state: "none" | "failed" | "ready" | "building";
+          url: string | null;
+        };
       } | null;
     };
   };
@@ -9578,6 +9600,18 @@ export interface StudioToolIO {
         checks: "pending" | "passing" | "failing" | null;
         changedFiles: number | null;
       }[];
+    };
+  };
+  CHANGE_REQUEST_DEPLOYMENT: {
+    input: {
+      sha: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      state: "none" | "failed" | "ready" | "building";
+      url: string | null;
     };
   };
   CHANGE_REQUEST_CHECK_LOG: {

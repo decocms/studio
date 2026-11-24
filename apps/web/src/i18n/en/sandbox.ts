@@ -1099,6 +1099,17 @@ export const sandbox = {
   "sandbox.preview.valueForParam": "Value for {label}",
   "sandbox.preview.blocksEditor": "Blocks editor",
   "sandbox.preview.visualEditor": "Visual editor",
+  "sandbox.preview.pullRequestPreviewBuilding":
+    "Building the pull request's preview",
+  "sandbox.preview.pullRequestPreviewBuildingHint":
+    "Meanwhile your changes show on the published code. The pull request's code shows once its preview is ready.",
+  "sandbox.preview.pullRequestPreviewFailed":
+    "The pull request's preview failed to deploy",
+  "sandbox.preview.pullRequestPreviewNone": "This pull request has no preview",
+  "sandbox.preview.pullRequestPreviewMissingHint":
+    "Your changes show on the published code. To see the pull request's code, open it in code mode.",
+  "sandbox.preview.openInCodeMode": "Open in code mode",
+  "sandbox.preview.viewPullRequest": "View pull request",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",
   "sandbox.productBlocks.addProductsButton": "Add products",
   "sandbox.productBlocks.addProductsDescription":
@@ -1208,6 +1219,9 @@ export const sandbox = {
     "Add your site's address above to preview drafts. Until then, new chats start a coding session.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Instant preview (experimental)",
+  "sandbox.cmsSettings.pullRequestDrafts.label": "Pull request drafts",
+  "sandbox.cmsSettings.pullRequestDrafts.description":
+    "Opening a pull request from the version switcher edits its content on the pull request's own preview, without starting a sandbox.",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
     "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",

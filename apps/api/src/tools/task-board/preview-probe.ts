@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import { isTrustedPreviewHost } from "./prs-get";
+import { isTrustedPreviewHost } from "@/git-providers/preview-url";
 
 /**
  * Is a PR's deploy preview actually up?

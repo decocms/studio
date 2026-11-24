@@ -11,7 +11,7 @@
  * neutral Studio tools.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 
 import { callStudioTool, rateLimitWaitOf } from "@/lib/studio-tools";
 import {
@@ -248,6 +248,103 @@ export function useChecks(args: RepoArgs & { branch: string | null }) {
         ? r.changeRequest.checkRuns.map(toCheckRun)
         : [],
   });
+}
+
+/** Where a change request's deploy preview stands (see CHANGE_REQUEST_STATE). */
+export type PreviewState = "ready" | "building" | "failed" | "none";
+
+export interface PrPreview {
+  state: PreviewState;
+  /** The preview, once `ready`. */
+  url: string | null;
+  headSha: string;
+  /** The change request on its provider. */
+  htmlUrl: string;
+}
+
+/**
+ * The open change request's deploy preview as its CI runs and comments tell
+ * it, off the same polled read as the panel. Null without an open one.
+ */
+export function usePrPreview(args: RepoArgs & { branch: string | null }) {
+  return useQuery({
+    ...prStateQueryOptions(args),
+    select: (r): PrPreview | null =>
+      r.changeRequest?.state === "open"
+        ? {
+            ...r.changeRequest.preview,
+            headSha: r.changeRequest.headSha,
+            htmlUrl: r.changeRequest.url,
+          }
+        : null,
+  });
+}
+
+function deploymentQueryOptions(args: RepoArgs & { sha: string | null }) {
+  const { orgSlug, target, owner, repo, sha } = args;
+  return {
+    queryKey: KEYS.githubDeployment(
+      orgSlug,
+      repoTargetKey(target),
+      owner,
+      repo,
+      sha,
+    ),
+    queryFn: () =>
+      callStudioTool(orgSlug, "CHANGE_REQUEST_DEPLOYMENT", {
+        ...target,
+        sha: sha as string,
+      }),
+    staleTime: STALE,
+  };
+}
+
+/**
+ * The deployment of `sha`, for a host that reports its preview only there
+ * (VTEX FastStore WebOps). Read again until it is ready; a new head is a new
+ * key.
+ */
+export function useDeploymentPreview(
+  args: RepoArgs & { sha: string | null; enabled: boolean },
+) {
+  const { target, owner, repo, sha } = args;
+  return useQuery({
+    ...deploymentQueryOptions(args),
+    enabled:
+      args.enabled && !!sha && hasRepoCredential(target) && !!owner && !!repo,
+    ...budgetAwareRead,
+    refetchInterval: (query: {
+      state: ReadState & { data: { state: PreviewState } | undefined };
+    }) => {
+      const cooldown = rateLimitCooldownMs(query.state, Date.now());
+      if (cooldown > 0) return Math.max(cooldown, POLL);
+      return query.state.data?.state === "ready" ? false : POLL;
+    },
+    refetchIntervalInBackground: false,
+  });
+}
+
+/**
+ * Whether `branch`'s open change request has a deploy preview, ready or on its
+ * way: its CI runs and comments first, then the head's deployments. A failed
+ * read answers true — the pull request draft then shows what it finds.
+ */
+export async function pullRequestHasPreview(
+  queryClient: QueryClient,
+  args: RepoArgs & { branch: string },
+): Promise<boolean> {
+  try {
+    const { changeRequest } = await queryClient.fetchQuery(
+      prStateQueryOptions(args),
+    );
+    if (!changeRequest || changeRequest.preview.state !== "none") return true;
+    const deployment = await queryClient.fetchQuery(
+      deploymentQueryOptions({ ...args, sha: changeRequest.headSha }),
+    );
+    return deployment.state !== "none";
+  } catch {
+    return true;
+  }
 }
 
 /** The last publish changes only when someone publishes — cheap to keep. */

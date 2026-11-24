@@ -296,6 +296,7 @@ const ALL_TOOL_NAMES = [
   "CHANGE_REQUEST_STATE",
   "CHANGE_REQUEST_LAST_MERGED",
   "CHANGE_REQUEST_LIST_OPEN",
+  "CHANGE_REQUEST_DEPLOYMENT",
   "CHANGE_REQUEST_CHECK_LOG",
   "CHANGE_REQUEST_OPEN",
   "CHANGE_REQUEST_MERGE",
@@ -1445,6 +1446,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Git",
   },
   {
+    name: "CHANGE_REQUEST_DEPLOYMENT",
+    description: "Read a commit's deployment and its preview URL",
+    category: "Git",
+  },
+  {
     name: "CHANGE_REQUEST_CHECK_LOG",
     description: "Read one CI run's report for a change request",
     category: "Git",
@@ -1932,6 +1938,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CHANGE_REQUEST_STATE",
       "CHANGE_REQUEST_LAST_MERGED",
       "CHANGE_REQUEST_LIST_OPEN",
+      "CHANGE_REQUEST_DEPLOYMENT",
       "CHANGE_REQUEST_CHECK_LOG",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
