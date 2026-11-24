@@ -1,10 +1,9 @@
 import { useState } from "react";
-import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
-  fastPreviewCapability,
+  isPullRequestDraftBranch,
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
-import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
 import {
   repoToolTarget,
   resolveRepositoryAttachment,
@@ -15,40 +14,6 @@ import {
   useDeploymentPreview,
   usePrPreview,
 } from "@/components/thread/repository/use-pr-data.ts";
-
-/**
- * Whether a project opens pull requests as drafts: its switch
- * (`metadata.pullRequestDrafts`), which lives under Fast Preview.
- */
-export function pullRequestDraftsEnabled(
-  project: VirtualMCPEntity | null | undefined,
-): boolean {
-  const metadata = project?.metadata;
-  return (
-    metadata?.pullRequestDrafts === true &&
-    fastPreviewCapability(metadata) &&
-    !blocksV8Project(project)
-  );
-}
-
-/**
- * A CMS session on a pull request draft (`Release.preview`): rendered on the
- * pull request's deploy preview, so the code it changes shows beside the
- * branch's content.
- */
-export function isPullRequestDraft(input: {
-  enabled: boolean;
-  runtime: ThreadRuntime;
-  releases: readonly Release[];
-  branch: string | null;
-}): boolean {
-  if (!input.enabled || input.runtime !== "cms" || !input.branch) {
-    return false;
-  }
-  return input.releases.some(
-    (r) => r.branch === input.branch && r.preview === "pull-request",
-  );
-}
 
 /** A pull request draft's preview: `pending` until the first read lands. */
 export interface PrDraftPreview {
@@ -75,12 +40,9 @@ export function usePrDraftPreview(input: {
 }): PrDraftPreview | null {
   const { org } = useProjectContext();
   const { project, branch } = input;
-  const active = isPullRequestDraft({
-    enabled: pullRequestDraftsEnabled(project),
-    runtime: input.runtime,
-    releases: project?.metadata?.releases ?? [],
-    branch,
-  });
+  const active =
+    input.runtime === "cms" &&
+    isPullRequestDraftBranch(project?.metadata, branch);
   const attachment = resolveRepositoryAttachment(project);
   const repository =
     active &&
