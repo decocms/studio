@@ -381,6 +381,15 @@ export const settings = {
   "settings.passkeys.deleteDescription":
     "Você não vai mais conseguir entrar com esta passkey. A credencial continua no seu dispositivo até você apagá-la lá.",
   "settings.passkeys.cancel": "Cancelar",
+  "settings.channelAccounts.title": "Contas de canais conectadas",
+  "settings.channelAccounts.description":
+    "Quando uma destas contas escreve para um bot, o bot fala com o Studio como você.",
+  "settings.channelAccounts.disconnect": "Desconectar",
+  "settings.channelAccounts.disconnected": "Conta desconectada",
+  "settings.channelAccounts.disconnectTitle": "Desconectar {name} ({channel})?",
+  "settings.channelAccounts.disconnectDescription":
+    "Os bots param de falar com o Studio como você a partir desta conta. Escrever para um bot de novo manda um novo link para conectar.",
+  "settings.channelAccounts.cancel": "Cancelar",
   "settings.preferences.title": "Preferências",
   "settings.plan.sectionTitle": "Planejar",
   "settings.plan.pageTitle": "Página Planejar",

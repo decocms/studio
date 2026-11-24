@@ -29,6 +29,7 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
+import * as ChannelAccountTools from "./channel-accounts";
 import * as CodexSubscriptionTools from "./codex-subscription";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as GithubCopilotTools from "./github-copilot";
@@ -87,6 +88,10 @@ export const CORE_TOOLS = [
   AlertTools.ALERT_ACK,
   AlertTools.ALERT_RULES_LIST,
   AlertTools.ALERT_RULE_UPDATE,
+  ChannelAccountTools.CHANNEL_ACCOUNT_CLAIM_GET,
+  ChannelAccountTools.CHANNEL_ACCOUNT_CONNECT,
+  ChannelAccountTools.CHANNEL_ACCOUNT_LIST,
+  ChannelAccountTools.CHANNEL_ACCOUNT_DISCONNECT,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
   // The cross-org `org` param is applied at each tool's own definition, NOT
   // here — the Super Agent imports these tools directly (see

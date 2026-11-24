@@ -8,7 +8,7 @@ import {
   THREAD_TOOL_NAMES,
 } from "@/tools/task-board/task-run-context";
 import type { Env } from "../hono-env";
-import { createToolsRestRoutes } from "./tools-rest";
+import { createToolsRestRoutes, isJsonContentType } from "./tools-rest";
 
 const threads: Record<string, { title: string; virtual_mcp_id: string }> = {
   thrd_chat: { title: "Some chat", virtual_mcp_id: "vir_chat" },
@@ -260,5 +260,38 @@ describe("tools REST for a tool that hits a provider rate limit", () => {
     );
     expect(res.status).toBe(500);
     expect(res.headers.get("retry-after")).toBeNull();
+  });
+});
+
+describe("tools REST takes arguments as JSON only", () => {
+  const send = (contentType: string | null, body: string | undefined) =>
+    app(boundTo("thrd_chat")).hono.request("/tools/update_interests", {
+      method: "POST",
+      headers: contentType ? { "content-type": contentType } : {},
+      body,
+    });
+
+  it("refuses the bodies a page on another site can send without a preflight", async () => {
+    const json = JSON.stringify(interests);
+    for (const type of [
+      "text/plain",
+      "application/x-www-form-urlencoded",
+      "multipart/form-data; boundary=x",
+      null,
+    ]) {
+      const res = await send(type, json);
+      expect(res.status).toBe(415);
+    }
+  });
+
+  it("accepts JSON with parameters, and a call with no body at all", async () => {
+    expect(
+      (await send("application/json; charset=utf-8", JSON.stringify(interests)))
+        .status,
+    ).toBe(200);
+    expect(isJsonContentType("Application/JSON")).toBe(true);
+    expect(isJsonContentType("application/jsonp")).toBe(false);
+    // No arguments: nothing to smuggle; the tool's own schema decides.
+    expect((await send(null, undefined)).status).not.toBe(415);
   });
 });

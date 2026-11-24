@@ -13,7 +13,7 @@ import { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 import { SpanStatusCode, type Meter, type Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
 import { grantedScopes } from "../auth/mcp-userinfo";
-import { verifyStudioToken } from "../auth/jwt";
+import { CHANNELS_TOKEN_AUDIENCE, verifyStudioToken } from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
@@ -636,6 +636,7 @@ import { TaskBoardStorage } from "@/storage/task-board";
 import { DemoBoardStorage } from "@/storage/demo-board";
 import { NotificationStorage } from "@/storage/notifications";
 import { AlertStorage } from "@/storage/alerts";
+import { ChannelAccountStorage } from "@/storage/channel-accounts";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -1091,7 +1092,15 @@ async function authenticateRequest(
             role,
           },
           role,
-          permissions: studioTokenPayload.permissions,
+          // A channel token stands for the person the way their own MCP
+          // OAuth session does: their role's grants, not a per-connection
+          // scope list.
+          permissions:
+            studioTokenPayload.aud === CHANNELS_TOKEN_AUDIENCE
+              ? role && organizationId
+                ? await fetchRolePermissions(db, organizationId, role)
+                : {}
+              : studioTokenPayload.permissions,
           tokenOrganizationId: organizationId,
           organization,
         };
@@ -1609,6 +1618,7 @@ export async function createStudioContextFactory(
     threadAnalytics: new ThreadAnalyticsStorage(config.db),
     notifications: new NotificationStorage(config.db),
     alerts: new AlertStorage(config.db),
+    channelAccounts: new ChannelAccountStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),

@@ -66,6 +66,11 @@ async function threadSurface(
   return { threadId, tools };
 }
 
+/** `application/json`, with or without parameters. */
+export function isJsonContentType(value: string | undefined): boolean {
+  return value?.split(";")[0]?.trim().toLowerCase() === "application/json";
+}
+
 export const createToolsRestRoutes = () => {
   const app = new Hono<Env>();
 
@@ -100,10 +105,16 @@ export const createToolsRestRoutes = () => {
       return c.json({ error: `Unknown tool: ${toolName}` }, 404);
     }
 
-    // Body is the tool arguments (may be empty for no-arg tools).
+    // Body is the tool arguments (may be empty for no-arg tools). Arguments
+    // must come as JSON: a browser can send text/plain or a form to another
+    // site with the person's cookies and no preflight, and a tool call must
+    // never be something a page elsewhere can make for them.
     let rawInput: unknown;
     try {
       const text = await c.req.text();
+      if (text && !isJsonContentType(c.req.header("content-type"))) {
+        return c.json({ error: "Content-Type must be application/json" }, 415);
+      }
       rawInput = text ? JSON.parse(text) : {};
     } catch {
       return c.json({ error: "Request body must be valid JSON" }, 400);

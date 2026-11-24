@@ -460,6 +460,10 @@ secret:
   # Dedicated bearer for the internal organization-notices API.
   # Leave unset to disable service-managed organization notices.
   # ORGANIZATION_NOTICES_API_KEY: ""
+  # Dedicated bearer for the internal channel-accounts API (bots in outside
+  # channels acting as the person who wrote). Leave unset to disable it; it
+  # also needs CHANNELS_SERVICE_URL (the service's origin) in the config.
+  # CHANNELS_SERVICE_TOKEN: ""
   # Optional internal NATS credentials. Prefer secret.secretName or
   # externalSecret for production GitOps so credentials are not stored in
   # plain values files.
