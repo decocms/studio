@@ -380,6 +380,10 @@ export const settings = {
   "settings.plan.goalsTitle": "Plan goals",
   "settings.plan.goalsDescription":
     "Let each member add goals and pick the one they work toward, instead of one store goal for everyone. Needs the Plan page on.",
+  "settings.inviteLinks.sectionTitle": "Members",
+  "settings.inviteLinks.title": "Invite links",
+  "settings.inviteLinks.description":
+    "Let members managers share a 24-hour link that signs a person in, joins them to the organization, and opens the shared page. Off, the Share button and invite-dialog link are hidden and existing links stop working.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "Blog view",
   "settings.blogView.description":
