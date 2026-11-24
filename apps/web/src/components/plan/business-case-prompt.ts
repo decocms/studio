@@ -5,11 +5,15 @@ import type {
   OpportunityHypothesis,
 } from "./opportunities/diagnosis-schema.ts";
 import {
+  checkOutcomeLabel,
   DEVICE_LABEL,
   PAGE_LABEL,
   VERDICT_LABEL,
 } from "./opportunities/labels.ts";
-import { hypothesisLine } from "./opportunities/opportunity-view.ts";
+import { hypothesisLine, safeHref } from "./opportunities/opportunity-view.ts";
+
+type Money = NonNullable<OpportunityDetail["money"]>;
+type Experiment = NonNullable<OpportunityHypothesis["experiment"]>;
 
 /** A question of the Plan page's guided intro and what the person said;
  *  an empty answer is a skipped question. */
@@ -91,6 +95,63 @@ function list(heading: string, items: string[]): string[] {
   return shown.length === 0 ? [] : [heading, ...shown.map((i) => `- ${i}`)];
 }
 
+/** A canvas flag's number: digits, up to 4 decimals. */
+function flagNum(value: number): string {
+  return String(Number(value.toFixed(4)));
+}
+
+/** The analysis's text as a single-quoted canvas label: no quoting or shell
+ *  characters, within the canvas's label limit. */
+function canvasLabel(text: string, max: number): string {
+  return text
+    .replace(/['"`$\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
+/**
+ * The canvas computes money as base × Δpp × value, with no channel share, so
+ * the share goes into the value: the canvas then shows the analysis's figure.
+ * A share that is missing or out of range counts as the whole channel.
+ */
+function canvasMoneyFlags(money: Money, gapPp: number | null): string {
+  const share =
+    Number.isFinite(money.channel_share) &&
+    money.channel_share > 0 &&
+    money.channel_share <= 1
+      ? money.channel_share
+      : 1;
+  const max = BUSINESS_CASE_LIMITS.label;
+  const suffix = share === 1 ? "" : ` (× ${pct(share)})`;
+  const baseLabel = canvasLabel(money.base_label, max);
+  const valueLabel = canvasLabel(money.value_label, max - suffix.length);
+  return [
+    `--base ${flagNum(money.base)}`,
+    `--delta-pp ${flagNum(money.delta_pp)}`,
+    `--value ${flagNum(money.value_per_event * share)}`,
+    ...(gapPp !== null && gapPp > 0 ? [`--gap-pp ${flagNum(gapPp)}`] : []),
+    ...(baseLabel ? [`--base-label '${baseLabel}'`] : []),
+    ...(valueLabel ? [`--value-label '${valueLabel}${suffix}'`] : []),
+  ].join(" ");
+}
+
+/** `--weekly` is the step's weekly reach: the canvas applies `--exposure`
+ *  itself, so the engine's already-exposed `weekly_eligible` would count it
+ *  twice. */
+function canvasAbFlags(e: Experiment): string {
+  return [
+    `--baseline ${flagNum(e.baseline)}`,
+    `--effect-pp ${flagNum(e.mde_pp)}`,
+    `--weekly ${flagNum(e.weekly_at_step)}`,
+    ...(e.exposure > 0 && e.exposure <= 1
+      ? [`--exposure ${flagNum(e.exposure)}`]
+      : []),
+    `--direction ${e.direction === "sobe" ? "up" : "down"}`,
+  ].join(" ");
+}
+
 /** A fence longer than any backtick run in `body`, so the analysis's text
  *  cannot close the data block early. */
 function fenced(body: string): string {
@@ -159,6 +220,11 @@ function lossLines(t: TFunction, o: OpportunityDetail): string[] {
         }),
       );
     }
+    lines.push(
+      t("plan.prompt.fromOpportunity.canvas.money", {
+        flags: canvasMoneyFlags(money, o.measured?.gap_pp ?? null),
+      }),
+    );
   } else {
     lines.push(t("plan.prompt.fromOpportunity.noMoney"));
   }
@@ -207,15 +273,21 @@ function hypothesisLines(t: TFunction, h: OpportunityHypothesis): string[] {
       }),
       ...list(
         t("plan.prompt.fromOpportunity.checks"),
-        v.runs.map((run) =>
-          clip(
-            t("plan.prompt.fromOpportunity.check", {
-              claim: run.check.claim,
-              outcome: run.outcome,
-              observed: run.observed,
-            }),
-          ),
-        ),
+        v.runs.map((run) => {
+          const outcome = checkOutcomeLabel(run.outcome);
+          return clip(
+            outcome
+              ? t("plan.prompt.fromOpportunity.check", {
+                  claim: run.check.claim,
+                  outcome: t(outcome),
+                  observed: run.observed,
+                })
+              : t("plan.prompt.fromOpportunity.checkNoOutcome", {
+                  claim: run.check.claim,
+                  observed: run.observed,
+                }),
+          );
+        }),
       ),
     );
   }
@@ -223,9 +295,8 @@ function hypothesisLines(t: TFunction, h: OpportunityHypothesis): string[] {
     ...list(
       t("plan.prompt.fromOpportunity.citations"),
       h.citations.map((c) => {
-        const source = c.fonte_url
-          ? `${clip(c.fonte)} (${clip(c.fonte_url)})`
-          : clip(c.fonte);
+        const url = safeHref(c.fonte_url);
+        const source = url ? `${clip(c.fonte)} (${clip(url)})` : clip(c.fonte);
         return c.trecho ? `${source}: "${clip(c.trecho)}"` : source;
       }),
     ),
@@ -263,9 +334,10 @@ function experimentLines(t: TFunction, h: OpportunityHypothesis): string[] {
   }
   lines.push(
     t("plan.prompt.fromOpportunity.experiment.sample", {
-      n: num(e.n_per_group),
-      eligible: num(e.weekly_eligible),
+      weekly: num(e.weekly_at_step),
       exposure: pct(e.exposure),
+      eligible: num(e.weekly_eligible),
+      n: num(e.n_per_group),
       weeks: num(e.weeks),
     }),
   );
@@ -283,6 +355,7 @@ function experimentLines(t: TFunction, h: OpportunityHypothesis): string[] {
       t("plan.prompt.fromOpportunity.experiment.limitations"),
       e.limitacoes.map(clip),
     ),
+    t("plan.prompt.fromOpportunity.canvas.abTest", { flags: canvasAbFlags(e) }),
   );
   return lines;
 }
@@ -323,5 +396,18 @@ export function opportunityCasePrompt(
   const intro = objective
     ? t("plan.prompt.fromOpportunity.withObjective", { casePath, objective })
     : t("plan.prompt.fromOpportunity.withoutObjective", { casePath });
-  return `${intro}\n\n${fenced(data)}`;
+  const canvas = [
+    ...(opportunity.money
+      ? [
+          t("plan.prompt.fromOpportunity.canvas.moneyRule", {
+            monthly: num(opportunity.money.monthly_value),
+          }),
+        ]
+      : []),
+    ...(hypothesis.experiment
+      ? [t("plan.prompt.fromOpportunity.canvas.abTestRule")]
+      : []),
+  ];
+  const rules = canvas.length > 0 ? `\n\n${canvas.join(" ")}` : "";
+  return `${intro}${rules}\n\n${fenced(data)}`;
 }

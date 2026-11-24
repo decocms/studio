@@ -252,7 +252,20 @@ export const plan = {
   "plan.prompt.fromOpportunity.experiment.guardrails":
     "Guardrails: {guardrails}",
   "plan.prompt.fromOpportunity.experiment.sample":
-    "{n} pessoas por grupo, {eligible} elegíveis por semana, {exposure} expostas, {weeks} semanas",
+    "{weekly} pessoas chegam à etapa por semana e {exposure} delas veem a mudança ({eligible} elegíveis); {n} pessoas por grupo, {weeks} semanas",
+  "plan.prompt.fromOpportunity.checkNoOutcome": "{claim}. Visto: {observed}",
+  "plan.prompt.fromOpportunity.outcome.confirma": "confirmou",
+  "plan.prompt.fromOpportunity.outcome.desmente": "desmentiu",
+  "plan.prompt.fromOpportunity.outcome.nao_decidiu": "não decidiu",
+  "plan.prompt.fromOpportunity.outcome.nao_testou": "não conseguiu testar",
+  "plan.prompt.fromOpportunity.canvas.money":
+    "Entradas de dinheiro do canvas (passe exatamente): {flags}",
+  "plan.prompt.fromOpportunity.canvas.abTest":
+    "Entradas de A/B do canvas (passe exatamente): {flags}",
+  "plan.prompt.fromOpportunity.canvas.moneyRule":
+    "Preencha o card de dinheiro exatamente com as entradas de dinheiro do canvas que estão no bloco, sem mudá-las: o canvas deve mostrar R$ {monthly} por mês, o número da análise. Se mostrar outro número, fique com o da análise e diga o porquê em unknowns.",
+  "plan.prompt.fromOpportunity.canvas.abTestRule":
+    "Preencha o card de teste A/B exatamente com as entradas de A/B do canvas que estão no bloco. Se a amostra ou as semanas forem diferentes das da análise, fique com as da análise e diga o porquê em unknowns.",
   "plan.prompt.fromOpportunity.experiment.notMeasurable":
     "Não mensurável com o tráfego de hoje.",
   "plan.prompt.fromOpportunity.experiment.notMeasurableMde":

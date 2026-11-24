@@ -31,7 +31,7 @@ describe("parseToolResult", () => {
     expect(view.running).toBe(false);
 
     const [size] = view.top;
-    expect(size?.money?.monthly_value).toBe(1_900_000);
+    expect(size?.money?.monthly_value).toBe(67_200);
     expect(size?.measured?.comp?.device).toBe("desktop");
     expect(size?.reliability?.level).toBe("alta");
     expect(size?.hypotheses.map((h) => h.lifecycle)).toEqual([

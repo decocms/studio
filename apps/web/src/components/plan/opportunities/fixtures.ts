@@ -12,8 +12,8 @@ const money = {
   delta_pp: 1,
   value_per_event: 160,
   value_label: "average order value",
-  monthly_value: 1_900_000,
-  ceiling_monthly: 6_400_000,
+  monthly_value: 67_200,
+  ceiling_monthly: 268_800,
   channel_share: 0.35,
 };
 
@@ -127,7 +127,14 @@ export const storeViewFixture = {
       summary: "The first shelf starts below the first screen.",
       device: "mobile",
       sources: [],
-      money: { ...money, monthly_value: 700_000, ceiling_monthly: null },
+      money: {
+        ...money,
+        assumption: "1 point more from home to product on mobile",
+        base: 400_000,
+        base_label: "mobile home visits per month",
+        monthly_value: 224_000,
+        ceiling_monthly: null,
+      },
       confidence: 0.5,
       updated_at: "2026-11-20T12:00:00.000Z",
       page_type: "home",

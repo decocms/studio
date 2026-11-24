@@ -228,7 +228,7 @@ describe("summaryNumbers", () => {
       measured: 3,
       pages: 2,
       chosen: 2,
-      topMonthly: 2_600_000,
+      topMonthly: 291_200,
     });
   });
 

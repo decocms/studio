@@ -248,7 +248,20 @@ export const plan = {
   "plan.prompt.fromOpportunity.experiment.guardrails":
     "Guardrails: {guardrails}",
   "plan.prompt.fromOpportunity.experiment.sample":
-    "{n} people per group, {eligible} eligible a week, {exposure} exposed, {weeks} weeks",
+    "{weekly} people reach the step a week and {exposure} of them see the change ({eligible} eligible); {n} people per group, {weeks} weeks",
+  "plan.prompt.fromOpportunity.checkNoOutcome": "{claim}. Seen: {observed}",
+  "plan.prompt.fromOpportunity.outcome.confirma": "confirmed it",
+  "plan.prompt.fromOpportunity.outcome.desmente": "refuted it",
+  "plan.prompt.fromOpportunity.outcome.nao_decidiu": "did not settle it",
+  "plan.prompt.fromOpportunity.outcome.nao_testou": "could not test it",
+  "plan.prompt.fromOpportunity.canvas.money":
+    "Canvas money inputs (pass exactly): {flags}",
+  "plan.prompt.fromOpportunity.canvas.abTest":
+    "Canvas A/B inputs (pass exactly): {flags}",
+  "plan.prompt.fromOpportunity.canvas.moneyRule":
+    "Set the money card with exactly the canvas money inputs in the block, without changing them: the canvas should then show R$ {monthly} a month, the analysis's figure. If it shows another figure, keep the analysis's and say why in unknowns.",
+  "plan.prompt.fromOpportunity.canvas.abTestRule":
+    "Set the A/B test card with exactly the canvas A/B inputs in the block. If its sample or weeks differ from the analysis's, keep the analysis's and say why in unknowns.",
   "plan.prompt.fromOpportunity.experiment.notMeasurable":
     "Not measurable with today's traffic.",
   "plan.prompt.fromOpportunity.experiment.notMeasurableMde":

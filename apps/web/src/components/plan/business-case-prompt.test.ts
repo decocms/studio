@@ -138,15 +138,15 @@ describe("opportunityCasePrompt", () => {
     expect(text).toContain("Compared to Desktop: 12% (1080 of 9000); gap 4 pp");
     // The money and its math.
     expect(text).toContain(
-      "R$ 1900000 a month = 120000 mobile product views per month × 1 pp × R$ 160 average order value × 35% channel share",
+      "R$ 67200 a month = 120000 mobile product views per month × 1 pp × R$ 160 average order value × 35% channel share",
     );
-    expect(text).toContain("Ceiling if the whole gap closes: R$ 6400000");
+    expect(text).toContain("Ceiling if the whole gap closes: R$ 268800");
     // The hypothesis, what the verification saw and its verdict.
     expect(text).toContain("Hypothesis: A sticky buy bar on mobile");
     expect(text).toContain("Verdict: Confirmed");
     expect(text).toContain("What the verification saw: c1 confirmed");
     expect(text).toContain(
-      "- The size picker starts below the fold: confirma. Seen: Size chips at 900 px, fold at 740 px",
+      "- The size picker starts below the fold: confirmed it. Seen: Size chips at 900 px, fold at 740 px",
     );
     // Citations with their source and URL.
     expect(text).toContain(
@@ -158,8 +158,7 @@ describe("opportunityCasePrompt", () => {
       "Primary metric: product to cart on Mobile, today 8%; should go up by 0.5 pp or more",
     );
     expect(text).toContain("Guardrails: checkout rate");
-    expect(text).toContain("48000 people per group");
-    expect(text).toContain("4 weeks");
+    expect(text).toContain("48000 people per group, 4 weeks");
   });
 
   it("delimits the analysis's text as data, even when it holds a fence", () => {
@@ -250,5 +249,144 @@ describe("opportunityCasePrompt", () => {
     expect(text).toContain("Money at stake: not estimated by the analysis");
     expect(text).toContain("Proposed A/B test: none yet");
     expect(text).not.toContain("Measured:");
+  });
+});
+
+/** The flags a prompt line hands the canvas, by name. */
+function canvasFlags(text: string, heading: string): Record<string, string> {
+  const line = text.split("\n").find((l) => l.startsWith(heading)) ?? "";
+  return Object.fromEntries(
+    Array.from(
+      line.matchAll(/--([a-z-]+) (?:'([^']*)'|(\S+))/g),
+      ([, name = "", quoted, plain]) => [name, quoted ?? plain ?? ""],
+    ),
+  );
+}
+
+describe("opportunityCasePrompt canvas inputs", () => {
+  const moneyHeading = "Canvas money inputs (pass exactly):";
+  const abHeading = "Canvas A/B inputs (pass exactly):";
+
+  it("money flags reproduce the analysis's monthly figure on the canvas", () => {
+    const text = opportunityCasePrompt(t, {
+      opportunity: detail,
+      hypothesis: ready,
+      objective: null,
+      casePath,
+    });
+    const money = detail.money;
+    if (!money) throw new Error("fixture has no money");
+    const flags = canvasFlags(text, moneyHeading);
+    // The canvas's money math (business-case-math.mjs).
+    const canvasMonthly =
+      Number(flags.base) *
+      (Number(flags["delta-pp"]) / 100) *
+      Number(flags.value);
+    expect(canvasMonthly).toBeCloseTo(money.monthly_value, 2);
+    expect(
+      Number(flags.base) *
+        (Number(flags["gap-pp"]) / 100) *
+        Number(flags.value),
+    ).toBeCloseTo(money.ceiling_monthly ?? 0, 2);
+    expect(flags["base-label"]).toBe("mobile product views per month");
+    expect(flags["value-label"]).toBe("average order value (× 35%)");
+    expect(text).toContain("the canvas should then show R$ 67200 a month");
+  });
+
+  it("money flags fall back to the whole channel and keep labels shell-safe and short", () => {
+    const money = detail.money;
+    if (!money) throw new Error("fixture has no money");
+    const text = opportunityCasePrompt(t, {
+      opportunity: {
+        ...detail,
+        measured: null,
+        money: {
+          ...money,
+          channel_share: Number.NaN,
+          base_label: `it's "$(rm -rf /)" \`x\` ${"b".repeat(80)}`,
+        },
+      },
+      hypothesis: ready,
+      objective: null,
+      casePath,
+    });
+    const flags = canvasFlags(text, moneyHeading);
+    expect(Number(flags.value)).toBe(money.value_per_event);
+    expect(flags["value-label"]).toBe("average order value");
+    expect(flags["gap-pp"]).toBeUndefined();
+    const label = flags["base-label"] ?? "";
+    expect(label.length).toBeLessThanOrEqual(BUSINESS_CASE_LIMITS.label);
+    expect(label).not.toMatch(/['"`$\\]/);
+  });
+
+  it("A/B flags pass the weekly reach and the exposure once", () => {
+    const text = opportunityCasePrompt(t, {
+      opportunity: detail,
+      hypothesis: ready,
+      objective: null,
+      casePath,
+    });
+    expect(canvasFlags(text, abHeading)).toEqual({
+      baseline: "0.08",
+      "effect-pp": "0.5",
+      weekly: "30000",
+      exposure: "0.9",
+      direction: "up",
+    });
+    const experiment = ready.experiment;
+    const down = opportunityCasePrompt(t, {
+      opportunity: detail,
+      hypothesis: experiment
+        ? { ...ready, experiment: { ...experiment, direction: "desce" } }
+        : ready,
+      objective: null,
+      casePath,
+    });
+    expect(canvasFlags(down, abHeading).direction).toBe("down");
+  });
+
+  it("no money or test means no canvas inputs for them", () => {
+    const text = opportunityCasePrompt(t, {
+      opportunity: { ...detail, money: null },
+      hypothesis: { ...ready, experiment: null },
+      objective: null,
+      casePath,
+    });
+    expect(text).not.toContain(moneyHeading);
+    expect(text).not.toContain(abHeading);
+    expect(text).not.toContain("the canvas should then show");
+  });
+
+  it("drops a check outcome it does not know and a citation URL that is not http(s)", () => {
+    const verification = ready.verification;
+    if (!verification) throw new Error("fixture has no verification");
+    const [run] = verification.runs;
+    if (!run) throw new Error("fixture has no check");
+    const text = opportunityCasePrompt(t, {
+      opportunity: detail,
+      hypothesis: {
+        ...ready,
+        verification: {
+          ...verification,
+          runs: [{ ...run, outcome: "novo_resultado" }],
+        },
+        citations: [
+          {
+            id: "k1",
+            fonte: "Unsafe source",
+            fonte_url: "javascript:alert(1)",
+            trecho: null,
+          },
+        ],
+      },
+      objective: null,
+      casePath,
+    });
+    expect(text).toContain(
+      "- The size picker starts below the fold. Seen: Size chips at 900 px",
+    );
+    expect(text).not.toContain("novo_resultado");
+    expect(text).toContain("- Unsafe source\n");
+    expect(text).not.toContain("javascript:");
   });
 });

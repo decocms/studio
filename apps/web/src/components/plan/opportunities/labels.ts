@@ -81,3 +81,18 @@ export function sourceLabel(source: string): TranslationKey | null {
     ? (SOURCE_LABEL[source] ?? null)
     : null;
 }
+
+/** What a verification check found; an outcome the engine adds later is
+ *  left out rather than shown as its raw name. */
+const CHECK_OUTCOME_LABEL: Record<string, TranslationKey> = {
+  confirma: "plan.prompt.fromOpportunity.outcome.confirma",
+  desmente: "plan.prompt.fromOpportunity.outcome.desmente",
+  nao_decidiu: "plan.prompt.fromOpportunity.outcome.nao_decidiu",
+  nao_testou: "plan.prompt.fromOpportunity.outcome.nao_testou",
+};
+
+export function checkOutcomeLabel(outcome: string): TranslationKey | null {
+  return Object.hasOwn(CHECK_OUTCOME_LABEL, outcome)
+    ? (CHECK_OUTCOME_LABEL[outcome] ?? null)
+    : null;
+}
