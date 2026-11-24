@@ -14,6 +14,7 @@ import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import {
   inlineDataBlockRefSchema,
+  loaderArrayUnionSchema,
   withInlineDataOption,
 } from "./block-ref-field-utils";
 import {
@@ -296,6 +297,13 @@ function renderFieldBody(fieldProps: FieldProps): ReactNode {
     typeof (value as Record<string, unknown>).__resolveType === "string"
   ) {
     return renderField({ ...props, schema: schema.loaderRef });
+  }
+
+  const loaderArray = loaderArrayUnionSchema(schema, value);
+  if (loaderArray) {
+    return (
+      <InlineUnionField key={props.path} {...props} schema={loaderArray} />
+    );
   }
 
   // Block-ref field (loader/section selector with anyOfRefs)

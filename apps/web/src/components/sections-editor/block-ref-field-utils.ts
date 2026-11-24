@@ -369,6 +369,35 @@ export function inlineDataBlockRefSchema(
 }
 
 /**
+ * An empty `T[] | Loader<T[]>` field as an inline union: the list beside the
+ * loader and saved-block options, whose `{ __resolveType }` value renders
+ * through `loaderRef`. Without it the field offers only "Add item", so a saved
+ * block can never be picked. A list with items stays a plain list, so a pick
+ * never discards them.
+ */
+export function loaderArrayUnionSchema(
+  schema: SchemaProperty,
+  value: unknown,
+): SchemaProperty | null {
+  const { loaderRef, ...list } = schema;
+  if (list.type !== "array" || !loaderRef?.anyOfRefs?.length) return null;
+  if (value != null && (!Array.isArray(value) || value.length > 0)) {
+    return null;
+  }
+  return {
+    type: "inline-union",
+    title: list.title,
+    description: list.description,
+    hidden: list.hidden,
+    // The union's label already shows the description.
+    inlineUnionBranches: [
+      { title: "", schema: { ...list, description: undefined } },
+    ],
+    loaderRef,
+  };
+}
+
+/**
  * The picker of a `T | Loader<T>` field with `T` as its last option. It is an
  * embedded union variant (`…@T`), so picking it stores `T`'s plain props,
  * which {@link inlineDataBlockRefSchema} then renders.
