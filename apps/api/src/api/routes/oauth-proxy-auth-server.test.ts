@@ -3,6 +3,11 @@ import { firstAuthorizationServer, getOriginAuthServer } from "./oauth-proxy";
 
 const originalFetch = globalThis.fetch;
 
+// Discovery resolves DNS before fetching; a public IP literal skips the lookup
+// so these stay offline.
+const ORIGIN = "https://203.0.113.10";
+const ORIGIN_URL = `${ORIGIN}/sse`;
+
 describe("getOriginAuthServer", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -17,7 +22,7 @@ describe("getOriginAuthServer", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       )) as unknown as typeof globalThis.fetch;
 
-    const result = await getOriginAuthServer("https://mcp.example.com/sse");
+    const result = await getOriginAuthServer(ORIGIN_URL);
     expect(result).toBe("https://idp.example.com");
   });
 
@@ -28,8 +33,8 @@ describe("getOriginAuthServer", () => {
         headers: { "Content-Type": "application/json" },
       })) as unknown as typeof globalThis.fetch;
 
-    const result = await getOriginAuthServer("https://mcp.example.com/sse");
-    expect(result).toBe("https://mcp.example.com");
+    const result = await getOriginAuthServer(ORIGIN_URL);
+    expect(result).toBe(ORIGIN);
   });
 
   it("falls back to the origin root when authorization_servers is missing", async () => {
@@ -39,8 +44,8 @@ describe("getOriginAuthServer", () => {
         headers: { "Content-Type": "application/json" },
       })) as unknown as typeof globalThis.fetch;
 
-    const result = await getOriginAuthServer("https://mcp.example.com/sse");
-    expect(result).toBe("https://mcp.example.com");
+    const result = await getOriginAuthServer(ORIGIN_URL);
+    expect(result).toBe(ORIGIN);
   });
 });
 
