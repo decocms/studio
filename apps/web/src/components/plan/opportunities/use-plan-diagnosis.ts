@@ -110,11 +110,13 @@ export function useStoreView(goalId: string | null) {
   });
 }
 
-export function useOpportunity(id: string) {
-  const engine = useEngine();
-  return useQuery({
+type Engine = ReturnType<typeof useEngine>;
+
+/** One query entry per loss, shared by its page and by the cards that fetch
+ *  it before starting a case. */
+function opportunityQuery(engine: Engine, id: string) {
+  return {
     queryKey: KEYS.planOpportunity(engine.orgId, id, engine.connectionId ?? ""),
-    enabled: engine.connectionId !== null && id !== "",
     retry: retryEngineRead,
     queryFn: async () =>
       (
@@ -122,7 +124,26 @@ export function useOpportunity(id: string) {
           opportunity_id: id,
         })
       ).opportunity,
+  };
+}
+
+export function useOpportunity(id: string) {
+  const engine = useEngine();
+  return useQuery({
+    ...opportunityQuery(engine, id),
+    enabled: engine.connectionId !== null && id !== "",
   });
+}
+
+/** Reads a loss through the same cache entry as its page; a copy fetched in
+ *  the last 30 s is reused. */
+export function useFetchOpportunity() {
+  const engine = useEngine();
+  return (id: string) =>
+    engine.queryClient.fetchQuery({
+      ...opportunityQuery(engine, id),
+      staleTime: 30_000,
+    });
 }
 
 export interface StartRunInput {

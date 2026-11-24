@@ -12,11 +12,7 @@ import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
 } from "@/hooks/use-destination-route";
-import {
-  useOrgFlag,
-  usePlanObjective,
-} from "@/hooks/use-organization-settings";
-import { usePlanGoals, usePlanGoalsLive } from "@/hooks/use-plan-goals";
+import { usePlanGoalsLive } from "@/hooks/use-plan-goals";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useProjectContext } from "@/sdk";
 import { PlanGuide } from "./guide/plan-guide.tsx";
@@ -26,10 +22,12 @@ import {
   OpportunitiesSection,
   OpportunitiesSectionFallback,
 } from "./opportunities/opportunities-section.tsx";
+import { useCreateCaseFromOpportunity } from "./opportunities/use-create-case.ts";
 import { PlanCasesList } from "./plan-cases-list.tsx";
 import { PlanGoalsSection } from "./plan-goals.tsx";
 import { PlanIdeaComposer } from "./plan-idea-composer.tsx";
 import { PlanObjective } from "./plan-objective.tsx";
+import { useActivePlanGoal } from "./use-active-goal.ts";
 
 /** Opens a loss's page, inside the project when Plan is open in one. */
 function useOpenOpportunity() {
@@ -49,18 +47,11 @@ function useOpenOpportunity() {
 }
 
 export function PlanPage() {
-  const goalsOn = useOrgFlag("plan_goals_enabled");
   usePlanGoalsLive();
-  const goals = usePlanGoals(goalsOn);
-  const storeGoal = usePlanObjective()?.statement ?? null;
-  const goal = goalsOn
-    ? {
-        statement: goals.active?.statement ?? null,
-        id: goals.active?.id ?? null,
-      }
-    : { statement: storeGoal, id: null };
+  const { goalsOn, goals, goal } = useActivePlanGoal();
   const guide = usePlanGuide(goal);
   const openOpportunity = useOpenOpportunity();
+  const createCase = useCreateCaseFromOpportunity();
   // Going back from the intro puts the idea back in the composer.
   const [draft, setDraft] = useState("");
   const { state } = guide;
@@ -99,6 +90,13 @@ export function PlanPage() {
             <OpportunitiesSection
               goal={goal}
               onOpenOpportunity={(id) => void openOpportunity(id)}
+              onCreateCase={(opportunity, hypothesis) =>
+                createCase.create({
+                  opportunityId: opportunity.id,
+                  hypothesisId: hypothesis.id,
+                })
+              }
+              caseCreation={createCase.status}
             />
           </ErrorBoundary>
           <PlanCasesList goalId={goal.id} />

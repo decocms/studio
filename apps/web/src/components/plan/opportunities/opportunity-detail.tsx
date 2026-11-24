@@ -53,6 +53,7 @@ import {
   formatPercent,
   readyHypothesis,
 } from "./opportunity-view.ts";
+import type { CaseCreation } from "./use-create-case.ts";
 import {
   useOpportunity,
   usePlanDiagnosisStatus,
@@ -69,6 +70,7 @@ export interface OpportunityDetailProps {
     opportunity: Detail,
     hypothesis: OpportunityHypothesis,
   ) => void;
+  caseCreation?: CaseCreation;
 }
 
 function BackToPlan() {
@@ -425,6 +427,7 @@ function Problem({ opportunity: o }: { opportunity: Detail }) {
 function Loaded({
   opportunityId,
   onCreateCase,
+  caseCreation,
 }: OpportunityDetailProps & { opportunityId: string }) {
   const t = useT();
   const query = useOpportunity(opportunityId);
@@ -478,6 +481,7 @@ function Loaded({
                   ? () => onCreateCase(o, h)
                   : undefined
               }
+              caseCreation={caseCreation}
             />
           ))
         )}

@@ -28,6 +28,7 @@ import type {
   StoreOpportunity,
   StoreOpportunityHypothesis,
 } from "./diagnosis-schema.ts";
+import { CreateCaseButton } from "./create-case-button.tsx";
 import { DEVICE_LABEL, PAGE_LABEL, VERDICT_LABEL } from "./labels.ts";
 import {
   cardState,
@@ -37,6 +38,7 @@ import {
   hypothesisLine,
   readyHypothesis,
 } from "./opportunity-view.ts";
+import type { CaseCreation } from "./use-create-case.ts";
 
 export interface OpportunityActions {
   /** Starts a business case from a ready hypothesis. Hidden when absent. */
@@ -44,6 +46,8 @@ export interface OpportunityActions {
     opportunity: StoreOpportunity,
     hypothesis: StoreOpportunityHypothesis,
   ) => void;
+  /** Where each loss's case start stands. */
+  caseCreation?: (opportunityId: string) => CaseCreation;
   /** Opens the loss's detail. Hidden when absent. */
   onOpenOpportunity?: (opportunityId: string) => void;
 }
@@ -176,6 +180,7 @@ export function OpportunityCard({
   opportunity,
   position,
   onCreateCase,
+  caseCreation,
   onOpenOpportunity,
 }: OpportunityActions & {
   opportunity: StoreOpportunity;
@@ -293,17 +298,15 @@ export function OpportunityCard({
       />
 
       {state === "ready" && ready && onCreateCase && (
-        <Button
+        <CreateCaseButton
           className="mt-auto"
           variant={biggest ? "default" : "outline"}
+          creation={caseCreation?.(opportunity.id)}
           onClick={() => {
             opened("create_case");
             onCreateCase(opportunity, ready);
           }}
-        >
-          {t("plan.opportunities.card.createCase")}
-          <ArrowRight />
-        </Button>
+        />
       )}
       {state === "investigating" && onOpenOpportunity && (
         <Button

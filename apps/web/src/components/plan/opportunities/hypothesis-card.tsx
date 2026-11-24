@@ -8,7 +8,6 @@
 import { type ReactNode, useState } from "react";
 import {
   AlertCircle,
-  ArrowRight,
   ChevronDown,
   LinkExternal01,
   FlipBackward,
@@ -26,6 +25,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { CreateCaseButton } from "./create-case-button.tsx";
 import type { OpportunityHypothesis } from "./diagnosis-schema.ts";
 import { DEVICE_LABEL, VERDICT_LABEL } from "./labels.ts";
 import {
@@ -36,6 +36,7 @@ import {
   hypothesisLine,
   safeHref,
 } from "./opportunity-view.ts";
+import type { CaseCreation } from "./use-create-case.ts";
 import {
   type DecideHypothesisInput,
   useDecideHypothesis,
@@ -318,12 +319,14 @@ export function HypothesisCard({
   hypothesis: h,
   number,
   onCreateCase,
+  caseCreation,
 }: {
   hypothesis: OpportunityHypothesis;
   /** Its place on the page, from 1. */
   number: number;
   /** Shown on the loss's ready hypothesis; hidden when absent. */
   onCreateCase?: () => void;
+  caseCreation?: CaseCreation;
 }) {
   const t = useT();
   const line = hypothesisLine(h);
@@ -413,10 +416,11 @@ export function HypothesisCard({
       <Evidence hypothesis={h} />
 
       {onCreateCase && (
-        <Button className="self-start" onClick={onCreateCase}>
-          {t("plan.opportunities.card.createCase")}
-          <ArrowRight />
-        </Button>
+        <CreateCaseButton
+          className="self-start"
+          creation={caseCreation}
+          onClick={onCreateCase}
+        />
       )}
 
       <Decision hypothesis={h} />
