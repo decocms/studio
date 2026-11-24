@@ -178,7 +178,7 @@ export const CHANGE_REQUEST_DEPLOYMENT = defineTool({
     if (deployment.url && !isTrustedPreviewHost(deployment.url)) {
       return { state: "none" as const, url: null };
     }
-    return deployment;
+    return { state: deployment.state, url: deployment.url };
   },
 });
 

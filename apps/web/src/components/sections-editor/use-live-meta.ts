@@ -49,14 +49,26 @@ export type MetaSource =
  *
  * Sandbox-less Fast Preview reads `committed` from the branch via the GitHub
  * API (`readCommittedMetaViaGit`), not a dev server/daemon.
+ *
+ * A pull request draft whose preview is up reads the deployed schema first:
+ * Studio answers it from that preview, which runs the pull request's code,
+ * where a committed snapshot can be a build behind it.
  */
 export function metaSourceOrder(input: {
   fetchEnabled: boolean;
   previewUrl: string | null | undefined;
   productionUrl: string | null;
   fastPreviewActive: boolean;
+  pullRequestPreviewReady?: boolean;
 }): MetaSource[] {
   const sources: MetaSource[] = [];
+  if (input.fastPreviewActive && input.pullRequestPreviewReady) {
+    if (input.productionUrl) {
+      sources.push({ kind: "production", baseUrl: input.productionUrl });
+    }
+    sources.push({ kind: "committed" });
+    return sources;
+  }
   if (input.fastPreviewActive) {
     sources.push({ kind: "committed" });
   } else {
@@ -205,9 +217,11 @@ export function useLiveMeta(
   // (`metadata.runtime.path`) when the project isn't at the repo root; the live
   // `/live/_meta` route already resolves relative to the dev-server cwd.
   const packagePath = usePackagePath(params?.virtualMcpId);
-  const { previewServerUrl: productionUrl, runtime } = useSessionRuntime(
-    params?.virtualMcpId,
-  );
+  const {
+    previewServerUrl: productionUrl,
+    runtime,
+    pullRequestDraft,
+  } = useSessionRuntime(params?.virtualMcpId);
   const fastPreviewActive = !localOverride && runtime === "cms";
   // Next-major Blocks sites read the committed schema over the content
   // protocol: never from the running site.
@@ -258,6 +272,7 @@ export function useLiveMeta(
               previewUrl,
               productionUrl,
               fastPreviewActive,
+              pullRequestPreviewReady: pullRequestDraft?.state === "ready",
             });
       for (const source of sources) {
         if (source.kind === "committed") {

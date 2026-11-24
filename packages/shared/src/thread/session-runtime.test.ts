@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   defaultThreadRuntime,
   fastPreviewCapability,
+  isPullRequestDraftBranch,
   parseThreadRuntime,
+  pullRequestDraftsCapability,
   readThreadRuntime,
 } from "./session-runtime.ts";
 
@@ -161,5 +163,53 @@ describe("Blocks v8 is always Fast Preview; v7 keeps main's rule", () => {
         { blocksV8: true, previewServerUrl: URL },
       ),
     ).toBe("sandbox");
+  });
+});
+
+describe("pull request drafts", () => {
+  const prDraft = {
+    branch: "fix/header",
+    name: "Fix header",
+    color: "orange",
+    preview: "pull-request",
+  };
+  const project = {
+    ...FP_PROJECT,
+    pullRequestDrafts: true,
+    releases: [prDraft],
+  };
+
+  test("the switch counts only with Fast Preview on a v7 site", () => {
+    expect(pullRequestDraftsCapability(project)).toBe(true);
+    expect(
+      pullRequestDraftsCapability({ ...project, pullRequestDrafts: false }),
+    ).toBe(false);
+    expect(
+      pullRequestDraftsCapability({ ...project, fastPreview: false }),
+    ).toBe(false);
+    expect(
+      pullRequestDraftsCapability({ ...project, previewServerUrl: null }),
+    ).toBe(false);
+    expect(pullRequestDraftsCapability({ ...project, blocksV8: true })).toBe(
+      false,
+    );
+  });
+
+  test("a branch is one when its release renders on the pull request", () => {
+    expect(isPullRequestDraftBranch(project, "fix/header")).toBe(true);
+    expect(isPullRequestDraftBranch(project, "other")).toBe(false);
+    expect(isPullRequestDraftBranch(project, null)).toBe(false);
+    expect(
+      isPullRequestDraftBranch(
+        { ...project, releases: [{ ...prDraft, preview: undefined }] },
+        "fix/header",
+      ),
+    ).toBe(false);
+    expect(
+      isPullRequestDraftBranch(
+        { ...project, pullRequestDrafts: false },
+        "fix/header",
+      ),
+    ).toBe(false);
   });
 });
