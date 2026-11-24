@@ -116,7 +116,8 @@ export const createChannelAccountServiceRoutes = () => {
       accountName: input.account_name,
       accountWhere: input.account_where,
       accountEmail: input.account_email,
-      returnUrl: input.return_url,
+      // As a browser will read it, not as it was typed.
+      returnUrl: new URL(input.return_url).href,
     });
     return c.json({
       url: `${ctx.baseUrl}/connect-channel/${org.slug}/${claim.id}`,
