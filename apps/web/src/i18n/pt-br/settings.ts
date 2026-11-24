@@ -389,6 +389,10 @@ export const settings = {
   "settings.plan.goalsTitle": "Objetivos do Planejar",
   "settings.plan.goalsDescription":
     "Cada membro adiciona objetivos e escolhe aquele em que está trabalhando, em vez de um objetivo da loja para todos. Precisa da página Planejar ligada.",
+  "settings.inviteLinks.sectionTitle": "Membros",
+  "settings.inviteLinks.title": "Links de convite",
+  "settings.inviteLinks.description":
+    "Quem gerencia membros compartilha um link de 24 horas que faz a pessoa entrar, entra na organização e abre a página compartilhada. Desligado, o botão Compartilhar e o link do modal de convite somem e os links existentes param de funcionar.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "View Blog",
   "settings.blogView.description":
