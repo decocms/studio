@@ -1268,6 +1268,11 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
+/** Plan's tab: the plan itself, or the store step by step. Anything else is
+ *  the plan. */
+const planSearch = z.object({
+  tab: z.enum(["plan", "store"]).optional().catch(undefined),
+});
 /** Plan and Monitoring: announced in the navigation, a placeholder until built. */
 const planRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1279,7 +1284,23 @@ const planRoute = createRoute({
     defaultMain: "plan",
     mainView: "plan",
   },
+  validateSearch: planSearch,
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+/** One loss from Plan's store analysis, by the engine's opportunity id. */
+const planOpportunityRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/plan/opportunity/$opportunityId",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/plan-opportunity.tsx"),
+  ),
 });
 /** Monitor: the tab, the past day, and the store (ingest connection id) and
  *  instant under review. A malformed day is dropped, not a broken page. */
@@ -1342,7 +1363,23 @@ const projectPlanRoute = createRoute({
     defaultMain: "plan",
     mainView: "plan",
   },
+  validateSearch: planSearch,
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+/** One loss from Plan's store analysis, by the engine's opportunity id. */
+const projectPlanOpportunityRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/plan/opportunity/$opportunityId",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/plan-opportunity.tsx"),
+  ),
 });
 /** One chat's business case, built on the Plan page; `path` is the case file
  *  in the home volume (`plans/cases/<threadId>.json`). */
@@ -1875,6 +1912,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentConnectSourcesRoute,
   agentLegacyProjectViewRoute,
   projectPlanRoute,
+  projectPlanOpportunityRoute,
   projectBusinessCaseRoute,
   projectMonitoringRoute,
 ]);
@@ -1893,6 +1931,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   libraryRoute,
   discoverRoute,
   planRoute,
+  planOpportunityRoute,
   orgMonitoringRoute,
 ]);
 

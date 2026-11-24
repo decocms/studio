@@ -10,19 +10,14 @@
 
 import { useRef, useState } from "react";
 import { sleep } from "@decocms/shared/std";
-import {
-  BUSINESS_CASE_LIMITS,
-  businessCaseMountPath,
-  businessCasePath,
-} from "@decocms/shared/business-case";
+import { BUSINESS_CASE_LIMITS } from "@decocms/shared/business-case";
 import { useChatTask } from "@/components/chat";
-import { formatCaseTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { businessCasePrompt } from "../business-case-prompt.ts";
-import { writeCaseSeed } from "../business-case/case-seed.ts";
+import { startBusinessCase } from "../start-business-case.ts";
 import {
   clearGuideDraft,
   guideFromDraft,
@@ -80,39 +75,22 @@ export function usePlanGuide(goal: GuideGoal) {
       skipped: final.answers.filter((a) => !a.answer).length,
       guided: final.view.phase === "building" && final.view.guided,
     });
-    const threadId = crypto.randomUUID();
-    const casePath = businessCasePath(threadId);
-    if (goal.id) {
-      // A chat that then fails to open writes no case file, so nothing lists.
-      studio
-        .call("PLAN_GOAL_CASE_RECORD", {
-          goal_id: goal.id,
-          thread_id: threadId,
-        })
-        .catch(() => {});
-    }
-    writeCaseSeed(sessionStorage, casePath, {
-      objective,
-      request: final.idea,
-      title: final.title,
-    });
-    const created = await createTaskWithMessage({
-      id: threadId,
-      tabId: formatCaseTabId(casePath),
-      message: {
-        parts: [
-          {
-            type: "text",
-            text: businessCasePrompt(t, {
-              idea: final.idea,
-              objective,
-              casePath: businessCaseMountPath(casePath),
-              ...(answers ? { answers } : {}),
-            }),
-          },
-        ],
+    const created = await startBusinessCase(
+      { studio, createTaskWithMessage, storage: sessionStorage },
+      {
+        goalId: goal.id,
+        objective,
+        request: final.idea,
+        title: final.title,
+        prompt: (casePath) =>
+          businessCasePrompt(t, {
+            idea: final.idea,
+            objective,
+            casePath,
+            ...(answers ? { answers } : {}),
+          }),
       },
-    });
+    );
     if (created) clearGuideDraft(localStorage, org.id);
   };
 

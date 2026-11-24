@@ -33,6 +33,8 @@ export const WellKnownOrgMCPId = {
   SITE_DIAGNOSTICS: (org: string) => `site-diagnostics_${org}`,
   /** Reports MCP */
   REPORTS: (org: string) => `${org}_commerce-discovery`,
+  /** Store-diagnosis engine behind the Plan page */
+  PLAN_DIAGNOSIS: (org: string) => `${org}_plan-diagnosis`,
 };
 
 // Public origin for the Reports (reports) service. Deliberately the
@@ -339,6 +341,49 @@ export function getWellKnownReportVirtualMCP(
         selected_prompts: null,
       },
     ],
+  };
+}
+
+// ---- Plan diagnosis ----
+/** The engine re-reads this connection with the caller's token to confirm it. */
+export const PLAN_DIAGNOSIS_SCOPES = [
+  "BIGQUERY::*",
+  "SELF::CUSTOMER_LAKE_QUERY",
+  "SELF::ORGANIZATION_GET",
+  "SELF::COLLECTION_CONNECTIONS_GET",
+  "SELF::COLLECTION_VIRTUAL_MCP_LIST",
+];
+
+/** The engine's configuration: where the store's GA4 export lives. */
+export interface PlanDiagnosisState extends Record<string, unknown> {
+  BIGQUERY: { __type: "google-big-query"; value: string };
+  bigqueryProjectId: string;
+  bigqueryDatasetId: string;
+}
+
+export function getWellKnownPlanDiagnosisConnection(
+  orgId: string,
+  connectionUrl: string,
+  state: PlanDiagnosisState,
+): ConnectionCreateData {
+  return {
+    id: WellKnownOrgMCPId.PLAN_DIAGNOSIS(orgId),
+    title: "Store diagnosis",
+    description: "Finds where the store loses sales, for the Plan page",
+    connection_type: "HTTP",
+    connection_url: connectionUrl,
+    icon: null,
+    app_name: "plan-diagnosis",
+    app_id: null,
+    connection_token: null,
+    connection_headers: null,
+    oauth_config: null,
+    configuration_state: state,
+    configuration_scopes: [...PLAN_DIAGNOSIS_SCOPES],
+    metadata: {
+      isDefault: false,
+      type: "plan-diagnosis",
+    },
   };
 }
 

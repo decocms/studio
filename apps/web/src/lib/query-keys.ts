@@ -508,6 +508,39 @@ export const KEYS = {
     ["plan-goals", organizationId, "list"] as const,
   planGoalCases: (organizationId: string, goalId: string) =>
     ["plan-goals", organizationId, "cases", goalId] as const,
+  planDiagnosisAll: (organizationId: string) =>
+    ["plan-diagnosis", organizationId] as const,
+  planDiagnosisStatus: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "status"] as const,
+  // Engine reads carry the org's engine connection id.
+  planStoreViews: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "store-view"] as const,
+  planStoreView: (
+    organizationId: string,
+    goalId: string | null,
+    connectionId: string,
+  ) =>
+    [
+      "plan-diagnosis",
+      organizationId,
+      "store-view",
+      goalId,
+      connectionId,
+    ] as const,
+  planOpportunities: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "opportunity"] as const,
+  planOpportunity: (
+    organizationId: string,
+    opportunityId: string,
+    connectionId: string,
+  ) =>
+    [
+      "plan-diagnosis",
+      organizationId,
+      "opportunity",
+      opportunityId,
+      connectionId,
+    ] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>

@@ -637,3 +637,17 @@ describe("feedback configuration", () => {
     expect(config.taskBoardAdminOrgIds).toEqual([]);
   });
 });
+
+describe("resolveConfig plan diagnosis engine URL", () => {
+  it("reads PLAN_DIAGNOSIS_MCP_URL and has no default", () => {
+    expect(
+      resolveConfig({
+        PLAN_DIAGNOSIS_MCP_URL: "https://diagnosis.example.com/mcp",
+      }).planDiagnosisMcpUrl,
+    ).toBe("https://diagnosis.example.com/mcp");
+    expect(resolveConfig({}).planDiagnosisMcpUrl).toBeUndefined();
+    expect(
+      resolveConfig({ PLAN_DIAGNOSIS_MCP_URL: "" }).planDiagnosisMcpUrl,
+    ).toBeUndefined();
+  });
+});

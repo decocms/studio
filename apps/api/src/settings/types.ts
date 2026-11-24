@@ -337,6 +337,10 @@ export interface Settings {
    *  COMMERCE_DISCOVERY_INTERNAL_API_URL env still honored as fallback). */
   reportsInternalApiUrl: string | undefined;
   reportsInternalApiKey: string | undefined;
+  /** The store-diagnosis engine's MCP endpoint (PLAN_DIAGNOSIS_MCP_URL), the
+   *  `connection_url` of each org's plan-diagnosis connection. No default:
+   *  unset = the PLAN_DIAGNOSIS_* tools report the service as unset. */
+  planDiagnosisMcpUrl: string | undefined;
 
   // Managed asset storage (the shared deco tenant bucket). Used by `managed`
   // file configs: studio mints prefix-scoped STS credentials per site slug via
