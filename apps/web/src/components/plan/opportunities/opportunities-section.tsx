@@ -34,17 +34,26 @@ import { usePlanDiagnosisStatus, useStoreView } from "./use-plan-diagnosis.ts";
 export interface OpportunitiesSectionProps extends OpportunityActions {
   /** The goal the analysis is read for; a null id reads every run. */
   goal: { id: string | null; statement: string | null };
-  /** Starts a new analysis. Hidden when absent. */
-  onNewRun?: () => void;
+  /** Opens "Nova análise" beside the button that was clicked. Hidden when
+   *  absent. */
+  onNewRun?: (anchor: HTMLElement) => void;
   /** Opens the store, step by step. Hidden when absent. */
   onOpenStore?: () => void;
 }
 
-function NewRunButton({ onNewRun }: { onNewRun?: () => void }) {
+export function NewRunButton({
+  onNewRun,
+}: {
+  onNewRun?: (anchor: HTMLElement) => void;
+}) {
   const t = useT();
   if (!onNewRun) return null;
   return (
-    <Button variant="outline" size="sm" onClick={onNewRun}>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={(e) => onNewRun(e.currentTarget)}
+    >
       <RefreshCw01 />
       {t("plan.opportunities.newRun")}
     </Button>
@@ -247,7 +256,7 @@ function Empty({
 }: {
   view: StoreView;
   noSources: boolean;
-  onNewRun?: () => void;
+  onNewRun?: (anchor: HTMLElement) => void;
 }) {
   const t = useT();
   const gaps = viewGaps(view);

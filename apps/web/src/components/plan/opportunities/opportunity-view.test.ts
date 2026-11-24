@@ -8,6 +8,7 @@ import {
   type StoreOpportunityHypothesis,
   type StorePage,
   type StoreView,
+  type StartRunResult,
 } from "./diagnosis-schema.ts";
 import { DiagnosisEngineError } from "./diagnosis-state.ts";
 import {
@@ -20,6 +21,7 @@ import {
   cardState,
   confidenceLevel,
   dataBadge,
+  defaultStorePage,
   detailFailure,
   detailHypotheses,
   hypothesisActions,
@@ -28,10 +30,16 @@ import {
   formatPercent,
   hypothesesTally,
   hypothesisLine,
+  pageLosses,
   parseOpportunityId,
   readyHypothesis,
+  runRequestedEvent,
+  runnablePages,
+  runningElsewhere,
   safeHref,
   sectionPhase,
+  stageCards,
+  startRunInput,
   summaryNumbers,
   viewGaps,
   viewScope,
@@ -511,5 +519,252 @@ describe("formatPercent and formatCount", () => {
   it("groups whole counts", () => {
     expect(plain(formatCount(48_000, "pt-BR"))).toBe("48.000");
     expect(formatCount(27_000.4, "en")).toBe("27,000");
+  });
+});
+
+// ── The store, step by step ──────────────────────────────────────────────────
+
+/** The fixture with one page rerunning. */
+function withPdpRunning(v: StoreView): StoreView {
+  return {
+    ...v,
+    running: true,
+    pages: v.pages.map((p) =>
+      p.page_type === "pdp"
+        ? {
+            ...p,
+            status: "running",
+            stage: "verify",
+            diagnosis_id: "diag_pdp_2",
+          }
+        : p,
+    ),
+  };
+}
+
+describe("stageCards", () => {
+  it("stage cards follow funnel order and mark top/second", () => {
+    const cards = stageCards(view, "mobile");
+    expect(cards.map((c) => c.page_type)).toEqual([
+      "home",
+      "categoria",
+      "busca",
+      "pdp",
+      "carrinho_checkout",
+    ]);
+    const [home, categoria, , pdp] = cards;
+    // The engine's top[0] is the size loss on the product page.
+    expect(pdp).toEqual({
+      page_type: "pdp",
+      analysed: true,
+      people_week: 30_000,
+      advance_rate: 0.08,
+      badge: "top",
+      at_stake: 67_200,
+    });
+    expect(home).toEqual({
+      page_type: "home",
+      analysed: true,
+      people_week: 52_000,
+      advance_rate: 0.41,
+      badge: "second",
+      at_stake: 224_000,
+    });
+    expect(categoria).toEqual({
+      page_type: "categoria",
+      analysed: false,
+      people_week: null,
+      advance_rate: null,
+      badge: null,
+      at_stake: null,
+    });
+  });
+
+  it("a page with only other losses is at stake; one without money has no badge", () => {
+    const [size, hero] = view.top as [StoreOpportunity, StoreOpportunity];
+    const onlyOthers: StoreView = { ...view, top: [], others: [hero, size] };
+    const cards = stageCards(onlyOthers, "mobile");
+    expect(cards[0]?.badge).toBe("at_stake");
+    expect(cards[0]?.at_stake).toBe(224_000);
+    const noMoney: StoreView = {
+      ...view,
+      top: [],
+      others: [{ ...size, money: null }],
+    };
+    expect(stageCards(noMoney, "mobile")[3]).toMatchObject({
+      badge: null,
+      at_stake: null,
+    });
+  });
+
+  it("the biggest loss on a page is its value at stake", () => {
+    const [size] = view.top as [StoreOpportunity];
+    const bigger = {
+      ...size,
+      id: "opp_bigger",
+      money: { ...size.money!, monthly_value: 90_000 },
+    };
+    const v: StoreView = { ...view, others: [bigger, ...view.others] };
+    expect(stageCards(v, "mobile")[3]?.at_stake).toBe(90_000);
+  });
+
+  it("two top losses on the same page mark it top once", () => {
+    const [size, hero] = view.top as [StoreOpportunity, StoreOpportunity];
+    const v: StoreView = {
+      ...view,
+      top: [size, { ...hero, page_type: "pdp" }],
+    };
+    const cards = stageCards(v, "mobile");
+    expect(cards.map((c) => c.badge)).toEqual([null, null, null, "top", null]);
+  });
+
+  it("a page running again says so", () => {
+    expect(stageCards(withPdpRunning(view), "mobile")[3]?.badge).toBe(
+      "running",
+    );
+  });
+
+  it("desktop selection uses desktop funnel", () => {
+    const cards = stageCards(view, "desktop");
+    expect(cards[0]).toMatchObject({ people_week: 14_000, advance_rate: 0.55 });
+    // The product page measured mobile only.
+    expect(cards[3]).toMatchObject({
+      analysed: true,
+      people_week: null,
+      advance_rate: null,
+      badge: "top",
+    });
+  });
+});
+
+describe("runnablePages", () => {
+  it("running page is not runnable", () => {
+    expect(runnablePages(withPdpRunning(view))).toEqual([
+      {
+        page_type: "home",
+        disabled: false,
+        analysed_at: "2026-11-20T12:00:00.000Z",
+      },
+      { page_type: "categoria", disabled: false, analysed_at: null },
+      { page_type: "busca", disabled: false, analysed_at: null },
+      {
+        page_type: "pdp",
+        disabled: true,
+        analysed_at: "2026-11-20T12:05:00.000Z",
+      },
+      { page_type: "carrinho_checkout", disabled: false, analysed_at: null },
+    ]);
+  });
+
+  it("every page is runnable on a store never analysed", () => {
+    for (const v of [{ ...view, pages: [] }, undefined]) {
+      expect(runnablePages(v).map((p) => p.disabled)).toEqual([
+        false,
+        false,
+        false,
+        false,
+        false,
+      ]);
+    }
+  });
+});
+
+describe("defaultStorePage", () => {
+  it("opens on the page with the biggest loss", () => {
+    expect(defaultStorePage(view)).toBe("pdp");
+  });
+
+  it("without losses, opens the first page in funnel order with data", () => {
+    const v: StoreView = {
+      ...view,
+      top: [],
+      others: [],
+      pages: [...view.pages].reverse(),
+    };
+    expect(defaultStorePage(v)).toBe("home");
+    const [home, pdp] = view.pages as [StorePage, StorePage];
+    expect(
+      defaultStorePage({ ...v, pages: [{ ...home, funnel: [] }, pdp] }),
+    ).toBe("pdp");
+  });
+
+  it("falls back to any analysed page, and to none", () => {
+    const gaps = StoreViewSchema.parse(storeViewWithGapsFixture);
+    expect(defaultStorePage(gaps)).toBe("pdp");
+    expect(defaultStorePage({ ...view, top: [], pages: [] })).toBeNull();
+  });
+});
+
+describe("pageLosses", () => {
+  it("lists a page's losses, top ones first", () => {
+    expect(pageLosses(view, "pdp").map((o) => o.id)).toEqual([
+      "opp_size",
+      "opp_shipping",
+    ]);
+    expect(pageLosses(view, "busca")).toEqual([]);
+  });
+});
+
+describe("startRunInput", () => {
+  const goal = { id: "goal_1", statement: "  Sell more on mobile  " };
+
+  it("asks for the whole site or the chosen pages, for the active goal", () => {
+    expect(startRunInput(goal, "site")).toEqual({
+      todas: true,
+      goal_id: "goal_1",
+      objective_statement: "Sell more on mobile",
+    });
+    expect(startRunInput(goal, ["pdp", "home"])).toEqual({
+      pages: ["home", "pdp"],
+      goal_id: "goal_1",
+      objective_statement: "Sell more on mobile",
+    });
+  });
+
+  it("leaves out a missing goal and repeated pages, and clips the goal to the engine's 280", () => {
+    expect(
+      startRunInput({ id: null, statement: "   " }, ["pdp", "pdp"]),
+    ).toEqual({ pages: ["pdp"] });
+    const long = startRunInput({ id: "g", statement: "x".repeat(400) }, "site");
+    expect(long.objective_statement).toHaveLength(280);
+  });
+});
+
+describe("runningElsewhere", () => {
+  const started = (diagnoses: StartRunResult["diagnoses"]): StartRunResult => ({
+    status: "started",
+    site_run_id: "run_1",
+    diagnoses,
+  });
+
+  it("names pages already running outside this goal's view", () => {
+    const result = started([
+      { page_type: "home", diagnosis_id: "diag_new", already_running: false },
+      { page_type: "busca", diagnosis_id: "diag_other", already_running: true },
+    ]);
+    expect(runningElsewhere(result, view)).toEqual(["busca"]);
+  });
+
+  it("a page already running in this view needs no notice", () => {
+    const running = withPdpRunning(view);
+    const result = started([
+      { page_type: "pdp", diagnosis_id: "diag_pdp_2", already_running: true },
+    ]);
+    expect(runningElsewhere(result, running)).toEqual([]);
+    expect(runningElsewhere(result, undefined)).toEqual(["pdp"]);
+  });
+});
+
+describe("runRequestedEvent", () => {
+  it("counts the pages a request covers", () => {
+    const goal = { id: null, statement: null };
+    expect(runRequestedEvent(startRunInput(goal, "site"))).toEqual({
+      scope: "site",
+      count: 5,
+    });
+    expect(runRequestedEvent(startRunInput(goal, ["pdp", "busca"]))).toEqual({
+      scope: "pages",
+      count: 2,
+    });
   });
 });

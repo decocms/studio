@@ -1249,6 +1249,11 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
+/** Plan's tab: the plan itself, or the store step by step. Anything else is
+ *  the plan. */
+const planSearch = z.object({
+  tab: z.enum(["plan", "store"]).optional().catch(undefined),
+});
 /** Plan and Monitoring: announced in the navigation, a placeholder until built. */
 const planRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1260,6 +1265,7 @@ const planRoute = createRoute({
     defaultMain: "plan",
     mainView: "plan",
   },
+  validateSearch: planSearch,
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
 /** One loss from Plan's store analysis, by the engine's opportunity id. */
@@ -1338,6 +1344,7 @@ const projectPlanRoute = createRoute({
     defaultMain: "plan",
     mainView: "plan",
   },
+  validateSearch: planSearch,
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
 });
 /** One loss from Plan's store analysis, by the engine's opportunity id. */

@@ -9,8 +9,10 @@ import type {
   Lifecycle,
   OpportunityHypothesis,
   PageType,
+  StartRunResult,
   StoreOpportunity,
   StoreOpportunityHypothesis,
+  StorePage,
   StoreView,
 } from "./diagnosis-schema.ts";
 import { DiagnosisEngineError } from "./diagnosis-state.ts";
@@ -274,4 +276,142 @@ export function detailFailure(error: unknown): "not_found" | "error" {
     /não encontrad|not found/i.test(error.message)
     ? "not_found"
     : "error";
+}
+
+// ── The store, step by step ──────────────────────────────────────────────────
+
+export type StageBadge = "top" | "second" | "at_stake" | "running";
+
+export interface StageCard {
+  page_type: PageType;
+  /** The view has an analysis of this page. */
+  analysed: boolean;
+  /** Null when the page's analysis has no funnel for this device. */
+  people_week: number | null;
+  advance_rate: number | null;
+  badge: StageBadge | null;
+  /** The biggest loss measured on the page, a month. */
+  at_stake: number | null;
+}
+
+type Device = StorePage["funnel"][number]["device"];
+
+function pageOf(v: StoreView, page: PageType): StorePage | undefined {
+  return v.pages.find((p) => p.page_type === page);
+}
+
+/** A page's losses, the engine's order kept: top ones first, then the rest. */
+export function pageLosses(v: StoreView, page: PageType): StoreOpportunity[] {
+  return [...v.top, ...v.others].filter((o) => o.page_type === page);
+}
+
+/** One card per funnel stage, home to checkout. The top and second badges
+ *  follow the engine's own `top` order; a page running again says so first. */
+export function stageCards(v: StoreView, device: Device): StageCard[] {
+  const [first, second] = v.top;
+  return PAGE_ORDER.map((page_type) => {
+    const page = pageOf(v, page_type);
+    const point = page?.funnel.find((f) => f.device === device);
+    const values = pageLosses(v, page_type).flatMap((o) =>
+      o.money ? [o.money.monthly_value] : [],
+    );
+    const at_stake = values.length > 0 ? Math.max(...values) : null;
+    const badge: StageBadge | null =
+      page?.status === "running"
+        ? "running"
+        : first?.page_type === page_type
+          ? "top"
+          : second?.page_type === page_type
+            ? "second"
+            : at_stake !== null && at_stake > 0
+              ? "at_stake"
+              : null;
+    return {
+      page_type,
+      analysed: page !== undefined,
+      people_week: point?.people_week ?? null,
+      advance_rate: point?.advance_rate ?? null,
+      badge,
+      at_stake,
+    };
+  });
+}
+
+/** Every page a new analysis can cover. A page already running cannot be
+ *  asked again: the engine would hand back the same run. */
+export function runnablePages(
+  v: StoreView | undefined,
+): { page_type: PageType; disabled: boolean; analysed_at: string | null }[] {
+  return PAGE_ORDER.map((page_type) => {
+    const page = v && pageOf(v, page_type);
+    return {
+      page_type,
+      disabled: page?.status === "running",
+      analysed_at: page?.analysed_at ?? null,
+    };
+  });
+}
+
+/** The page the store tab opens on: the biggest loss's, else the first in
+ *  funnel order with funnel data, else the first analysed. */
+export function defaultStorePage(v: StoreView): PageType | null {
+  const top = v.top[0]?.page_type;
+  if (top && pageOf(v, top)) return top;
+  const analysed = PAGE_ORDER.filter((p) => pageOf(v, p));
+  return (
+    analysed.find((p) => (pageOf(v, p)?.funnel.length ?? 0) > 0) ??
+    analysed[0] ??
+    null
+  );
+}
+
+/** The engine's limit on the goal text it keeps with a run. */
+const OBJECTIVE_MAX = 280;
+
+export interface StartRunRequest {
+  todas?: true;
+  pages?: PageType[];
+  goal_id?: string;
+  objective_statement?: string;
+}
+
+/** What `start_ux_diagnosis` gets: the whole site or the chosen pages, with
+ *  the active goal so the run stays on it if the goal changes later. */
+export function startRunInput(
+  goal: { id: string | null; statement: string | null },
+  scope: "site" | readonly PageType[],
+): StartRunRequest {
+  const statement = goal.statement?.trim().slice(0, OBJECTIVE_MAX);
+  return {
+    ...(scope === "site"
+      ? { todas: true }
+      : { pages: PAGE_ORDER.filter((p) => scope.includes(p)) }),
+    ...(goal.id ? { goal_id: goal.id } : {}),
+    ...(statement ? { objective_statement: statement } : {}),
+  };
+}
+
+/** `plan_run_requested`'s properties. */
+export function runRequestedEvent(input: StartRunRequest): {
+  scope: "site" | "pages";
+  count: number;
+} {
+  return input.todas
+    ? { scope: "site", count: PAGE_ORDER.length }
+    : { scope: "pages", count: input.pages?.length ?? 0 };
+}
+
+/** Pages the engine said were already running, in a run this goal's view
+ *  does not show: the lock is per org, the view is per goal. */
+export function runningElsewhere(
+  result: StartRunResult,
+  v: StoreView | undefined,
+): PageType[] {
+  return result.diagnoses
+    .filter(
+      (d) =>
+        d.already_running &&
+        !v?.pages.some((p) => p.diagnosis_id === d.diagnosis_id),
+    )
+    .map((d) => d.page_type);
 }

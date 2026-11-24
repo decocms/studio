@@ -12,6 +12,15 @@ export const PAGE_LABEL: Record<PageType, TranslationKey> = {
   carrinho_checkout: "plan.opportunities.page.carrinho_checkout",
 };
 
+/** What moving on from each stage means, for the funnel's rate. */
+export const ADVANCE_LABEL: Record<PageType, TranslationKey> = {
+  home: "plan.opportunities.store.advance.home",
+  categoria: "plan.opportunities.store.advance.categoria",
+  busca: "plan.opportunities.store.advance.busca",
+  pdp: "plan.opportunities.store.advance.pdp",
+  carrinho_checkout: "plan.opportunities.store.advance.carrinho_checkout",
+};
+
 export const DEVICE_LABEL: Record<StoreOpportunity["device"], TranslationKey> =
   {
     mobile: "plan.opportunities.device.mobile",

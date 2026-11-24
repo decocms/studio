@@ -52,7 +52,7 @@ export interface OpportunityActions {
   onOpenOpportunity?: (opportunityId: string) => void;
 }
 
-function tallyText(t: TFunction, o: StoreOpportunity): string {
+export function tallyText(t: TFunction, o: StoreOpportunity): string {
   const { total, ready, confirmed } = hypothesesTally(o);
   if (total === 0) return t("plan.opportunities.card.hypotheses.none");
   const count =
@@ -72,6 +72,39 @@ function tallyText(t: TFunction, o: StoreOpportunity): string {
             })
         : t("plan.opportunities.card.tally.none");
   return `${count} · ${progress}`;
+}
+
+/** How far the investigation got, and how much to trust the data. */
+export function LossBadges({ opportunity }: { opportunity: StoreOpportunity }) {
+  const t = useT();
+  const badge = dataBadge(opportunity);
+  return (
+    <>
+      {cardState(opportunity) === "ready" ? (
+        <Badge variant="lime">
+          <BadgeDot />
+          {t("plan.opportunities.card.ready")}
+        </Badge>
+      ) : (
+        <Badge variant="warning">
+          <BadgeDot />
+          {t("plan.opportunities.card.investigating")}
+        </Badge>
+      )}
+      {badge === "reliable" && (
+        <Badge variant="success">
+          <BadgeDot />
+          {t("plan.opportunities.card.reliable")}
+        </Badge>
+      )}
+      {badge === "low_sample" && (
+        <Badge variant="warning">
+          <BadgeDot />
+          {t("plan.opportunities.card.lowSample")}
+        </Badge>
+      )}
+    </>
+  );
 }
 
 function BasedOn({
@@ -191,7 +224,6 @@ export function OpportunityCard({
   const [{ language }] = usePreferences();
   const state = cardState(opportunity);
   const ready = readyHypothesis(opportunity);
-  const badge = dataBadge(opportunity);
   const { money } = opportunity;
   const biggest = position === 0;
   const DeviceIcon = opportunity.device === "desktop" ? Monitor01 : Phone01;
@@ -265,29 +297,7 @@ export function OpportunityCard({
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {state === "ready" ? (
-          <Badge variant="lime">
-            <BadgeDot />
-            {t("plan.opportunities.card.ready")}
-          </Badge>
-        ) : (
-          <Badge variant="warning">
-            <BadgeDot />
-            {t("plan.opportunities.card.investigating")}
-          </Badge>
-        )}
-        {badge === "reliable" && (
-          <Badge variant="success">
-            <BadgeDot />
-            {t("plan.opportunities.card.reliable")}
-          </Badge>
-        )}
-        {badge === "low_sample" && (
-          <Badge variant="warning">
-            <BadgeDot />
-            {t("plan.opportunities.card.lowSample")}
-          </Badge>
-        )}
+        <LossBadges opportunity={opportunity} />
       </div>
 
       <BasedOn opportunity={opportunity} ready={ready} />

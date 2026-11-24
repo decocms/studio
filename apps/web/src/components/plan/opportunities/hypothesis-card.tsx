@@ -59,7 +59,15 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function SignedImage({ src, alt }: { src: string; alt: string }) {
+function SignedImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
   const t = useT();
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -75,17 +83,28 @@ function SignedImage({ src, alt }: { src: string; alt: string }) {
       alt={alt}
       loading="lazy"
       onError={() => setFailed(true)}
-      className="max-h-96 w-full rounded-lg border border-border object-contain object-top"
+      className={cn(
+        "max-h-96 w-full rounded-lg border border-border object-contain object-top",
+        className,
+      )}
     />
   );
 }
 
 /** The engine's images are signed for an hour. A refetch signs them again,
  *  so a new URL gets a fresh try instead of the expired one's state. */
-function EngineImage({ src, alt }: { src: string | null; alt: string }) {
+export function EngineImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string | null;
+  alt: string;
+  className?: string;
+}) {
   const href = safeHref(src);
   if (!href) return null;
-  return <SignedImage key={href} src={href} alt={alt} />;
+  return <SignedImage key={href} src={href} alt={alt} className={className} />;
 }
 
 function ExperimentBlock({ experiment: e }: { experiment: Experiment }) {
