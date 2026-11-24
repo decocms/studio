@@ -304,8 +304,9 @@ function PagePanel({
               {t("plan.opportunities.store.observed")}
             </span>
             <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-foreground">
-              {page.observations.map((text) => (
-                <li key={text}>{text}</li>
+              {page.observations.map((text, i) => (
+                // Engine text can repeat, so the position keeps keys unique.
+                <li key={`${i}:${text}`}>{text}</li>
               ))}
             </ul>
           </div>
@@ -317,8 +318,8 @@ function PagePanel({
               {t("plan.opportunities.summary.gaps")}
             </span>
             <ul className="flex flex-col gap-0.5 text-warning">
-              {page.gaps.map((gap) => (
-                <li key={gap}>{gap}</li>
+              {page.gaps.map((gap, i) => (
+                <li key={`${i}:${gap}`}>{gap}</li>
               ))}
             </ul>
           </div>
