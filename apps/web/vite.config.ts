@@ -288,6 +288,12 @@ const sharedProxy = {
     changeOrigin: false,
     secure: false,
   },
+  // Short share links (`/s/<label>-<id>`).
+  "^/s/": {
+    target: appServerTarget,
+    changeOrigin: false,
+    secure: false,
+  },
   // The report's Markdown mirror; the report page itself stays with the SPA.
   "^/report/[^/]+\\.md$": {
     target: appServerTarget,

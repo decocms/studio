@@ -248,6 +248,10 @@ export const common = {
   "common.sharePage.description":
     "Qualquer pessoa com o link pode entrar em {orgName} nas próximas 24 horas e abre esta página.",
   "common.sharePage.title": "Convidar para esta página",
+  "common.sharePage.linkTitle": "Link desta página",
+  "common.sharePage.linkDescription":
+    "Abre esta página como você está vendo agora, para quem tem acesso a ela.",
+  "common.sharePage.linkFailed": "Não foi possível criar o link",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "Esta organização requer autenticação SSO para acessar.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requer autenticação SSO",
