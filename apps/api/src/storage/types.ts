@@ -1646,6 +1646,31 @@ export interface OrganizationJoinRequest {
   updatedAt: Date | string;
 }
 
+export interface OrganizationInviteLinkTable {
+  id: string;
+  organization_id: string;
+  token_hash: string;
+  role: string;
+  redirect_path: string | null;
+  created_by: string | null;
+  expires_at: ColumnType<Date, Date | string, never>;
+  revoked_at: ColumnType<Date | null, Date | string | null, Date | string>;
+  use_count: ColumnType<number, number | undefined, number>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface OrganizationInviteLink {
+  id: string;
+  organizationId: string;
+  role: string;
+  redirectPath: string | null;
+  createdBy: string | null;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  useCount: number;
+  createdAt: Date;
+}
+
 // ============================================================================
 // Org Sites (asset tenancy: org owns globally-unique site slugs)
 // ============================================================================
@@ -2677,6 +2702,7 @@ export interface Database {
 
   // Pending/decided requests to join an org
   organization_join_requests: OrganizationJoinRequestTable;
+  organization_invite_links: OrganizationInviteLinkTable;
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;

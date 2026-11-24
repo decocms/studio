@@ -47,6 +47,7 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
 import { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
+import { OrganizationInviteLinkStorage } from "../storage/organization-invite-links";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
@@ -1624,6 +1625,7 @@ export async function createStudioContextFactory(
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
     organizationJoinRequests: new OrganizationJoinRequestStorage(config.db),
+    organizationInviteLinks: new OrganizationInviteLinkStorage(config.db),
     kv: kvStorage,
     interests: new KyselyInterestsStorage(kvStorage),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin

@@ -64,6 +64,7 @@ const createMockContext = (
     triggerCallbackTokens: null as never,
     organizationDomains: null as never,
     organizationJoinRequests: null as never,
+    organizationInviteLinks: null as never,
     kv: null as never,
     interests: null as never,
   },

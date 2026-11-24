@@ -27,6 +27,7 @@ import type {
   MonitoringLog,
   OrganizationDomain,
   OrganizationJoinRequest,
+  OrganizationInviteLink,
   OrgSite,
   OrganizationSettings,
   Thread,
@@ -769,6 +770,24 @@ export interface OrganizationJoinRequestStoragePort {
     status: Exclude<JoinRequestStatus, "pending">,
     decidedBy: string,
   ): Promise<OrganizationJoinRequest | null>;
+}
+
+export interface OrganizationInviteLinkStoragePort {
+  create(input: {
+    organizationId: string;
+    tokenHash: string;
+    role: string;
+    redirectPath: string | null;
+    createdBy: string | null;
+    expiresAt: Date;
+  }): Promise<OrganizationInviteLink>;
+  /** Unrevoked, unexpired links for an org, newest first. */
+  listActive(organizationId: string): Promise<OrganizationInviteLink[]>;
+  /** Any link with this token digest, including expired or revoked ones. */
+  findByTokenHash(tokenHash: string): Promise<OrganizationInviteLink | null>;
+  /** False when the link is unknown, belongs to another org, or was already revoked. */
+  revoke(id: string, organizationId: string): Promise<boolean>;
+  incrementUse(id: string): Promise<void>;
 }
 
 /** The hosted CMS's named drafts (`drafts` table, migration 263). */

@@ -148,6 +148,7 @@ export interface StudioToolIO {
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
             plan_goals_enabled?: boolean | undefined;
+            invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -246,6 +247,7 @@ export interface StudioToolIO {
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
             plan_goals_enabled?: boolean | undefined;
+            invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | undefined;
@@ -336,6 +338,7 @@ export interface StudioToolIO {
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
             plan_goals_enabled?: boolean | undefined;
+            invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -3035,6 +3038,28 @@ export interface StudioToolIO {
   ORGANIZATION_JOIN_REQUEST_DENY: {
     input: { requestId: string };
     output: { success: boolean };
+  };
+  ORGANIZATION_INVITE_LINK_CREATE: {
+    input: { role?: string | undefined; redirectPath?: string | undefined };
+    output: { id: string; path: string; expiresAt: string };
+  };
+  ORGANIZATION_INVITE_LINK_LIST: {
+    input: { [x: string]: never };
+    output: {
+      links: {
+        id: string;
+        role: string;
+        redirectPath: string | null;
+        createdBy: string | null;
+        expiresAt: string;
+        useCount: number;
+        createdAt: string;
+      }[];
+    };
+  };
+  ORGANIZATION_INVITE_LINK_REVOKE: {
+    input: { id: string };
+    output: { revoked: boolean };
   };
   ORGANIZATION_MEMBER_ADD: {
     input: {

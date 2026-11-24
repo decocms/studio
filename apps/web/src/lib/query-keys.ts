@@ -703,6 +703,14 @@ export const KEYS = {
   organizationJoinRequests: (organizationId: string) =>
     ["organization-join-requests", organizationId] as const,
 
+  // Active shareable invite links (scoped by organization)
+  organizationInviteLinks: (organizationId: string) =>
+    ["organization-invite-links", organizationId] as const,
+
+  // Public preview of a shareable invite link (scoped by token and viewer)
+  inviteLinkPreview: (token: string, userId: string | null) =>
+    ["invite-link-preview", token, userId] as const,
+
   // Domain lookup (for onboarding — scoped by email domain)
   domainLookup: (domain: string) => ["domain-lookup", domain] as const,
 
