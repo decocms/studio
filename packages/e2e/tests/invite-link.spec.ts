@@ -135,11 +135,19 @@ test.describe("Shareable invite link", () => {
   test("with the flag off, the UI hides the feature and links stop working", async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
     await signUp(page);
     await waitForPostSignupRedirect(page);
     const orgSlug = extractOrgSlugFromUrl(page);
-    await setInviteLinksFlag(page, orgSlug, true);
+
+    // The org owner turns it on from Settings > General.
+    await page.goto(`/${orgSlug}/settings/general`);
+    const toggle = page.getByRole("switch", { name: "Invite links" });
+    await expect(toggle).not.toBeChecked({ timeout: 30_000 });
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    await toggle.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("settings-toggle.png") });
 
     const members = new SettingsMembersPage(page);
     await members.goto(orgSlug);

@@ -11,6 +11,7 @@ import {
   Cube01,
   FileSearch02,
   GitBranch01,
+  Link03,
   Flag01,
   GitCommit,
   GitMerge,
@@ -439,6 +440,23 @@ export function PlanSettings() {
           icon={<Flag01 size={16} />}
           titleKey="settings.plan.goalsTitle"
           descriptionKey="settings.plan.goalsDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/** Shareable invite links: join by link instead of an email invite. */
+export function MembersSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.inviteLinks.sectionTitle")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="invite_links_enabled"
+          icon={<Link03 size={16} />}
+          titleKey="settings.inviteLinks.title"
+          descriptionKey="settings.inviteLinks.description"
         />
       </SettingsCard>
     </SettingsSection>
