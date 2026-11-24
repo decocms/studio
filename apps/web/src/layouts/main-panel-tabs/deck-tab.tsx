@@ -64,7 +64,6 @@ export function DeckTab({ path }: { path: string }) {
           path={path}
           shareMode={stat.data.shareMode ?? "private"}
           effectivePublic={stat.data.effectivePublic ?? false}
-          url={window.location.origin + readUrl}
         />
       }
     />
