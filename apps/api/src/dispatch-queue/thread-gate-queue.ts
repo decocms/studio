@@ -1,6 +1,7 @@
 // apps/api/src/dispatch-queue/thread-gate-queue.ts
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { WorkflowStatus } from "@dbos-inc/dbos-sdk";
+import { listWorkflowsByIdPrefix } from "../dbos/workflow-id-prefix";
 import type { ThreadGateContext } from "./thread-gate-workflow";
 
 /** A pending message in a thread's gate queue, surfaced to the UI. */
@@ -20,8 +21,7 @@ export interface ThreadQueueItem {
 
 /**
  * Map one `thread-gate` WorkflowStatus row to a queue item. Returns null when
- * the workflow id does not carry this thread's `thread-run:{threadId}:` prefix
- * (defensive — listWorkflows is already prefix-filtered).
+ * the workflow id does not carry this thread's `thread-run:{threadId}:` prefix.
  *
  * `status.input` shape: verified against the installed SDK
  * (`@dbos-inc/dbos-sdk@4.21.6`). `WorkflowStatus.input` is typed `unknown[]`
@@ -65,8 +65,7 @@ export function gateStatusToQueueItem(
 export async function listThreadGateQueue(
   threadId: string,
 ): Promise<ThreadQueueItem[]> {
-  const rows = await DBOS.listWorkflows({
-    workflow_id_prefix: `thread-run:${threadId}:`,
+  const rows = await listWorkflowsByIdPrefix(`thread-run:${threadId}:`, {
     status: ["PENDING", "ENQUEUED"],
     loadInput: true,
     loadOutput: false,
@@ -97,8 +96,7 @@ export async function cancelThreadGateWorkflow(
  * the queue continues (Codex semantics). No-op when nothing is PENDING.
  */
 export async function cancelThreadGateHead(threadId: string): Promise<void> {
-  const pending = await DBOS.listWorkflows({
-    workflow_id_prefix: `thread-run:${threadId}:`,
+  const pending = await listWorkflowsByIdPrefix(`thread-run:${threadId}:`, {
     status: ["PENDING"],
     loadInput: false,
     loadOutput: false,
