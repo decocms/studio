@@ -2249,6 +2249,16 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     section: "Organization",
     tools: ["GIT_ACCOUNT_CONNECT_TOKEN", "REPOSITORY_LINK"],
   },
+  // Opening a change request proposes; it changes no deployed branch. Merging
+  // (CHANGE_REQUEST_MERGE) is what ships, and stays out of this grant.
+  {
+    id: "changes:propose",
+    label: "Propose changes",
+    description:
+      "Open pull requests (merge requests) for review. Merging is not included",
+    section: "Organization",
+    tools: ["CHANGE_REQUEST_OPEN"],
+  },
   // File Configs
   {
     id: "file-configs:manage",
@@ -2419,6 +2429,7 @@ const USER_ROLE_CAPABILITY_IDS: string[] = [
   "connections:manage",
   "assets:manage",
   "repositories:connect",
+  "changes:propose",
 ];
 
 /**
