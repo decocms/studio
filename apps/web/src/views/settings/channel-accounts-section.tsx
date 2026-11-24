@@ -44,7 +44,9 @@ export function ChannelAccountsSection() {
   const userId = session?.user.id ?? "";
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  // The account stays while the dialog closes, so its title never empties.
   const [pending, setPending] = useState<Account | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const key = KEYS.channelAccounts(org.id, userId);
 
   const accounts = useQuery({
@@ -92,7 +94,10 @@ export function ChannelAccountsSection() {
                   size="icon-sm"
                   aria-label={t("settings.channelAccounts.disconnect")}
                   disabled={disconnect.isPending}
-                  onClick={() => setPending(a)}
+                  onClick={() => {
+                    setPending(a);
+                    setConfirming(true);
+                  }}
                 >
                   <Trash01 size={14} />
                 </Button>
@@ -102,12 +107,7 @@ export function ChannelAccountsSection() {
         })}
       </SettingsCard>
 
-      <AlertDialog
-        open={pending !== null}
-        onOpenChange={(open) => {
-          if (!open) setPending(null);
-        }}
-      >
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -127,7 +127,6 @@ export function ChannelAccountsSection() {
             <AlertDialogAction
               onClick={() => {
                 if (pending) disconnect.mutate(pending);
-                setPending(null);
               }}
             >
               {t("settings.channelAccounts.disconnect")}

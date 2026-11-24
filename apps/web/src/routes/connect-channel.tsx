@@ -123,11 +123,26 @@ export default function ConnectChannelRoute() {
 
   if (claim.isPending || connect.isSuccess) return <CenteredSpinner />;
 
-  if (claim.isError || !claim.data.claim) {
-    const notMember =
-      claim.error instanceof StudioToolError && claim.error.status === 403;
-    return <Unavailable notMember={notMember} />;
+  if (claim.isError) {
+    // Not a member is an answer; anything else may pass on a second try.
+    if (claim.error instanceof StudioToolError && claim.error.status === 403) {
+      return <Unavailable notMember />;
+    }
+    return (
+      <AccessScreenLayout>
+        <div className="rounded-full bg-muted p-3">
+          <AlertTriangle className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {t("common.connectChannelScreen.loadError")}
+        </p>
+        <Button variant="outline" onClick={() => claim.refetch()}>
+          {t("common.connectChannelScreen.retry")}
+        </Button>
+      </AccessScreenLayout>
+    );
   }
+  if (!claim.data.claim) return <Unavailable notMember={false} />;
 
   const { channel, accountName, accountWhere } = claim.data.claim;
   const name = channelName(channel);

@@ -202,6 +202,9 @@ export const common = {
   "common.connectChannelScreen.notMemberDescription":
     "Você não é membro da organização deste link.",
   "common.connectChannelScreen.goHome": "Ir para o início",
+  "common.connectChannelScreen.loadError":
+    "Não conseguimos carregar este link. Tente de novo.",
+  "common.connectChannelScreen.retry": "Tentar de novo",
   "common.inviteMemberDialog.cancelButton": "Cancelar",
   "common.inviteMemberDialog.emailLabel": "Endereços de e-mail",
   "common.inviteMemberDialog.emailPlaceholder":

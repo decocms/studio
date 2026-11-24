@@ -61,8 +61,11 @@ test("a channel account is connected by the person, used by the service, and dis
   await expect(
     page.getByText("Only continue if this account is yours"),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page).toHaveURL(/connected=1/);
+  // The home route redirects on, so the return URL is only there for a moment.
+  await Promise.all([
+    page.waitForURL(/connected=1/, { waitUntil: "commit" }),
+    page.getByRole("button", { name: "Connect", exact: true }).click(),
+  ]);
 
   const token = await askForToken(request, orgSlug, accountId);
   expect(token.ok()).toBe(true);
