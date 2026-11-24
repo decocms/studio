@@ -41,12 +41,16 @@ beforeAll(async () => {
   pools = postgresTenantPoolStore({ url });
 });
 
+// DROP DATABASE waits for a checkpoint. On CI, after the other integration
+// suites wrote to the same server, that takes about 5 s — bun's default hook
+// timeout — so the teardown failed the file on its own about a third of the
+// time, every test having passed.
 afterAll(async () => {
   await store.close();
   await pools.close();
   await admin.unsafe(`drop database if exists ${database} with (force)`);
   await admin.end();
-});
+}, 30_000);
 
 describe("migrateSandboxControllerSchema", () => {
   it("runs concurrently and again without reapplying a version", async () => {
