@@ -30,6 +30,7 @@ import {
 } from "./traffic-alerts";
 import {
   judgedHour,
+  lakeHasPassed,
   listTrafficSites,
   loadOrgTimezone,
   loadTrafficDays,
@@ -96,6 +97,7 @@ async function loadMonitoredOrgs(): Promise<MonitoredOrg[]> {
 async function evaluateOrg(
   { organizationId, slug }: MonitoredOrg,
   at: Date,
+  allOrgIds: readonly string[],
 ): Promise<{ organizationId: string; opened: number; error?: string }> {
   try {
     const sites = await listTrafficSites(organizationId, at);
@@ -104,6 +106,13 @@ async function evaluateOrg(
     const alerts = new AlertStorage(db);
     const timezone = await loadOrgTimezone(organizationId);
     const { hour, hourStart } = judgedHour(at, timezone);
+    if (!(await lakeHasPassed(allOrgIds, at, hourStart))) {
+      console.log("[traffic-monitor] lake behind the judged hour", {
+        organizationId,
+        hour: hourStart.toISOString(),
+      });
+      return { organizationId, opened: 0 };
+    }
     const thresholds = await loadTrafficThresholds(alerts, organizationId);
     let names: Map<string, string> | null = null;
     let opened = 0;
@@ -164,10 +173,11 @@ async function trafficMonitorWorkflowFn(
   const orgs = await DBOS.runStep(loadMonitoredOrgs, {
     name: "loadMonitoredOrgs",
   });
+  const orgIds = orgs.map((o) => o.organizationId);
   for (let i = 0; i < orgs.length; i += ORGS_PER_BATCH) {
     const results = await Promise.all(
       orgs.slice(i, i + ORGS_PER_BATCH).map((org) =>
-        DBOS.runStep(() => evaluateOrg(org, scheduledTime), {
+        DBOS.runStep(() => evaluateOrg(org, scheduledTime, orgIds), {
           name: `evaluateOrgTraffic:${org.organizationId}`,
         }),
       ),
