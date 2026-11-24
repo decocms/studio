@@ -127,7 +127,7 @@ export const CHANGE_REQUEST_STATE = defineTool({
     /** null when the branch has no change request at all. */
     changeRequest: detailSchema
       .extend({
-        /** Its deploy preview as its CI runs and comments tell it: the URL on
+        /** Its deploy preview as its CI runs tell it: the URL on
          *  a trusted preview host once one is linked. A host that reports
          *  only deployments reads `none`; CHANGE_REQUEST_DEPLOYMENT tells. */
         preview: z.object({

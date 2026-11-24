@@ -263,7 +263,7 @@ export interface PrPreview {
 }
 
 /**
- * The open change request's deploy preview as its CI runs and comments tell
+ * The open change request's deploy preview as its CI runs tell
  * it, off the same polled read as the panel. Null without an open one.
  */
 export function usePrPreview(args: RepoArgs & { branch: string | null }) {
@@ -326,7 +326,7 @@ export function useDeploymentPreview(
 
 /**
  * Whether `branch`'s open change request has a deploy preview, ready or on its
- * way: its CI runs and comments first, then the head's deployments. A failed
+ * way: its CI runs first, then the head's deployments. A failed
  * read answers true — the pull request draft then shows what it finds.
  */
 export async function pullRequestHasPreview(

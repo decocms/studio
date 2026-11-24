@@ -61,7 +61,7 @@ export interface PrDraftPreview {
 
 /**
  * What a pull request draft renders on, or `null` when the session is not
- * one. Its CI runs and comments answer first; without a known preview run,
+ * one. Its CI runs answer first; without a known preview run,
  * the head's deployments do.
  *
  * The URL is kept once found: a push (each CMS save is one) starts a new

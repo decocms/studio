@@ -360,7 +360,6 @@ describe("mapDetail", () => {
     expect(mapDetail({ ...base, state: "CLOSED" }, REPO).state).toBe("closed");
   });
 
-  /** A sticky comment's edit time is what ranks it — see `previewUrlFromComments`. */
   it("carries a comment's edit time, falling back to its creation", () => {
     const [edited, never] = mapDetail(
       {

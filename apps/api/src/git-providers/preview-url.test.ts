@@ -15,39 +15,17 @@ const run = (over: Partial<CheckRun>): CheckRun => ({
 
 describe("changeRequestPreviewUrl", () => {
   const deployRun = run({ url: "https://pr-12--acme.deco.site/" });
-  const botComment = {
-    body: "[Visit Preview](https://branch--acme.deco.site/)",
-    createdAt: "2026-11-20T10:00:00Z",
-  };
 
-  it("prefers a CI run's link over a comment", () => {
+  it("reads the preview a CI run links", () => {
     expect(
-      changeRequestPreviewUrl({
-        state: "open",
-        checkRuns: [deployRun],
-        comments: [botComment],
-      }),
+      changeRequestPreviewUrl({ state: "open", checkRuns: [deployRun] }),
     ).toBe("https://pr-12--acme.deco.site/");
-  });
-
-  it("falls back to a bot comment", () => {
-    expect(
-      changeRequestPreviewUrl({
-        state: "open",
-        checkRuns: [run({})],
-        comments: [botComment],
-      }),
-    ).toBe("https://branch--acme.deco.site/");
   });
 
   it("answers nothing for a merged or closed one", () => {
     for (const state of ["merged", "closed"] as const) {
       expect(
-        changeRequestPreviewUrl({
-          state,
-          checkRuns: [deployRun],
-          comments: [botComment],
-        }),
+        changeRequestPreviewUrl({ state, checkRuns: [deployRun] }),
       ).toBeNull();
     }
   });
@@ -57,7 +35,6 @@ describe("changeRequestPreviewUrl", () => {
       changeRequestPreviewUrl({
         state: "open",
         checkRuns: [run({ url: "https://evil.example.com/?x=.deco.site" })],
-        comments: [{ body: "see https://evil.example.com/preview" }],
       }),
     ).toBeNull();
   });
@@ -67,7 +44,6 @@ describe("changeRequestPreview", () => {
   const open = (checkRuns: CheckRun[]) => ({
     state: "open" as const,
     checkRuns,
-    comments: [],
   });
   /** deco's commit status while the preview builds: no URL yet. */
   const decoBuilding = run({
