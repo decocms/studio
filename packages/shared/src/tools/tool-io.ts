@@ -585,6 +585,51 @@ export interface StudioToolIO {
         | "pageviews_drop";
     };
   };
+  CHANNEL_ACCOUNT_CLAIM_GET: {
+    input: { id: string };
+    output: {
+      claim: {
+        channel: string;
+        accountName: string;
+        accountWhere: string | null;
+        accountEmail: string | null;
+        expiresAt: string;
+      } | null;
+    };
+  };
+  CHANNEL_ACCOUNT_CONNECT: {
+    input: { id: string };
+    output: {
+      account: {
+        channel: string;
+        accountId: string;
+        accountName: string;
+        accountWhere: string | null;
+        organizationId: string;
+        createdAt: string;
+        lastUsedAt: string | null;
+      };
+      returnUrl: string;
+    };
+  };
+  CHANNEL_ACCOUNT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      accounts: {
+        channel: string;
+        accountId: string;
+        accountName: string;
+        accountWhere: string | null;
+        organizationId: string;
+        createdAt: string;
+        lastUsedAt: string | null;
+      }[];
+    };
+  };
+  CHANNEL_ACCOUNT_DISCONNECT: {
+    input: { channel: string; accountId: string };
+    output: { disconnected: boolean };
+  };
   TASK_BOARD_ITEM_CREATE: {
     input: {
       title: string;
@@ -8041,7 +8086,7 @@ export interface StudioToolIO {
   SUBSCRIPTION_USAGE_GET: {
     input: { provider: "codex" | "claude" };
     output: {
-      status: "unavailable" | "available" | "disconnected";
+      status: "unavailable" | "disconnected" | "available";
       reason:
         | "permission"
         | "authorization"

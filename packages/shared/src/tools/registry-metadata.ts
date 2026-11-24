@@ -377,6 +377,10 @@ const ALL_TOOL_NAMES = [
   "ALERT_ACK",
   "ALERT_RULES_LIST",
   "ALERT_RULE_UPDATE",
+  "CHANNEL_ACCOUNT_CLAIM_GET",
+  "CHANNEL_ACCOUNT_CONNECT",
+  "CHANNEL_ACCOUNT_LIST",
+  "CHANNEL_ACCOUNT_DISCONNECT",
 ] as const;
 
 /**
@@ -1664,6 +1668,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "CHANNEL_ACCOUNT_CLAIM_GET",
+    description: "Read a link to connect a channel account",
+    category: "Users",
+  },
+  {
+    name: "CHANNEL_ACCOUNT_CONNECT",
+    description: "Connect a channel account to you",
+    category: "Users",
+  },
+  {
+    name: "CHANNEL_ACCOUNT_LIST",
+    description: "List the channel accounts connected to you",
+    category: "Users",
+  },
+  {
+    name: "CHANNEL_ACCOUNT_DISCONNECT",
+    description: "Disconnect one of your channel accounts",
+    category: "Users",
+  },
+  {
     name: "ALERTS_LIST",
     description: "List the organization's alerts",
     category: "Monitoring",
@@ -2097,6 +2121,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // A member's own channel accounts never reach another member's.
+      "CHANNEL_ACCOUNT_CLAIM_GET",
+      "CHANNEL_ACCOUNT_CONNECT",
+      "CHANNEL_ACCOUNT_LIST",
+      "CHANNEL_ACCOUNT_DISCONNECT",
       // Every member sees the org's alerts and can ack them.
       "ALERTS_LIST",
       "ALERT_ACK",

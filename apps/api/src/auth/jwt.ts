@@ -72,7 +72,15 @@ export interface StudioTokenPayload {
   };
   /** Permissions per connection: { [connectionId]: [scopes] } */
   permissions: Record<string, string[]>;
+  /**
+   * Set on a token handed to the channels service for a connected channel
+   * account. It acts as that person in one organization, with their role's
+   * grants (see `authenticateRequest`); `permissions` is unused.
+   */
+  aud?: typeof CHANNELS_TOKEN_AUDIENCE;
 }
+
+export const CHANNELS_TOKEN_AUDIENCE = "channels";
 
 export type StudioJwtPayload = JWTPayload & StudioTokenPayload;
 
