@@ -57,3 +57,18 @@ export function useCreateSecret() {
     },
   });
 }
+
+export function useDeleteSecret() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      return await studio.call("SECRET_DELETE", { id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.secrets(org.id) });
+    },
+  });
+}

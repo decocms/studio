@@ -1,7 +1,24 @@
 import type { SecretInfo } from "@/hooks/use-secrets";
 import { Suspense, useState } from "react";
-import { AlertCircle, Lock01, Plus, User01, Users01 } from "@untitledui/icons";
+import {
+  AlertCircle,
+  Lock01,
+  Plus,
+  Trash01,
+  User01,
+  Users01,
+} from "@untitledui/icons";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
@@ -33,6 +50,7 @@ import { useT } from "@/i18n/use-t.ts";
 import {
   type SecretScopeKind,
   useCreateSecret,
+  useDeleteSecret,
   useSecrets,
 } from "@/hooks/use-secrets";
 
@@ -63,7 +81,14 @@ function ScopeBadge({ scope }: { scope: SecretScopeKind }) {
   );
 }
 
-function SecretRow({ secret }: { secret: SecretInfo }) {
+function SecretRow({
+  secret,
+  onDelete,
+}: {
+  secret: SecretInfo;
+  onDelete: (secret: SecretInfo) => void;
+}) {
+  const t = useT();
   return (
     <div className="flex items-start justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
       <div className="flex items-start gap-3 min-w-0">
@@ -82,8 +107,18 @@ function SecretRow({ secret }: { secret: SecretInfo }) {
           ) : null}
         </div>
       </div>
-      <div className="text-xs text-muted-foreground shrink-0">
-        {new Date(secret.createdAt).toLocaleDateString()}
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-xs text-muted-foreground">
+          {new Date(secret.createdAt).toLocaleDateString()}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("settings.secrets.deleteButton")}
+          onClick={() => onDelete(secret)}
+        >
+          <Trash01 size={14} />
+        </Button>
       </div>
     </div>
   );
@@ -260,10 +295,71 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
   );
 }
 
+function DeleteSecretDialog({
+  secret,
+  onClose,
+}: {
+  secret: SecretInfo | null;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const deleteSecret = useDeleteSecret();
+
+  async function handleDelete(event: React.MouseEvent) {
+    // Keep the dialog open until the call settles so a failure is visible.
+    event.preventDefault();
+    if (!secret) return;
+    try {
+      await deleteSecret.mutateAsync(secret.id);
+      toast.success(t("settings.secrets.secretDeleted", { name: secret.name }));
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.secrets.failedToDeleteSecret"),
+      );
+    }
+  }
+
+  return (
+    <AlertDialog
+      open={secret !== null}
+      onOpenChange={(open) => {
+        if (!open && !deleteSecret.isPending) onClose();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("settings.secrets.deleteTitle", { name: secret?.name ?? "" })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {t("settings.secrets.deleteDescription")}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleteSecret.isPending}>
+            {t("settings.secrets.cancelButton")}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={deleteSecret.isPending}
+            onClick={handleDelete}
+          >
+            {t("settings.secrets.deleteButton")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 function SecretsContent() {
   const t = useT();
   const secrets = useSecrets();
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<SecretInfo | null>(null);
 
   const createAction = (
     <Page.Actions>
@@ -307,7 +403,7 @@ function SecretsContent() {
           </h3>
           <div>
             {orgSecrets.map((s) => (
-              <SecretRow key={s.id} secret={s} />
+              <SecretRow key={s.id} secret={s} onDelete={setPendingDelete} />
             ))}
           </div>
         </section>
@@ -320,13 +416,17 @@ function SecretsContent() {
           </h3>
           <div>
             {userSecrets.map((s) => (
-              <SecretRow key={s.id} secret={s} />
+              <SecretRow key={s.id} secret={s} onDelete={setPendingDelete} />
             ))}
           </div>
         </section>
       ) : null}
 
       <CreateSecretDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <DeleteSecretDialog
+        secret={pendingDelete}
+        onClose={() => setPendingDelete(null)}
+      />
     </>
   );
 }

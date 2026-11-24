@@ -8233,6 +8233,7 @@ export interface StudioToolIO {
       }[];
     };
   };
+  SECRET_DELETE: { input: { id: string }; output: { success: true } };
   FILE_CONFIG_CREATE: {
     input: {
       name: string;

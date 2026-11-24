@@ -1221,6 +1221,10 @@ export const settings = {
   "settings.secrets.cancelButton": "Cancelar",
   "settings.secrets.createButton": "Criar segredo",
   "settings.secrets.creatingButton": "Criando\u2026",
+  "settings.secrets.deleteButton": "Excluir segredo",
+  "settings.secrets.deleteDescription":
+    "O que ainda usa este segredo pelo nome deixa de receber o valor. Não dá para desfazer.",
+  "settings.secrets.deleteTitle": 'Excluir "{name}"?',
   "settings.secrets.descriptionLabel": "Descri\u00e7\u00e3o (opcional)",
   "settings.secrets.descriptionPlaceholder":
     "Para que \u00e9 usado este segredo?",
@@ -1228,6 +1232,7 @@ export const settings = {
     "Armazene chaves de API, tokens e outros valores sens\u00edveis. Os valores s\u00e3o criptografados em repouso e nunca retornados pela API.",
   "settings.secrets.emptyTitle": "Nenhum segredo ainda",
   "settings.secrets.failedToCreateSecret": "Falha ao criar segredo",
+  "settings.secrets.failedToDeleteSecret": "Falha ao excluir segredo",
   "settings.secrets.failedToLoadError": "Falha ao carregar segredos: {error}",
   "settings.secrets.nameHelp":
     "Letras, d\u00edgitos, sublinhado, ponto, h\u00edfen. Sem distin\u00e7\u00e3o entre mai\u00fasculas e min\u00fasculas dentro do seu escopo.",
@@ -1245,6 +1250,7 @@ export const settings = {
   "settings.secrets.scopePrivateDescription":
     "Privado \u2014 vis\u00edvel apenas para mim",
   "settings.secrets.secretCreated": 'Segredo "{name}" criado',
+  "settings.secrets.secretDeleted": 'Segredo "{name}" excluído',
   "settings.secrets.secretsCountSingular": "{count} segredo armazenado",
   "settings.secrets.secretsCountPlural": "{count} segredos armazenados",
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",

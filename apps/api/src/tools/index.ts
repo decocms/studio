@@ -307,6 +307,7 @@ export const CORE_TOOLS = [
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
+  SecretsTools.SECRET_DELETE,
 
   // File config tools (org-scoped S3 bucket configurations)
   FileConfigTools.FILE_CONFIG_CREATE,
