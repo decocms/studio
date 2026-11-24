@@ -650,7 +650,7 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
         typeof url === "string" &&
         url.length > 0
       ) {
-        return { state: "ready", url };
+        return { state: "ready", url, reporter: null };
       }
       if (deployment.status === "created" || deployment.status === "running") {
         building = true;

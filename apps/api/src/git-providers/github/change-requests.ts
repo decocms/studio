@@ -846,7 +846,10 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
   }
 
   async readDeployment(sha: string): Promise<DeploymentPreview> {
-    const deployments = await this.restArray<{ id?: number }>(
+    const deployments = await this.restArray<{
+      id?: number;
+      creator?: { login?: string } | null;
+    }>(
       `/deployments?sha=${encodeURIComponent(sha)}&per_page=${DEPLOYMENTS_SCANNED}`,
       { operation: "change_request_deployments" },
     );
@@ -867,7 +870,11 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
           status.environment_url.length > 0,
       );
       if (published?.environment_url) {
-        return { state: "ready", url: published.environment_url };
+        return {
+          state: "ready",
+          url: published.environment_url,
+          reporter: deployment.creator?.login ?? null,
+        };
       }
       // Newest first; a deployment with no status yet has not started.
       const latest = statuses?.[0]?.state;

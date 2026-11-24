@@ -12,11 +12,11 @@ import {
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
+  pullRequestDraftsCapability,
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
-import { pullRequestDraftsEnabled } from "@/hooks/use-pr-draft-preview";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 import type { DraftKind } from "@/lib/draft-kind";
@@ -159,7 +159,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const onAdoptBranch = createTask
     ? (next: string) => createTask({ runtime: "sandbox", branch: next })
     : undefined;
-  const pullRequestDrafts = pullRequestDraftsEnabled(virtualMcp);
+  const pullRequestDrafts = pullRequestDraftsCapability(virtualMcp?.metadata);
   const onOpenPullRequestDraft =
     pullRequestDrafts && createTask
       ? (next: string) => {

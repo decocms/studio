@@ -42,9 +42,10 @@ export type CheckConclusion =
 /** Where a change request's deploy preview stands. */
 export type PreviewState = "ready" | "building" | "failed" | "none";
 
-/** A commit's deployment: its published URL once it is `ready`. */
+/** A commit's deployment: its published URL once it is `ready`, and who
+ *  reported it (the provider account that created it), when known. */
 export type DeploymentPreview =
-  | { state: "ready"; url: string }
+  | { state: "ready"; url: string; reporter: string | null }
   | { state: Exclude<PreviewState, "ready">; url: null };
 
 /**

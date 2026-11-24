@@ -96,6 +96,7 @@ import {
 import { guardAgainstPrivateUrl } from "../../mcp-clients/url-security";
 import { sandboxContentHandler } from "../../sandbox/content-storage";
 import { projectPackagePath } from "../../hosted/blocks-major";
+import { resolvePullRequestMetaTarget } from "../../lib/pull-request-site-meta";
 import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import {
   GitPushAuthError,
@@ -1670,15 +1671,35 @@ export const createSandboxRoutes = () => {
   // edge rejects `/live/_meta` on public hosts without the admin token, which
   // only Studio holds, so the browser cannot read it directly.
   app.get("/:virtualMcpId/:branch/site-meta", async (c) => {
-    const metadata = c.get("vmClaim").virtualMcpMetadata;
+    const {
+      virtualMcpMetadata: metadata,
+      connectionIds,
+      branch,
+    } = c.get("vmClaim");
+    const organizationId = requireOrganization(c.var.studioContext).id;
     const siteSlug = projectSiteSlug(metadata);
     const orgOwnsSite = siteSlug
       ? await c.var.studioContext.storage.orgSites.isOwnedBy(
           siteSlug,
-          requireOrganization(c.var.studioContext).id,
+          organizationId,
         )
       : false;
-    const targets = resolveSiteMetaTargets(metadata, orgOwnsSite);
+    // A pull request draft's preview runs its code: its schema before production's.
+    const pullRequestTarget = await resolvePullRequestMetaTarget(
+      c.var.studioContext,
+      {
+        organizationId,
+        metadata,
+        connectionIds,
+        branch,
+        siteSlug,
+        orgOwnsSite,
+      },
+    );
+    const targets = [
+      ...(pullRequestTarget ? [pullRequestTarget] : []),
+      ...resolveSiteMetaTargets(metadata, orgOwnsSite),
+    ];
     if (targets.length === 0) {
       return c.json(
         { error: "Project has no preview server configured" },
