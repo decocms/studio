@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { runSerializedTask } from "@/lib/serial-task-queue";
 import {
+  addPullRequestRelease,
   addRelease,
   markReleaseSandbox,
   removeRelease,
@@ -139,6 +140,9 @@ export function useReleases(virtualMcpId: string) {
   const createRelease = (release: Release) =>
     write((current) => addRelease(current, release));
 
+  const createPullRequestRelease = (release: Release) =>
+    write((current) => addPullRequestRelease(current, release));
+
   const renameRelease = (branch: string, name: string) =>
     write((current) => renameReleaseIn(current, branch, name));
 
@@ -148,5 +152,12 @@ export function useReleases(virtualMcpId: string) {
   const markSandbox = (branch: string) =>
     write((current) => markReleaseSandbox(current, branch));
 
-  return { releases, createRelease, renameRelease, deleteRelease, markSandbox };
+  return {
+    releases,
+    createRelease,
+    createPullRequestRelease,
+    renameRelease,
+    deleteRelease,
+    markSandbox,
+  };
 }

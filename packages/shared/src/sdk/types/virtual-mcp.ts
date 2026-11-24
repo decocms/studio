@@ -785,6 +785,21 @@ const fastPreviewInPlaceMetadataField = z
   );
 
 /**
+ * Reusable `metadata.pullRequestDrafts` field — per-project opt-in layered on
+ * Fast Preview. When on, picking an open pull request in the version switcher
+ * opens it as a CMS draft on its branch, rendered on the pull request's deploy
+ * preview (its code, the branch's content through `?__draft=`), instead of
+ * starting a coding sandbox. Requires `fastPreview`; inert on its own.
+ */
+const pullRequestDraftsMetadataField = z
+  .boolean()
+  .nullable()
+  .optional()
+  .describe(
+    "With Fast Preview on, open a pull request from the version switcher as a CMS draft rendered on its deploy preview, instead of a coding sandbox. Requires fastPreview.",
+  );
+
+/**
  * Reusable `metadata.previewServerUrl` field — the deployment the CMS preview
  * renders against. Usually the live production site, but any deco-runtime
  * deployment works (a local `https://localhost:3100` during development, a
@@ -818,6 +833,12 @@ export const ReleaseSchema = z.object({
     .optional()
     .describe(
       "Session runtime the release was created in. Picking a 'sandbox' release opens a coding session on its branch, since a CMS session renders production's code and would hide the branch's code changes. Absent ⇒ the project's default.",
+    ),
+  preview: z
+    .enum(["pull-request"])
+    .optional()
+    .describe(
+      "Where a CMS session on this release renders. 'pull-request': the deploy preview of the branch's open pull request, so its code changes show beside the branch's content. Absent ⇒ the project's preview server.",
     ),
 });
 
@@ -927,6 +948,7 @@ const VirtualMcpMetadataFields = {
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,
   fastPreviewInPlace: fastPreviewInPlaceMetadataField,
+  pullRequestDrafts: pullRequestDraftsMetadataField,
 } as const satisfies z.ZodRawShape;
 
 /**

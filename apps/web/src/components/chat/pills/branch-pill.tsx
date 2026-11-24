@@ -14,6 +14,8 @@ interface Props {
   onCreateBranch?: (branch: string) => void;
   /** Adopting a branch/PR opens a sandbox coding session on it. */
   onAdoptBranch?: (branch: string) => void;
+  /** An open pull request opens as a pull request draft (see BranchPicker). */
+  onOpenPullRequestDraft?: (branch: string) => void;
   locked: boolean;
   placement?: "chat" | "header";
   /** Production branch shown as "Produção" in the releases switcher. */
@@ -46,6 +48,7 @@ export function BranchPill({
   onChange,
   onCreateBranch,
   onAdoptBranch,
+  onOpenPullRequestDraft,
   orgId,
   orgSlug,
   userId,
@@ -73,6 +76,7 @@ export function BranchPill({
       onChange={onChange}
       onCreateBranch={onCreateBranch}
       onAdoptBranch={onAdoptBranch}
+      onOpenPullRequestDraft={onOpenPullRequestDraft}
       spawnsNewChat={locked}
       placement={placement}
       draftKind={draftKind}

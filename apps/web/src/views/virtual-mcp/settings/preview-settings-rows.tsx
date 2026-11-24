@@ -3,6 +3,7 @@ import { SettingsCardRow } from "@/components/settings/settings-section";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { InPlaceRenderField } from "@/components/sandbox/runtime-card/in-place-render-field";
 import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
+import { PullRequestDraftsField } from "@/components/sandbox/runtime-card/pull-request-drafts-field";
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -54,6 +55,11 @@ export function PreviewSettingsRows<T extends FieldValues>({
       {fastPreviewOn && (
         <SettingsCardRow>
           <InPlaceRenderField control={control} fastPreview={fastPreviewOn} />
+        </SettingsCardRow>
+      )}
+      {fastPreviewOn && !isBlocksV8 && (
+        <SettingsCardRow>
+          <PullRequestDraftsField control={control} />
         </SettingsCardRow>
       )}
     </>

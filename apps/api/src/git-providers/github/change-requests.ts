@@ -37,6 +37,7 @@ import {
   type CheckRun,
   type CheckState,
   type ChecksSummary,
+  type DeploymentPreview,
   type MergeOutcome,
   type MergeParams,
   type MergeRefusal,
@@ -844,11 +845,13 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
     return run?.output?.summary ?? run?.output?.text ?? null;
   }
 
-  async readDeployedUrl(sha: string): Promise<string | null> {
+  async readDeployment(sha: string): Promise<DeploymentPreview> {
     const deployments = await this.restArray<{ id?: number }>(
       `/deployments?sha=${encodeURIComponent(sha)}&per_page=${DEPLOYMENTS_SCANNED}`,
       { operation: "change_request_deployments" },
     );
+    let building = false;
+    let failed = false;
     for (const deployment of deployments ?? []) {
       if (typeof deployment.id !== "number") continue;
       const statuses = await this.restArray<{
@@ -863,9 +866,24 @@ export class GithubChangeRequestClient implements ChangeRequestClient {
           typeof status.environment_url === "string" &&
           status.environment_url.length > 0,
       );
-      if (published?.environment_url) return published.environment_url;
+      if (published?.environment_url) {
+        return { state: "ready", url: published.environment_url };
+      }
+      // Newest first; a deployment with no status yet has not started.
+      const latest = statuses?.[0]?.state;
+      if (
+        latest === undefined ||
+        latest === "queued" ||
+        latest === "pending" ||
+        latest === "in_progress"
+      ) {
+        building = true;
+      } else if (latest === "failure" || latest === "error") {
+        failed = true;
+      }
     }
-    return null;
+    if (building) return { state: "building", url: null };
+    return { state: failed ? "failed" : "none", url: null };
   }
 }
 

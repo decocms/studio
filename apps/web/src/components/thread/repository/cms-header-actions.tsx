@@ -133,7 +133,8 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
-  const { previewServerUrl } = useSessionRuntime(virtualMcpId);
+  const { previewServerUrl, productionUrl, pullRequestDraft } =
+    useSessionRuntime(virtualMcpId);
 
   const lastPage = branch
     ? readLastPreviewPage(lastPreviewPageKey(org.slug, virtualMcpId, branch))
@@ -448,7 +449,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    * one irreversible action on a project that in fact needs nothing.
    */
   if (!vm) return null;
-  if (!repository || !previewServerUrl) {
+  if (!repository || !productionUrl) {
     return (
       <CmsUnavailable
         reason={repository ? "noPreviewServer" : "noRepo"}
@@ -560,8 +561,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           repo={repository.name}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
           draftPreviewUrl={draftPreviewUrl}
-          destinationHost={draftPreview.host}
-          previewServerUrl={previewServerUrl}
+          destinationHost={hostOf(productionUrl)}
+          previewServerUrl={productionUrl}
+          draftServerUrl={pullRequestDraft ? previewServerUrl : null}
+          pullRequestDraft={!!pullRequestDraft}
           compareDraft={
             draftPointer
               ? {
@@ -618,4 +621,13 @@ function CmsUnavailable({
       </Tooltip>
     </TooltipProvider>
   );
+}
+
+/** Where a publish lands, for "Publish to <host>": the live site's host. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }

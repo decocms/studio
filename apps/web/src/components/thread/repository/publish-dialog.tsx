@@ -120,6 +120,12 @@ export interface PublishDialogProps {
   destinationHost: string | null;
   /** Live site origin the review pane renders each changed page against. */
   previewServerUrl: string | null;
+  /** A pull request draft's deploy preview: the review pane's draft side
+   *  renders on it, so the pull request's code shows with the changes. */
+  draftServerUrl?: string | null;
+  /** The draft is a pull request someone opened (`Release.preview`): Publish
+   *  merges that whole pull request, not only the content edited here. */
+  pullRequestDraft?: boolean;
   /** Where the review pane renders the changes; see {@link CompareDraft}. */
   compareDraft: CompareDraft | null;
   /** The last publish, warmed by the header — never blocks this surface. */
@@ -669,6 +675,8 @@ function CmsPublishView({
   draftPreviewUrl,
   destinationHost,
   previewServerUrl,
+  draftServerUrl = null,
+  pullRequestDraft = false,
   compareDraft: liveCompareDraft,
   lastPublishedPr = null,
   onRequestApproval,
@@ -846,10 +854,16 @@ function CmsPublishView({
           })
     : publishTitle(summary.count, baseBranch, !!source.v8, t);
 
-  /** Review mode names the PR it will update; publish mode, the last release. */
+  /** Review mode names the PR it will update; publish mode, the last release —
+   *  or, on a pull request draft, the pull request it merges. */
   const subLine = (() => {
     if (isReview && commitToOpenPr) {
       return t("thread.publishPopover.updatesPullRequest", {
+        number: openPullRequest.number,
+      });
+    }
+    if (pullRequestDraft && commitToOpenPr) {
+      return t("thread.publishPopover.mergesPullRequest", {
         number: openPullRequest.number,
       });
     }
@@ -1046,6 +1060,7 @@ function CmsPublishView({
               diff={gitDiff}
               bodyPending={bodiesPending}
               previewServerUrl={previewServerUrl}
+              draftServerUrl={draftServerUrl}
               draft={compareDraft}
               lastPage={lastPreviewPage}
               v8={source.v8}

@@ -12,13 +12,10 @@ import { describe, expect, it } from "bun:test";
 import { GitProviderError } from "@/git-providers";
 import {
   asHeadSha,
-  cardLifecycle,
-  isRateLimitError,
   isTrustedPreviewHost,
-  previewMatchesHead,
   previewUrlFromChecks,
-  previewUrlFromComments,
-} from "./prs-get";
+} from "@/git-providers/preview-url";
+import { cardLifecycle, isRateLimitError, previewMatchesHead } from "./prs-get";
 
 /** A completed, successful CI run — the shape both providers map into. */
 const run = (
@@ -124,97 +121,6 @@ describe("previewUrlFromChecks", () => {
         run({ name: "ci", url: "https://evil.example.com/?x=.decocdn.com" }),
       ]),
     ).toBeNull();
-  });
-});
-
-describe("previewUrlFromComments", () => {
-  /**
-   * Real Cloudflare Workers bot comment (trimmed): both a commit and a branch
-   * preview — the branch one is what stays valid as the branch gets commits.
-   */
-  const cloudflareBody =
-    "## Deploying with Cloudflare Workers\n| Status | Preview URL |\n| - | - |\n" +
-    "| ✅ | <a href='https://1799fcb3-decocms-tanstack.deco-cx.workers.dev'>Commit Preview URL</a>" +
-    "<br><br><a href='https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev'>Branch Preview URL</a> |";
-  const decobotBody =
-    "**deco Deployment** · commit `1059e10`\n\n| Name | Preview |\n| - | - |\n" +
-    "| example | [Visit Preview](https://envs-example--a1b2c3.decocdn.com) |";
-  const vercelBody =
-    "| Project | Deployment | Actions | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n" +
-    "| [electrolux](https://vercel.com/deco13/electrolux) | [Ready](https://vercel.com/deco13/electrolux/GoTyhNUVcQSf7yKLG2yFtWjJ4sZA) | " +
-    "[Preview](https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app) | Aug 6, 2026 10:47pm |";
-
-  it("prefers the Cloudflare Branch Preview URL over the commit one", () => {
-    expect(previewUrlFromComments([{ body: cloudflareBody }])).toBe(
-      "https://fix-home-title-agents-247-1785513527-decocms-tanstack.deco-cx.workers.dev",
-    );
-  });
-
-  it("lifts the deco.cx 'Visit Preview' markdown link", () => {
-    expect(previewUrlFromComments([{ body: decobotBody }])).toBe(
-      "https://envs-example--a1b2c3.decocdn.com",
-    );
-  });
-
-  it("lifts the Vercel bot's Preview link", () => {
-    expect(previewUrlFromComments([{ body: vercelBody }])).toBe(
-      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
-    );
-  });
-
-  it("is null with no preview comment", () => {
-    expect(previewUrlFromComments([])).toBeNull();
-    expect(previewUrlFromComments([{ body: "LGTM, nice work!" }])).toBeNull();
-  });
-
-  it("prefers the newest comment, so a stale re-deploy comment doesn't win", () => {
-    expect(
-      previewUrlFromComments([
-        {
-          body: "[Preview](https://electrolux-git-old-stale-deploy-deco13.vercel.app)",
-          createdAt: "2026-08-01T00:00:00Z",
-          updatedAt: "2026-08-01T00:00:00Z",
-        },
-        {
-          body: vercelBody,
-          createdAt: "2026-08-06T22:32:55Z",
-          updatedAt: "2026-08-06T22:32:55Z",
-        },
-      ]),
-    ).toBe(
-      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
-    );
-  });
-
-  /**
-   * Vercel and Cloudflare edit ONE sticky comment on each push, so
-   * `createdAt` stays frozen at the first post and only `updatedAt` moves. A
-   * human comment posted in between (with a coincidentally matching host)
-   * must not outrank the bot's freshly edited one.
-   */
-  it("ranks by updatedAt, so a sticky comment beats a later unrelated one", () => {
-    expect(
-      previewUrlFromComments([
-        {
-          body: vercelBody,
-          createdAt: "2026-08-01T00:00:00Z",
-          updatedAt: "2026-08-06T22:32:55Z",
-        },
-        {
-          body: "unrelated note, see https://some-other.vercel.app",
-          createdAt: "2026-08-03T00:00:00Z",
-          updatedAt: "2026-08-03T00:00:00Z",
-        },
-      ]),
-    ).toBe(
-      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
-    );
-  });
-
-  it("falls back to array order when no timestamp is usable", () => {
-    expect(
-      previewUrlFromComments([{ body: decobotBody }, { body: vercelBody }]),
-    ).toBe("https://envs-example--a1b2c3.decocdn.com");
   });
 });
 

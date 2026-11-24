@@ -266,6 +266,14 @@ export const KEYS = {
     ] as const,
 
   /** A repository's open change requests, for the branch picker's list. */
+  githubDeployment: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+    sha: string | null,
+  ) => ["github-deployment", orgSlug, connectionId, owner, repo, sha] as const,
+
   githubOpenPrs: (
     orgSlug: string,
     connectionId: string | null | undefined,

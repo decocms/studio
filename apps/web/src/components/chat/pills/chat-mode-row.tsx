@@ -16,6 +16,7 @@ import {
 } from "@decocms/shared/thread/session-runtime";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
+import { pullRequestDraftsEnabled } from "@/hooks/use-pr-draft-preview";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 import type { DraftKind } from "@/lib/draft-kind";
@@ -158,6 +159,22 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const onAdoptBranch = createTask
     ? (next: string) => createTask({ runtime: "sandbox", branch: next })
     : undefined;
+  const pullRequestDrafts = pullRequestDraftsEnabled(virtualMcp);
+  const onOpenPullRequestDraft =
+    pullRequestDrafts && createTask
+      ? (next: string) => {
+          if (
+            sessionState.resolved &&
+            sessionRuntime === "cms" &&
+            !locked &&
+            setCurrentTaskBranch
+          ) {
+            void setCurrentTaskBranch(next);
+          } else {
+            createTask({ runtime: "cms", branch: next });
+          }
+        }
+      : undefined;
 
   const branchPill =
     repository && hasRepoCredential(repoTarget) ? (
@@ -180,6 +197,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         onChange={onChange}
         onCreateBranch={onCreateBranch}
         onAdoptBranch={onAdoptBranch}
+        onOpenPullRequestDraft={onOpenPullRequestDraft}
         locked={locked}
         placement="chat"
         draftKind={draftKind}

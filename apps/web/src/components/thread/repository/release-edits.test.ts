@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Release } from "@decocms/shared/sdk/types";
 import {
+  addPullRequestRelease,
   addRelease,
   groupReleasesByRuntime,
   releaseRuntime,
@@ -50,6 +51,46 @@ describe("release-edits", () => {
     const current = [{ ...rel("a"), runtime: "sandbox" as const }];
     expect(markReleaseSandbox(current, "a")).toBe(current);
     expect(markReleaseSandbox(current, "b")).toBe(current);
+  });
+
+  it("markReleaseSandbox keeps a pull request draft a CMS draft", () => {
+    const current = [
+      {
+        ...rel("a"),
+        runtime: "cms" as const,
+        preview: "pull-request" as const,
+      },
+    ];
+    expect(markReleaseSandbox(current, "a")).toBe(current);
+  });
+
+  it("addPullRequestRelease adds a CMS draft rendered on the pull request", () => {
+    expect(addPullRequestRelease([rel("a")], rel("b", "Fix header"))).toEqual([
+      rel("a"),
+      { ...rel("b", "Fix header"), runtime: "cms", preview: "pull-request" },
+    ]);
+  });
+
+  it("addPullRequestRelease turns the branch's existing draft into one, keeping its name", () => {
+    expect(
+      addPullRequestRelease(
+        [{ ...rel("a", "Mine"), runtime: "sandbox" }],
+        rel("a", "PR title"),
+      ),
+    ).toEqual([
+      { ...rel("a", "Mine"), runtime: "cms", preview: "pull-request" },
+    ]);
+  });
+
+  it("addPullRequestRelease is a no-op when the branch already is one", () => {
+    const current = [
+      {
+        ...rel("a"),
+        runtime: "cms" as const,
+        preview: "pull-request" as const,
+      },
+    ];
+    expect(addPullRequestRelease(current, rel("a", "Other"))).toBe(current);
   });
 
   // Serialized publish discard + auto-name landing compose either way.

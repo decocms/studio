@@ -248,6 +248,8 @@ export const thread = {
   "thread.publishPopover.versionNote": "Nota da release",
   "thread.publishPopover.updatesPullRequest":
     "Atualiza o pull request #{number}",
+  "thread.publishPopover.mergesPullRequest":
+    "Publicar coloca no ar o pull request #{number} inteiro, com as mudanças de código dele.",
   "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",
   "thread.publishCompare.sideBySide": "Lado a lado",
   "thread.publishCompare.before": "Antes",

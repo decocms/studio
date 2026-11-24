@@ -377,6 +377,7 @@ export const CORE_TOOLS = [
   ChangeRequestTools.CHANGE_REQUEST_STATE,
   ChangeRequestTools.CHANGE_REQUEST_LAST_MERGED,
   ChangeRequestTools.CHANGE_REQUEST_LIST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_DEPLOYMENT,
   ChangeRequestTools.CHANGE_REQUEST_CHECK_LOG,
   ChangeRequestTools.CHANGE_REQUEST_OPEN,
   ChangeRequestTools.CHANGE_REQUEST_MERGE,

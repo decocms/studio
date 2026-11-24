@@ -19,14 +19,41 @@ export function removeRelease(current: Release[], branch: string): Release[] {
   return current.filter((r) => r.branch !== branch);
 }
 
-/** One-way: a branch that had a coding session may hold code, whatever runtime
- *  it was named in. Returns `current` when nothing changes. */
+/**
+ * Name `release` as a pull request draft: a CMS draft rendered on the pull
+ * request's deploy preview. Idempotent by branch like {@link addRelease}, but
+ * an existing draft of the branch is turned into one, keeping its name and
+ * color: picking the pull request is the newer intent.
+ */
+export function addPullRequestRelease(
+  current: Release[],
+  release: Release,
+): Release[] {
+  const pullRequest = {
+    runtime: "cms" as const,
+    preview: "pull-request" as const,
+  };
+  const target = current.find((r) => r.branch === release.branch);
+  if (!target) return [...current, { ...release, ...pullRequest }];
+  if (target.runtime === "cms" && target.preview === "pull-request") {
+    return current;
+  }
+  return current.map((r) => (r === target ? { ...r, ...pullRequest } : r));
+}
+
+/** One-way (pull request drafts excepted): a coding session may leave code. */
 export function markReleaseSandbox(
   current: Release[],
   branch: string,
 ): Release[] {
   const target = current.find((r) => r.branch === branch);
-  if (!target || target.runtime === "sandbox") return current;
+  if (
+    !target ||
+    target.runtime === "sandbox" ||
+    target.preview === "pull-request"
+  ) {
+    return current;
+  }
   return current.map((r) =>
     r === target ? { ...r, runtime: "sandbox" as const } : r,
   );
