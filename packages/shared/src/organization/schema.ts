@@ -257,12 +257,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Let a chat a person drives on the organization home reach every active connection the sender's role allows, through Studio rather than mounted as MCP servers. On by default (see DEFAULT_ON_FLAGS); turn it off to leave a home chat with only the connections attached to the default agent. Connections in `coding_agent_mcp_excluded` stay out either way. Board, reviewer, Jira and automation runs are not affected.",
     ),
-  coding_agents_claude_code: z
-    .boolean()
-    .optional()
-    .describe(
-      "Run chats on a Code Agent (an agent imported from a GitHub repo) with the claude-code harness inside its sandbox, instead of hosted Decopilot. Off by default: it changes the runtime of every such chat, and claude-code flushes whole turns rather than streaming tokens.",
-    ),
   task_board_codex: z
     .boolean()
     .optional()
@@ -274,12 +268,6 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "Use Codex for new sandbox chats. Off by default; requires hosted sandboxes and a ChatGPT subscription or Responses API provider. Existing chats keep their pinned runtime.",
-    ),
-  chat_harness_sandbox_only: z
-    .boolean()
-    .optional()
-    .describe(
-      "Run every chat with the claude-code harness in its own sandbox instead of hosted Decopilot. On by default (see DEFAULT_ON_FLAGS); a deployment without hosted sandboxes keeps Decopilot regardless.",
     ),
   sandbox_run_metadata: z
     .boolean()
@@ -423,7 +411,6 @@ export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
 export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "reviewer_enabled",
   "cheap_reviewer_model",
-  "chat_harness_sandbox_only",
   "cms_auto_commit",
   "home_chat_org_connections",
   "sandbox_chat_user_memory",

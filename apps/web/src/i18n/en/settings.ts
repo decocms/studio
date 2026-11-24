@@ -934,14 +934,6 @@ export const settings = {
   "settings.agentTools.orgMcpsPickSaved":
     "Saved which connections runs can reach",
   "settings.agentTools.chatRuntimeSection": "Chats",
-  "settings.agentTools.chatHarnessSandboxOnlyTitle":
-    "Run chats with Claude Code in a sandbox",
-  "settings.agentTools.chatHarnessSandboxOnlyDescription":
-    "Each chat gets its own sandbox instead of running on Decopilot. The first message waits for the sandbox to start. Needs an Anthropic, OpenRouter or deco AI gateway key, or a Claude subscription.",
-  "settings.agentTools.codingAgentsClaudeCodeTitle":
-    "Run Code Agent chats with Claude Code",
-  "settings.agentTools.codingAgentsClaudeCodeDescription":
-    "Chats on an agent imported from GitHub run in that agent's sandbox, next to the code. Replies arrive a whole turn at a time. Applies to new chats only.",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

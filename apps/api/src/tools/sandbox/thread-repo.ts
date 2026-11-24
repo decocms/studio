@@ -27,12 +27,12 @@ import {
   findReusableRepoConnection,
   getRepoScope,
 } from "@decocms/shared/github-repo-scope";
-import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
 import {
   deleteSandboxMapEntry,
   mergeSandboxMapEntry,
   readSandboxMap,
 } from "./sandbox-map";
+import { agentSandboxEnabled } from "@/settings";
 
 /** Keep coding-agent dispatch and repository lookup aligned with provisioning. */
 export async function getCodingAgentProjectMetadata(
@@ -423,7 +423,7 @@ export function resolveSandboxBranch(args: {
    * sharing beats two pods force-pushing over each other.
    */
   pinnedRef?: string | null;
-  /** The org's `chat_harness_sandbox_only` flag. */
+  /** Whether chats run in their own sandbox (`agentSandboxEnabled()`). */
   sandboxOnlyChats?: boolean;
 }): string {
   if (args.pinnedRef) return args.pinnedRef;
@@ -459,8 +459,8 @@ export async function getThreadPinnedRef(
   return typeof ref === "string" && ref.length > 0 ? ref : null;
 }
 
-/** `resolveSandboxBranch` with the thread's bound repo, pinned ref and the
- *  org's sandbox-only flag read for you. */
+/** `resolveSandboxBranch` with the thread's bound repo and pinned ref read
+ *  for you. */
 export async function resolveSandboxBranchForThread(
   ctx: StudioContext,
   args: {
@@ -469,19 +469,15 @@ export async function resolveSandboxBranchForThread(
     runBranch?: string | null;
   },
 ): Promise<string> {
-  const organizationId = ctx.storage.threads.getOrganizationId();
-  const [threadRepo, pinnedRef, sandboxOnlyChats] = await Promise.all([
+  const [threadRepo, pinnedRef] = await Promise.all([
     getThreadRepository(ctx, args.threadId),
     getThreadPinnedRef(ctx, args.threadId),
-    organizationId
-      ? sandboxOnlyChatsEnabled(ctx, organizationId)
-      : Promise.resolve(false),
   ]);
   return resolveSandboxBranch({
     ...args,
     threadRepo,
     pinnedRef,
-    sandboxOnlyChats,
+    sandboxOnlyChats: agentSandboxEnabled(),
   });
 }
 

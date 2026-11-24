@@ -963,14 +963,6 @@ export const settings = {
   "settings.agentTools.orgMcpsPickSaved":
     "Conex\u00f5es que os runs alcan\u00e7am salvas",
   "settings.agentTools.chatRuntimeSection": "Chats",
-  "settings.agentTools.chatHarnessSandboxOnlyTitle":
-    "Rodar chats com o Claude Code em um sandbox",
-  "settings.agentTools.chatHarnessSandboxOnlyDescription":
-    "Cada chat ganha um sandbox próprio em vez de rodar no Decopilot. A primeira mensagem espera o sandbox iniciar. Requer uma chave da Anthropic, OpenRouter ou do gateway de IA da deco, ou uma assinatura do Claude.",
-  "settings.agentTools.codingAgentsClaudeCodeTitle":
-    "Rodar chats de Code Agent com o Claude Code",
-  "settings.agentTools.codingAgentsClaudeCodeDescription":
-    "Chats em um agente importado do GitHub rodam no sandbox desse agente, junto do código. As respostas chegam de turno inteiro. Vale só para chats novos.",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",

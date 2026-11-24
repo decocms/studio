@@ -10,7 +10,7 @@
  *
  * Branch resolution (only meaningful when the vMCP has a repository):
  * honor `data.branch`, else the most-recently-touched `sandboxMap[userId]`
- * branch (warm sandbox; skipped under `chat_harness_sandbox_only`), else
+ * branch (warm sandbox; skipped when chats run in sandboxes), else
  * `generateBranchName` (`<user-slug>-<timestamp>`).
  * A `runtime: "sandbox"` coding session deliberately shares the caller's
  * branch — it continues the CMS draft; the two runtimes are told apart by the
@@ -54,11 +54,8 @@ import {
   isBlogDraftBranch,
 } from "@decocms/shared/branch-name";
 import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
-import {
-  startThreadSandbox,
-  sandboxOnlyChatsEnabled,
-} from "../../harnesses/sandbox-only-chats";
-import { getSettings } from "../../settings";
+import { startThreadSandbox } from "../../harnesses/sandbox-only-chats";
+import { agentSandboxEnabled, getSettings } from "../../settings";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -143,10 +140,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       | undefined;
     const repository = metadata?.repository;
     let branch: string | null = null;
-    const sandboxOnlyChats = await sandboxOnlyChatsEnabled(
-      ctx,
-      organization.id,
-    );
+    const sandboxOnlyChats = agentSandboxEnabled();
     if (repository) {
       // Sandbox-only chats get one sandbox each, so none inherits a warm one.
       const warmBranch = sandboxOnlyChats

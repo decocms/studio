@@ -26,9 +26,8 @@ import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 import type { StudioContext } from "../../core/studio-context";
 import type { Thread } from "../../storage/types";
-import { sandboxOnlyChatsEnabled } from "../../harnesses/sandbox-only-chats";
 import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
-import { getSettings } from "../../settings";
+import { agentSandboxEnabled, getSettings } from "../../settings";
 import { readSandboxMap, resolveVm } from "../sandbox/sandbox-map";
 import { threadIdFromBranch } from "../sandbox/thread-repo";
 
@@ -192,11 +191,7 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
 
     const thread = await ctx.storage.threads.update(id, updateData);
 
-    if (
-      data.hidden === true &&
-      !existing.hidden &&
-      (await sandboxOnlyChatsEnabled(ctx, organization.id))
-    ) {
+    if (data.hidden === true && !existing.hidden && agentSandboxEnabled()) {
       await releaseThreadSandboxes(ctx, existing);
     }
 

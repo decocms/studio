@@ -79,7 +79,7 @@ Set `IMAGE` to the image Studio runs (your `$TAG`, or the default above).
 
 ## 5. Run chats on claude-code
 
-Turn on **Settings → General → Code Agents → "Run every chat with Claude Code in its own sandbox"** (`chat_harness_sandbox_only`). A chat that already has a sandbox keeps its image; start a new chat after changing images.
+With hosted sandboxes enabled, every new chat runs claude-code in its own sandbox. A chat that already has a sandbox keeps its image; start a new chat after changing images.
 
 ## Debugging
 

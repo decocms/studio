@@ -250,13 +250,9 @@ export function useOrgFlagState(flag: keyof OrgFlags): boolean | undefined {
   return data ?? (isError ? DEFAULT_ON_FLAGS.has(flag) : undefined);
 }
 
-/**
- * `chat_harness_sandbox_only` as the API applies it: a deployment without
- * hosted sandboxes keeps Decopilot whatever the flag says.
- */
+/** Chats run in their own sandbox whenever the deployment has hosted sandboxes. */
 export function useSandboxOnlyChats(): boolean {
-  const flag = useOrgFlag("chat_harness_sandbox_only");
-  return usePublicConfig().runtime.agentSandbox && flag;
+  return usePublicConfig().runtime.agentSandbox;
 }
 
 /**

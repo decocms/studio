@@ -387,18 +387,6 @@ export function ChatSettings() {
     <SettingsSection title={t("settings.agentTools.chatRuntimeSection")}>
       <SettingsCard>
         <FlagToggle
-          flag="chat_harness_sandbox_only"
-          icon={<Terminal size={16} />}
-          titleKey="settings.agentTools.chatHarnessSandboxOnlyTitle"
-          descriptionKey="settings.agentTools.chatHarnessSandboxOnlyDescription"
-        />
-        <FlagToggle
-          flag="coding_agents_claude_code"
-          icon={<Terminal size={16} />}
-          titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
-          descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
-        />
-        <FlagToggle
           flag="chat_harness_codex"
           icon={<Terminal size={16} />}
           titleKey="settings.agentTools.chatHarnessCodexTitle"

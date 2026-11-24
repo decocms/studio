@@ -37,7 +37,6 @@ import {
 import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import { agentSandboxEnabled } from "@/settings";
-import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
 import { toolsFromMCP } from "@/harnesses/lib/decopilot/mcp-tools";
 import { MCP_LIST_TIMEOUT_MS } from "@/core/constants";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
@@ -307,8 +306,6 @@ export async function assembleDecopilotTools(
     const pinnedRef = await getThreadPinnedRef(ctx, extras.threadId);
     // Without the hosted sandbox, building the file tools throws.
     const vmEnabled = Boolean(input.user.id) && agentSandboxEnabled();
-    const sandboxOnlyChats =
-      vmEnabled && (await sandboxOnlyChatsEnabled(ctx, organization.id));
     const vmContext: VmContext | null = vmEnabled
       ? {
           virtualMcpId: input.agent.id,
@@ -321,7 +318,7 @@ export async function assembleDecopilotTools(
             agentRepo: vmMetadata.repository,
             runBranch: runContext.branch,
             pinnedRef,
-            sandboxOnlyChats,
+            sandboxOnlyChats: true,
           }),
           userId: input.user.id,
           // Scopes /app/org/output and thread-owned artifacts. Cannot be derived

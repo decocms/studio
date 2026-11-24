@@ -25,16 +25,6 @@ describe("orgFlagEnabled", () => {
     ).toBe(false);
   });
 
-  it("sandbox-only chats are on unless an org turned them off", () => {
-    expect(orgFlagEnabled({}, "chat_harness_sandbox_only")).toBe(true);
-    expect(
-      orgFlagEnabled(
-        { chat_harness_sandbox_only: false },
-        "chat_harness_sandbox_only",
-      ),
-    ).toBe(false);
-  });
-
   it("home chat org connections are on unless an org turned them off", () => {
     expect(DEFAULT_ON_FLAGS.has("home_chat_org_connections")).toBe(true);
     expect(orgFlagEnabled(null, "home_chat_org_connections")).toBe(true);

@@ -15,7 +15,6 @@ import { join } from "node:path";
 import {
   applyThreadLock,
   assertThreadOwnedByCaller,
-  defaultHarnessForAgent,
   assertHostedHarness,
   assertPersistedHostedRuntime,
   computeIdempotencyKey,
@@ -471,35 +470,5 @@ describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", (
     const hostedCancelIdx = body.indexOf("await cancelHostedHarness(");
     expect(gateHeadCancelIdx).toBeGreaterThan(-1);
     expect(hostedCancelIdx).toBeGreaterThan(gateHeadCancelIdx);
-  });
-});
-
-describe("defaultHarnessForAgent", () => {
-  const repo = { repository: { url: "https://github.com/acme/site" } };
-
-  test("keeps a repo-backed agent on decopilot while the flag is off", () => {
-    expect(
-      defaultHarnessForAgent({ flagEnabled: false, agentMetadata: repo }),
-    ).toBe("decopilot");
-  });
-
-  test("runs a Code Agent on claude-code when the flag is on", () => {
-    expect(
-      defaultHarnessForAgent({ flagEnabled: true, agentMetadata: repo }),
-    ).toBe("claude-code");
-  });
-
-  test("leaves a repo-less agent on decopilot", () => {
-    for (const agentMetadata of [
-      null,
-      undefined,
-      {},
-      { repository: null },
-      { repository: { url: "" } },
-    ]) {
-      expect(defaultHarnessForAgent({ flagEnabled: true, agentMetadata })).toBe(
-        "decopilot",
-      );
-    }
   });
 });

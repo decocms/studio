@@ -1,13 +1,8 @@
 import { supportsCodex } from "@decocms/shared/harness/codex-models";
-/**
- * The `chat_harness_sandbox_only` rollout: every chat runs claude-code in its
- * own sandbox instead of hosted Decopilot. See
- * `apps/api/src/harnesses/sandbox-harness-spec.md` (Rollout).
- */
+/** With hosted sandboxes, every chat runs claude-code or Codex in its own sandbox. */
 
 import type { StudioContext } from "@/core/studio-context";
 import { resolvePlanCredential } from "@/harnesses/plan-credential";
-import { agentSandboxEnabled } from "@/settings";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import {
@@ -19,25 +14,6 @@ import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pac
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { supportsClaudeCode } from "@decocms/shared/sdk/types/ai-providers";
-
-/**
- * Whether the org runs sandbox-only chats. Never throws: an unreadable settings
- * row reads as off, which is what every org had before the flag existed.
- */
-export async function sandboxOnlyChatsEnabled(
-  ctx: StudioContext,
-  organizationId: string,
-): Promise<boolean> {
-  // Without a hosted sandbox, claude-code only fails later, at dispatch.
-  if (!agentSandboxEnabled()) return false;
-  try {
-    const settings = await ctx.storage.organizationSettings.get(organizationId);
-    return orgFlagEnabled(settings?.flags, "chat_harness_sandbox_only");
-  } catch (err) {
-    console.warn("[sandbox-only-chats] flag read failed", err);
-    return false;
-  }
-}
 
 export class ClaudeCodeProviderRequiredError extends Error {
   readonly code = "claude_code_provider_required";
