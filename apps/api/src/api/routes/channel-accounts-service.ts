@@ -119,7 +119,7 @@ export const createChannelAccountServiceRoutes = () => {
       returnUrl: input.return_url,
     });
     return c.json({
-      url: `${ctx.baseUrl}/${org.slug}/connect-channel/${claim.id}`,
+      url: `${ctx.baseUrl}/connect-channel/${org.slug}/${claim.id}`,
       expires_in: CHANNEL_CLAIM_TTL_SECONDS,
     });
   });

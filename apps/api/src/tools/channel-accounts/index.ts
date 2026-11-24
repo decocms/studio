@@ -117,12 +117,14 @@ export const CHANNEL_ACCOUNT_CONNECT = defineTool({
       // The channel says whose account it is: a link passed to someone else
       // stops here. An address the person never proved is nobody's.
       const user = await ctx.storage.channelAccounts.person(userId);
-      if (
-        !user?.emailVerified ||
-        user.email.trim().toLowerCase() !== claim.accountEmail
-      ) {
+      if (user?.email.trim().toLowerCase() !== claim.accountEmail) {
         throw new ForbiddenError(
           "This channel account belongs to another email.",
+        );
+      }
+      if (!user.emailVerified) {
+        throw new ForbiddenError(
+          "Verify your email in Studio before connecting this account.",
         );
       }
     }

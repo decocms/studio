@@ -715,6 +715,16 @@ export const KEYS = {
   organizationInviteLinks: (organizationId: string) =>
     ["organization-invite-links", organizationId] as const,
 
+  // The caller's own channel accounts (per user; the tool call is org-scoped)
+  channelAccounts: (orgId: string, userId: string) =>
+    ["channel-accounts", orgId, userId] as const,
+  // A link a channel bot sent, as the viewer sees it (scoped by org, claim and viewer)
+  channelAccountClaim: (
+    orgSlug: string,
+    claimId: string,
+    userId: string | null,
+  ) => ["channel-account-claim", orgSlug, claimId, userId] as const,
+
   // Public preview of a shareable invite link (scoped by token and viewer)
   inviteLinkPreview: (token: string, userId: string | null) =>
     ["invite-link-preview", token, userId] as const,

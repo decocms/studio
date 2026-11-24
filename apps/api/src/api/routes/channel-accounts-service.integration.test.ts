@@ -103,7 +103,7 @@ describe("the channels service's routes", () => {
     const res = await call("org_1/internal/channel-accounts/claims", claim());
     expect(res.status).toBe(200);
     const body = (await res.json()) as { url: string; expires_in: number };
-    expect(body.url).toMatch(/\/org_1\/connect-channel\/chc_[\w-]+$/);
+    expect(body.url).toMatch(/\/connect-channel\/org_1\/chc_[\w-]+$/);
     expect(body.expires_in).toBe(900);
 
     const elsewhere = await call(

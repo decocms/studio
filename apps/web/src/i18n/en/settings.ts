@@ -372,6 +372,15 @@ export const settings = {
   "settings.passkeys.deleteDescription":
     "You will no longer be able to sign in with this passkey. The credential stays on your device until you delete it there.",
   "settings.passkeys.cancel": "Cancel",
+  "settings.channelAccounts.title": "Connected channel accounts",
+  "settings.channelAccounts.description":
+    "When one of these accounts writes to a bot, the bot talks to Studio as you.",
+  "settings.channelAccounts.disconnect": "Disconnect",
+  "settings.channelAccounts.disconnected": "Account disconnected",
+  "settings.channelAccounts.disconnectTitle": "Disconnect {name} ({channel})?",
+  "settings.channelAccounts.disconnectDescription":
+    "Bots stop talking to Studio as you from this account. Writing to a bot again sends a new link to connect.",
+  "settings.channelAccounts.cancel": "Cancel",
   "settings.preferences.title": "Preferences",
   "settings.plan.sectionTitle": "Plan",
   "settings.plan.pageTitle": "Plan page",

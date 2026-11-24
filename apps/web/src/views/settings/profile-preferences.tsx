@@ -37,6 +37,7 @@ import { question004Sound } from "@/lib/sounds/question-004.ts";
 import { toast } from "@decocms/ui/components/sonner.tsx";
 import { track } from "@/lib/posthog-client";
 import { useAuthConfig } from "@/providers/auth-config-provider";
+import { ChannelAccountsSection } from "./channel-accounts-section";
 import { PasskeysSection } from "./passkeys-section";
 import {
   SettingsCard,
@@ -418,6 +419,7 @@ export function ProfilePreferencesPage() {
             <Page.Title>{t("settings.title")}</Page.Title>
             <ProfileSection />
             {passkey.enabled && <PasskeysSection />}
+            <ChannelAccountsSection />
             <PreferencesSection />
           </SettingsPage>
         </Page.Container>

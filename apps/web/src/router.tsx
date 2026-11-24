@@ -376,6 +376,13 @@ const inviteLinkRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/invite-link.tsx")),
 });
 
+// A channel bot's link: connect that channel account to the signed-in person.
+const connectChannelRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/connect-channel/$org/$claimId",
+  component: lazyRouteComponent(() => import("./routes/connect-channel.tsx")),
+});
+
 // ============================================
 // ORGANIZATION ROUTE — SHARED APPLICATION LAYOUT
 // ============================================
@@ -1911,6 +1918,7 @@ const routeTree = rootRoute.addChildren([
   siteEditorRoute.addChildren([siteEditorPreviewRoute, siteEditorContentRoute]),
   reportRoute,
   inviteLinkRoute,
+  connectChannelRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,
