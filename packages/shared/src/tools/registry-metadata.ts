@@ -2431,6 +2431,21 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
 ];
 
 /**
+ * Resource keys of the hosted CMS HTTP API (`/api/cms/:site`), checked under
+ * `self`. Not MCP tools. Reads cover drafts, releases and the site-token
+ * list; writes cover drafts, saves, publish, rollback and schema push.
+ * Issuing a site token is separate because it mints a credential.
+ */
+export const CMS_PERMISSIONS = {
+  read: "CMS_READ",
+  write: "CMS_WRITE",
+  issueSiteToken: "CMS_SITE_TOKEN_ISSUE",
+} as const;
+
+export type CmsPermission =
+  (typeof CMS_PERMISSIONS)[keyof typeof CMS_PERMISSIONS];
+
+/**
  * Tools every authenticated org member can use by default, plus non-MCP resource keys.
  *
  * Granted at runtime by AccessControl (`checkResource`) to every member
@@ -2452,6 +2467,9 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
   // changes. See `.context/org-filesystem-proposal.md`.
   "ORG_FS_READ",
   "ORG_FS_WRITE",
+  // Hosted CMS HTTP-API resource keys: every member may edit, publish and
+  // issue site tokens. An API key needs them in its own allowlist.
+  ...Object.values(CMS_PERMISSIONS),
 ]);
 
 /**

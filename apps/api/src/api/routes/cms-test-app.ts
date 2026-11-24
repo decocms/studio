@@ -4,7 +4,9 @@
  */
 
 import { Hono } from "hono";
-import type { StudioContext } from "@/core/studio-context";
+import { AccessControl } from "@/core/access-control";
+import { createBoundAuthClient } from "@/core/context-factory";
+import type { BetterAuthInstance, StudioContext } from "@/core/studio-context";
 import { memoryDraftTable } from "@/hosted/cms-test-helpers";
 import { memoryDeliveryStore, memoryKv } from "@/hosted/hosted-test-helpers";
 import type { Env } from "../hono-env";
@@ -56,8 +58,22 @@ export function cmsTestApp(
   const sites = options.sites ?? { acme: ORG };
   const siteProjects = options.siteProjects ?? { acme: "p1" };
   let caller: CmsTestCaller = { userId: "usr_ana", method: "session" };
-  /** The role `admit` bound (as `bindOrganization` sets it on access). */
-  let role: string | undefined;
+  // The real access control: the decisions these tests reach (basic usage,
+  // admin bypass, an API key's allowlist) never call Better Auth.
+  const accessControl = () =>
+    new AccessControl(
+      caller.userId ?? undefined,
+      undefined,
+      createBoundAuthClient({
+        auth: { api: {} } as unknown as BetterAuthInstance,
+        headers: new Headers(),
+        permissions: caller.permissions,
+        apiKeyId: caller.apiKey ? "key_1" : undefined,
+        organizationId: ORG,
+      }),
+      undefined,
+      "self",
+    );
   const context = (): StudioContext =>
     ({
       // /api/cms/:site names no organization: the gates resolve it.
@@ -72,7 +88,7 @@ export function cmsTestApp(
           ? { apiKey: { id: "key_1", name: "key", userId: caller.userId } }
           : {}),
       },
-      access: { getRole: () => role },
+      access: accessControl(),
       storage: {
         kv: memoryKv(),
         virtualMcps: {
@@ -115,13 +131,18 @@ export function cmsTestApp(
       hasCms: async () => options.hasCms ?? true,
       admit: async (c, organizationId) => {
         if (!(caller.orgs ?? [ORG]).includes(organizationId)) return false;
-        c.var.studioContext.organization = {
+        // An admitted caller is a member, so it always has a role.
+        const role = caller.role ?? "user";
+        const ctx = c.var.studioContext;
+        ctx.organization = {
           id: organizationId,
           slug: `${organizationId}-slug`,
           name: organizationId,
-          role: caller.role,
+          role,
         };
-        role = caller.role;
+        // As `bindOrganization` does.
+        ctx.access.setOrganizationId(organizationId);
+        ctx.access.setRole(role);
         return true;
       },
       isBlocked: async (_c, organizationId) =>
