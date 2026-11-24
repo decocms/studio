@@ -7,7 +7,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import type { FieldProps } from "./field-props";
 import { FieldLabel } from "./field-label";
 import { RichTextToolbar } from "../rich-text-toolbar";
-import { EDITOR_LINK_CLASS } from "../editor-classes";
+import { EDITOR_BLOCK_CLASS, EDITOR_LINK_CLASS } from "../editor-classes";
 import { toInlineHtml } from "../inline-html";
 
 export function RichTextField({
@@ -60,8 +60,8 @@ export function RichTextField({
     editorProps: {
       attributes: {
         class: cn(
-          "prose prose-sm dark:prose-invert max-w-none focus:outline-none",
-          "min-h-[80px] px-3 py-2",
+          "min-h-[80px] px-3 py-2 text-foreground focus:outline-none",
+          EDITOR_BLOCK_CLASS,
           EDITOR_LINK_CLASS,
         ),
       },

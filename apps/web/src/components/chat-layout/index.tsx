@@ -14,6 +14,7 @@ import { Panel } from "@/components/panel";
 import { Page } from "@/components/page";
 import { SidebarThreadButtonPortal } from "@/components/sidebar/thread-button";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { SharePageButton } from "@/components/share-page-button";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
   ResizableHandle,
@@ -387,7 +388,12 @@ function ChatLayoutContent({
         <RoutePageHeader
           navigation={layout.contentNavigation}
           actions={actions}
-          trailingActions={<MainPanelControls />}
+          trailingActions={
+            <>
+              <SharePageButton />
+              <MainPanelControls />
+            </>
+          }
         />
         <Panel.Content>
           <div className="min-h-0 flex-1 overflow-hidden">

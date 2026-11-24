@@ -55,3 +55,18 @@ describe("default repository permissions", () => {
     }
   });
 });
+
+describe("change request permissions", () => {
+  it("lets the built-in user propose changes (open a change request)", () => {
+    expect(USER_ROLE_TOOLS.has("CHANGE_REQUEST_OPEN")).toBe(true);
+    expect(
+      resolveCapabilities({ self: [...USER_ROLE_TOOLS] })["changes:propose"],
+    ).toBe(true);
+  });
+
+  it("keeps merging — what ships — out of the user and basic grants", () => {
+    expect(USER_ROLE_TOOLS.has("CHANGE_REQUEST_MERGE")).toBe(false);
+    expect(BASIC_USAGE_TOOLS.has("CHANGE_REQUEST_MERGE")).toBe(false);
+    expect(BASIC_USAGE_TOOLS.has("CHANGE_REQUEST_OPEN")).toBe(false);
+  });
+});

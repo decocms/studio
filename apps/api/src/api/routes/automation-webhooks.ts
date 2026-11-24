@@ -20,13 +20,16 @@
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { auth } from "@/auth";
-import { type ContextMessage, enqueueAutomationFire } from "@/automations";
+import {
+  type ContextMessage,
+  enqueueAutomationFire,
+  MAX_TRIGGER_PAYLOAD_CHARS,
+} from "@/automations";
 import type { StudioContext } from "@/core/studio-context";
 import { webhookPermissionResource } from "@/tools/automations/webhook-trigger";
 import type { Env } from "../hono-env";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
-const MAX_PAYLOAD_BYTES = 1_048_576;
 
 interface VerifyOk {
   ok: true;
@@ -126,8 +129,8 @@ function stripRunMetadata(payload: unknown): unknown {
 
 function truncatedJsonPayload(value: unknown): string {
   let s = JSON.stringify(value, null, 2) ?? "null";
-  if (s.length > MAX_PAYLOAD_BYTES) {
-    s = s.slice(0, MAX_PAYLOAD_BYTES) + "\n[TRUNCATED]";
+  if (s.length > MAX_TRIGGER_PAYLOAD_CHARS) {
+    s = s.slice(0, MAX_TRIGGER_PAYLOAD_CHARS) + "\n[TRUNCATED]";
   }
   return s;
 }

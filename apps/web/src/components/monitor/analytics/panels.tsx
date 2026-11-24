@@ -6,8 +6,19 @@
  */
 
 import { type ComponentProps, type ReactNode, useState } from "react";
-import { BarChart10, Check, Maximize01 } from "@untitledui/icons";
+import {
+  AlertTriangle,
+  BarChart10,
+  Check,
+  Maximize01,
+} from "@untitledui/icons";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@decocms/ui/components/alert.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
@@ -83,7 +94,9 @@ export function useSectionView(props: SectionProps, view: string) {
   return {
     data: query.data?.data,
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error,
+    refetch: query.refetch,
   };
 }
 
@@ -229,6 +242,47 @@ export function SectionError({ error }: { error: Error }) {
       title={t("monitor.analytics.panels.error")}
       description={error.message}
     />
+  );
+}
+
+/**
+ * Said above a section when the read surface failed some of its panels
+ * (`failedPanels`): those arrive as `[]`, and without this their cards would
+ * read as "nothing in this period".
+ */
+export function PanelsFailed({
+  data,
+  isFetching,
+  onRetry,
+}: {
+  data: Payload | undefined;
+  isFetching: boolean;
+  onRetry: () => void;
+}) {
+  const t = useT();
+  const failed = data?.failedPanels;
+  if (!Array.isArray(failed) || failed.length === 0) return null;
+  return (
+    <Alert variant="warning">
+      <AlertTriangle />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <AlertTitle className="line-clamp-none">
+          {t("monitor.analytics.panels.failed")}
+        </AlertTitle>
+        <AlertDescription>
+          {t("monitor.analytics.panels.failedDesc")}
+        </AlertDescription>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="shrink-0"
+        disabled={isFetching}
+        onClick={onRetry}
+      >
+        {t("monitor.analytics.panels.retry")}
+      </Button>
+    </Alert>
   );
 }
 

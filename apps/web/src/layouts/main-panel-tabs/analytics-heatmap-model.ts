@@ -187,12 +187,25 @@ export interface HeatmapModel {
   funnel: Map<string, HeatFunnel>;
   /** The same steps for every view of the page — the baseline. Null when absent. */
   pageFunnel: HeatFunnel | null;
+  /** A panel the map is drawn from failed upstream: its zeros are not "no visits". */
+  failed: boolean;
 }
+
+/** The panels the map itself is drawn from; the side lists degrade on their own. */
+const MAP_PANELS = [
+  "hmSummary",
+  "hmDevices",
+  "hmElements",
+  "hmGrid",
+  "hmScroll",
+  "hmAttention",
+];
 
 const isDevice = (v: unknown): v is HeatDevice =>
   v === "desktop" || v === "tablet" || v === "mobile";
 
-/** Normalise the `view=heatmap` payload; absent panels read as empty. */
+/** Normalise the `view=heatmap` payload; absent panels read as empty, and
+ *  failed ones (`failedPanels`) mark the model `failed`. */
 export function parseHeatmap(data: Row): HeatmapModel {
   const s = rows(data.hmSummary)[0] ?? {};
   const views = num(s.views);
@@ -202,6 +215,9 @@ export function parseHeatmap(data: Row): HeatmapModel {
     const page = str(r.page_key);
     pages.set(page, (pages.get(page) ?? 0) + num(r.views));
   }
+  const failedPanels: unknown[] = Array.isArray(data.failedPanels)
+    ? data.failedPanels
+    : [];
   return {
     views,
     scale: num(s.scale) || 1,
@@ -280,6 +296,7 @@ export function parseHeatmap(data: Row): HeatmapModel {
     valueLeaks: rows(data.hmValueLeaks).map(elementValue),
     valueModel: valueModelOf(data.heatmapValue),
     ...funnelOf(rows(data.hmFunnel)),
+    failed: MAP_PANELS.some((k) => failedPanels.includes(k)),
   };
 }
 

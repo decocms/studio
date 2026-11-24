@@ -14,6 +14,29 @@ describe("createPlanTools", () => {
     expect(Object.keys(tools)).toEqual(["ORGANIZATION_PLAN_OBJECTIVE_SET"]);
   });
 
+  test("registers the goal tools instead while Plan goals are on", async () => {
+    const tools = await createPlanTools(
+      ctxWith(async () => ({
+        flags: { plan_page_enabled: true, plan_goals_enabled: true },
+      })),
+      "org_1",
+    );
+    expect(Object.keys(tools)).toEqual([
+      "PLAN_GOAL_LIST",
+      "PLAN_GOAL_CREATE",
+      "PLAN_ACTIVE_GOAL_SET",
+    ]);
+  });
+
+  test("leaves Plan goals out while the Plan page is off", async () => {
+    expect(
+      await createPlanTools(
+        ctxWith(async () => ({ flags: { plan_goals_enabled: true } })),
+        "org_1",
+      ),
+    ).toEqual({});
+  });
+
   test("leaves it out while the Plan page is off", async () => {
     for (const settings of [
       null,

@@ -7,28 +7,49 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
  * site keeps its copy.
  */
 export function deleteConfirmKey(
-  what: "block" | "post" | "section",
+  what: "block" | "post" | "archivedPosts" | "section",
   hostedDraft: boolean,
-  /**
-   * Hosted v8: the block was never published (`neverPublishedBlock`), so its
-   * deletion is no change Publish lists: no way back through Publish is
-   * promised.
-   */
-  { neverPublished = false }: { neverPublished?: boolean } = {},
+  {
+    neverPublished = false,
+    live = false,
+  }: {
+    /**
+     * Hosted v8: the block was never published (`neverPublishedBlock`), so its
+     * deletion is no change Publish lists: no way back through Publish is
+     * promised.
+     */
+    neverPublished?: boolean;
+    /**
+     * A post that is published or scheduled: deleting it takes its page off
+     * the site, which a hosted draft's copy already covers by saying nothing
+     * goes live until Publish.
+     */
+    live?: boolean;
+  } = {},
 ): TranslationKey {
   if (hostedDraft && neverPublished) {
-    return what === "post"
-      ? "sandbox.postEditor.deletePostConfirmBodyNeverPublished"
-      : "sandbox.contentBrowser.deleteDialog.descriptionNeverPublished";
+    if (what === "post") {
+      return "sandbox.postEditor.deletePostConfirmBodyNeverPublished";
+    }
+    if (what === "archivedPosts") {
+      return "sandbox.postBoard.deleteArchivedConfirmBodyNeverPublished";
+    }
+    return "sandbox.contentBrowser.deleteDialog.descriptionNeverPublished";
   }
   if (what === "section") {
     return hostedDraft
       ? "sandbox.contentBrowser.deleteDialog.descriptionSectionDraft"
       : "sandbox.contentBrowser.deleteDialog.descriptionSection";
   }
-  if (what === "post") {
+  if (what === "archivedPosts") {
     return hostedDraft
-      ? "sandbox.postEditor.deletePostConfirmBodyDraft"
+      ? "sandbox.postBoard.deleteArchivedConfirmBodyDraft"
+      : "sandbox.postBoard.deleteArchivedConfirmBody";
+  }
+  if (what === "post") {
+    if (hostedDraft) return "sandbox.postEditor.deletePostConfirmBodyDraft";
+    return live
+      ? "sandbox.postEditor.deletePostConfirmBodyLive"
       : "sandbox.postEditor.deletePostConfirmBody";
   }
   return hostedDraft

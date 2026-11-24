@@ -22,10 +22,17 @@ function generateTestUser(overrides?: { email?: string }) {
  * Pass `email` to sign up with a specific address (e.g. to match a pending
  * invitation seeded earlier in the test).
  */
-export async function signUp(page: Page, options?: { email?: string }) {
+export async function signUp(
+  page: Page,
+  options?: {
+    email?: string;
+    /** Stay on the current login page, keeping its `next` redirect. */
+    fromCurrentPage?: boolean;
+  },
+) {
   const user = generateTestUser(options);
 
-  await page.goto("/login");
+  if (!options?.fromCurrentPage) await page.goto("/login");
 
   // The form remembers its last mode via localStorage and may render as
   // sign-in after cookie wipes; flip to sign-up if the "Your name" field

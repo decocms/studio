@@ -147,6 +147,8 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
+            invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -244,6 +246,8 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
+            invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | undefined;
@@ -333,6 +337,8 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
+            plan_goals_enabled?: boolean | undefined;
+            invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -384,6 +390,68 @@ export interface StudioToolIO {
       reaction: string | null;
       question: { text: string; options: string[] } | null;
       title: string | null;
+    };
+  };
+  PLAN_GOAL_LIST: {
+    input: { [x: string]: never };
+    output: {
+      goals: {
+        id: string;
+        statement: string;
+        source: { label: string; quote: string } | null;
+        created_by: string;
+        updated_by: string;
+        created_at: string;
+        updated_at: string;
+        users: number;
+        last_case_at: string | null;
+        mine: boolean;
+        can_edit: boolean;
+      }[];
+      active_goal_id: string | null;
+    };
+  };
+  PLAN_GOAL_CREATE: {
+    input: {
+      statement: string;
+      source?: { label: string; quote: string } | null | undefined;
+      make_active?: boolean | undefined;
+    };
+    output: { id: string };
+  };
+  PLAN_GOAL_UPDATE: {
+    input: { id: string; statement: string };
+    output: { id: string };
+  };
+  PLAN_GOAL_ARCHIVE: { input: { id: string }; output: { id: string } };
+  PLAN_ACTIVE_GOAL_SET: {
+    input: { goal_id: string };
+    output: { goal_id: string };
+  };
+  PLAN_GOAL_CASE_RECORD: {
+    input: { goal_id: string; thread_id: string };
+    output: { goal_id: string };
+  };
+  PLAN_GOAL_CASES: {
+    input: { goal_id: string };
+    output: { thread_ids: string[] };
+  };
+  PLAN_GOAL_SUGGEST: {
+    input: { [x: string]: never };
+    output: {
+      candidates: {
+        statement: string;
+        quote: string;
+        source: { kind: "file" | "memory" | "connection"; label: string };
+      }[];
+      read: string[];
+      unread: string[];
+      reason?:
+        | "not_found"
+        | "not_clear"
+        | "unavailable"
+        | "already_listed"
+        | undefined;
     };
   };
   ORGANIZATION_HAS_SITE: {
@@ -2971,6 +3039,28 @@ export interface StudioToolIO {
     input: { requestId: string };
     output: { success: boolean };
   };
+  ORGANIZATION_INVITE_LINK_CREATE: {
+    input: { role?: string | undefined; redirectPath?: string | undefined };
+    output: { id: string; path: string; expiresAt: string };
+  };
+  ORGANIZATION_INVITE_LINK_LIST: {
+    input: { [x: string]: never };
+    output: {
+      links: {
+        id: string;
+        role: string;
+        redirectPath: string | null;
+        createdBy: string | null;
+        expiresAt: string;
+        useCount: number;
+        createdAt: string;
+      }[];
+    };
+  };
+  ORGANIZATION_INVITE_LINK_REVOKE: {
+    input: { id: string };
+    output: { revoked: boolean };
+  };
   ORGANIZATION_MEMBER_ADD: {
     input: {
       userId: string;
@@ -3466,8 +3556,8 @@ export interface StudioToolIO {
         icon?: string | null | undefined;
         updated_by?: string | undefined;
         updated_at?: string | undefined;
-        created_at?: string | undefined;
         created_by?: string | undefined;
+        created_at?: string | undefined;
         organization_id?: string | undefined;
         app_name?: string | null | undefined;
         app_id?: string | null | undefined;
@@ -7117,7 +7207,7 @@ export interface StudioToolIO {
     };
     output: {
       available: boolean;
-      reason: "not_configured" | "no_site_data" | null;
+      reason: "not_configured" | "no_site_data" | "load_failed" | null;
       analyticsSite: string;
       results: {
         visitors: { default: number; variant: number };

@@ -16,6 +16,7 @@ import { NOTIFICATION_CREATED_EVENT } from "@decocms/shared/notification-types";
 import { PROJECT_FOLDERS_UPDATED_EVENT } from "@decocms/shared/project-sidebar";
 import { ORDER_MONITOR_EVALUATED_EVENT } from "@decocms/shared/order-monitor";
 import { ALERTS_UPDATED_EVENT } from "@decocms/shared/alerts";
+import { PLAN_GOALS_UPDATED_EVENT } from "@decocms/shared/plan-goals";
 import {
   createSSESubscription,
   filterEventTypes,
@@ -34,6 +35,7 @@ const WATCH_TYPES = [
   PROJECT_FOLDERS_UPDATED_EVENT,
   ORDER_MONITOR_EVALUATED_EVENT,
   ALERTS_UPDATED_EVENT,
+  PLAN_GOALS_UPDATED_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -107,6 +109,11 @@ export const orderMonitorWatchView: SSESubscription = filterEventTypes(
 /** An alert opened or was acked (`alerts.updated`). */
 export const alertsWatchView: SSESubscription = filterEventTypes(watchSSE, [
   ALERTS_UPDATED_EVENT,
+]);
+
+/** A Plan goal, or who works toward one, changed (`plan.goals.updated`). */
+export const planGoalsWatchView: SSESubscription = filterEventTypes(watchSSE, [
+  PLAN_GOALS_UPDATED_EVENT,
 ]);
 
 /**

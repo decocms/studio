@@ -5,6 +5,7 @@ export type {
   McpUiInitializeResult,
   McpUiResourceMeta,
   McpUiResourceCsp,
+  McpUiResourcePermissions,
   McpUiHostStyles,
   McpUiTheme,
 } from "@modelcontextprotocol/ext-apps";

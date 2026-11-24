@@ -62,6 +62,14 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_PLAN_OBJECTIVE_SET",
   "ORGANIZATION_PLAN_OBJECTIVE_FIND",
   "PLAN_CASE_NEXT_QUESTION",
+  "PLAN_GOAL_LIST",
+  "PLAN_GOAL_CREATE",
+  "PLAN_GOAL_UPDATE",
+  "PLAN_GOAL_ARCHIVE",
+  "PLAN_ACTIVE_GOAL_SET",
+  "PLAN_GOAL_CASE_RECORD",
+  "PLAN_GOAL_CASES",
+  "PLAN_GOAL_SUGGEST",
   "ORGANIZATION_HAS_SITE",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
@@ -81,6 +89,9 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_JOIN_REQUEST_LIST",
   "ORGANIZATION_JOIN_REQUEST_APPROVE",
   "ORGANIZATION_JOIN_REQUEST_DENY",
+  "ORGANIZATION_INVITE_LINK_CREATE",
+  "ORGANIZATION_INVITE_LINK_LIST",
+  "ORGANIZATION_INVITE_LINK_REVOKE",
   "ORGANIZATION_MEMBER_ADD",
   "ORGANIZATION_MEMBER_REMOVE",
   "ORGANIZATION_MEMBER_LIST",
@@ -451,6 +462,47 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
+    name: "PLAN_GOAL_LIST",
+    description: "List the organization's Plan goals",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_CREATE",
+    description: "Add a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_UPDATE",
+    description: "Reword a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_ARCHIVE",
+    description: "Archive a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_ACTIVE_GOAL_SET",
+    description: "Pick the Plan goal you work toward",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_CASE_RECORD",
+    description: "Record which Plan goal a business case went toward",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_CASES",
+    description: "List the business cases toward a Plan goal",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_GOAL_SUGGEST",
+    description:
+      "Suggest Plan goals from what the brand's people wrote and said",
+    category: "Organizations",
+  },
+  {
     name: "BLOG_SITE_GROUND",
     description:
       "Read the site's connected systems once, for the generators that follow",
@@ -548,6 +600,22 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Deny a request to join the organization",
     category: "Organizations",
     dangerous: true,
+  },
+  {
+    name: "ORGANIZATION_INVITE_LINK_CREATE",
+    description: "Create a 24-hour link that lets anyone join the organization",
+    category: "Organizations",
+    dangerous: true,
+  },
+  {
+    name: "ORGANIZATION_INVITE_LINK_LIST",
+    description: "List active invite links",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_INVITE_LINK_REVOKE",
+    description: "Revoke an invite link",
+    category: "Organizations",
   },
   {
     name: "ORGANIZATION_MEMBER_ADD",
@@ -1959,6 +2027,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_PLAN_OBJECTIVE_FIND",
       // Any member starts a business case; asks the fast tier, saves nothing.
       "PLAN_CASE_NEXT_QUESTION",
+      // Any member reads, adds and picks Plan goals; rewording or archiving
+      // one is checked against its creator inside the handler.
+      "PLAN_GOAL_LIST",
+      "PLAN_GOAL_CREATE",
+      "PLAN_GOAL_UPDATE",
+      "PLAN_GOAL_ARCHIVE",
+      "PLAN_ACTIVE_GOAL_SET",
+      "PLAN_GOAL_CASE_RECORD",
+      "PLAN_GOAL_CASES",
+      // Any member asks the AI for goals; proposes, never saves.
+      "PLAN_GOAL_SUGGEST",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -2085,6 +2164,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_JOIN_REQUEST_LIST",
       "ORGANIZATION_JOIN_REQUEST_APPROVE",
       "ORGANIZATION_JOIN_REQUEST_DENY",
+      "ORGANIZATION_INVITE_LINK_CREATE",
+      "ORGANIZATION_INVITE_LINK_LIST",
+      "ORGANIZATION_INVITE_LINK_REVOKE",
     ],
     dangerous: true,
   },
@@ -2173,6 +2255,16 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Connect git provider accounts and link existing repositories",
     section: "Organization",
     tools: ["GIT_ACCOUNT_CONNECT_TOKEN", "REPOSITORY_LINK"],
+  },
+  // Opening a change request proposes; it changes no deployed branch. Merging
+  // (CHANGE_REQUEST_MERGE) is what ships, and stays out of this grant.
+  {
+    id: "changes:propose",
+    label: "Propose changes",
+    description:
+      "Open pull requests (merge requests) for review. Merging is not included",
+    section: "Organization",
+    tools: ["CHANGE_REQUEST_OPEN"],
   },
   // File Configs
   {
@@ -2344,6 +2436,7 @@ const USER_ROLE_CAPABILITY_IDS: string[] = [
   "connections:manage",
   "assets:manage",
   "repositories:connect",
+  "changes:propose",
 ];
 
 /**

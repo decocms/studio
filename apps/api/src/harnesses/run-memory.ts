@@ -9,33 +9,12 @@
  */
 
 import { userMemoryDir } from "@decocms/shared/memory";
-import type { ThreadMetadata } from "@decocms/shared/entities";
-import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
-import {
-  isBoardRunThread,
-  resolveThreadToolNames,
-  THREAD_TOOL_NAMES,
-} from "@/tools/task-board/task-run-context";
+import { isUnattendedThread, type RunThread } from "@/harnesses/unattended-run";
 
 /** The dispatch input's `memory`. Declared here so the decision stays sandbox-free; the dispatch glue types it against the wire schema. */
 type RunMemory = { enabled: false } | { enabled: true; directory: string };
 
 const OFF: RunMemory = { enabled: false };
-
-export interface MemoryThread {
-  title?: string | null;
-  metadata?: ThreadMetadata | null;
-  trigger_id?: string | null;
-  created_by?: string | null;
-}
-
-/** A thread nobody opened: the board's runs (reviewer and Jira included) and an automation's. */
-export function isUnattendedThread(thread: MemoryThread): boolean {
-  if (thread.trigger_id) return true;
-  if (typeof thread.metadata?.[AUTOMATION_THREAD_KEY] === "string") return true;
-  if (isBoardRunThread(thread)) return true;
-  return resolveThreadToolNames(thread) !== THREAD_TOOL_NAMES;
-}
 
 /** One path segment, so the folder cannot name anything but that member's own. */
 function isFolderName(userId: string): boolean {
@@ -53,7 +32,7 @@ export function resolveRunMemory(args: {
   orgFsMounted: boolean;
   /** The member the run acts as. */
   userId: string;
-  thread: MemoryThread | null | undefined;
+  thread: RunThread | null | undefined;
 }): RunMemory | undefined {
   if (!args.enabled) return undefined;
   const { thread, userId } = args;

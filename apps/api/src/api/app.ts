@@ -10,6 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { MCP_APP_ALLOW_HEADER } from "@decocms/shared/mcp-apps/permissions";
 import { sleep } from "@decocms/shared/std";
 import { jetstreamManager } from "@nats-io/jetstream";
 import { getSettings } from "../settings";
@@ -1332,8 +1333,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization", "mcp-protocol-version"],
-      // Expose WWW-Authenticate so OAuth discovery works from cross-origin clients
-      exposeHeaders: ["WWW-Authenticate"],
+      // Expose WWW-Authenticate so OAuth discovery works from cross-origin
+      // clients, and the MCP app iframe `allow` value next to its HTML.
+      exposeHeaders: ["WWW-Authenticate", MCP_APP_ALLOW_HEADER],
     }),
   );
 

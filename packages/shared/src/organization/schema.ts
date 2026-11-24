@@ -389,6 +389,18 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "The Plan page: the store goal, which Jev picks from the store's data while it is empty, and a composer that turns an idea into a business case written by the agent. Off by default; with it off, Plan stays a coming-soon page.",
     ),
+  plan_goals_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Plan goals: the Plan page offers the organization's list of goals instead of a single store goal. Any member adds a goal or picks the one they work toward, and each business case is tied to a goal. Needs plan_page_enabled. Off by default; with it off, the Plan page keeps the single store goal.",
+    ),
+  invite_links_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Shareable invite links: members managers create a 24-hour link (from a page's Share button or the invite dialog) that lets anyone sign in, join the organization, and land on the shared page. Off by default; with it off, the Share button and the dialog's link section are hidden, no new link can be created, and existing links stop working.",
+    ),
   blog_view_enabled: z
     .boolean()
     .optional()

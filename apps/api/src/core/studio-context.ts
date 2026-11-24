@@ -309,6 +309,7 @@ import type { OrganizationSettingsStorage } from "../storage/organization-settin
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
 import type { SprintStorage } from "../storage/sprints";
+import type { PlanGoalStorage } from "../storage/plan-goals";
 import type { ProjectSidebarStorage } from "../storage/project-sidebar";
 import type { ExperimentStorage } from "../storage/experiments";
 import type { UserStorage } from "../storage/user";
@@ -319,6 +320,7 @@ import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
+import type { OrganizationInviteLinkStorage } from "../storage/organization-invite-links";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
@@ -378,6 +380,7 @@ export interface StudioStorage {
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
   sprints: SprintStorage;
+  planGoals: PlanGoalStorage;
   projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;
@@ -414,6 +417,7 @@ export interface StudioStorage {
   orgSsoSessions: OrgSsoSessionStorage;
   organizationDomains: OrganizationDomainStorage;
   organizationJoinRequests: OrganizationJoinRequestStorage;
+  organizationInviteLinks: OrganizationInviteLinkStorage;
   kv: KVStorage;
   interests: InterestsStorage;
   organizationBilling: OrganizationBillingStorage;

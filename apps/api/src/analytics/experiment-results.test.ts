@@ -173,6 +173,12 @@ describe("decoGoals / decoWindow", () => {
   });
 });
 
+/** The results of a read the test expects to succeed. */
+function answered<T>(out: T | "failed" | null): T {
+  if (out === "failed" || out === null) throw new Error(`read answered ${out}`);
+  return out;
+}
+
 describe("readDecoExperimentResults", () => {
   const original = getSettings();
   beforeAll(() =>
@@ -189,11 +195,8 @@ describe("readDecoExperimentResults", () => {
       Response.json(recordedPayload),
     );
     try {
-      const out = await readDecoExperimentResults(
-        analyticsCtx(),
-        ORG,
-        input,
-        NOW,
+      const out = answered(
+        await readDecoExperimentResults(analyticsCtx(), ORG, input, NOW),
       );
       const url = new URL(String(fetchSpy.mock.calls[0]?.[0]));
       expect(Object.fromEntries(url.searchParams)).toEqual({
@@ -305,11 +308,13 @@ describe("readDecoExperimentResults", () => {
       Response.json(plain),
     );
     try {
-      const out = await readDecoExperimentResults(
-        analyticsCtx(),
-        ORG,
-        { ...input, goals: [] },
-        NOW,
+      const out = answered(
+        await readDecoExperimentResults(
+          analyticsCtx(),
+          ORG,
+          { ...input, goals: [] },
+          NOW,
+        ),
       );
       expect(
         new URL(String(fetchSpy.mock.calls[0]?.[0])).searchParams.has(
@@ -350,17 +355,51 @@ describe("readDecoExperimentResults", () => {
     }
   });
 
-  it("answers null on an error, an unscoped payload, no matching rows, or a key it can't read", async () => {
+  // A failure that reads as "no data" tells the user the test has no traffic.
+  it("answers failed when the read surface errors or the results panel fails", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const fetchSpy = spyOn(globalThis, "fetch");
+    const read = () =>
+      readDecoExperimentResults(analyticsCtx(), ORG, input, NOW);
+    try {
+      fetchSpy.mockResolvedValueOnce(
+        Response.json({ error: "boom" }, { status: 503 }),
+      );
+      expect(await read()).toBe("failed");
+      fetchSpy.mockRejectedValueOnce(new Error("network down"));
+      expect(await read()).toBe("failed");
+      fetchSpy.mockResolvedValueOnce(
+        Response.json({
+          ...recordedPayload,
+          expResults: [],
+          panelErrors: { expResults: "HTTP 503" },
+        }),
+      );
+      expect(await read()).toBe("failed");
+      // A side panel failing still answers with the results it has.
+      fetchSpy.mockResolvedValueOnce(
+        Response.json({
+          ...recordedPayload,
+          expBehaviour: [],
+          panelErrors: { expBehaviour: "HTTP 503" },
+        }),
+      );
+      expect(await read()).toMatchObject({ statsGoal: expect.any(String) });
+    } finally {
+      fetchSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("answers null on a refusal, an unscoped payload, no matching rows, or a key it can't read", async () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     const fetchSpy = spyOn(globalThis, "fetch");
     const read = (key = input.key) =>
       readDecoExperimentResults(analyticsCtx(), ORG, { ...input, key }, NOW);
     try {
       fetchSpy.mockResolvedValueOnce(
-        Response.json({ error: "boom" }, { status: 500 }),
+        Response.json({ error: "forbidden" }, { status: 403 }),
       );
-      expect(await read()).toBeNull();
-      fetchSpy.mockRejectedValueOnce(new Error("network down"));
       expect(await read()).toBeNull();
       fetchSpy.mockResolvedValueOnce(
         Response.json({

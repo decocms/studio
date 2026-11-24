@@ -35,6 +35,8 @@ import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useOrganizationRoles } from "@/hooks/use-organization-roles";
 import { useT } from "@/i18n/use-t.ts";
+import { InviteLinkPanel } from "@/components/invite-link-panel";
+import { useCanShareInviteLinks } from "@/hooks/use-invite-links";
 
 interface InviteMemberDialogProps {
   trigger: React.ReactNode;
@@ -123,6 +125,7 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
   });
 
   const t = useT();
+  const canShareInviteLinks = useCanShareInviteLinks();
 
   const inviteMutation = useMutation({
     mutationFn: async ({
@@ -395,6 +398,24 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
             </DialogFooter>
           </form>
         </Form>
+
+        {canShareInviteLinks && (
+          <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-foreground">
+                {t("common.inviteLink.dialogTitle")}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t("common.inviteLink.dialogDescription")}
+              </span>
+            </div>
+            <InviteLinkPanel
+              role={selectedRole || "user"}
+              source="invite_dialog"
+              showActive
+            />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

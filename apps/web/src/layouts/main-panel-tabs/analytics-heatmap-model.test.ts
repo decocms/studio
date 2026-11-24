@@ -156,6 +156,16 @@ describe("parseHeatmap", () => {
     expect(empty.scale).toBe(1);
     expect(empty.avgDepth).toBeNull();
     expect(empty.elements).toEqual([]);
+    expect(empty.failed).toBe(false);
+  });
+
+  it("marks the model failed only when a panel the map draws from failed", () => {
+    expect(parseHeatmap({ failedPanels: ["hmSummary"] }).failed).toBe(true);
+    expect(parseHeatmap({ failedPanels: ["hmGrid", "hmPages"] }).failed).toBe(
+      true,
+    );
+    expect(parseHeatmap({ failedPanels: ["hmFunnel"] }).failed).toBe(false);
+    expect(parseHeatmap({ failedPanels: "hmSummary" }).failed).toBe(false);
   });
 
   it("keys element money by the same key the element list uses", () => {

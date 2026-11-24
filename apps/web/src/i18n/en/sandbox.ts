@@ -878,6 +878,16 @@ export const sandbox = {
   "sandbox.postBoard.collapse": "Collapse to panel",
   "sandbox.postBoard.collapseLane": "Collapse {lane}",
   "sandbox.postBoard.delete": "Delete",
+  "sandbox.postBoard.deleteArchived": "Delete all archived posts",
+  "sandbox.postBoard.deleteArchivedConfirm": "Delete all",
+  "sandbox.postBoard.deleteArchivedConfirmTitle": "Delete all archived posts?",
+  "sandbox.postBoard.deleteArchivedConfirmBody":
+    "The archived posts ({count}) will be removed permanently. This can't be undone.",
+  "sandbox.postBoard.deleteArchivedConfirmBodyDraft":
+    "The archived posts ({count}) will be removed from your draft. Nothing goes live until you publish, and until then you can bring them back by discarding this change in Publish.",
+  "sandbox.postBoard.deleteArchivedConfirmBodyNeverPublished":
+    "The archived posts ({count}) will be removed from your draft. They were never published, so nothing changes on the live site, and once removed they can't be brought back.",
+  "sandbox.postBoard.deletedArchived": "Deleted the archived posts ({count})",
   "sandbox.postBoard.emptyDescription":
     "Generate a few ideas and shape them into published posts.",
   "sandbox.postBoard.emptyTitle": "No posts yet",
@@ -951,6 +961,8 @@ export const sandbox = {
     '"{title}" will be removed permanently. This can\'t be undone.',
   "sandbox.postEditor.deletePostConfirmBodyDraft":
     '"{title}" will be removed from your draft. Nothing goes live until you publish, and until then you can bring it back by discarding this change in Publish.',
+  "sandbox.postEditor.deletePostConfirmBodyLive":
+    '"{title}" is published or scheduled on the site. Deleting it takes its page down, and this can\'t be undone. To take it off the site and keep it, archive it instead.',
   "sandbox.postEditor.deletePostConfirmBodyNeverPublished":
     '"{title}" will be removed from your draft. It was never published, so nothing changes on the live site, and once removed it can\'t be brought back.',
   "sandbox.postEditor.deletePostConfirmTitle": "Delete this post?",

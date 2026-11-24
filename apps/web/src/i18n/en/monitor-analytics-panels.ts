@@ -1,6 +1,10 @@
 export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.empty": "Nothing here in this period",
   "monitor.analytics.panels.error": "Couldn't load this view",
+  "monitor.analytics.panels.failed": "Part of this view didn't load",
+  "monitor.analytics.panels.failedDesc":
+    "The analytics database didn't respond, so some cards below are empty. Try again in a few minutes.",
+  "monitor.analytics.panels.retry": "Try again",
   "monitor.analytics.panels.withheld": "Withheld",
   "monitor.analytics.panels.sampled": "Sampled at {pct}%",
   "monitor.analytics.panels.chartMetric": "Chart metric",

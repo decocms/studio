@@ -125,6 +125,8 @@ class ChunkBuffer {
 const BASE_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const DIRECT_EVENTS_PROBE_TIMEOUT_MS = 3_000;
+/** From a `.deco/` write's `file-changed` to a Deno site's preview reload. */
+const DENO_BLOCKS_RELOAD_MS = 1_500;
 
 const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
   "lifecycle",
@@ -295,6 +297,7 @@ function useSandboxEventsValue({
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let liveMetaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let decofileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let denoReloadTimer: ReturnType<typeof setTimeout> | null = null;
     let studioEs: EventSource | null = null;
     let directEs: EventSource | null = null;
     // Tracks the dev-server lifecycle so we can invalidate the CMS queries once
@@ -317,6 +320,26 @@ function useSandboxEventsValue({
           queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
         });
       }, 1_000);
+    };
+
+    /**
+     * Reload a Deno site's preview once its runtime has the write. deco reads
+     * `.deco/blocks` with its own watcher (300 ms after the last change, then
+     * a re-read and a hash of the whole decofile); a reload that lands first
+     * renders the old content, and nothing reloads it again.
+     */
+    const scheduleDenoReload = () => {
+      if (denoReloadTimer) clearTimeout(denoReloadTimer);
+      denoReloadTimer = setTimeout(() => {
+        denoReloadTimer = null;
+        for (const fn of reloadHandlers.current) {
+          try {
+            fn();
+          } catch {
+            // swallow
+          }
+        }
+      }, DENO_BLOCKS_RELOAD_MS);
     };
 
     const handleClaimPhase = (e: MessageEvent) => {
@@ -530,17 +553,9 @@ function useSandboxEventsValue({
                 void queryClient.invalidateQueries({
                   queryKey: KEYS.decofile(cacheKey),
                 });
-                // Deno-only: the dev server won't refresh the preview itself.
-                if (isDenoRuntime || devServerOnDeno) {
-                  for (const fn of reloadHandlers.current) {
-                    try {
-                      fn();
-                    } catch {
-                      // swallow
-                    }
-                  }
-                }
               }, 500);
+              // Deno-only: the dev server won't refresh the preview itself.
+              if (isDenoRuntime || devServerOnDeno) scheduleDenoReload();
             } else {
               scheduleLiveMetaInvalidate();
             }
@@ -669,6 +684,7 @@ function useSandboxEventsValue({
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (liveMetaDebounceTimer) clearTimeout(liveMetaDebounceTimer);
       if (decofileDebounceTimer) clearTimeout(decofileDebounceTimer);
+      if (denoReloadTimer) clearTimeout(denoReloadTimer);
     };
   }, [
     virtualMcpId,

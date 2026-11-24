@@ -480,6 +480,10 @@ export const mainPanelTabs = {
     "Nenhuma visita com mapa de calor aqui",
   "mainPanelTabs.analyticsTab.heatmap.noViewsDescription":
     "Nenhuma visita desta página em {device} no período. Tente outro período ou dispositivo.",
+  "mainPanelTabs.analyticsTab.heatmap.failedTitle":
+    "Não foi possível carregar o mapa de calor",
+  "mainPanelTabs.analyticsTab.heatmap.failedDescription":
+    "O banco de analytics não respondeu. Tente de novo em alguns minutos.",
   "mainPanelTabs.analyticsTab.heatmap.tipClicks": "Cliques",
   "mainPanelTabs.analyticsTab.heatmap.tipShare": "Dos cliques da página",
   "mainPanelTabs.analyticsTab.heatmap.tipVisits": "Das visitas clicaram",

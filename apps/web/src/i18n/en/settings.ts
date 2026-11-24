@@ -377,6 +377,9 @@ export const settings = {
   "settings.plan.pageTitle": "Plan page",
   "settings.plan.pageDescription":
     "Show the store goal and turn ideas into business cases on the Plan page. Off, Plan stays a coming-soon page.",
+  "settings.plan.goalsTitle": "Plan goals",
+  "settings.plan.goalsDescription":
+    "Let each member add goals and pick the one they work toward, instead of one store goal for everyone. Needs the Plan page on.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "Blog view",
   "settings.blogView.description":

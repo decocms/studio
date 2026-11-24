@@ -31,6 +31,10 @@ import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { getBaseUrl } from "../../core/server-constants";
 import { OrganizationDomainStorage } from "../../storage/organization-domains";
 import { OrganizationJoinRequestStorage } from "../../storage/organization-join-requests";
+import { OrganizationInviteLinkStorage } from "../../storage/organization-invite-links";
+import { OrganizationSettingsStorage } from "../../storage/organization-settings";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { hashInviteLinkToken } from "../../auth/invite-link-token";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
 import {
   getLocalAdminUser,
@@ -1000,6 +1004,174 @@ app.post("/domain-request-join", async (c) => {
     posthog.captureException(error, session.user.id);
     console.error("[Auth] Domain request-join failed:", error);
     return c.json({ success: false, error: "Failed to request access" }, 500);
+  }
+});
+
+type InviteLinkResolution =
+  | { status: "not-found" }
+  | {
+      status: "valid" | "expired" | "revoked";
+      linkId: string;
+      role: string;
+      redirectPath: string;
+      organization: {
+        id: string;
+        name: string;
+        slug: string;
+        logo: string | null;
+      };
+    };
+
+/** Looks a token up by digest; an archived org, or one with the flag off, reads as not-found. */
+async function resolveInviteLink(token: string): Promise<InviteLinkResolution> {
+  if (!token || token.length > 256) return { status: "not-found" };
+  const db = getDb().db;
+  const link = await new OrganizationInviteLinkStorage(db).findByTokenHash(
+    await hashInviteLinkToken(token),
+  );
+  if (!link) return { status: "not-found" };
+
+  const org = await db
+    .selectFrom("organization")
+    .select(["id", "name", "slug", "logo", "metadata"])
+    .where("id", "=", link.organizationId)
+    .executeTakeFirst();
+  if (!org || isOrgArchived(org)) return { status: "not-found" };
+  const settings = await new OrganizationSettingsStorage(db).get(org.id);
+  if (!orgFlagEnabled(settings?.flags, "invite_links_enabled")) {
+    return { status: "not-found" };
+  }
+
+  const status = link.revokedAt
+    ? "revoked"
+    : link.expiresAt.getTime() <= Date.now()
+      ? "expired"
+      : "valid";
+  return {
+    status,
+    linkId: link.id,
+    role: link.role,
+    redirectPath: link.redirectPath ?? `/${org.slug}`,
+    organization: {
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      logo: org.logo,
+    },
+  };
+}
+
+async function isOrgMember(userId: string, organizationId: string) {
+  const row = await getDb()
+    .db.selectFrom("member")
+    .select(["id"])
+    .where("userId", "=", userId)
+    .where("organizationId", "=", organizationId)
+    .executeTakeFirst();
+  return !!row;
+}
+
+/**
+ * Preview of a shareable invite link. Public so the page can name the org
+ * before the visitor signs in; `alreadyMember` is only known with a session.
+ *
+ * Route: GET /api/auth/custom/invite-link/:token
+ */
+app.get("/invite-link/:token", async (c) => {
+  const resolved = await resolveInviteLink(c.req.param("token"));
+  if (resolved.status === "not-found") {
+    return c.json({ status: "not-found" as const });
+  }
+
+  const session = (await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })) as { user?: { id: string } } | null;
+  const alreadyMember = session?.user
+    ? await isOrgMember(session.user.id, resolved.organization.id)
+    : false;
+
+  const { id: _id, ...organization } = resolved.organization;
+  return c.json({
+    status: resolved.status,
+    organization,
+    alreadyMember,
+    // Members can be sent straight on; a non-member only sees it after joining.
+    redirectPath: alreadyMember ? resolved.redirectPath : null,
+  });
+});
+
+/**
+ * Join the org behind a shareable invite link. Idempotent: an existing
+ * member gets the redirect without the link counting another use.
+ *
+ * Route: POST /api/auth/custom/invite-link/:token/accept
+ */
+app.post("/invite-link/:token/accept", async (c) => {
+  const session = (await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })) as { user?: { id: string } } | null;
+  if (!session?.user) {
+    return c.json({ success: false, error: "Authentication required" }, 401);
+  }
+  const userId = session.user.id;
+
+  try {
+    const resolved = await resolveInviteLink(c.req.param("token"));
+    if (resolved.status === "not-found") {
+      return c.json({ success: false, status: resolved.status }, 404);
+    }
+    const { organization } = resolved;
+
+    if (await isOrgMember(userId, organization.id)) {
+      return c.json({
+        success: true,
+        slug: organization.slug,
+        redirectPath: resolved.redirectPath,
+      });
+    }
+    if (resolved.status !== "valid") {
+      return c.json({ success: false, status: resolved.status }, 410);
+    }
+
+    let joined = true;
+    try {
+      await authOrganizationApi.addMember({
+        body: { userId, role: resolved.role, organizationId: organization.id },
+      });
+    } catch (addError) {
+      if (!isAlreadyMemberError(addError)) throw addError;
+      joined = false;
+    }
+
+    if (joined) {
+      await new OrganizationInviteLinkStorage(getDb().db).incrementUse(
+        resolved.linkId,
+      );
+      posthog.capture({
+        distinctId: userId,
+        event: "organization_invite_link_joined",
+        groups: { organization: organization.id },
+        properties: {
+          organization_id: organization.id,
+          organization_slug: organization.slug,
+          invite_link_id: resolved.linkId,
+          role: resolved.role,
+        },
+      });
+    }
+
+    return c.json({
+      success: true,
+      slug: organization.slug,
+      redirectPath: resolved.redirectPath,
+    });
+  } catch (error) {
+    posthog.captureException(error, userId);
+    console.error("[Auth] Invite link accept failed:", error);
+    return c.json(
+      { success: false, error: "Failed to join organization" },
+      500,
+    );
   }
 });
 

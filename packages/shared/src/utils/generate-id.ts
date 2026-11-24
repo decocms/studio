@@ -30,6 +30,7 @@ type IdPrefixes =
   | "nsub"
   | "notif"
   | "sprint"
+  | "goal"
   | "alert";
 
 export function generatePrefixedId(prefix: IdPrefixes) {

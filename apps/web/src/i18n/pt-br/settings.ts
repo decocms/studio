@@ -386,6 +386,9 @@ export const settings = {
   "settings.plan.pageTitle": "Página Planejar",
   "settings.plan.pageDescription":
     'Mostra o objetivo da loja e transforma ideias em business cases na página Planejar. Desligada, a página continua como "em breve".',
+  "settings.plan.goalsTitle": "Objetivos do Planejar",
+  "settings.plan.goalsDescription":
+    "Cada membro adiciona objetivos e escolhe aquele em que está trabalhando, em vez de um objetivo da loja para todos. Precisa da página Planejar ligada.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "View Blog",
   "settings.blogView.description":

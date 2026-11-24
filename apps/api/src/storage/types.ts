@@ -331,6 +331,37 @@ export interface AlertTable {
   task_board_item_id: ColumnType<string | null, never, string | null>;
 }
 
+/** One of an org's Plan goals (migration 268). */
+export interface PlanGoalTable {
+  id: string;
+  organization_id: string;
+  statement: string;
+  source_label: string | null;
+  source_quote: string | null;
+  created_by: string;
+  updated_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  archived_at: ColumnType<Date | null, never, Date | string | null>;
+}
+
+/** The goal a member's Plan page opens on (migration 268). */
+export interface MemberPlanStateTable {
+  user_id: string;
+  organization_id: string;
+  active_goal_id: string | null;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** Which goal a business case chat went toward (migration 268). */
+export interface PlanGoalCaseTable {
+  organization_id: string;
+  thread_id: string;
+  goal_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /** An org's thresholds for one alert rule (migration 266). */
 export interface AlertRuleSettingsTable {
   organization_id: string;
@@ -1615,6 +1646,31 @@ export interface OrganizationJoinRequest {
   updatedAt: Date | string;
 }
 
+export interface OrganizationInviteLinkTable {
+  id: string;
+  organization_id: string;
+  token_hash: string;
+  role: string;
+  redirect_path: string | null;
+  created_by: string | null;
+  expires_at: ColumnType<Date, Date | string, never>;
+  revoked_at: ColumnType<Date | null, Date | string | null, Date | string>;
+  use_count: ColumnType<number, number | undefined, number>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface OrganizationInviteLink {
+  id: string;
+  organizationId: string;
+  role: string;
+  redirectPath: string | null;
+  createdBy: string | null;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  useCount: number;
+  createdAt: Date;
+}
+
 // ============================================================================
 // Org Sites (asset tenancy: org owns globally-unique site slugs)
 // ============================================================================
@@ -2622,6 +2678,9 @@ export interface Database {
   order_monitor_state: OrderMonitorStateTable;
   alerts: AlertTable;
   alert_rule_settings: AlertRuleSettingsTable;
+  plan_goals: PlanGoalTable;
+  member_plan_state: MemberPlanStateTable;
+  plan_goal_cases: PlanGoalCaseTable;
 
   // Automations tables
   automations: AutomationTable;
@@ -2643,6 +2702,7 @@ export interface Database {
 
   // Pending/decided requests to join an org
   organization_join_requests: OrganizationJoinRequestTable;
+  organization_invite_links: OrganizationInviteLinkTable;
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;

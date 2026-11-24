@@ -153,6 +153,37 @@ export const common = {
   "common.index.pageNotFound": "Página não encontrada",
   "common.index.pageNotFoundDescription":
     "A página que você está procurando não existe ou foi movida.",
+  "common.inviteLink.activeLinkMeta": "{count} entraram · expira {expiresAt}",
+  "common.inviteLink.activeLinks": "Links ativos",
+  "common.inviteLink.copied": "Link copiado",
+  "common.inviteLink.copy": "Copiar link",
+  "common.inviteLink.create": "Criar link de convite (24h)",
+  "common.inviteLink.createFailed": "Não foi possível criar o link de convite",
+  "common.inviteLink.created": "Link de convite criado",
+  "common.inviteLink.createdAndCopied": "Link de convite copiado",
+  "common.inviteLink.creating": "Criando…",
+  "common.inviteLink.dialogDescription":
+    "Qualquer pessoa com o link pode entrar nas próximas 24 horas, sem convite por e-mail.",
+  "common.inviteLink.dialogTitle": "Ou compartilhe um link de convite",
+  "common.inviteLink.expiresAt": "Expira {expiresAt}",
+  "common.inviteLink.revoke": "Revogar",
+  "common.inviteLink.revokeFailed":
+    "Não foi possível revogar o link de convite",
+  "common.inviteLink.revoked": "Link de convite revogado",
+  "common.inviteLinkScreen.failedToJoin":
+    "Não foi possível entrar na organização",
+  "common.inviteLinkScreen.goHome": "Ir para o início",
+  "common.inviteLinkScreen.invalidDescription":
+    "Este link de convite expirou ou foi revogado. Peça um novo para quem compartilhou.",
+  "common.inviteLinkScreen.invalidTitle": "Link de convite indisponível",
+  "common.inviteLinkScreen.joinButton": "Entrar em {orgName}",
+  "common.inviteLinkScreen.joinDescription":
+    "Você vai entrar como {email} e ir direto para a página compartilhada.",
+  "common.inviteLinkScreen.joining": "Entrando…",
+  "common.inviteLinkScreen.signInButton": "Entrar para aceitar",
+  "common.inviteLinkScreen.signInDescription":
+    "Entre ou crie uma conta para participar e abrir a página compartilhada.",
+  "common.inviteLinkScreen.title": "Você foi convidado para {orgName}",
   "common.inviteMemberDialog.cancelButton": "Cancelar",
   "common.inviteMemberDialog.emailLabel": "Endereços de e-mail",
   "common.inviteMemberDialog.emailPlaceholder":
@@ -213,6 +244,10 @@ export const common = {
   "common.requestToJoinScreen.requestButton": "Solicitar acesso",
   "common.requestToJoinScreen.requesting": "Solicitando…",
   "common.requestToJoinScreen.title": "Solicitar acesso a {orgName}?",
+  "common.sharePage.button": "Compartilhar",
+  "common.sharePage.description":
+    "Qualquer pessoa com o link pode entrar em {orgName} nas próximas 24 horas e abre esta página.",
+  "common.sharePage.title": "Convidar para esta página",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "Esta organização requer autenticação SSO para acessar.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requer autenticação SSO",
