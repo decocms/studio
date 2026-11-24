@@ -60,7 +60,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider": "^4.0.17",
-    "@better-auth/sso": "1.4.1",
+    "@better-auth/sso": "1.6.11",
     "@decocms/better-auth": "1.5.17",
     "@decocms/bindings": "workspace:*",
     "@decocms/blocks": "8.8.0",
