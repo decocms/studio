@@ -225,6 +225,7 @@ const ALL_TOOL_NAMES = [
   // Secrets vault tools
   "SECRET_CREATE",
   "SECRET_LIST",
+  "SECRET_DELETE",
 
   // File config tools (org-scoped S3 bucket configurations)
   "FILE_CONFIG_CREATE",
@@ -1205,6 +1206,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "SECRET_LIST",
     description: "List secrets visible to the caller (no values returned)",
+    category: "Secrets",
+  },
+  {
+    name: "SECRET_DELETE",
+    description: "Delete a secret from the credential vault",
     category: "Secrets",
   },
   // File config tools
@@ -2267,9 +2273,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
   {
     id: "secrets:manage",
     label: "Manage secrets",
-    description: "Create and list secrets stored in the credential vault",
+    description:
+      "Create, list, and delete secrets stored in the credential vault",
     section: "Organization",
-    tools: ["SECRET_CREATE", "SECRET_LIST"],
+    tools: ["SECRET_CREATE", "SECRET_LIST", "SECRET_DELETE"],
   },
   {
     id: "assets:manage",

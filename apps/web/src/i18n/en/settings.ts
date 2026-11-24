@@ -1171,12 +1171,17 @@ export const settings = {
   "settings.secrets.cancelButton": "Cancel",
   "settings.secrets.createButton": "Create secret",
   "settings.secrets.creatingButton": "Creating…",
+  "settings.secrets.deleteButton": "Delete secret",
+  "settings.secrets.deleteDescription":
+    "Anything that still uses this secret by name will stop receiving its value. This can't be undone.",
+  "settings.secrets.deleteTitle": 'Delete "{name}"?',
   "settings.secrets.descriptionLabel": "Description (optional)",
   "settings.secrets.descriptionPlaceholder": "What is this secret used for?",
   "settings.secrets.emptyDescription":
     "Store API keys, tokens, and other sensitive values. Values are encrypted at rest and never returned over the API.",
   "settings.secrets.emptyTitle": "No secrets yet",
   "settings.secrets.failedToCreateSecret": "Failed to create secret",
+  "settings.secrets.failedToDeleteSecret": "Failed to delete secret",
   "settings.secrets.failedToLoadError": "Failed to load secrets: {error}",
   "settings.secrets.nameHelp":
     "Letters, digits, underscore, dot, hyphen. Case-insensitive within its scope.",
@@ -1193,6 +1198,7 @@ export const settings = {
   "settings.secrets.scopePrivate": "Private",
   "settings.secrets.scopePrivateDescription": "Private — only visible to me",
   "settings.secrets.secretCreated": 'Secret "{name}" created',
+  "settings.secrets.secretDeleted": 'Secret "{name}" deleted',
   "settings.secrets.secretsCountSingular": "{count} secret stored",
   "settings.secrets.secretsCountPlural": "{count} secrets stored",
   "settings.secrets.sectionOrganization": "Organization",
