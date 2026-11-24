@@ -238,7 +238,7 @@ describe("canRenderCompare", () => {
 
 const PAGE = "website/pages/Page.tsx";
 /**
- * A v8 site's blocks: the Header is on every page, the Footer only on /about
+ * A site's blocks: the Header is on every page, the Footer only on /about
  * and /men, the Promo only inside the Layout block /men uses, the Badge only
  * on the product page, and the Popup on no page.
  */
@@ -283,7 +283,7 @@ const BLOCKS: Record<string, unknown> = {
   },
 };
 
-describe("blockComparePath (v8)", () => {
+describe("blockComparePath", () => {
   test("a block on the home page compares there, even after previewing another page", () => {
     expect(blockComparePath("Header", BLOCKS, null)).toBe("/");
     expect(
@@ -306,6 +306,21 @@ describe("blockComparePath (v8)", () => {
 
   test("off the home page: the first static page by path, never a pattern first", () => {
     expect(blockComparePath("Footer", BLOCKS, null)).toBe("/about");
+  });
+
+  test("off the home page, the page last previewed wins when it shows the block", () => {
+    const men = { path: "/men", pageKey: "pages-men", params: {} };
+    expect(blockComparePath("Footer", BLOCKS, men)).toBe("/men");
+    // Plain in-preview navigation pins no page block: the path still matches.
+    expect(blockComparePath("Footer", BLOCKS, { ...men, pageKey: null })).toBe(
+      "/men",
+    );
+  });
+
+  test("a last page that doesn't show the block changes nothing", () => {
+    const about = { path: "/about", pageKey: "pages-about", params: {} };
+    expect(blockComparePath("Promo", BLOCKS, about)).toBe("/men");
+    expect(blockComparePath("Badge", BLOCKS, about)).toBe("/products/:slug");
   });
 
   test("a block used through another saved block compares on that block's page", () => {
