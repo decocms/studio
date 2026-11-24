@@ -137,18 +137,11 @@ export const createChannelAccountServiceRoutes = () => {
     // The same answer for "nobody's" and "theirs, but not of this org".
     const notLinked = () => c.json({ error: "not_linked" }, 404);
     if (!linked) return notLinked();
-    const orgs = await ctx.db
-      .selectFrom("member")
-      .innerJoin("organization", "organization.id", "member.organizationId")
-      .select(["organization.id", "organization.slug", "organization.name"])
-      .where("member.userId", "=", linked.userId)
-      .execute();
+    const orgs = await ctx.storage.channelAccounts.organizationsOf(
+      linked.userId,
+    );
     if (!orgs.some((o) => o.id === org.id)) return notLinked();
-    const user = await ctx.db
-      .selectFrom("user")
-      .select(["id", "email", "name"])
-      .where("id", "=", linked.userId)
-      .executeTakeFirst();
+    const user = await ctx.storage.channelAccounts.person(linked.userId);
     if (!user) return notLinked();
     const token = await issueStudioToken(
       {

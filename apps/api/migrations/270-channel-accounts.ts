@@ -54,10 +54,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("used_at", "timestamptz")
     .execute();
 
+  // One live link per account: a new one replaces the old.
   await db.schema
     .createIndex("channel_account_claims_account")
     .on("channel_account_claims")
     .columns(["channel", "account_id"])
+    .unique()
     .execute();
 }
 

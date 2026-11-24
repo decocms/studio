@@ -1,3 +1,4 @@
+import { activeOrganizations } from "@decocms/shared/organization/org-archived";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { Kysely } from "kysely";
 import type { Database } from "./types";
@@ -49,29 +50,27 @@ export class ChannelAccountStorage {
   async createClaim(
     input: NewChannelAccountClaim,
   ): Promise<ChannelAccountClaim> {
-    return this.db.transaction().execute(async (trx) => {
-      await trx
-        .deleteFrom("channel_account_claims")
-        .where("channel", "=", input.channel)
-        .where("account_id", "=", input.accountId)
-        .execute();
-      const row = await trx
-        .insertInto("channel_account_claims")
-        .values({
-          id: generatePrefixedId("chc"),
-          organization_id: input.organizationId,
-          channel: input.channel,
-          account_id: input.accountId,
-          account_name: input.accountName,
-          account_where: input.accountWhere ?? null,
-          account_email: input.accountEmail?.trim().toLowerCase() || null,
-          return_url: input.returnUrl,
-          expires_at: new Date(Date.now() + CHANNEL_CLAIM_TTL_SECONDS * 1000),
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow();
-      return claimOf(row);
-    });
+    const claim = {
+      id: generatePrefixedId("chc"),
+      organization_id: input.organizationId,
+      account_name: input.accountName,
+      account_where: input.accountWhere ?? null,
+      account_email: input.accountEmail?.trim().toLowerCase() || null,
+      return_url: input.returnUrl,
+      created_at: new Date(),
+      expires_at: new Date(Date.now() + CHANNEL_CLAIM_TTL_SECONDS * 1000),
+    };
+    const row = await this.db
+      .insertInto("channel_account_claims")
+      .values({ ...claim, channel: input.channel, account_id: input.accountId })
+      .onConflict((oc) =>
+        oc
+          .columns(["channel", "account_id"])
+          .doUpdateSet({ ...claim, used_at: null }),
+      )
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return claimOf(row);
   }
 
   /** A claim that can still be spent, in this org. */
@@ -154,6 +153,43 @@ export class ChannelAccountStorage {
       .where("channel", "=", ref.channel)
       .where("account_id", "=", ref.accountId)
       .execute();
+  }
+
+  /** The person an account stands for, as Studio knows them. */
+  async person(userId: string): Promise<{
+    id: string;
+    email: string;
+    name: string;
+    emailVerified: boolean;
+  } | null> {
+    const row = await this.db
+      .selectFrom("user")
+      .select(["id", "email", "name", "emailVerified"])
+      .where("id", "=", userId)
+      .executeTakeFirst();
+    return row ? { ...row, emailVerified: Boolean(row.emailVerified) } : null;
+  }
+
+  /** The organizations a person is a member of, archived ones left out. */
+  async organizationsOf(
+    userId: string,
+  ): Promise<{ id: string; slug: string; name: string }[]> {
+    const rows = await this.db
+      .selectFrom("member")
+      .innerJoin("organization", "organization.id", "member.organizationId")
+      .select([
+        "organization.id",
+        "organization.slug",
+        "organization.name",
+        "organization.metadata",
+      ])
+      .where("member.userId", "=", userId)
+      .execute();
+    return activeOrganizations(rows).map(({ id, slug, name }) => ({
+      id,
+      slug,
+      name,
+    }));
   }
 
   /** A person's own accounts, newest first. */

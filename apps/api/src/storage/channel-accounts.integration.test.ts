@@ -133,19 +133,39 @@ describe("ChannelAccountStorage", () => {
       const claim = await accounts.createClaim(claimFor(id, org));
       await accounts.connect(org, claim.id, user);
     }
-    expect(
-      await accounts.disconnectInOrg(orgId, "slack", { accountPrefix: "T2:" }),
-    ).toBe(2);
-    // `_` in a prefix is a literal, not a wildcard.
+    // `_` in a prefix is a literal, not a wildcard: "T2_" must not take "T2:…".
     expect(
       await accounts.disconnectInOrg(orgId, "slack", { accountPrefix: "T2_" }),
     ).toBe(1);
+    expect(
+      await accounts.disconnectInOrg(orgId, "slack", { accountPrefix: "T2:" }),
+    ).toBe(2);
     expect(
       await accounts.get({ channel: "slack", accountId: "T2:U9" }),
     ).not.toBeNull();
     expect(
       await accounts.disconnectInOrg(orgId, "slack", { accountId: "T2:U9" }),
     ).toBe(0);
+  });
+
+  test("a person's organizations leave archived ones out", async () => {
+    const now = new Date().toISOString();
+    for (const org of [orgId, otherOrg]) {
+      await sql`
+        INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
+        VALUES (${`mem_${org}`}, ${org}, ${ana}, 'user', ${now})
+      `.execute(database.db);
+    }
+    await sql`
+      UPDATE "organization" SET metadata = '{"archived":true}' WHERE id = ${otherOrg}
+    `.execute(database.db);
+    expect((await accounts.organizationsOf(ana)).map((o) => o.id)).toEqual([
+      orgId,
+    ]);
+    expect(await accounts.person(ana)).toMatchObject({
+      id: ana,
+      emailVerified: false,
+    });
   });
 
   test("deleting the person removes their accounts", async () => {

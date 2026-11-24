@@ -354,11 +354,19 @@ export interface ChannelAccountClaimTable {
   channel: string;
   account_id: string;
   account_name: ColumnType<string, string | undefined, string>;
-  account_where: ColumnType<string | null, string | null | undefined, never>;
-  account_email: ColumnType<string | null, string | null | undefined, never>;
+  account_where: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  account_email: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   return_url: string;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
-  expires_at: ColumnType<Date, Date | string, never>;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  expires_at: ColumnType<Date, Date | string, Date | string>;
   used_at: ColumnType<Date | null, never, Date | string | null>;
 }
 
