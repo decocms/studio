@@ -1659,6 +1659,16 @@ export interface OrganizationInviteLinkTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+export interface ShortLinkTable {
+  id: string;
+  organization_id: string;
+  target_path: string;
+  label: string;
+  title: string;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 export interface OrganizationInviteLink {
   id: string;
   organizationId: string;
@@ -2703,6 +2713,7 @@ export interface Database {
   // Pending/decided requests to join an org
   organization_join_requests: OrganizationJoinRequestTable;
   organization_invite_links: OrganizationInviteLinkTable;
+  short_links: ShortLinkTable;
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;

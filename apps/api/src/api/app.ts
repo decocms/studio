@@ -152,6 +152,7 @@ import {
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import { createFileLinkRoutes } from "./routes/file-links";
+import { createShortLinkResolveRoutes } from "./routes/short-links";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { createGithubWebhookRoutes } from "./routes/github-webhook";
@@ -1550,6 +1551,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // return 404 for the HTML shell when no built client directory is supplied.
   app.route("/report", createReportPagesRoutes(options.clientDir));
   app.route("/f", createFileLinkRoutes());
+  app.route("/s", createShortLinkResolveRoutes(database.db));
 
   // ============================================================================
   // Better Auth Routes

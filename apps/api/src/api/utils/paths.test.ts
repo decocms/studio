@@ -12,10 +12,12 @@ describe("report page paths", () => {
   });
 });
 
-describe("file share link paths", () => {
-  test("routes /f/ links through Hono, not org slugs starting with f", () => {
+describe("share link paths", () => {
+  test("routes /f/ and /s/ links through Hono, not similar org slugs", () => {
     expect(isServerPath("/f/acme/home/a.png")).toBe(true);
     expect(isServerPath("/foo/projects")).toBe(false);
+    expect(isServerPath("/s/people/perfil-Hq3vT8nLw1")).toBe(true);
+    expect(isServerPath("/sales/projects")).toBe(false);
   });
 });
 
