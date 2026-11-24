@@ -12,6 +12,13 @@ describe("report page paths", () => {
   });
 });
 
+describe("file share link paths", () => {
+  test("routes /f/ links through Hono, not org slugs starting with f", () => {
+    expect(isServerPath("/f/acme/home/a.png")).toBe(true);
+    expect(isServerPath("/foo/projects")).toBe(false);
+  });
+});
+
 describe("DBOS queue-depth path", () => {
   test("skips StudioContext for the queue-depth endpoint", () => {
     expect(

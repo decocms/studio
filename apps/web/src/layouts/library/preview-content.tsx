@@ -197,7 +197,6 @@ export function LibraryFilePreview({
                 path={filePath}
                 shareMode={entry.shareMode ?? "private"}
                 effectivePublic={entry.effectivePublic ?? false}
-                url={window.location.origin + file.downloadUrl}
                 placement={placement}
               />
               {seeInLibrary}
@@ -223,7 +222,6 @@ export function LibraryFilePreview({
             path={filePath}
             shareMode={entry?.shareMode ?? "private"}
             effectivePublic={entry?.effectivePublic ?? false}
-            url={window.location.origin + file.downloadUrl}
             placement={placement}
           />
           <Tooltip>
