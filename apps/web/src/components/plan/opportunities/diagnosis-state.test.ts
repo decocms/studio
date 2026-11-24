@@ -5,6 +5,7 @@ import {
   diagnosisStatusState,
   engineConnectionOf,
   retryEngineRead,
+  storeViewEnabled,
   storeViewRefetchInterval,
   unwrapEngineResult,
 } from "./diagnosis-state.ts";
@@ -131,6 +132,17 @@ describe("retryEngineRead", () => {
     expect(retryEngineRead(0, new DiagnosisEngineError("não encontrada"))).toBe(
       false,
     );
+  });
+});
+
+describe("storeViewEnabled", () => {
+  it("reads once the engine is configured and the goals have loaded", () => {
+    expect(storeViewEnabled("conn_1", { pending: false })).toBe(true);
+  });
+
+  it("stays off while the goals load or without an engine connection", () => {
+    expect(storeViewEnabled("conn_1", { pending: true })).toBe(false);
+    expect(storeViewEnabled(null, { pending: false })).toBe(false);
   });
 });
 

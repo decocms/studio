@@ -458,6 +458,9 @@ export const plan = {
   "plan.opportunities.empty.description":
     "Rode uma análise para medir onde a loja perde mais.",
   "plan.opportunities.empty.failed": "A última análise parou com erro",
+  "plan.opportunities.failed.heading": "A análise falhou",
+  "plan.opportunities.failed.description":
+    "Nenhuma página terminou. Veja o motivo abaixo e rode de novo.",
   "plan.opportunities.error.heading":
     "Não conseguimos carregar a análise da loja",
   "plan.opportunities.error.stale":
@@ -482,6 +485,8 @@ export const plan = {
     "Não foi possível conectar a análise da loja",
   "plan.opportunities.connect.loadFailed":
     "Não foi possível listar as conexões da organização",
+  "plan.opportunities.connect.askAdmin":
+    "Peça a um admin para conectar o diagnóstico.",
   "plan.opportunities.detail.back": "Voltar para Planejar",
   "plan.opportunities.detail.pageTitle": "Perda {rank}",
   "plan.opportunities.detail.notFound.heading": "Não encontramos esta perda",

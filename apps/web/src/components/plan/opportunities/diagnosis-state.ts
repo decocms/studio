@@ -45,6 +45,15 @@ export function engineConnectionOf(
   return status.state === "configured" ? status.connectionId : null;
 }
 
+/** Read before the goals load, the view would be every run's instead of
+ *  the active goal's. */
+export function storeViewEnabled(
+  connectionId: string | null,
+  goal: { pending: boolean },
+): boolean {
+  return connectionId !== null && !goal.pending;
+}
+
 /** The engine answered with an error, or with a shape the page cannot read. */
 export class DiagnosisEngineError extends Error {
   constructor(

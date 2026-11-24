@@ -14,6 +14,7 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { type TFunction, useT } from "@/i18n/use-t.ts";
 import { ConnectCard } from "./connect-card.tsx";
+import type { RunGoal } from "./new-run-popover.tsx";
 import type { StoreView } from "./diagnosis-schema.ts";
 import { PAGE_LABEL } from "./labels.ts";
 import {
@@ -33,7 +34,7 @@ import { usePlanDiagnosisStatus, useStoreView } from "./use-plan-diagnosis.ts";
 
 export interface OpportunitiesSectionProps extends OpportunityActions {
   /** The goal the analysis is read for; a null id reads every run. */
-  goal: { id: string | null; statement: string | null };
+  goal: RunGoal;
   /** Opens "Nova análise" beside the button that was clicked. Hidden when
    *  absent. */
   onNewRun?: (anchor: HTMLElement) => void;
@@ -247,15 +248,30 @@ function Gaps({ gaps }: { gaps: string[] }) {
   );
 }
 
-/** Nothing found: either the run had no sources to measure with, which the
- *  gaps name, or it measured and found no loss. */
+const EMPTY_TEXT = {
+  failed: {
+    heading: "plan.opportunities.failed.heading",
+    description: "plan.opportunities.failed.description",
+  },
+  no_sources: {
+    heading: "plan.opportunities.noSources.heading",
+    description: "plan.opportunities.noSources.description",
+  },
+  empty: {
+    heading: "plan.opportunities.empty.heading",
+    description: "plan.opportunities.empty.description",
+  },
+} as const;
+
+/** Nothing found: every page failed, the run had no sources to measure
+ *  with, or it measured and found no loss. */
 function Empty({
   view,
-  noSources,
+  reason,
   onNewRun,
 }: {
   view: StoreView;
-  noSources: boolean;
+  reason: keyof typeof EMPTY_TEXT;
   onNewRun?: (anchor: HTMLElement) => void;
 }) {
   const t = useT();
@@ -267,14 +283,10 @@ function Empty({
     <Card className="items-start gap-3">
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-medium text-foreground">
-          {noSources
-            ? t("plan.opportunities.noSources.heading")
-            : t("plan.opportunities.empty.heading")}
+          {t(EMPTY_TEXT[reason].heading)}
         </h3>
         <p className="text-sm text-muted-foreground">
-          {noSources
-            ? t("plan.opportunities.noSources.description")
-            : t("plan.opportunities.empty.description")}
+          {t(EMPTY_TEXT[reason].description)}
         </p>
       </div>
       {failed.length > 0 && (
@@ -305,7 +317,7 @@ function StoreSection({
 }: OpportunitiesSectionProps) {
   const t = useT();
   const [{ language }] = usePreferences();
-  const query = useStoreView(goal.id);
+  const query = useStoreView(goal);
   const view = query.data;
   const retry = () => void query.refetch();
 
@@ -337,15 +349,11 @@ function StoreSection({
     );
   }
 
-  if (phase.phase === "empty" || phase.phase === "no_sources") {
+  if (phase.phase !== "results") {
     return (
       <Frame eyebrow={eyebrow}>
         {stale}
-        <Empty
-          view={view}
-          noSources={phase.phase === "no_sources"}
-          onNewRun={onNewRun}
-        />
+        <Empty view={view} reason={phase.phase} onNewRun={onNewRun} />
       </Frame>
     );
   }

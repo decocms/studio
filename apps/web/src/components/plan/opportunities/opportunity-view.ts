@@ -9,6 +9,7 @@ import type {
   Lifecycle,
   OpportunityHypothesis,
   PageType,
+  StartRunInput,
   StartRunResult,
   StoreOpportunity,
   StoreOpportunityHypothesis,
@@ -167,23 +168,40 @@ export function formatCount(value: number, locale: string): string {
 export type SectionPhase =
   | { phase: "results"; refreshing: boolean }
   | { phase: "running" }
+  | { phase: "failed" }
   | { phase: "no_sources" }
   | { phase: "empty" };
 
-/** A run that starts over keeps the last result on screen until it ends. A
- *  finished run with nothing found and named gaps lacked sources, so running
- *  it again would not help until they are connected. */
+/** A run that starts over keeps the last result on screen until it ends.
+ *  The engine names gaps even when other sources answered, so only a run
+ *  with no source at all reads as lacking sources. */
 export function sectionPhase(v: StoreView): SectionPhase {
   if (v.top.length + v.others.length > 0) {
     return { phase: "results", refreshing: v.running };
   }
   if (v.running) return { phase: "running" };
-  return viewGaps(v).length > 0 ? { phase: "no_sources" } : { phase: "empty" };
+  if (v.pages.length > 0 && v.pages.every((p) => p.status === "error")) {
+    return { phase: "failed" };
+  }
+  return v.sources.length === 0 && viewGaps(v).length > 0
+    ? { phase: "no_sources" }
+    : { phase: "empty" };
 }
 
 /** The sources that did not answer, named once across pages. */
 export function viewGaps(v: StoreView): string[] {
   return [...new Set(v.pages.flatMap((p) => p.gaps))];
+}
+
+/** A page's first analysis carries its start as `analysed_at`, so until it
+ *  has a result there is no analysis date to show. */
+export function showsAnalysedAt(v: StoreView, page: StorePage): boolean {
+  if (page.status !== "running") return true;
+  return (
+    page.funnel.length > 0 ||
+    page.capture_url !== null ||
+    pageLosses(v, page.page_type).length > 0
+  );
 }
 
 /** Which pages the view covers, and when the latest of them was analysed. */
@@ -193,7 +211,8 @@ export function viewScope(v: StoreView): {
   analysedAt: string | null;
 } {
   const covered = new Set(v.pages.map((p) => p.page_type));
-  const latest = v.pages.reduce<{ at: string; time: number } | null>(
+  const dated = v.pages.filter((p) => showsAnalysedAt(v, p));
+  const latest = dated.reduce<{ at: string; time: number } | null>(
     (best, p) => {
       const time = Date.parse(p.analysed_at);
       return best && best.time >= time ? best : { at: p.analysed_at, time };
@@ -249,6 +268,12 @@ export function safeHref(value: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** Engine images load only over https. */
+export function safeImageSrc(value: string | null): string | null {
+  const href = safeHref(value);
+  return href?.startsWith("https:") ? href : null;
 }
 
 export type ConfidenceLevel = "high" | "medium" | "low";
@@ -368,19 +393,12 @@ export function defaultStorePage(v: StoreView): PageType | null {
 /** The engine's limit on the goal text it keeps with a run. */
 const OBJECTIVE_MAX = 280;
 
-export interface StartRunRequest {
-  todas?: true;
-  pages?: PageType[];
-  goal_id?: string;
-  objective_statement?: string;
-}
-
 /** What `start_ux_diagnosis` gets: the whole site or the chosen pages, with
  *  the active goal so the run stays on it if the goal changes later. */
 export function startRunInput(
   goal: { id: string | null; statement: string | null },
   scope: "site" | readonly PageType[],
-): StartRunRequest {
+): StartRunInput {
   const statement = goal.statement?.trim().slice(0, OBJECTIVE_MAX);
   return {
     ...(scope === "site"
@@ -392,7 +410,7 @@ export function startRunInput(
 }
 
 /** `plan_run_requested`'s properties. */
-export function runRequestedEvent(input: StartRunRequest): {
+export function runRequestedEvent(input: StartRunInput): {
   scope: "site" | "pages";
   count: number;
 } {

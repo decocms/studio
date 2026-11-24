@@ -313,22 +313,6 @@ export const GetOpportunitySchema = z.object({
   opportunity: OpportunityDetailSchema,
 });
 
-// ── list_ux_site_runs ────────────────────────────────────────────────────────
-
-const SiteRunSummarySchema = z.object({
-  site_run_id: z.string(),
-  goal_id: z.string().nullable(),
-  objective_statement: z.string().nullable(),
-  started_at: z.string(),
-  status: DiagnosisStatusSchema,
-  pages: z.array(PageTypeSchema),
-});
-export type SiteRunSummary = z.infer<typeof SiteRunSummarySchema>;
-
-export const ListSiteRunsSchema = z.object({
-  runs: z.array(SiteRunSummarySchema),
-});
-
 // ── start_ux_diagnosis / update_ux_hypothesis_status ─────────────────────────
 
 /** The `{ status: "error", error }` branch is read by `parseToolResult`. */
@@ -344,6 +328,14 @@ export const StartRunSchema = z.object({
   ),
 });
 export type StartRunResult = z.infer<typeof StartRunSchema>;
+
+/** What `start_ux_diagnosis` takes: the whole site or the chosen pages. */
+export interface StartRunInput {
+  todas?: true;
+  pages?: PageType[];
+  goal_id?: string;
+  objective_statement?: string;
+}
 
 export const DecideHypothesisSchema = z.object({
   hypothesis: z.object({

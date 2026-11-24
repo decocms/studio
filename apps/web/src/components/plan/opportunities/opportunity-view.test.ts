@@ -37,7 +37,9 @@ import {
   runnablePages,
   runningElsewhere,
   safeHref,
+  safeImageSrc,
   sectionPhase,
+  showsAnalysedAt,
   stageCards,
   startRunInput,
   summaryNumbers,
@@ -290,9 +292,51 @@ describe("sectionPhase", () => {
     });
   });
 
-  it("is no_sources when a finished run found nothing and named gaps", () => {
+  it("is no_sources when a finished run found nothing and no source answered", () => {
     const gaps = StoreViewSchema.parse(storeViewWithGapsFixture);
-    expect(sectionPhase(gaps)).toEqual({ phase: "no_sources" });
+    expect(sectionPhase({ ...gaps, sources: [] })).toEqual({
+      phase: "no_sources",
+    });
+  });
+
+  it("is empty when sources answered, even with named gaps", () => {
+    const gaps = StoreViewSchema.parse(storeViewWithGapsFixture);
+    expect(sectionPhase(gaps)).toEqual({ phase: "empty" });
+    const [pdp] = gaps.pages as [StorePage];
+    const vtexGap = {
+      ...gaps,
+      pages: [{ ...pdp, gaps: ["VTEX: no catalog connection"] }],
+      sources: ["GA4"],
+    };
+    expect(sectionPhase(vtexGap)).toEqual({ phase: "empty" });
+  });
+
+  it("is empty for a view that never ran", () => {
+    expect(
+      sectionPhase({ ...view, pages: [], top: [], others: [], sources: [] }),
+    ).toEqual({ phase: "empty" });
+  });
+
+  it("is failed when every page stopped with an error, before gaps or sources", () => {
+    const gaps = StoreViewSchema.parse(storeViewWithGapsFixture);
+    const failed = (v: StoreView): StoreView => ({
+      ...v,
+      top: [],
+      others: [],
+      pages: v.pages.map((p) => ({ ...p, status: "error" as const })),
+    });
+    expect(sectionPhase(failed({ ...gaps, sources: [] }))).toEqual({
+      phase: "failed",
+    });
+    expect(sectionPhase(failed(view))).toEqual({ phase: "failed" });
+    const [home, pdp] = view.pages as [StorePage, StorePage];
+    const oneFailed = {
+      ...view,
+      top: [],
+      others: [],
+      pages: [{ ...home, status: "error" as const }, pdp],
+    };
+    expect(sectionPhase(oneFailed)).toEqual({ phase: "empty" });
   });
 
   it("losses win over gaps, and a run going wins over gaps", () => {
@@ -351,6 +395,26 @@ describe("viewScope", () => {
       ],
     };
     expect(viewScope(mixed).analysedAt).toBe("2026-11-20T09:30:00-03:00");
+  });
+
+  it("leaves out a page in its first analysis, which has no result yet", () => {
+    const [home, pdp] = view.pages as [StorePage, StorePage];
+    const first = {
+      ...view,
+      top: [],
+      others: [],
+      pages: [
+        home,
+        {
+          ...pdp,
+          status: "running" as const,
+          analysed_at: "2026-11-21T08:00:00.000Z",
+          funnel: [],
+          capture_url: null,
+        },
+      ],
+    };
+    expect(viewScope(first).analysedAt).toBe(home.analysed_at);
   });
 
   it("has no date without pages", () => {
@@ -462,6 +526,74 @@ describe("safeHref", () => {
     ]) {
       expect(safeHref(value)).toBeNull();
     }
+  });
+});
+
+describe("safeImageSrc", () => {
+  it("keeps https images only", () => {
+    expect(safeImageSrc("https://media.loja.example/a.png?sig=1")).toBe(
+      "https://media.loja.example/a.png?sig=1",
+    );
+    for (const value of [
+      null,
+      "",
+      "http://media.loja.example/a.png",
+      "javascript:alert(1)",
+      "data:image/png;base64,AAAA",
+      "/a.png",
+    ]) {
+      expect(safeImageSrc(value)).toBeNull();
+    }
+  });
+});
+
+describe("showsAnalysedAt", () => {
+  const [home, pdp] = view.pages as [StorePage, StorePage];
+  const firstRun: StorePage = {
+    ...home,
+    status: "running",
+    funnel: [],
+    capture_url: null,
+  };
+
+  it("shows the date of a finished or failed page", () => {
+    expect(showsAnalysedAt(view, home)).toBe(true);
+    expect(showsAnalysedAt(view, { ...home, status: "error" })).toBe(true);
+  });
+
+  it("hides it for a page in its first analysis", () => {
+    expect(showsAnalysedAt({ ...view, top: [], others: [] }, firstRun)).toBe(
+      false,
+    );
+  });
+
+  it("shows it for a page running again over an earlier result", () => {
+    expect(
+      showsAnalysedAt(view, {
+        ...pdp,
+        status: "running",
+        funnel: [],
+        capture_url: null,
+      }),
+    ).toBe(true);
+    expect(
+      showsAnalysedAt(
+        { ...view, top: [], others: [] },
+        {
+          ...firstRun,
+          capture_url: "https://media.loja.example/fold.png",
+        },
+      ),
+    ).toBe(true);
+    expect(
+      showsAnalysedAt(
+        { ...view, top: [], others: [] },
+        {
+          ...firstRun,
+          funnel: [{ device: "mobile", people_week: 10, advance_rate: 0.5 }],
+        },
+      ),
+    ).toBe(true);
   });
 });
 

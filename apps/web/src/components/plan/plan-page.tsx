@@ -5,8 +5,12 @@
  *  organization's goals; otherwise it is the single store goal. */
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ErrorBoundary } from "@/components/error-boundary";
+import {
+  ErrorBoundary,
+  type ErrorFallbackProps,
+} from "@/components/error-boundary";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import {
@@ -16,6 +20,7 @@ import {
 import { usePlanGoalsLive } from "@/hooks/use-plan-goals";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
+import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
 import { PlanGuide } from "./guide/plan-guide.tsx";
 import { PlanGuideResume } from "./guide/plan-guide-resume.tsx";
@@ -48,6 +53,24 @@ function useOpenOpportunity() {
           to: DESTINATION_ROUTE.planOpportunity,
           params: { org: org.slug, opportunityId },
         });
+}
+
+/** The analysis's fallback. Trying again drops the cached reads, so the
+ *  section does not render the data that failed it again. */
+function useDiagnosisFallback() {
+  const queryClient = useQueryClient();
+  const { org } = useProjectContext();
+  return ({ error, resetError }: ErrorFallbackProps) => (
+    <OpportunitiesSectionFallback
+      error={error}
+      resetError={() => {
+        void queryClient.resetQueries({
+          queryKey: KEYS.planDiagnosisAll(org.id),
+        });
+        resetError();
+      }}
+    />
+  );
 }
 
 type PlanTab = "plan" | "store";
@@ -105,10 +128,12 @@ function PlanTabs({
 
 export function PlanPage() {
   usePlanGoalsLive();
-  const { goalsOn, goals, goal } = useActivePlanGoal();
+  const { goalsOn, goals, goal, pending } = useActivePlanGoal();
+  const runGoal = { ...goal, pending };
   const guide = usePlanGuide(goal);
   const openOpportunity = useOpenOpportunity();
   const createCase = useCreateCaseFromOpportunity();
+  const diagnosisFallback = useDiagnosisFallback();
   const [tab, setTab] = usePlanTab();
   // The "Nova análise" button that opened the popover; null when closed.
   const [newRunAnchor, setNewRunAnchor] = useState<HTMLElement | null>(null);
@@ -138,7 +163,7 @@ export function PlanPage() {
       {newRunAnchor && (
         <NewRunPopover
           anchor={newRunAnchor}
-          goal={goal}
+          goal={runGoal}
           onClose={() => setNewRunAnchor(null)}
         />
       )}
@@ -148,11 +173,9 @@ export function PlanPage() {
           className="flex flex-col gap-12"
         >
           {store ? (
-            <ErrorBoundary
-              fallback={(props) => <OpportunitiesSectionFallback {...props} />}
-            >
+            <ErrorBoundary fallback={diagnosisFallback}>
               <StoreTab
-                goal={goal}
+                goal={runGoal}
                 onNewRun={setNewRunAnchor}
                 onOpenOpportunity={(id) => void openOpportunity(id)}
               />
@@ -168,13 +191,9 @@ export function PlanPage() {
                 />
               )}
               <PlanIdeaComposer initialIdea={draft} onSubmit={guide.start} />
-              <ErrorBoundary
-                fallback={(props) => (
-                  <OpportunitiesSectionFallback {...props} />
-                )}
-              >
+              <ErrorBoundary fallback={diagnosisFallback}>
                 <OpportunitiesSection
-                  goal={goal}
+                  goal={runGoal}
                   onOpenOpportunity={(id) => void openOpportunity(id)}
                   onCreateCase={(opportunity, hypothesis) =>
                     createCase.create({

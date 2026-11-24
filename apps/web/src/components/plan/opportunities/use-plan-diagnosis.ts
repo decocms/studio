@@ -15,7 +15,7 @@ import { useStudioTools } from "@/lib/studio-tools";
 import {
   DecideHypothesisSchema,
   GetOpportunitySchema,
-  type PageType,
+  type StartRunInput,
   StartRunSchema,
   StoreViewSchema,
   parseToolResult,
@@ -26,6 +26,7 @@ import {
   diagnosisStatusState,
   engineConnectionOf,
   retryEngineRead,
+  storeViewEnabled,
   storeViewRefetchInterval,
   unwrapEngineResult,
 } from "./diagnosis-state.ts";
@@ -88,23 +89,24 @@ function useEngine() {
   return { orgId: org.id, connectionId, call, queryClient };
 }
 
-/** The store at a glance for a goal's runs (`null` = every run). Polls while
- *  the last good view says a page is running. */
-export function useStoreView(goalId: string | null) {
+/** The store at a glance for a goal's runs (a null id = every run), off
+ *  while the goals load. Polls while the last good view says a page is
+ *  running. */
+export function useStoreView(goal: { id: string | null; pending: boolean }) {
   const engine = useEngine();
   return useQuery({
     queryKey: KEYS.planStoreView(
       engine.orgId,
-      goalId,
+      goal.id,
       engine.connectionId ?? "",
     ),
-    enabled: engine.connectionId !== null,
+    enabled: storeViewEnabled(engine.connectionId, goal),
     retry: retryEngineRead,
     queryFn: () =>
       engine.call(
         StoreViewSchema,
         "get_ux_store_view",
-        goalId ? { goal_id: goalId } : {},
+        goal.id ? { goal_id: goal.id } : {},
       ),
     refetchInterval: (query) => storeViewRefetchInterval(query.state.data),
   });
@@ -144,13 +146,6 @@ export function useFetchOpportunity() {
       ...opportunityQuery(engine, id),
       staleTime: 30_000,
     });
-}
-
-export interface StartRunInput {
-  pages?: PageType[];
-  todas?: boolean;
-  goal_id?: string;
-  objective_statement?: string;
 }
 
 /** Rejects with `DiagnosisEngineError`; `needsDomain` is set when the store

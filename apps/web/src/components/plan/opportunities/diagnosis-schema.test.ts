@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   DecideHypothesisSchema,
   GetOpportunitySchema,
-  ListSiteRunsSchema,
   StartRunSchema,
   StoreViewSchema,
   parseToolResult,
@@ -10,7 +9,6 @@ import {
 } from "./diagnosis-schema.ts";
 import {
   opportunityDetailFixture,
-  siteRunsFixture,
   storeViewFixture,
   storeViewWithGapsFixture,
 } from "./fixtures.ts";
@@ -201,12 +199,7 @@ describe("parseToolResult", () => {
     expect(hypothesis?.verification?.runs[0]?.outcome).toBe("confirma");
   });
 
-  it("parses site runs and a started run", () => {
-    const runs = parseToolResult(ListSiteRunsSchema, siteRunsFixture);
-    expect(runs.ok && runs.value.runs.map((r) => r.goal_id)).toEqual([
-      "goal_a",
-      null,
-    ]);
+  it("parses a started run", () => {
     const started = parseToolResult(StartRunSchema, {
       status: "started",
       site_run_id: "run_3",
@@ -258,7 +251,7 @@ describe("toolPayload", () => {
 
   it("keeps non-JSON text so the schema rejects it", () => {
     const raw = toolPayload({ content: [{ type: "text", text: "oops" }] });
-    expect(parseToolResult(ListSiteRunsSchema, raw).ok).toBe(false);
+    expect(parseToolResult(StartRunSchema, raw).ok).toBe(false);
   });
 
   it("names an error result that has no text", () => {

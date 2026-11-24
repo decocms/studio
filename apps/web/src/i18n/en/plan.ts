@@ -454,6 +454,9 @@ export const plan = {
   "plan.opportunities.empty.description":
     "Run an analysis to measure where the store loses the most.",
   "plan.opportunities.empty.failed": "The last analysis stopped with an error",
+  "plan.opportunities.failed.heading": "The analysis failed",
+  "plan.opportunities.failed.description":
+    "No page finished. See why below, then run it again.",
   "plan.opportunities.error.heading": "We could not load the store analysis",
   "plan.opportunities.error.stale":
     "We could not refresh the analysis. This is the last one we read.",
@@ -476,6 +479,8 @@ export const plan = {
   "plan.opportunities.connect.failed": "Could not connect the store analysis",
   "plan.opportunities.connect.loadFailed":
     "Could not list the organization's connections",
+  "plan.opportunities.connect.askAdmin":
+    "Ask an admin to connect the store analysis.",
   "plan.opportunities.detail.back": "Back to Plan",
   "plan.opportunities.detail.pageTitle": "Loss {rank}",
   "plan.opportunities.detail.notFound.heading": "We could not find this loss",

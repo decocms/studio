@@ -31,21 +31,24 @@ import {
 } from "./opportunity-view.ts";
 import { useStartRun, useStoreView } from "./use-plan-diagnosis.ts";
 
+/** `pending` while the goals load; a run then would have no goal. */
 export interface RunGoal {
   id: string | null;
   statement: string | null;
+  pending: boolean;
 }
 
 /** Starts a run for the active goal. `elsewhere` names the pages the engine
  *  said were already running in a run this goal's view does not show. */
 export function useRequestRun(goal: RunGoal) {
   const start = useStartRun();
-  const view = useStoreView(goal.id).data;
+  const view = useStoreView(goal).data;
   const [elsewhere, setElsewhere] = useState<PageType[]>([]);
   const request = (
     scope: "site" | readonly PageType[],
     onStarted?: () => void,
   ) => {
+    if (goal.pending) return;
     const input = startRunInput(goal, scope);
     track("plan_run_requested", runRequestedEvent(input));
     setElsewhere([]);
@@ -57,7 +60,13 @@ export function useRequestRun(goal: RunGoal) {
       },
     });
   };
-  return { request, pending: start.isPending, error: start.error, elsewhere };
+  return {
+    request,
+    pending: start.isPending,
+    blocked: goal.pending || start.isPending,
+    error: start.error,
+    elsewhere,
+  };
 }
 
 /** Why a run did not start, or which pages were already running elsewhere. */
@@ -146,7 +155,7 @@ function Choice({
 function NewRunForm({ goal, onDone }: { goal: RunGoal; onDone: () => void }) {
   const t = useT();
   const [{ language }] = usePreferences();
-  const view = useStoreView(goal.id).data;
+  const view = useStoreView(goal).data;
   const run = useRequestRun(goal);
   const [site, setSite] = useState(false);
   const [picked, setPicked] = useState<PageType[]>([]);
@@ -217,7 +226,7 @@ function NewRunForm({ goal, onDone }: { goal: RunGoal; onDone: () => void }) {
       <div className="flex justify-end border-t border-border pt-3">
         <Button
           size="sm"
-          disabled={run.pending || (!site && chosen.length === 0)}
+          disabled={run.blocked || (!site && chosen.length === 0)}
           onClick={() => run.request(site ? "site" : chosen, onDone)}
         >
           {run.pending && <Spinner size="2xs" />}

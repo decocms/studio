@@ -35,7 +35,8 @@ import {
   errorText,
   formatMoney,
   pageLosses,
-  safeHref,
+  safeImageSrc,
+  showsAnalysedAt,
   stageCards,
 } from "./opportunity-view.ts";
 import { usePlanDiagnosisStatus, useStoreView } from "./use-plan-diagnosis.ts";
@@ -149,7 +150,7 @@ function Capture({
             : "aspect-[16/10] w-full rounded-lg border-4 border-t-[14px] border-foreground/80",
         )}
       >
-        {safeHref(src) ? image : placeholder}
+        {safeImageSrc(src) ? image : placeholder}
       </div>
       <figcaption className="text-xs text-muted-foreground">
         {t("plan.opportunities.store.capture.caption")}
@@ -195,7 +196,7 @@ function PagePanel({
             <h3 className="text-base font-medium text-foreground">
               {t(PAGE_LABEL[pageType])}
             </h3>
-            {page && (
+            {page && showsAnalysedAt(view, page) && (
               <span className="text-sm text-muted-foreground">
                 {t("plan.opportunities.store.analysed", {
                   when: formatRelativeTime(
@@ -209,7 +210,7 @@ function PagePanel({
           <Button
             variant="outline"
             size="sm"
-            disabled={running || run.pending}
+            disabled={running || run.blocked}
             onClick={() => run.request([pageType])}
           >
             {run.pending && <Spinner size="2xs" />}
@@ -341,7 +342,7 @@ function PagePanel({
 
 function StoreContent({ goal, onNewRun, onOpenOpportunity }: StoreTabProps) {
   const t = useT();
-  const query = useStoreView(goal.id);
+  const query = useStoreView(goal);
   const [device, setDevice] = useState<Device>("mobile");
   const [picked, setPicked] = useState<PageType | null>(null);
   const view = query.data;
@@ -434,6 +435,7 @@ export function StoreTab(props: StoreTabProps) {
         </Card>
       );
     case "configured":
-      return <StoreContent {...props} />;
+      // A new goal starts on its own default page.
+      return <StoreContent key={props.goal.id ?? "all"} {...props} />;
   }
 }

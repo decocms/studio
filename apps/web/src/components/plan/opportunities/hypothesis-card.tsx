@@ -35,6 +35,7 @@ import {
   hypothesisActions,
   hypothesisLine,
   safeHref,
+  safeImageSrc,
 } from "./opportunity-view.ts";
 import type { CaseCreation } from "./use-create-case.ts";
 import {
@@ -82,6 +83,7 @@ function SignedImage({
       src={src}
       alt={alt}
       loading="lazy"
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       className={cn(
         "max-h-96 w-full rounded-lg border border-border object-contain object-top",
@@ -102,7 +104,7 @@ export function EngineImage({
   alt: string;
   className?: string;
 }) {
-  const href = safeHref(src);
+  const href = safeImageSrc(src);
   if (!href) return null;
   return <SignedImage key={href} src={href} alt={alt} className={className} />;
 }
@@ -180,8 +182,9 @@ function ExperimentBlock({ experiment: e }: { experiment: Experiment }) {
       )}
       {e.limitacoes.length > 0 && (
         <ul className="flex list-disc flex-col gap-0.5 pl-4 text-xs text-muted-foreground">
-          {e.limitacoes.map((limit) => (
-            <li key={limit}>{limit}</li>
+          {e.limitacoes.map((limit, i) => (
+            // Engine text can repeat, so the position keeps keys unique.
+            <li key={`${i}:${limit}`}>{limit}</li>
           ))}
         </ul>
       )}
@@ -192,8 +195,11 @@ function ExperimentBlock({ experiment: e }: { experiment: Experiment }) {
 function CheckRuns({ runs }: { runs: CheckRun[] }) {
   return (
     <ul className="flex flex-col gap-3">
-      {runs.map((run) => (
-        <li key={run.check.id} className="flex flex-col gap-1.5 text-sm">
+      {runs.map((run, i) => (
+        <li
+          key={`${i}:${run.check.id}`}
+          className="flex flex-col gap-1.5 text-sm"
+        >
           <span className="text-foreground">{run.check.claim}</span>
           <span className="text-xs text-muted-foreground">{run.observed}</span>
           <EngineImage src={run.screenshot_url} alt={run.check.claim} />

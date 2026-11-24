@@ -303,24 +303,3 @@ export const opportunityDetailFixture = {
     ],
   },
 };
-
-export const siteRunsFixture = {
-  runs: [
-    {
-      site_run_id: "run_2",
-      goal_id: "goal_a",
-      objective_statement: "Grow mobile conversion",
-      started_at: "2026-11-21T09:00:00.000Z",
-      status: "running",
-      pages: ["home", "pdp"],
-    },
-    {
-      site_run_id: "run_1",
-      goal_id: null,
-      objective_statement: null,
-      started_at: "2026-11-20T12:00:00.000Z",
-      status: "done",
-      pages: ["pdp"],
-    },
-  ],
-};

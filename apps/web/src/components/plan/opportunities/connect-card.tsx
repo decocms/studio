@@ -20,6 +20,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { useCapability } from "@/hooks/use-capability";
 import { useT } from "@/i18n/use-t.ts";
 import { useConnections, useProjectContext } from "@/sdk";
 import { errorText } from "./opportunity-view.ts";
@@ -140,6 +141,26 @@ function SetupForm() {
   );
 }
 
+/** Setup creates an org connection, so only a member who manages connections
+ *  sees the form; if capabilities fail to load, the server decides. */
+function SetupGate() {
+  const t = useT();
+  const capability = useCapability("connections:manage");
+  if (capability.loading) return <Skeleton className="h-24 w-full" />;
+  if (!capability.granted && !capability.error) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("plan.opportunities.connect.askAdmin")}
+      </p>
+    );
+  }
+  return (
+    <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+      <SetupForm />
+    </Suspense>
+  );
+}
+
 export function ConnectCard() {
   const t = useT();
   return (
@@ -170,9 +191,7 @@ export function ConnectCard() {
             </div>
           )}
         >
-          <Suspense fallback={<Skeleton className="h-24 w-full" />}>
-            <SetupForm />
-          </Suspense>
+          <SetupGate />
         </ErrorBoundary>
       </Card>
     </div>
