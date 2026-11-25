@@ -22,6 +22,11 @@ import {
   changeRequestClientForTarget,
 } from "@/git-providers";
 import {
+  asHeadSha,
+  changeRequestPreview,
+  isTrustedPreviewHost,
+} from "@/git-providers/preview-url";
+import {
   NO_REPOSITORY_CREDENTIAL,
   repoTargetInput,
   type RepoTargetInput,
@@ -93,6 +98,8 @@ const changeRequestSchema = z.object({
   changedFiles: z.number().nullable(),
 });
 
+const previewStateSchema = z.enum(["ready", "building", "failed", "none"]);
+
 const detailSchema = changeRequestSchema.extend({
   checkRuns: z.array(checkRunSchema),
   comments: z.array(commentSchema),
@@ -118,14 +125,60 @@ export const CHANGE_REQUEST_STATE = defineTool({
   }),
   outputSchema: z.object({
     /** null when the branch has no change request at all. */
-    changeRequest: detailSchema.nullable(),
+    changeRequest: detailSchema
+      .extend({
+        /** Its deploy preview as its CI runs tell it: the URL on
+         *  a trusted preview host once one is linked. A host that reports
+         *  only deployments reads `none`; CHANGE_REQUEST_DEPLOYMENT tells. */
+        preview: z.object({
+          state: previewStateSchema,
+          url: z.string().nullable(),
+        }),
+      })
+      .nullable(),
   }),
   handler: async (input, ctx) => {
     await ctx.access.check();
     const client = await clientFor(ctx, input);
+    const detail = await client.readDetailed({ branch: input.branch });
+    if (!detail) return { changeRequest: null };
     return {
-      changeRequest: await client.readDetailed({ branch: input.branch }),
+      changeRequest: { ...detail, preview: changeRequestPreview(detail) },
     };
+  },
+});
+
+export const CHANGE_REQUEST_DEPLOYMENT = defineTool({
+  name: "CHANGE_REQUEST_DEPLOYMENT",
+  description:
+    "Read a commit's deployment: the URL it published on a known preview host, else whether one is still running or failed. Some hosts (VTEX FastStore WebOps) report a change request's preview only there.",
+  annotations: {
+    title: "Read Commit Deployment",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  _meta: { ui: { visibility: "app" } },
+  inputSchema: z.object({
+    ...repoTargetInput,
+    sha: z.string().describe("Commit whose deployment to read"),
+  }),
+  outputSchema: z.object({
+    state: previewStateSchema,
+    url: z.string().nullable(),
+  }),
+  handler: async (input, ctx) => {
+    await ctx.access.check();
+    const sha = asHeadSha(input.sha);
+    if (!sha) throw new Error("sha must be a 7-40 character hex commit id");
+    const client = await clientFor(ctx, input);
+    const deployment = await client.readDeployment(sha);
+    // A URL off the preview hosts cannot be framed: as good as no preview.
+    if (deployment.url && !isTrustedPreviewHost(deployment.url)) {
+      return { state: "none" as const, url: null };
+    }
+    return { state: deployment.state, url: deployment.url };
   },
 });
 

@@ -77,10 +77,6 @@ import { curateRecents } from "./recents";
 export type LibraryLayout = "list" | "grid";
 
 /** Absolute proxy link to copy when sharing a file. */
-function publicFileUrl(path: string): string {
-  return `${window.location.origin}${path}`;
-}
-
 /** Badge state for a list entry: shared here (public/password), inherited from
  *  a parent, or not shared. */
 function publicStateOf(e: {
@@ -427,7 +423,6 @@ export function SearchResultsView({
       kind: "file",
       shareMode: e.shareMode ?? "private",
       effectivePublic: e.effectivePublic ?? false,
-      url: publicFileUrl(fileUrl(e.volume, e.path)),
     });
 
   if (search.isPending) return <ListingSkeleton layout={view.layout} />;
@@ -689,7 +684,6 @@ export function ChatFilesView({
                     kind: "file",
                     shareMode: item.entry.shareMode ?? "private",
                     effectivePublic: item.entry.effectivePublic ?? false,
-                    url: publicFileUrl(downloadUrl),
                   }),
                 onDelete: () =>
                   onDelete({ volume, path: item.path, kind: "file" }),
@@ -875,10 +869,6 @@ export function VolumeView({
             kind: entry.kind,
             shareMode: entry.shareMode ?? "private",
             effectivePublic: entry.effectivePublic ?? false,
-            url:
-              entry.kind === "file"
-                ? publicFileUrl(fileUrl(volume, entry.path))
-                : undefined,
           });
 
   /** Filters narrow files only: a folder is how a person reaches the files

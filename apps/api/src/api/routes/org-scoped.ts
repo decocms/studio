@@ -38,6 +38,7 @@ import { createHomeNextActionsRoutes } from "./home-next-actions";
 import { createReportsShareRoutes } from "./reports-share";
 import { createInternalRepositoryRoutes } from "./internal-repositories";
 import { createOrganizationNoticeServiceRoutes } from "./organization-notices-service";
+import { createChannelAccountServiceRoutes } from "./channel-accounts-service";
 import { createTaskBoardImportRoutes } from "./task-board-import";
 import { createTaskBoardResolveRoutes } from "./task-board-resolve";
 import { createObjectStorageRoutes } from "./object-storage";
@@ -47,6 +48,7 @@ import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
+import { createShortLinkCreateRoutes } from "./short-links";
 
 interface OrgScopedDeps {
   voiceSessions: VoiceSessions;
@@ -114,11 +116,13 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createTaskBoardResolveRoutes()); // /api/:org/internal/task-board/resolve, service-token call for cards whose Deco Score check passes
   app.route("/", createReportsShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite
   app.route("/", createOrganizationNoticeServiceRoutes()); // /api/:org/internal/organization-notices
+  app.route("/", createChannelAccountServiceRoutes()); // /api/:org/internal/channel-accounts
   app.route("/", createInternalRepositoryRoutes()); // /api/:org/internal/repositories/... — service-token repository reads
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/tools", createToolsRestRoutes()); // /api/:org/tools[/:toolName] — REST builtin-tool dispatch
   app.route("/", createObjectStorageRoutes()); // /api/:org/object-storage/*
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
+  app.route("/", createShortLinkCreateRoutes()); // /api/:org/short-links
   app.route("/", createFileUploadRoutes()); // /api/:org/file-configs/:id/upload
   app.route(
     "/fs",

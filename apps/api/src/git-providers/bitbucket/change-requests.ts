@@ -26,6 +26,7 @@ import {
   type CheckConclusion,
   type CheckRun,
   type CheckState,
+  type DeploymentPreview,
   type MergeOutcome,
   type MergeParams,
   type MergeRefusal,
@@ -652,7 +653,7 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
    * ever reaches the pull request as a commit status or a bot comment, both of
    * which the detailed read already carries.
    */
-  async readDeployedUrl(_sha: string): Promise<string | null> {
-    return null;
+  async readDeployment(_sha: string): Promise<DeploymentPreview> {
+    return { state: "none", url: null };
   }
 }

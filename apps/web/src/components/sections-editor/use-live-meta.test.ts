@@ -96,6 +96,18 @@ describe("metaSourceOrder", () => {
     ).toEqual([{ kind: "committed" }, { kind: "production", baseUrl: PROD }]);
   });
 
+  it("a pull request draft with its preview up: deployed schema, then committed", () => {
+    expect(
+      metaSourceOrder({
+        fetchEnabled: true,
+        previewUrl: PREVIEW,
+        productionUrl: PROD,
+        fastPreviewActive: true,
+        pullRequestPreviewReady: true,
+      }),
+    ).toEqual([{ kind: "production", baseUrl: PROD }, { kind: "committed" }]);
+  });
+
   it("fast preview, no production: committed is the only source", () => {
     expect(
       metaSourceOrder({

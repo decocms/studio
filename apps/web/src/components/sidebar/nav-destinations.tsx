@@ -138,7 +138,10 @@ function useNavDestinations(): NavDestination[] {
       label: t("sidebar.navDestinations.plan"),
       icon: <Target04 size={16} />,
       isActive:
-        leafPath === DESTINATION_ROUTE.plan || leafPath === PROJECT_ROUTE.plan,
+        leafPath === DESTINATION_ROUTE.plan ||
+        leafPath === DESTINATION_ROUTE.planOpportunity ||
+        leafPath === PROJECT_ROUTE.plan ||
+        leafPath === PROJECT_ROUTE.planOpportunity,
       trackAs: "plan",
       soon: !planEnabled,
       link: scopeId

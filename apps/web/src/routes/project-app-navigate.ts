@@ -77,8 +77,9 @@ export function resolveAppNavigateTarget(content: ContentBlock[]):
 
 const MAX_APP_ARGS_LENGTH = 2000;
 const appArgsSchema = z.record(z.string(), z.unknown());
+export type AppArgs = z.infer<typeof appArgsSchema>;
 
-export function resolveAppArgs(content: ContentBlock[]): string | null {
+export function resolveAppArgs(content: ContentBlock[]): AppArgs | null {
   const [block] = content;
   if (
     content.length !== 1 ||
@@ -93,17 +94,26 @@ export function resolveAppArgs(content: ContentBlock[]): string | null {
   } catch {
     return null;
   }
-  return args && parseAppArgs(args) ? args : null;
+  return parseAppArgs(args) ?? null;
 }
 
-export function parseAppArgs(
-  raw: string | undefined,
-): Record<string, unknown> | undefined {
-  if (!raw || raw.length > MAX_APP_ARGS_LENGTH) return undefined;
-  try {
-    const parsed = appArgsSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : undefined;
-  } catch {
-    return undefined;
+/**
+ * Accepts app args as an object (the router's own search parsing) or as a JSON
+ * string (app messages and links written before args became an object).
+ */
+export function parseAppArgs(raw: unknown): AppArgs | undefined {
+  let value = raw;
+  if (typeof raw === "string") {
+    if (!raw || raw.length > MAX_APP_ARGS_LENGTH) return undefined;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
   }
+  const parsed = appArgsSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  return JSON.stringify(parsed.data).length > MAX_APP_ARGS_LENGTH
+    ? undefined
+    : parsed.data;
 }

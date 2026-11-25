@@ -96,6 +96,7 @@ import {
 import { guardAgainstPrivateUrl } from "../../mcp-clients/url-security";
 import { sandboxContentHandler } from "../../sandbox/content-storage";
 import { projectPackagePath } from "../../hosted/blocks-major";
+import { resolvePullRequestMetaTarget } from "../../lib/pull-request-site-meta";
 import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import {
   GitPushAuthError,
@@ -476,22 +477,63 @@ function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
   return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
 }
 
+/** Redirect hops `proxyPreviewUpstream` follows before giving up. */
+const PREVIEW_MAX_REDIRECTS = 5;
+
+/**
+ * The URL a preview redirect may be followed to, or `null` when it must not
+ * be. Only a same-origin `Location` qualifies: the origin was vetted (or
+ * derived from the authed claim) before the first request, and any other
+ * origin is a host nothing has checked.
+ */
+export function sameOriginRedirectTarget(
+  currentUrl: string,
+  location: string | null,
+): string | null {
+  if (!location) return null;
+  try {
+    const current = new URL(currentUrl);
+    const next = new URL(location, current);
+    return next.origin === current.origin ? next.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetches an upstream preview response and relays its body/status, mapping
  * both a failed fetch and a failed body read to the same 502 shape. Shared by
- * `preview-fetch` and `preview-invoke`, which otherwise repeated this
- * fetch-or-502 / text-or-502 dance verbatim.
+ * `preview-fetch`, `preview-invoke` and `catalog-invoke`.
+ *
+ * Redirects are followed by hand: a GET follows same-origin hops only, and any
+ * other method refuses them, so a preview cannot steer Studio's request to an
+ * address that was never vetted.
  */
 async function proxyPreviewUpstream(
   c: Context<VmEnv>,
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
+  const isGet = !init?.method || init.method.toUpperCase() === "GET";
+  let currentUrl = url;
   let upstream: Response;
-  try {
-    upstream = await fetch(url, init);
-  } catch {
-    return c.json({ error: "Preview unreachable" }, 502);
+  for (let hop = 0; ; hop++) {
+    try {
+      upstream = await fetch(currentUrl, { ...init, redirect: "manual" });
+    } catch {
+      return c.json({ error: "Preview unreachable" }, 502);
+    }
+    if (upstream.status < 300 || upstream.status >= 400) break;
+
+    await upstream.body?.cancel();
+    const next =
+      isGet && hop < PREVIEW_MAX_REDIRECTS
+        ? sameOriginRedirectTarget(currentUrl, upstream.headers.get("location"))
+        : null;
+    if (!next) {
+      return c.json({ error: "Preview redirect not followed" }, 502);
+    }
+    currentUrl = next;
   }
 
   let text: string;
@@ -1634,6 +1676,12 @@ export const createSandboxRoutes = () => {
       if (!previewUrl) {
         return c.json({ error: "Preview not available" }, 502);
       }
+      // Without a runner the origin is project metadata any editor can set,
+      // so it gets the same private-network check as `site-meta`.
+      if (!runner) {
+        const blocked = await guardAgainstPrivateUrl(previewUrl);
+        if (blocked) return c.json({ error: blocked }, 403);
+      }
 
       let body: unknown;
       try {
@@ -1670,15 +1718,35 @@ export const createSandboxRoutes = () => {
   // edge rejects `/live/_meta` on public hosts without the admin token, which
   // only Studio holds, so the browser cannot read it directly.
   app.get("/:virtualMcpId/:branch/site-meta", async (c) => {
-    const metadata = c.get("vmClaim").virtualMcpMetadata;
+    const {
+      virtualMcpMetadata: metadata,
+      connectionIds,
+      branch,
+    } = c.get("vmClaim");
+    const organizationId = requireOrganization(c.var.studioContext).id;
     const siteSlug = projectSiteSlug(metadata);
     const orgOwnsSite = siteSlug
       ? await c.var.studioContext.storage.orgSites.isOwnedBy(
           siteSlug,
-          requireOrganization(c.var.studioContext).id,
+          organizationId,
         )
       : false;
-    const targets = resolveSiteMetaTargets(metadata, orgOwnsSite);
+    // A pull request draft's preview runs its code: its schema before production's.
+    const pullRequestTarget = await resolvePullRequestMetaTarget(
+      c.var.studioContext,
+      {
+        organizationId,
+        metadata,
+        connectionIds,
+        branch,
+        siteSlug,
+        orgOwnsSite,
+      },
+    );
+    const targets = [
+      ...(pullRequestTarget ? [pullRequestTarget] : []),
+      ...resolveSiteMetaTargets(metadata, orgOwnsSite),
+    ];
     if (targets.length === 0) {
       return c.json(
         { error: "Project has no preview server configured" },

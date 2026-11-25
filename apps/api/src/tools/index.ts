@@ -22,6 +22,7 @@ import * as DemoBoardTools from "./demo-board";
 import * as NotificationTools from "./notifications";
 import * as AlertTools from "./alerts";
 import * as PlanGoalTools from "./plan-goals";
+import * as PlanDiagnosisTools from "./plan-diagnosis";
 import * as TagTools from "./tags";
 import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
@@ -29,6 +30,7 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as ProjectSidebarTools from "./project-sidebar";
 import * as AiProvidersTools from "./ai-providers";
+import * as ChannelAccountTools from "./channel-accounts";
 import * as CodexSubscriptionTools from "./codex-subscription";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as GithubCopilotTools from "./github-copilot";
@@ -87,6 +89,10 @@ export const CORE_TOOLS = [
   AlertTools.ALERT_ACK,
   AlertTools.ALERT_RULES_LIST,
   AlertTools.ALERT_RULE_UPDATE,
+  ChannelAccountTools.CHANNEL_ACCOUNT_CLAIM_GET,
+  ChannelAccountTools.CHANNEL_ACCOUNT_CONNECT,
+  ChannelAccountTools.CHANNEL_ACCOUNT_LIST,
+  ChannelAccountTools.CHANNEL_ACCOUNT_DISCONNECT,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
   // The cross-org `org` param is applied at each tool's own definition, NOT
   // here — the Super Agent imports these tools directly (see
@@ -191,6 +197,8 @@ export const CORE_TOOLS = [
   ReportsTools.REPORTS_BIND,
   ReportsTools.REPORTS_CONNECTION_STATUS,
   ReportsTools.REPORTS_SET_REPOSITORY,
+  PlanDiagnosisTools.PLAN_DIAGNOSIS_SETUP,
+  PlanDiagnosisTools.PLAN_DIAGNOSIS_STATUS,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
@@ -302,6 +310,7 @@ export const CORE_TOOLS = [
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
+  SecretsTools.SECRET_DELETE,
 
   // File config tools (org-scoped S3 bucket configurations)
   FileConfigTools.FILE_CONFIG_CREATE,
@@ -377,6 +386,7 @@ export const CORE_TOOLS = [
   ChangeRequestTools.CHANGE_REQUEST_STATE,
   ChangeRequestTools.CHANGE_REQUEST_LAST_MERGED,
   ChangeRequestTools.CHANGE_REQUEST_LIST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_DEPLOYMENT,
   ChangeRequestTools.CHANGE_REQUEST_CHECK_LOG,
   ChangeRequestTools.CHANGE_REQUEST_OPEN,
   ChangeRequestTools.CHANGE_REQUEST_MERGE,

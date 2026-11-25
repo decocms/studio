@@ -184,6 +184,27 @@ export const common = {
   "common.inviteLinkScreen.signInDescription":
     "Entre ou crie uma conta para participar e abrir a página compartilhada.",
   "common.inviteLinkScreen.title": "Você foi convidado para {orgName}",
+  "common.connectChannelScreen.title": "Conectar {channel} ao Studio",
+  "common.connectChannelScreen.description":
+    "Os bots do {channel} vão falar com o Studio como você ({email}), com as suas permissões, quando esta conta escrever para eles.",
+  "common.connectChannelScreen.warning":
+    "Só continue se esta conta for sua. Se alguém te mandou este link, feche esta página.",
+  "common.connectChannelScreen.connectButton": "Conectar",
+  "common.connectChannelScreen.connecting": "Conectando…",
+  "common.connectChannelScreen.notMine": "Esta conta não é minha",
+  "common.connectChannelScreen.signInTitle": "Conectar um canal ao Studio",
+  "common.connectChannelScreen.signInDescription":
+    "Entre para ver qual conta quer falar com o Studio como você.",
+  "common.connectChannelScreen.signInButton": "Entrar para continuar",
+  "common.connectChannelScreen.invalidTitle": "Link indisponível",
+  "common.connectChannelScreen.invalidDescription":
+    "Este link já foi usado ou expirou. Escreva para o bot de novo para receber outro.",
+  "common.connectChannelScreen.notMemberDescription":
+    "Você não é membro da organização deste link.",
+  "common.connectChannelScreen.goHome": "Ir para o início",
+  "common.connectChannelScreen.loadError":
+    "Não conseguimos carregar este link. Tente de novo.",
+  "common.connectChannelScreen.retry": "Tentar de novo",
   "common.inviteMemberDialog.cancelButton": "Cancelar",
   "common.inviteMemberDialog.emailLabel": "Endereços de e-mail",
   "common.inviteMemberDialog.emailPlaceholder":
@@ -248,6 +269,10 @@ export const common = {
   "common.sharePage.description":
     "Qualquer pessoa com o link pode entrar em {orgName} nas próximas 24 horas e abre esta página.",
   "common.sharePage.title": "Convidar para esta página",
+  "common.sharePage.linkTitle": "Link desta página",
+  "common.sharePage.linkDescription":
+    "Abre esta página como você está vendo agora, para quem tem acesso a ela.",
+  "common.sharePage.linkFailed": "Não foi possível criar o link",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "Esta organização requer autenticação SSO para acessar.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requer autenticação SSO",

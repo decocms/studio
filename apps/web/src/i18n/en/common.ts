@@ -175,6 +175,27 @@ export const common = {
   "common.inviteLinkScreen.signInDescription":
     "Sign in or create an account to join and open the shared page.",
   "common.inviteLinkScreen.title": "You've been invited to {orgName}",
+  "common.connectChannelScreen.title": "Connect {channel} to Studio",
+  "common.connectChannelScreen.description":
+    "Bots in {channel} will talk to Studio as you ({email}), with your permissions, when this account writes to them.",
+  "common.connectChannelScreen.warning":
+    "Only continue if this account is yours. If someone sent you this link, close this page.",
+  "common.connectChannelScreen.connectButton": "Connect",
+  "common.connectChannelScreen.connecting": "Connecting…",
+  "common.connectChannelScreen.notMine": "This isn't my account",
+  "common.connectChannelScreen.signInTitle": "Connect a channel to Studio",
+  "common.connectChannelScreen.signInDescription":
+    "Sign in to see which account wants to talk to Studio as you.",
+  "common.connectChannelScreen.signInButton": "Sign in to continue",
+  "common.connectChannelScreen.invalidTitle": "Link unavailable",
+  "common.connectChannelScreen.invalidDescription":
+    "This link was already used or has expired. Write to the bot again for a new one.",
+  "common.connectChannelScreen.notMemberDescription":
+    "You aren't a member of the organization this link is for.",
+  "common.connectChannelScreen.goHome": "Go home",
+  "common.connectChannelScreen.loadError":
+    "We couldn't load this link. Try again.",
+  "common.connectChannelScreen.retry": "Try again",
   "common.inviteMemberDialog.cancelButton": "Cancel",
   "common.inviteMemberDialog.emailLabel": "Email addresses",
   "common.inviteMemberDialog.emailPlaceholder":
@@ -236,6 +257,10 @@ export const common = {
   "common.sharePage.description":
     "Anyone with the link can join {orgName} for the next 24 hours and opens this page.",
   "common.sharePage.title": "Invite to this page",
+  "common.sharePage.linkTitle": "Link to this page",
+  "common.sharePage.linkDescription":
+    "Opens this page as you see it now, for anyone who can access it.",
+  "common.sharePage.linkFailed": "Could not create a link",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "This organization requires SSO authentication to access.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requires SSO authentication",

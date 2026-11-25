@@ -331,6 +331,45 @@ export interface AlertTable {
   task_board_item_id: ColumnType<string | null, never, string | null>;
 }
 
+/** An outside channel's account and the Studio user it is (migration 271). */
+export interface ChannelAccountTable {
+  channel: string;
+  account_id: string;
+  account_name: ColumnType<string, string | undefined, string>;
+  account_where: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  user_id: string;
+  organization_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  last_used_at: ColumnType<Date | null, never, Date | string | null>;
+}
+
+/** A one-time link for a person to connect a channel account (migration 271). */
+export interface ChannelAccountClaimTable {
+  id: string;
+  organization_id: string;
+  channel: string;
+  account_id: string;
+  account_name: ColumnType<string, string | undefined, string>;
+  account_where: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  account_email: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  return_url: string;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  expires_at: ColumnType<Date, Date | string, Date | string>;
+  used_at: ColumnType<Date | null, never, Date | string | null>;
+}
+
 /** One of an org's Plan goals (migration 268). */
 export interface PlanGoalTable {
   id: string;
@@ -1659,6 +1698,16 @@ export interface OrganizationInviteLinkTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+export interface ShortLinkTable {
+  id: string;
+  organization_id: string;
+  target_path: string;
+  label: string;
+  title: string;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 export interface OrganizationInviteLink {
   id: string;
   organizationId: string;
@@ -2677,6 +2726,8 @@ export interface Database {
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
   alerts: AlertTable;
+  channel_accounts: ChannelAccountTable;
+  channel_account_claims: ChannelAccountClaimTable;
   alert_rule_settings: AlertRuleSettingsTable;
   plan_goals: PlanGoalTable;
   member_plan_state: MemberPlanStateTable;
@@ -2703,6 +2754,7 @@ export interface Database {
   // Pending/decided requests to join an org
   organization_join_requests: OrganizationJoinRequestTable;
   organization_invite_links: OrganizationInviteLinkTable;
+  short_links: ShortLinkTable;
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;

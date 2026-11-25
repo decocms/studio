@@ -33,6 +33,7 @@ import {
   type CheckConclusion,
   type CheckRun,
   type CheckState,
+  type DeploymentPreview,
   type ChecksSummary,
   type MergeOutcome,
   type MergeParams,
@@ -633,18 +634,34 @@ export class GitlabChangeRequestClient implements ChangeRequestClient {
       : text;
   }
 
-  async readDeployedUrl(sha: string): Promise<string | null> {
+  async readDeployment(sha: string): Promise<DeploymentPreview> {
     const deployments = await this.jsonArray<{
       sha?: string | null;
       status?: string | null;
       environment?: { external_url?: string | null } | null;
     }>(`/deployments?order_by=id&sort=desc&per_page=${DEPLOYMENTS_SCANNED}`);
+    let building = false;
+    let failed = false;
     for (const deployment of deployments ?? []) {
       if (deployment.sha !== sha) continue;
-      if (deployment.status !== "success") continue;
       const url = deployment.environment?.external_url;
-      if (typeof url === "string" && url.length > 0) return url;
+      if (
+        deployment.status === "success" &&
+        typeof url === "string" &&
+        url.length > 0
+      ) {
+        return { state: "ready", url, reporter: null };
+      }
+      if (deployment.status === "created" || deployment.status === "running") {
+        building = true;
+      } else if (
+        deployment.status === "failed" ||
+        deployment.status === "canceled"
+      ) {
+        failed = true;
+      }
     }
-    return null;
+    if (building) return { state: "building", url: null };
+    return { state: failed ? "failed" : "none", url: null };
   }
 }

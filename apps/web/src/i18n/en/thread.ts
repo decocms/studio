@@ -235,6 +235,8 @@ export const thread = {
   "thread.publishPopover.submitting": "Submitting…",
   "thread.publishPopover.versionNote": "Release note",
   "thread.publishPopover.updatesPullRequest": "Updates pull request #{number}",
+  "thread.publishPopover.mergesPullRequest":
+    "Publishing puts all of pull request #{number} live, code changes included.",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
   "thread.publishCompare.sideBySide": "Side by side",
   "thread.publishCompare.before": "Before",

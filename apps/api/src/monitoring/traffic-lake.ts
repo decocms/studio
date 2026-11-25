@@ -8,7 +8,7 @@
 import { queryCustomerLake } from "../customer-lake/client";
 import { TRAFFIC_BASELINE_DAYS, type TrafficDay } from "./traffic-rules";
 
-/** An hour is judged once it ended this long ago: the lake syncs every minute and late events keep landing. */
+/** An hour is judged once it ended this long ago and the lake has moved past it: late events keep landing. */
 const GRACE_MIN = 10;
 
 const AT = "{at:DateTime64(3, 'UTC')}";
@@ -29,6 +29,10 @@ const HOURS_SQL = `
     AND hour <= ${START} AND hour >= ${START} - INTERVAL ${Math.max(...DAYS) + 2} DAY
     AND days_ago IN (${DAYS.join(", ")})
   GROUP BY days_ago, h`;
+
+const NEWEST_SQL = `
+  SELECT toUnixTimestamp(max(hour)) AS newest FROM customer_lake.site_traffic_hourly
+  WHERE hour >= ${AT} - INTERVAL 1 DAY AND hour <= ${AT}`;
 
 // Any zone the org's lake rows carry (a store's, a GA property's).
 const TIMEZONE_SQL = `
@@ -53,6 +57,37 @@ export async function loadOrgTimezone(organizationId: string): Promise<string> {
   return typeof row?.timezone === "string" && row.timezone
     ? row.timezone
     : "UTC";
+}
+
+/** One sweep's newest lake hour, shared by its org steps so it costs one read per org. */
+let newest: { at: number; hour: Promise<number> } | null = null;
+
+/**
+ * Whether the lake holds traffic from after `hourStart` for any of the orgs'
+ * sites. The sync copies the analytics warehouse every minute, so a fresh
+ * `synced_at` says nothing when the warehouse itself runs behind; the next
+ * hour having arrived does, and an hour judged before it reads as a drop.
+ * Read across every org so a site that went dark can't hold back its own alert.
+ */
+export async function lakeHasPassed(
+  organizationIds: readonly string[],
+  at: Date,
+  hourStart: Date,
+): Promise<boolean> {
+  if (newest?.at !== at.getTime()) {
+    const read = (id: string) =>
+      queryCustomerLake(id, NEWEST_SQL, { at: toLake(at) }).then(
+        ([row]) => Number(row?.newest ?? 0) * 1000,
+        () => 0,
+      );
+    newest = {
+      at: at.getTime(),
+      hour: Promise.all(organizationIds.map(read)).then((hs) =>
+        Math.max(0, ...hs),
+      ),
+    };
+  }
+  return (await newest.hour) > hourStart.getTime();
 }
 
 /** The last hour that ended at least `GRACE_MIN` before `at`: its start, and its clock hour in `timezone`. */

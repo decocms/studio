@@ -26,11 +26,11 @@ import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
+import { PullRequestPreviewPill } from "./pull-request-preview-pill";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { PreviewProgressBar } from "./preview-progress-bar";
 import { watchServeContentReload } from "./serve-content-reload";
 import { guardFrameFocus } from "./preview-focus-guard";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -583,7 +583,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // of a blank overlay. `null` (no field, or a site imported before this was
   // persisted) → the original blocking overlay is kept.
   const previewServerUrl =
-    agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
+    agent?.id === virtualMcpId ? session.previewServerUrl : null;
   const fastPreviewEnabled =
     !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
@@ -2635,6 +2635,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         </div>
                       </div>
                     )}
+
+                    {!display.showWakingPill &&
+                      previewSurfaceActive &&
+                      session.pullRequestDraft && (
+                        <PullRequestPreviewPill
+                          preview={session.pullRequestDraft}
+                        />
+                      )}
 
                     {effectiveEditingMode === "visual" && !visualElement && (
                       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-special/40 bg-special/90 px-3 py-1 text-xs font-medium text-special-foreground shadow-soft backdrop-blur-sm pointer-events-none select-none">

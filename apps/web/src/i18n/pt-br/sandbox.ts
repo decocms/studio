@@ -1140,6 +1140,17 @@ export const sandbox = {
   "sandbox.preview.valueForParam": "Valor de {label}",
   "sandbox.preview.blocksEditor": "Editor de blocos",
   "sandbox.preview.visualEditor": "Editor visual",
+  "sandbox.preview.pullRequestPreviewBuilding":
+    "Construindo o preview do pull request",
+  "sandbox.preview.pullRequestPreviewBuildingHint":
+    "Enquanto isso, suas alterações aparecem com o código publicado. O código do pull request aparece quando o preview dele ficar pronto.",
+  "sandbox.preview.pullRequestPreviewFailed":
+    "O deploy do preview do pull request falhou",
+  "sandbox.preview.pullRequestPreviewNone": "Este pull request não tem preview",
+  "sandbox.preview.pullRequestPreviewMissingHint":
+    "Suas alterações aparecem com o código publicado. Para ver o código do pull request, abra em modo código.",
+  "sandbox.preview.openInCodeMode": "Abrir em modo código",
+  "sandbox.preview.viewPullRequest": "Ver pull request",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
   "sandbox.productBlocks.addProductsButton": "Adicionar produtos",
   "sandbox.productBlocks.addProductsDescription":
@@ -1250,6 +1261,9 @@ export const sandbox = {
     "Adicione o endereço do seu site acima para visualizar rascunhos. Até lá, novos chats começam uma sessão de código.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Preview instantâneo (experimental)",
+  "sandbox.cmsSettings.pullRequestDrafts.label": "Drafts de pull request",
+  "sandbox.cmsSettings.pullRequestDrafts.description":
+    "Abrir um pull request pelo seletor de versões edita o conteúdo dele no preview do próprio pull request, sem iniciar um sandbox.",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
     "Atualiza as edições no lugar, sem esperar o salvamento — bem mais rápido, mas só funciona em sites que têm a rota /live/previews.",
   "sandbox.cmsSettings.contentEditing.on": "Ativado",

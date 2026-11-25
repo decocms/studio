@@ -4,6 +4,7 @@ import {
   BlocksEditorSettings,
   BlogSettings,
   ChatSettings,
+  MembersSettings,
   PlanSettings,
 } from "@/components/settings/review-settings";
 import { DomainSettings } from "@/components/settings/domain-settings";
@@ -35,6 +36,7 @@ export function OrgGeneralPage() {
                 <OrganizationForm />
                 <ChatSettings />
                 <PlanSettings />
+                <MembersSettings />
                 <BlogSettings />
               </>
             )}

@@ -132,14 +132,22 @@ test.describe("Shareable invite link", () => {
     expect(accept.status()).toBe(410);
   });
 
-  test("with the flag off, the UI hides the feature and links stop working", async ({
+  test("with the flag off, the UI hides the invite and links stop working", async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
     await signUp(page);
     await waitForPostSignupRedirect(page);
     const orgSlug = extractOrgSlugFromUrl(page);
-    await setInviteLinksFlag(page, orgSlug, true);
+
+    // The org owner turns it on from Settings > General.
+    await page.goto(`/${orgSlug}/settings/general`);
+    const toggle = page.getByRole("switch", { name: "Invite links" });
+    await expect(toggle).not.toBeChecked({ timeout: 30_000 });
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    await toggle.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("settings-toggle.png") });
 
     const members = new SettingsMembersPage(page);
     await members.goto(orgSlug);
@@ -158,7 +166,16 @@ test.describe("Shareable invite link", () => {
     await expect(page.getByRole("button", { name: "New folder" })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
+    // Share still offers a short link to the page; only the invite is gone.
+    await page.getByRole("button", { name: "Share" }).click();
+    await expect(page.getByText("Link to this page")).toBeVisible();
+    await expect(
+      page.getByText(/^http.*\/s\/(.+-)?[0-9A-Za-z]{10}$/),
+    ).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText("Invite to this page")).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     const create = await page.request.post(`/api/${orgSlug}/mcp/self`, {
       headers: {

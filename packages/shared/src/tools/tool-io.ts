@@ -585,6 +585,51 @@ export interface StudioToolIO {
         | "pageviews_drop";
     };
   };
+  CHANNEL_ACCOUNT_CLAIM_GET: {
+    input: { id: string };
+    output: {
+      claim: {
+        channel: string;
+        accountName: string;
+        accountWhere: string | null;
+        accountEmail: string | null;
+        expiresAt: string;
+      } | null;
+    };
+  };
+  CHANNEL_ACCOUNT_CONNECT: {
+    input: { id: string };
+    output: {
+      account: {
+        channel: string;
+        accountId: string;
+        accountName: string;
+        accountWhere: string | null;
+        organizationId: string;
+        createdAt: string;
+        lastUsedAt: string | null;
+      };
+      returnUrl: string;
+    };
+  };
+  CHANNEL_ACCOUNT_LIST: {
+    input: { [x: string]: never };
+    output: {
+      accounts: {
+        channel: string;
+        accountId: string;
+        accountName: string;
+        accountWhere: string | null;
+        organizationId: string;
+        createdAt: string;
+        lastUsedAt: string | null;
+      }[];
+    };
+  };
+  CHANNEL_ACCOUNT_DISCONNECT: {
+    input: { channel: string; accountId: string };
+    output: { disconnected: boolean };
+  };
   TASK_BOARD_ITEM_CREATE: {
     input: {
       title: string;
@@ -4179,10 +4224,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -4263,6 +4310,22 @@ export interface StudioToolIO {
         defaultBranch?: string | null | undefined;
         webUrl?: string | null | undefined;
       } | null;
+    };
+  };
+  PLAN_DIAGNOSIS_SETUP: {
+    input: {
+      bigquery_connection_id: string;
+      bigquery_project_id: string;
+      bigquery_dataset_id: string;
+    };
+    output: { connection_id: string };
+  };
+  PLAN_DIAGNOSIS_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      configured: boolean;
+      connection_id: string | null;
+      reason?: "flag_off" | "service_unset" | "not_connected" | undefined;
     };
   };
   COLLECTION_VIRTUAL_MCP_CREATE: {
@@ -4490,10 +4553,12 @@ export interface StudioToolIO {
                     createdBy?: string | undefined;
                     createdAt?: string | undefined;
                     runtime?: "cms" | "sandbox" | undefined;
+                    preview?: "pull-request" | undefined;
                   }[]
                 | null
                 | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
+              pullRequestDrafts?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -4713,10 +4778,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -4980,10 +5047,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -5238,10 +5307,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -5503,10 +5574,12 @@ export interface StudioToolIO {
                     createdBy?: string | undefined;
                     createdAt?: string | undefined;
                     runtime?: "cms" | "sandbox" | undefined;
+                    preview?: "pull-request" | undefined;
                   }[]
                 | null
                 | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
+              pullRequestDrafts?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -5734,10 +5807,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -5990,10 +6065,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -7693,10 +7770,12 @@ export interface StudioToolIO {
                 createdBy?: string | undefined;
                 createdAt?: string | undefined;
                 runtime?: "cms" | "sandbox" | undefined;
+                preview?: "pull-request" | undefined;
               }[]
             | null
             | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
+          pullRequestDrafts?: boolean | null | undefined;
           sandboxMap?:
             | Record<
                 string,
@@ -8023,7 +8102,7 @@ export interface StudioToolIO {
   SUBSCRIPTION_USAGE_GET: {
     input: { provider: "codex" | "claude" };
     output: {
-      status: "unavailable" | "available" | "disconnected";
+      status: "unavailable" | "disconnected" | "available";
       reason:
         | "permission"
         | "authorization"
@@ -8170,6 +8249,7 @@ export interface StudioToolIO {
       }[];
     };
   };
+  SECRET_DELETE: { input: { id: string }; output: { success: true } };
   FILE_CONFIG_CREATE: {
     input: {
       name: string;
@@ -9613,6 +9693,10 @@ export interface StudioToolIO {
         }[];
         unresolvedConversations: number;
         reviewBlocked: boolean;
+        preview: {
+          state: "none" | "failed" | "ready" | "building";
+          url: string | null;
+        };
       } | null;
     };
   };
@@ -9668,6 +9752,18 @@ export interface StudioToolIO {
         checks: "pending" | "passing" | "failing" | null;
         changedFiles: number | null;
       }[];
+    };
+  };
+  CHANGE_REQUEST_DEPLOYMENT: {
+    input: {
+      sha: string;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: {
+      state: "none" | "failed" | "ready" | "building";
+      url: string | null;
     };
   };
   CHANGE_REQUEST_CHECK_LOG: {

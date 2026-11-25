@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { AlertTriangle, RefreshCw01 } from "@untitledui/icons";
 import { captureException } from "@/lib/posthog-client";
+import { reloadEvictingFailedAssets } from "@/lib/evict-failed-assets";
 import { ArchivedOrgScreen } from "@/components/archived-org-screen";
 import { NoPermissionState } from "@/components/no-permission-state";
 import { ORG_ARCHIVED_ERROR } from "@decocms/shared/organization/org-archived";
@@ -177,7 +178,7 @@ class ChunkErrorBoundaryImpl extends Component<
     const now = Date.now();
     if (!lastReload || now - Number(lastReload) > 10_000) {
       sessionStorage.setItem(CHUNK_RELOAD_KEY, String(now));
-      window.location.reload();
+      reloadEvictingFailedAssets();
     }
   }
 
@@ -197,7 +198,7 @@ class ChunkErrorBoundaryImpl extends Component<
               {t("common.errorBoundary.newVersionDeployed")}
             </p>
           </div>
-          <Button onClick={() => window.location.reload()}>
+          <Button onClick={reloadEvictingFailedAssets}>
             {t("common.errorBoundary.refresh")}
           </Button>
         </div>

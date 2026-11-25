@@ -36,11 +36,13 @@
  */
 
 import type { ReactNode } from "react";
-import { useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { FeaturePaywall } from "@/components/feature-paywall";
 import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
 import type { Feature } from "@/hooks/use-entitlements";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
+import { withProjectOverviewState } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 
 export function FeatureGate({
@@ -57,6 +59,8 @@ export function FeatureGate({
   children: ReactNode;
 }) {
   const { openPanel } = usePanelNavigate();
+  const navigate = useNavigate();
+  const { org, agentId } = useParams({ strict: false });
   // Dismissal is the URL's own `?mainpanel=false`, which the panel writes.
   // It used to be component state, and the body is mounted once for the life
   // of the panel, so a dismissed feature stayed dismissed: every later click
@@ -88,8 +92,19 @@ export function FeatureGate({
       <FeaturePaywall
         feature={feature}
         // Home, because the project's default view can be the gated surface
-        // itself — leaving them on it would reopen the dialog forever.
-        onDismiss={() => openPanel("overview")}
+        // itself — leaving them on it would reopen the dialog forever. The
+        // project root redirects to that default view unless the visit is
+        // marked as an explicit Overview visit.
+        onDismiss={() =>
+          org && agentId
+            ? navigate({
+                to: PROJECT_ROUTE.root,
+                params: { org, agentId },
+                state: withProjectOverviewState,
+                replace: true,
+              })
+            : openPanel("overview")
+        }
         onSeePlans={() => {}}
       />
     </div>

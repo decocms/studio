@@ -38,6 +38,7 @@ import {
   blogSearchShape,
 } from "@/components/sandbox/content/blog/blog-search-params";
 import { isProjectOverviewVisit } from "@/layouts/main-panel-tabs/tab-id";
+import { parseAppArgs } from "@/routes/project-app-navigate";
 
 const rootRoute = createRootRoute({
   /** No `<Providers>` here: the entry (`index.web.tsx`) wraps
@@ -374,6 +375,13 @@ const inviteLinkRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/invite/$token",
   component: lazyRouteComponent(() => import("./routes/invite-link.tsx")),
+});
+
+// A channel bot's link: connect that channel account to the signed-in person.
+const connectChannelRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/connect-channel/$org/$claimId",
+  component: lazyRouteComponent(() => import("./routes/connect-channel.tsx")),
 });
 
 // ============================================
@@ -998,7 +1006,11 @@ const agentCdnRedirectRoute = createRoute({
   },
 });
 
-const appArgsSearchSchema = z.object({ args: z.string().optional() });
+// An object, not a JSON string: the default search serializer would encode a
+// JSON string a second time.
+const appArgsSearchSchema = z.object({
+  args: z.unknown().transform(parseAppArgs).optional(),
+});
 
 const agentAppRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1256,6 +1268,11 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
+/** Plan's tab: the plan itself, or the store step by step. Anything else is
+ *  the plan. */
+const planSearch = z.object({
+  tab: z.enum(["plan", "store"]).optional().catch(undefined),
+});
 /** Plan and Monitoring: announced in the navigation, a placeholder until built. */
 const planRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1267,7 +1284,23 @@ const planRoute = createRoute({
     defaultMain: "plan",
     mainView: "plan",
   },
+  validateSearch: planSearch,
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+/** One loss from Plan's store analysis, by the engine's opportunity id. */
+const planOpportunityRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/plan/opportunity/$opportunityId",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/plan-opportunity.tsx"),
+  ),
 });
 /** Monitor: the tab, the past day, and the store (ingest connection id) and
  *  instant under review. A malformed day is dropped, not a broken page. */
@@ -1330,7 +1363,23 @@ const projectPlanRoute = createRoute({
     defaultMain: "plan",
     mainView: "plan",
   },
+  validateSearch: planSearch,
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+/** One loss from Plan's store analysis, by the engine's opportunity id. */
+const projectPlanOpportunityRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/plan/opportunity/$opportunityId",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.plan",
+    defaultMain: "plan",
+    mainView: "plan",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/plan-opportunity.tsx"),
+  ),
 });
 /** One chat's business case, built on the Plan page; `path` is the case file
  *  in the home volume (`plans/cases/<threadId>.json`). */
@@ -1863,6 +1912,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentConnectSourcesRoute,
   agentLegacyProjectViewRoute,
   projectPlanRoute,
+  projectPlanOpportunityRoute,
   projectBusinessCaseRoute,
   projectMonitoringRoute,
 ]);
@@ -1881,6 +1931,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   libraryRoute,
   discoverRoute,
   planRoute,
+  planOpportunityRoute,
   orgMonitoringRoute,
 ]);
 
@@ -1911,6 +1962,7 @@ const routeTree = rootRoute.addChildren([
   siteEditorRoute.addChildren([siteEditorPreviewRoute, siteEditorContentRoute]),
   reportRoute,
   inviteLinkRoute,
+  connectChannelRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,

@@ -372,6 +372,15 @@ export const settings = {
   "settings.passkeys.deleteDescription":
     "You will no longer be able to sign in with this passkey. The credential stays on your device until you delete it there.",
   "settings.passkeys.cancel": "Cancel",
+  "settings.channelAccounts.title": "Connected channel accounts",
+  "settings.channelAccounts.description":
+    "When one of these accounts writes to a bot, the bot talks to Studio as you.",
+  "settings.channelAccounts.disconnect": "Disconnect",
+  "settings.channelAccounts.disconnected": "Account disconnected",
+  "settings.channelAccounts.disconnectTitle": "Disconnect {name} ({channel})?",
+  "settings.channelAccounts.disconnectDescription":
+    "Bots stop talking to Studio as you from this account. Writing to a bot again sends a new link to connect.",
+  "settings.channelAccounts.cancel": "Cancel",
   "settings.preferences.title": "Preferences",
   "settings.plan.sectionTitle": "Plan",
   "settings.plan.pageTitle": "Plan page",
@@ -380,6 +389,10 @@ export const settings = {
   "settings.plan.goalsTitle": "Plan goals",
   "settings.plan.goalsDescription":
     "Let each member add goals and pick the one they work toward, instead of one store goal for everyone. Needs the Plan page on.",
+  "settings.inviteLinks.sectionTitle": "Members",
+  "settings.inviteLinks.title": "Invite links",
+  "settings.inviteLinks.description":
+    "Let members managers share a 24-hour link that signs a person in, joins them to the organization, and opens the shared page. Off, the Share button and invite-dialog link are hidden and existing links stop working.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "Blog view",
   "settings.blogView.description":
@@ -1158,12 +1171,17 @@ export const settings = {
   "settings.secrets.cancelButton": "Cancel",
   "settings.secrets.createButton": "Create secret",
   "settings.secrets.creatingButton": "Creating…",
+  "settings.secrets.deleteButton": "Delete secret",
+  "settings.secrets.deleteDescription":
+    "Anything that still uses this secret by name will stop receiving its value. This can't be undone.",
+  "settings.secrets.deleteTitle": 'Delete "{name}"?',
   "settings.secrets.descriptionLabel": "Description (optional)",
   "settings.secrets.descriptionPlaceholder": "What is this secret used for?",
   "settings.secrets.emptyDescription":
     "Store API keys, tokens, and other sensitive values. Values are encrypted at rest and never returned over the API.",
   "settings.secrets.emptyTitle": "No secrets yet",
   "settings.secrets.failedToCreateSecret": "Failed to create secret",
+  "settings.secrets.failedToDeleteSecret": "Failed to delete secret",
   "settings.secrets.failedToLoadError": "Failed to load secrets: {error}",
   "settings.secrets.nameHelp":
     "Letters, digits, underscore, dot, hyphen. Case-insensitive within its scope.",
@@ -1180,6 +1198,7 @@ export const settings = {
   "settings.secrets.scopePrivate": "Private",
   "settings.secrets.scopePrivateDescription": "Private — only visible to me",
   "settings.secrets.secretCreated": 'Secret "{name}" created',
+  "settings.secrets.secretDeleted": 'Secret "{name}" deleted',
   "settings.secrets.secretsCountSingular": "{count} secret stored",
   "settings.secrets.secretsCountPlural": "{count} secrets stored",
   "settings.secrets.sectionOrganization": "Organization",

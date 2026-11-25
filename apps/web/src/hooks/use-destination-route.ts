@@ -24,6 +24,8 @@ export const DESTINATION_ROUTE = {
   threadAnalytics: "/$org/thread-analytics",
   discover: "/$org/discover",
   plan: "/$org/plan",
+  /** One loss from Plan's store analysis; Plan stays the destination. */
+  planOpportunity: "/$org/plan/opportunity/$opportunityId",
   monitoring: "/$org/monitoring",
   /** The `/$org` resolver. Transiently matched before it redirects, so Home
    *  highlights there instead of leaving the list blank on cold entry. */
@@ -60,6 +62,7 @@ export const PROJECT_ROUTE = {
   calendar: "/$org/projects/$agentId/calendar",
   experiments: "/$org/projects/$agentId/experiments",
   plan: "/$org/projects/$agentId/plan",
+  planOpportunity: "/$org/projects/$agentId/plan/opportunity/$opportunityId",
   businessCase: "/$org/projects/$agentId/plan/case",
   monitoring: "/$org/projects/$agentId/monitoring",
 } as const;

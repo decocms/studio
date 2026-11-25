@@ -39,6 +39,15 @@ export type CheckConclusion =
   | "timed_out"
   | "action_required";
 
+/** Where a change request's deploy preview stands. */
+export type PreviewState = "ready" | "building" | "failed" | "none";
+
+/** A commit's deployment: its published URL once it is `ready`, and who
+ *  reported it (the provider account that created it), when known. */
+export type DeploymentPreview =
+  | { state: "ready"; url: string; reporter: string | null }
+  | { state: Exclude<PreviewState, "ready">; url: null };
+
 /**
  * One CI run attached to the head commit — a GitHub check run, a GitHub commit
  * status, or a GitLab pipeline job. `id` is null for the shapes that have no
@@ -285,11 +294,6 @@ export interface ChangeRequestClient {
    */
   readCheckLog(checkId: string): Promise<string | null>;
 
-  /**
-   * The URL a deploy for `sha` published, when the provider tracks deployments
-   * itself (GitHub Deployments, GitLab Environments) rather than only as a
-   * commit status or a bot comment. Null when there is no deployment with a
-   * published URL yet.
-   */
-  readDeployedUrl(sha: string): Promise<string | null>;
+  /** The deployment of `sha` the provider itself tracks (GitHub Deployments, GitLab Environments). */
+  readDeployment(sha: string): Promise<DeploymentPreview>;
 }

@@ -266,6 +266,14 @@ export const KEYS = {
     ] as const,
 
   /** A repository's open change requests, for the branch picker's list. */
+  githubDeployment: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+    sha: string | null,
+  ) => ["github-deployment", orgSlug, connectionId, owner, repo, sha] as const,
+
   githubOpenPrs: (
     orgSlug: string,
     connectionId: string | null | undefined,
@@ -500,6 +508,43 @@ export const KEYS = {
     ["plan-goals", organizationId, "list"] as const,
   planGoalCases: (organizationId: string, goalId: string) =>
     ["plan-goals", organizationId, "cases", goalId] as const,
+  planDiagnosisAll: (organizationId: string) =>
+    ["plan-diagnosis", organizationId] as const,
+  planDiagnosisStatus: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "status"] as const,
+  // Engine reads carry the org's engine connection id.
+  planStoreViews: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "store-view"] as const,
+  planStoreView: (
+    organizationId: string,
+    goalId: string | null,
+    connectionId: string,
+  ) =>
+    [
+      "plan-diagnosis",
+      organizationId,
+      "store-view",
+      goalId,
+      connectionId,
+    ] as const,
+  planSiteProfiles: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "site-profile"] as const,
+  planSiteProfile: (organizationId: string, connectionId: string) =>
+    ["plan-diagnosis", organizationId, "site-profile", connectionId] as const,
+  planOpportunities: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "opportunity"] as const,
+  planOpportunity: (
+    organizationId: string,
+    opportunityId: string,
+    connectionId: string,
+  ) =>
+    [
+      "plan-diagnosis",
+      organizationId,
+      "opportunity",
+      opportunityId,
+      connectionId,
+    ] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
   automations: (organizationId: string, virtualMcpId?: string | null) =>
@@ -706,6 +751,19 @@ export const KEYS = {
   // Active shareable invite links (scoped by organization)
   organizationInviteLinks: (organizationId: string) =>
     ["organization-invite-links", organizationId] as const,
+
+  // The caller's own channel accounts (per user; the tool call is org-scoped)
+  channelAccounts: (orgId: string, userId: string) =>
+    ["channel-accounts", orgId, userId] as const,
+  // A link a channel bot sent, as the viewer sees it (scoped by org, claim and viewer)
+  channelAccountClaim: (
+    orgSlug: string,
+    claimId: string,
+    userId: string | null,
+  ) => ["channel-account-claim", orgSlug, claimId, userId] as const,
+  // Short link for a page (scoped by org and the page's path)
+  shortLink: (orgId: string, targetPath: string) =>
+    ["short-link", orgId, targetPath] as const,
 
   // Public preview of a shareable invite link (scoped by token and viewer)
   inviteLinkPreview: (token: string, userId: string | null) =>

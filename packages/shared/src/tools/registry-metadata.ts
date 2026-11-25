@@ -122,6 +122,8 @@ const ALL_TOOL_NAMES = [
   "REPORTS_BIND",
   "REPORTS_CONNECTION_STATUS",
   "REPORTS_SET_REPOSITORY",
+  "PLAN_DIAGNOSIS_SETUP",
+  "PLAN_DIAGNOSIS_STATUS",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -225,6 +227,7 @@ const ALL_TOOL_NAMES = [
   // Secrets vault tools
   "SECRET_CREATE",
   "SECRET_LIST",
+  "SECRET_DELETE",
 
   // File config tools (org-scoped S3 bucket configurations)
   "FILE_CONFIG_CREATE",
@@ -307,6 +310,7 @@ const ALL_TOOL_NAMES = [
   "CHANGE_REQUEST_STATE",
   "CHANGE_REQUEST_LAST_MERGED",
   "CHANGE_REQUEST_LIST_OPEN",
+  "CHANGE_REQUEST_DEPLOYMENT",
   "CHANGE_REQUEST_CHECK_LOG",
   "CHANGE_REQUEST_OPEN",
   "CHANGE_REQUEST_MERGE",
@@ -376,6 +380,10 @@ const ALL_TOOL_NAMES = [
   "ALERT_ACK",
   "ALERT_RULES_LIST",
   "ALERT_RULE_UPDATE",
+  "CHANNEL_ACCOUNT_CLAIM_GET",
+  "CHANNEL_ACCOUNT_CONNECT",
+  "CHANNEL_ACCOUNT_LIST",
+  "CHANNEL_ACCOUNT_DISCONNECT",
 ] as const;
 
 /**
@@ -756,6 +764,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPORTS_SET_REPOSITORY",
     description: "Set the Deco Score repository",
+    category: "Connections",
+  },
+  {
+    name: "PLAN_DIAGNOSIS_SETUP",
+    description: "Connect the Plan page's store diagnosis to BigQuery",
+    category: "Connections",
+  },
+  {
+    name: "PLAN_DIAGNOSIS_STATUS",
+    description: "Read whether the Plan page's store diagnosis is set up",
     category: "Connections",
   },
   // Virtual MCP tools
@@ -1202,6 +1220,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List secrets visible to the caller (no values returned)",
     category: "Secrets",
   },
+  {
+    name: "SECRET_DELETE",
+    description: "Delete a secret from the credential vault",
+    category: "Secrets",
+  },
   // File config tools
   {
     name: "FILE_CONFIG_CREATE",
@@ -1513,6 +1536,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Git",
   },
   {
+    name: "CHANGE_REQUEST_DEPLOYMENT",
+    description: "Read a commit's deployment and its preview URL",
+    category: "Git",
+  },
+  {
     name: "CHANGE_REQUEST_CHECK_LOG",
     description: "Read one CI run's report for a change request",
     category: "Git",
@@ -1656,6 +1684,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "NOTIFICATION_SUBSCRIPTION_LIST",
     description: "List the users following a task board item",
     category: "Task Board",
+  },
+  {
+    name: "CHANNEL_ACCOUNT_CLAIM_GET",
+    description: "Read a link to connect a channel account",
+    category: "Users",
+  },
+  {
+    name: "CHANNEL_ACCOUNT_CONNECT",
+    description: "Connect a channel account to you",
+    category: "Users",
+  },
+  {
+    name: "CHANNEL_ACCOUNT_LIST",
+    description: "List the channel accounts connected to you",
+    category: "Users",
+  },
+  {
+    name: "CHANNEL_ACCOUNT_DISCONNECT",
+    description: "Disconnect one of your channel accounts",
+    category: "Users",
   },
   {
     name: "ALERTS_LIST",
@@ -2000,6 +2048,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CHANGE_REQUEST_STATE",
       "CHANGE_REQUEST_LAST_MERGED",
       "CHANGE_REQUEST_LIST_OPEN",
+      "CHANGE_REQUEST_DEPLOYMENT",
       "CHANGE_REQUEST_CHECK_LOG",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
@@ -2031,6 +2080,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "PLAN_GOAL_CASES",
       // Any member asks the AI for goals; proposes, never saves.
       "PLAN_GOAL_SUGGEST",
+      // Any member on the Plan page sees whether its diagnosis is set up.
+      "PLAN_DIAGNOSIS_STATUS",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -2090,6 +2141,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // A member's own channel accounts never reach another member's.
+      "CHANNEL_ACCOUNT_CLAIM_GET",
+      "CHANNEL_ACCOUNT_CONNECT",
+      "CHANNEL_ACCOUNT_LIST",
+      "CHANNEL_ACCOUNT_DISCONNECT",
       // Every member sees the org's alerts and can ack them.
       "ALERTS_LIST",
       "ALERT_ACK",
@@ -2178,6 +2234,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REPORTS_BIND",
       "REPORTS_CONNECTION_STATUS",
       "REPORTS_SET_REPOSITORY",
+      "PLAN_DIAGNOSIS_SETUP",
     ],
     dangerous: true,
   },
@@ -2231,9 +2288,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
   {
     id: "secrets:manage",
     label: "Manage secrets",
-    description: "Create and list secrets stored in the credential vault",
+    description:
+      "Create, list, and delete secrets stored in the credential vault",
     section: "Organization",
-    tools: ["SECRET_CREATE", "SECRET_LIST"],
+    tools: ["SECRET_CREATE", "SECRET_LIST", "SECRET_DELETE"],
   },
   {
     id: "assets:manage",
@@ -2395,6 +2453,21 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
 ];
 
 /**
+ * Resource keys of the hosted CMS HTTP API (`/api/cms/:site`), checked under
+ * `self`. Not MCP tools. Reads cover drafts, releases and the site-token
+ * list; writes cover drafts, saves, publish, rollback and schema push.
+ * Issuing a site token is separate because it mints a credential.
+ */
+export const CMS_PERMISSIONS = {
+  read: "CMS_READ",
+  write: "CMS_WRITE",
+  issueSiteToken: "CMS_SITE_TOKEN_ISSUE",
+} as const;
+
+export type CmsPermission =
+  (typeof CMS_PERMISSIONS)[keyof typeof CMS_PERMISSIONS];
+
+/**
  * Tools every authenticated org member can use by default, plus non-MCP resource keys.
  *
  * Granted at runtime by AccessControl (`checkResource`) to every member
@@ -2416,6 +2489,9 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
   // changes. See `.context/org-filesystem-proposal.md`.
   "ORG_FS_READ",
   "ORG_FS_WRITE",
+  // Hosted CMS HTTP-API resource keys: every member may edit, publish and
+  // issue site tokens. An API key needs them in its own allowlist.
+  ...Object.values(CMS_PERMISSIONS),
 ]);
 
 /**

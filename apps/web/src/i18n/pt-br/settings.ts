@@ -381,6 +381,15 @@ export const settings = {
   "settings.passkeys.deleteDescription":
     "Você não vai mais conseguir entrar com esta passkey. A credencial continua no seu dispositivo até você apagá-la lá.",
   "settings.passkeys.cancel": "Cancelar",
+  "settings.channelAccounts.title": "Contas de canais conectadas",
+  "settings.channelAccounts.description":
+    "Quando uma destas contas escreve para um bot, o bot fala com o Studio como você.",
+  "settings.channelAccounts.disconnect": "Desconectar",
+  "settings.channelAccounts.disconnected": "Conta desconectada",
+  "settings.channelAccounts.disconnectTitle": "Desconectar {name} ({channel})?",
+  "settings.channelAccounts.disconnectDescription":
+    "Os bots param de falar com o Studio como você a partir desta conta. Escrever para um bot de novo manda um novo link para conectar.",
+  "settings.channelAccounts.cancel": "Cancelar",
   "settings.preferences.title": "Preferências",
   "settings.plan.sectionTitle": "Planejar",
   "settings.plan.pageTitle": "Página Planejar",
@@ -389,6 +398,10 @@ export const settings = {
   "settings.plan.goalsTitle": "Objetivos do Planejar",
   "settings.plan.goalsDescription":
     "Cada membro adiciona objetivos e escolhe aquele em que está trabalhando, em vez de um objetivo da loja para todos. Precisa da página Planejar ligada.",
+  "settings.inviteLinks.sectionTitle": "Membros",
+  "settings.inviteLinks.title": "Links de convite",
+  "settings.inviteLinks.description":
+    "Quem gerencia membros compartilha um link de 24 horas que faz a pessoa entrar, entra na organização e abre a página compartilhada. Desligado, o botão Compartilhar e o link do modal de convite somem e os links existentes param de funcionar.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "View Blog",
   "settings.blogView.description":
@@ -1208,6 +1221,10 @@ export const settings = {
   "settings.secrets.cancelButton": "Cancelar",
   "settings.secrets.createButton": "Criar segredo",
   "settings.secrets.creatingButton": "Criando\u2026",
+  "settings.secrets.deleteButton": "Excluir segredo",
+  "settings.secrets.deleteDescription":
+    "O que ainda usa este segredo pelo nome deixa de receber o valor. Não dá para desfazer.",
+  "settings.secrets.deleteTitle": 'Excluir "{name}"?',
   "settings.secrets.descriptionLabel": "Descri\u00e7\u00e3o (opcional)",
   "settings.secrets.descriptionPlaceholder":
     "Para que \u00e9 usado este segredo?",
@@ -1215,6 +1232,7 @@ export const settings = {
     "Armazene chaves de API, tokens e outros valores sens\u00edveis. Os valores s\u00e3o criptografados em repouso e nunca retornados pela API.",
   "settings.secrets.emptyTitle": "Nenhum segredo ainda",
   "settings.secrets.failedToCreateSecret": "Falha ao criar segredo",
+  "settings.secrets.failedToDeleteSecret": "Falha ao excluir segredo",
   "settings.secrets.failedToLoadError": "Falha ao carregar segredos: {error}",
   "settings.secrets.nameHelp":
     "Letras, d\u00edgitos, sublinhado, ponto, h\u00edfen. Sem distin\u00e7\u00e3o entre mai\u00fasculas e min\u00fasculas dentro do seu escopo.",
@@ -1232,6 +1250,7 @@ export const settings = {
   "settings.secrets.scopePrivateDescription":
     "Privado \u2014 vis\u00edvel apenas para mim",
   "settings.secrets.secretCreated": 'Segredo "{name}" criado',
+  "settings.secrets.secretDeleted": 'Segredo "{name}" excluído',
   "settings.secrets.secretsCountSingular": "{count} segredo armazenado",
   "settings.secrets.secretsCountPlural": "{count} segredos armazenados",
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",

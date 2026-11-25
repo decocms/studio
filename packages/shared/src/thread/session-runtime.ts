@@ -47,6 +47,10 @@ export interface VmcpRuntimeMetadata {
    *  `@decocms/shared/blocks-major`), which only an org admin turns on.
    *  Absent on every v7 site. */
   blocksV8?: boolean | null;
+  /** The pull request drafts switch (see `pullRequestDraftsCapability`). */
+  pullRequestDrafts?: boolean | null;
+  /** The named drafts (`ReleaseSchema`); only `branch` and `preview` are read. */
+  releases?: readonly unknown[] | null;
 }
 
 /**
@@ -93,5 +97,39 @@ export function readThreadRuntime(
   return (
     parseThreadRuntime(threadMetadata?.runtime) ??
     defaultThreadRuntime(vmcpMetadata)
+  );
+}
+
+/**
+ * The project's pull request drafts: picking an open pull request opens a CMS
+ * draft on its branch, rendered on its deploy preview. Its switch
+ * (`pullRequestDrafts`) lives under Fast Preview, and a Blocks v8 site's drafts
+ * are not branches.
+ */
+export function pullRequestDraftsCapability(
+  vmcpMetadata: VmcpRuntimeMetadata | null | undefined,
+): boolean {
+  return (
+    vmcpMetadata?.pullRequestDrafts === true &&
+    fastPreviewCapability(vmcpMetadata) &&
+    !isBlocksV8Project(vmcpMetadata)
+  );
+}
+
+/** Whether `branch` is one of the project's pull request drafts: a release
+ *  marked `preview: "pull-request"`, with the capability on. */
+export function isPullRequestDraftBranch(
+  vmcpMetadata: VmcpRuntimeMetadata | null | undefined,
+  branch: string | null | undefined,
+): boolean {
+  if (!branch || !pullRequestDraftsCapability(vmcpMetadata)) return false;
+  return (vmcpMetadata?.releases ?? []).some(
+    (release) =>
+      typeof release === "object" &&
+      release !== null &&
+      "branch" in release &&
+      release.branch === branch &&
+      "preview" in release &&
+      release.preview === "pull-request",
   );
 }

@@ -20,7 +20,9 @@
  * (401); the site and the caller's admission to its organization (404,
  * the same answer for an unknown site and for one the caller can't reach,
  * so existence doesn't leak); the caller's project scope over the site's
- * project (403 `project_not_allowed`, `isProjectAllowed`); the `cms` plan
+ * project (403 `project_not_allowed`, `isProjectAllowed`); the route's
+ * `CMS_READ` / `CMS_WRITE` / `CMS_SITE_TOKEN_ISSUE` permission (403
+ * `forbidden`, `ctx.access.check`); the `cms` plan
  * gate on that organization (403, failing open); a blocked organization's
  * writes (403 `org_blocked`); then a configured delivery bucket (503). No
  * repository binding. Only the schema push reads the project's "Blocks v8
@@ -39,11 +41,17 @@ import {
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { type Context, Hono } from "hono";
 import { createMiddleware } from "hono/factory";
+import { routePath } from "hono/route";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { isOrgBlocked } from "@/core/org-notice-gate";
 import { resolveCallerProjectScope } from "@/core/project-scope";
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { orgHasFeature } from "@/core/plan-feature-gate";
+import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
+import {
+  CMS_PERMISSIONS,
+  type CmsPermission,
+} from "@decocms/shared/tools/registry-metadata";
 import {
   bindOrganization,
   memberRole,
@@ -234,10 +242,24 @@ async function admitToOrganization(
   return true;
 }
 
+const SITE_TOKENS_ROUTE = "/:site/site-tokens";
+
+/**
+ * The permission a request needs, from the route pattern that answers it
+ * (not the raw path, which a draft named `site-tokens` could end in).
+ */
+export function cmsPermission(write: boolean, route: string): CmsPermission {
+  if (!write) return CMS_PERMISSIONS.read;
+  return route.endsWith(SITE_TOKENS_ROUTE)
+    ? CMS_PERMISSIONS.issueSiteToken
+    : CMS_PERMISSIONS.write;
+}
+
 /**
  * §4.1, in order: 401; 404 `site_not_found` (unknown, or not the caller's to
  * reach); 403 `project_not_allowed` (outside the caller's project scope);
- * 403 `feature_not_in_plan`; 403 `org_blocked` (writes); 503.
+ * 403 `forbidden` (no `CMS_*` permission); 403 `feature_not_in_plan`;
+ * 403 `org_blocked` (writes); 503.
  */
 function gates(options: CmsRoutesOptions) {
   return createMiddleware<CmsEnv>(async (c, next) => {
@@ -268,6 +290,21 @@ function gates(options: CmsRoutesOptions) {
         );
       }
     }
+    // Admission is membership only; the permission is what bounds an API
+    // key to its allowlist (members hold all three as basic usage).
+    const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
+    try {
+      // The last matched route is the handler (middlewares register first).
+      await ctx.access.check(cmsPermission(write, routePath(c, -1)));
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        return c.json({ error: err.message }, 401);
+      }
+      if (err instanceof ForbiddenError) {
+        return fail(c, 403, "forbidden", err.message);
+      }
+      throw err;
+    }
     const hasCms = options.hasCms
       ? await options.hasCms(c, organizationId)
       : await orgHasFeature(ctx, organizationId, "cms");
@@ -280,7 +317,6 @@ function gates(options: CmsRoutesOptions) {
       );
     }
     // A blocked organization loses its writes, as under /api/:org (enforceOrgBlock).
-    const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
     const blocked =
       write &&
       (options.isBlocked
@@ -616,7 +652,7 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     }
   });
 
-  app.get("/:site/site-tokens", async (c) => {
+  app.get(SITE_TOKENS_ROUTE, async (c) => {
     const site = c.get("cmsSite");
     const tokens = siteTokens(c);
     if (!tokens) {
@@ -633,7 +669,7 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     });
   });
 
-  app.post("/:site/site-tokens", async (c) => {
+  app.post(SITE_TOKENS_ROUTE, async (c) => {
     const site = c.get("cmsSite");
     const tokens = siteTokens(c);
     if (!tokens) {

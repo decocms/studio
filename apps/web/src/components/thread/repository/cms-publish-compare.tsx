@@ -82,6 +82,9 @@ interface PublishCompareProps {
   bodyPending: boolean;
   /** Origin of the live site the draft renders against. */
   previewServerUrl: string | null;
+  /** Where the draft side renders instead, when not on the live site: a pull
+   *  request draft's deploy preview, which carries its code. */
+  draftServerUrl?: string | null;
   /** Where the changes render; null until Fast Preview stashes a grant. */
   draft: CompareDraft | null;
   lastPage: LastPreviewPage | null;
@@ -149,6 +152,7 @@ export function PublishCompare({
   diff,
   bodyPending,
   previewServerUrl,
+  draftServerUrl,
   draft,
   lastPage,
   v8,
@@ -181,18 +185,21 @@ export function PublishCompare({
     (v8Section ? (v8SectionPath ?? "") : initialComparePath(change, lastPage));
   const pathEditable = isComparePathEditable(change);
 
-  const url = !previewServerUrl
-    ? null
-    : compareUrl({
-        previewServerUrl,
-        sectionKey: savedSection,
-        path,
-        v8: !!v8,
-      });
+  const urlOn = (base: string | null | undefined) =>
+    base
+      ? compareUrl({
+          previewServerUrl: base,
+          sectionKey: savedSection,
+          path,
+          v8: !!v8,
+        })
+      : null;
+  const url = urlOn(previewServerUrl);
+  const draftUrl = urlOn(draftServerUrl) ?? url;
   const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
-  const afterUrl = url ? compareDraftUrl(url, draft) : null;
+  const afterUrl = draftUrl ? compareDraftUrl(draftUrl, draft) : null;
   /** "Open draft": the preview frame's `__draft` (compareDraftLink). */
-  const afterLink = url ? compareDraftLink(url, draft) : null;
+  const afterLink = draftUrl ? compareDraftLink(draftUrl, draft) : null;
 
   const isSecret = isSecretChange(change);
   const rawDiff: GitDiffResult = change.entry
