@@ -282,6 +282,10 @@ export const thread = {
   "thread.publishCompare.removedTitle": "Página removida",
   "thread.publishCompare.removedDescription":
     "Esta página deixará de existir no site.",
+  "thread.publishCompare.mobileAppBeforeTitle":
+    "A versão publicada do app não aparece aqui",
+  "thread.publishCompare.mobileAppBeforeDescription":
+    "Veja o que mudou na aba Código ou use “Ver no celular” no editor para conferir suas alterações no app.",
   "thread.publishCompare.sideUnreadable":
     "Esta versão não pode ser mostrada aqui.",
   "thread.analytics.title": "Chats e automações",

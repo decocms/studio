@@ -95,6 +95,13 @@ interface PublishCompareProps {
    */
   v8?: { blocks: Record<string, unknown> | null };
   /**
+   * The project is a mobile app (Settings › Preview): the site only
+   * approximates it, and with `__draft=off` it shows its own published
+   * pages, not the app's. The before side says so instead; both open on
+   * mobile.
+   */
+  mobileApp?: boolean;
+  /**
    * Called once the pages this pane shows have loaded (or it has none), so
    * the panel can keep the previous pane on screen until then. v8 only.
    */
@@ -156,6 +163,7 @@ export function PublishCompare({
   draft,
   lastPage,
   v8,
+  mobileApp = false,
   onReady,
 }: PublishCompareProps) {
   const t = useT();
@@ -178,7 +186,9 @@ export function PublishCompare({
    *  and kind can still arrive after the pane mounts. */
   const [pickedView, setView] = useState<CompareView | null>(null);
   const view: CompareView = !canRender ? "code" : (pickedView ?? "split");
-  const [device, setDevice] = useState<CompareDevice>("desktop");
+  const [device, setDevice] = useState<CompareDevice>(
+    mobileApp ? "mobile" : "desktop",
+  );
   const [typedPath, setPath] = useState<string | null>(null);
   const path =
     typedPath ??
@@ -250,7 +260,7 @@ export function PublishCompare({
   /** The pages this pane waits on: none on the code view or a placeholder. */
   const frameSrcs = canRender
     ? [
-        placeholder.before === "new" ? null : beforeUrl,
+        placeholder.before === "new" || mobileApp ? null : beforeUrl,
         placeholder.after === "removed" ? null : afterUrl,
       ].flatMap((u) => (u ? [withDeviceHint(u, device)] : []))
     : [];
@@ -268,6 +278,12 @@ export function PublishCompare({
         icon={<Plus className="size-5 text-brand" />}
         title={t("thread.publishCompare.newTitle")}
         description={t("thread.publishCompare.newDescription")}
+      />
+    ) : mobileApp ? (
+      <ComparePlaceholder
+        icon={<Phone01 className="size-5 text-muted-foreground" />}
+        title={t("thread.publishCompare.mobileAppBeforeTitle")}
+        description={t("thread.publishCompare.mobileAppBeforeDescription")}
       />
     ) : (
       frame({

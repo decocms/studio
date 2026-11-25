@@ -149,6 +149,18 @@ export const common = {
   "common.inviteLink.activeLinkMeta": "{count} joined · expires {expiresAt}",
   "common.inviteLink.activeLinks": "Active links",
   "common.inviteLink.copied": "Link copied",
+  "common.openApp.title": "Open in the Dev app",
+  "common.openApp.description":
+    "We're opening your changes in the app. If nothing happens, tap the button below.",
+  "common.openApp.open": "Open in the app",
+  "common.openApp.install": "Install the Dev app",
+  "common.openApp.notOpened":
+    "The app didn't open? Install the Dev app, then scan the QR code again.",
+  "common.openApp.desktop":
+    "Open this page on the phone that has the Dev app: scan the QR code with its camera.",
+  "common.openApp.invalidTitle": "Invalid link",
+  "common.openApp.invalidDescription":
+    "This link can't be opened. Scan the QR code in Studio again.",
   "common.inviteLink.copy": "Copy link",
   "common.inviteLink.create": "Create invite link (24h)",
   "common.inviteLink.createFailed": "Failed to create invite link",

@@ -156,6 +156,18 @@ export const common = {
   "common.inviteLink.activeLinkMeta": "{count} entraram · expira {expiresAt}",
   "common.inviteLink.activeLinks": "Links ativos",
   "common.inviteLink.copied": "Link copiado",
+  "common.openApp.title": "Abrir no app Dev",
+  "common.openApp.description":
+    "Estamos abrindo suas alterações no app. Se nada acontecer, toque no botão abaixo.",
+  "common.openApp.open": "Abrir no app",
+  "common.openApp.install": "Instalar o app Dev",
+  "common.openApp.notOpened":
+    "O app não abriu? Instale o app Dev e escaneie o QR code de novo.",
+  "common.openApp.desktop":
+    "Abra esta página no celular que tem o app Dev: escaneie o QR code com a câmera dele.",
+  "common.openApp.invalidTitle": "Link inválido",
+  "common.openApp.invalidDescription":
+    "Não dá para abrir este link. Escaneie de novo o QR code no Studio.",
   "common.inviteLink.copy": "Copiar link",
   "common.inviteLink.create": "Criar link de convite (24h)",
   "common.inviteLink.createFailed": "Não foi possível criar o link de convite",

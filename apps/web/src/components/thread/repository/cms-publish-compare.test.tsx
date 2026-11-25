@@ -286,4 +286,38 @@ describe("the review frames (publish review)", () => {
     expect(onReady).toHaveBeenCalled();
     view.unmount();
   });
+
+  test("a mobile app: no published-site frame before; opens on mobile", () => {
+    const pointer = "delivery.decocms.com/sites/acme/drafts/s1/index.json@e3";
+    const onReady = mock(() => {});
+    const view = render(
+      <PublishCompare
+        change={page}
+        diff={null}
+        bodyPending={false}
+        previewServerUrl="https://site.example"
+        draft={{ kind: "pointer", pointer, link: pointer }}
+        lastPage={null}
+        v8={{ blocks: {} }}
+        mobileApp
+        onReady={onReady}
+      />,
+    );
+    const body = within(view.container);
+    expect(body.getByText("The published app isn't shown here")).toBeTruthy();
+    const [only, ...rest] = frames(view.container);
+    expect(rest).toEqual([]);
+    const after = new URL(only!.src);
+    expect(after.searchParams.get("__draft")).toBe(pointer);
+    expect(after.searchParams.get("deviceHint")).toBe("mobile");
+    expect(
+      body.getByRole("button", { name: "Mobile" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    // Ready once the one page it shows has loaded.
+    act(() => {
+      fireEvent.load(only!);
+    });
+    expect(onReady).toHaveBeenCalled();
+    view.unmount();
+  });
 });

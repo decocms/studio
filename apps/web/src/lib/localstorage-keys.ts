@@ -63,6 +63,9 @@ export const LOCALSTORAGE_KEYS = {
     `studio:preview:device-size:${virtualMcpId}`,
   previewEditingMode: (virtualMcpId: string) =>
     `studio:preview:editing-mode:${virtualMcpId}`,
+  /** A mobile-app project's "View on phone" popover was opened once: its highlight stops. */
+  mobileAppQrSeen: (virtualMcpId: string) =>
+    `studio:preview:mobile-app-qr-seen:${virtualMcpId}`,
   /** Which monorepo app the preview shows, and whether it splits beside the main one. */
   previewAppLayout: (virtualMcpId: string) =>
     `studio:preview:app-layout:${virtualMcpId}`,

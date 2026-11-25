@@ -1,5 +1,12 @@
 export type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
 
+/** The canvas size before the user picks one: a mobile app's is mobile. */
+export function defaultPreviewDeviceSize(
+  mobileApp: boolean,
+): PreviewDeviceSize {
+  return mobileApp ? "mobile" : "desktop";
+}
+
 /**
  * Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`).
  * Falls back to the unmodified `url` on a malformed input instead of throwing

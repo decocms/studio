@@ -2,6 +2,7 @@ import type { Control, FieldValues } from "react-hook-form";
 import { SettingsCardRow } from "@/components/settings/settings-section";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { InPlaceRenderField } from "@/components/sandbox/runtime-card/in-place-render-field";
+import { MobileAppField } from "@/components/sandbox/runtime-card/mobile-app-field";
 import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
 import { PullRequestDraftsField } from "@/components/sandbox/runtime-card/pull-request-drafts-field";
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
@@ -14,7 +15,8 @@ import { useT } from "@/i18n/use-t.ts";
  * A Blocks v8 site is always Fast Preview (`fastPreviewCapability`), so it
  * gets no Fast Preview switch: in its place, a hint while there is no URL
  * (without one, new chats start a coding session), and in-place render is
- * always offered. v7 keeps all three, as on main.
+ * always offered. v7 keeps all three, as on main. A v8 site can also be an
+ * Eitri mobile app, previewed on a phone in its Dev build.
  */
 export function PreviewSettingsRows<T extends FieldValues>({
   control,
@@ -60,6 +62,11 @@ export function PreviewSettingsRows<T extends FieldValues>({
       {fastPreviewOn && !isBlocksV8 && (
         <SettingsCardRow>
           <PullRequestDraftsField control={control} />
+        </SettingsCardRow>
+      )}
+      {isBlocksV8 && (
+        <SettingsCardRow>
+          <MobileAppField control={control} />
         </SettingsCardRow>
       )}
     </>

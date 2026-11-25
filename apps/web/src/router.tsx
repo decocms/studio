@@ -104,6 +104,13 @@ const resetPasswordRoute = createRoute({
   ),
 });
 
+/** A phone camera's bridge to a mobile app (`OPEN_APP_PATH`); reads its own query. */
+const openAppRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/open-app",
+  component: lazyRouteComponent(() => import("./routes/open-app.tsx")),
+});
+
 /**
  * Better auth catchall
  */
@@ -1966,6 +1973,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,
+  openAppRoute,
   betterAuthRoutes,
   oauthCallbackRoute,
   oauthConsentRoute,

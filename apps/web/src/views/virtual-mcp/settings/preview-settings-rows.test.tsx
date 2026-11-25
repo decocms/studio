@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 
-import { render as renderBare } from "@testing-library/react";
+import { act, fireEvent, render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "bun:test";
@@ -17,12 +17,35 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+/**
+ * Types into a controlled input: happy-dom's value setter doesn't reach
+ * React here, so this calls the field's own `onChange` (as in
+ * campaigns-view.test.tsx).
+ */
+function typeInto(element: HTMLElement, value: string) {
+  const propsKey = Object.keys(element).find((k) =>
+    k.startsWith("__reactProps$"),
+  );
+  const onChange = (
+    element as unknown as Record<
+      string,
+      { onChange?: (event: { target: { value: string } }) => void }
+    >
+  )[propsKey ?? ""]?.onChange;
+  if (!onChange) throw new Error("not a controlled field");
+  // A block: the form's onChange returns a promise act would wait on.
+  act(() => {
+    onChange({ target: { value } });
+  });
+}
+
 interface FormShape {
   metadata: {
     previewServerUrl: string;
     fastPreview: boolean;
     fastPreviewInPlace: boolean;
     pullRequestDrafts: boolean;
+    mobileApp?: { protocol: string } | null;
   };
 }
 
@@ -30,10 +53,14 @@ function Harness({
   isBlocksV8,
   fastPreview,
   previewServerUrl = "https://acme.com",
+  mobileApp = null,
+  onMobileApp,
 }: {
   isBlocksV8: boolean;
   fastPreview: boolean;
   previewServerUrl?: string;
+  mobileApp?: { protocol: string } | null;
+  onMobileApp?: (value: unknown) => void;
 }) {
   const form = useForm<FormShape>({
     defaultValues: {
@@ -42,9 +69,11 @@ function Harness({
         fastPreview,
         fastPreviewInPlace: false,
         pullRequestDrafts: false,
+        mobileApp,
       },
     },
   });
+  onMobileApp?.(form.watch("metadata.mobileApp"));
   return (
     <PreviewSettingsRows
       control={form.control}
@@ -89,7 +118,8 @@ describe("PreviewSettingsRows", () => {
       );
       expect(queryByText("Fast Preview")).not.toBeInTheDocument();
       expect(queryByText("Instant preview (experimental)")).toBeInTheDocument();
-      expect(getAllByRole("switch")).toHaveLength(1);
+      // In-place render and Mobile app.
+      expect(getAllByRole("switch")).toHaveLength(2);
       expect(queryByText(/Add your site's address/)).not.toBeInTheDocument();
       unmount();
     }
@@ -117,5 +147,56 @@ describe("PreviewSettingsRows", () => {
     expect(
       v8.queryByText(/Studio shows your drafts on it/),
     ).toBeInTheDocument();
+  });
+
+  it("Blocks v8: the Mobile app switch writes metadata.mobileApp and shows its fields", () => {
+    let value: unknown;
+    const { getByRole, getByLabelText, queryByLabelText, queryByText } =
+      renderBare(
+        <Harness
+          isBlocksV8
+          fastPreview={false}
+          onMobileApp={(v) => {
+            value = v;
+          }}
+        />,
+        { wrapper },
+      );
+    const toggle = getByRole("switch", { name: "Mobile app (Eitri)" });
+    expect(toggle).not.toBeChecked();
+    expect(queryByLabelText("App's Eitri protocol")).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(value).toEqual({ protocol: "" });
+    const protocol = getByLabelText("App's Eitri protocol");
+    expect(protocol).toHaveAttribute("placeholder", "newbalance");
+    typeInto(protocol, "newbalance");
+    expect(value).toEqual({ protocol: "newbalance" });
+    typeInto(
+      getByLabelText("iOS install link"),
+      "https://testflight.apple.com/join/B9wsWdMp",
+    );
+    expect(value).toEqual({
+      protocol: "newbalance",
+      iosInstallUrl: "https://testflight.apple.com/join/B9wsWdMp",
+    });
+    // Cleared, an install link is left out.
+    typeInto(getByLabelText("iOS install link"), "");
+    expect(value).toEqual({ protocol: "newbalance" });
+
+    typeInto(protocol, "New Balance");
+    expect(queryByText(/Use lowercase letters/)).toBeInTheDocument();
+
+    fireEvent.click(getByRole("switch", { name: "Mobile app (Eitri)" }));
+    expect(value).toBeNull();
+    expect(queryByLabelText("App's Eitri protocol")).not.toBeInTheDocument();
+  });
+
+  it("v7: no Mobile app switch", () => {
+    const { queryByRole } = renderBare(
+      <Harness isBlocksV8={false} fastPreview />,
+      { wrapper },
+    );
+    expect(queryByRole("switch", { name: "Mobile app (Eitri)" })).toBeNull();
   });
 });

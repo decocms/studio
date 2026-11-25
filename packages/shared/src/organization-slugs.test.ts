@@ -25,6 +25,7 @@ describe("reserved organization slugs", () => {
       "oauth",
       "oauth-proxy",
       "onboarding",
+      "open-app",
       "org",
       "report",
       "reports-onboarding",

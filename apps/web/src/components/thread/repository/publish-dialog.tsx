@@ -87,6 +87,8 @@ import {
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useContentBackend } from "@/cms/use-content-backend.ts";
+import { useVirtualMCP } from "@/sdk";
+import { mobileAppConfig } from "@decocms/shared/mobile-app";
 import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile.ts";
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
@@ -685,6 +687,8 @@ function CmsPublishView({
   onPublished,
 }: CmsPublishContentProps & { source: PublishSource }) {
   const t = useT();
+  /** A mobile-app project: the compare can't show the app as published. */
+  const mobileApp = !!mobileAppConfig(useVirtualMCP(virtualMcpId)?.metadata);
   const [{ language }] = usePreferences();
   /** The session publishing — the git routes resolve their runtime from it. */
   const threadId = useOptionalChatTask()?.taskId ?? null;
@@ -1064,6 +1068,7 @@ function CmsPublishView({
               draft={compareDraft}
               lastPage={lastPreviewPage}
               v8={source.v8}
+              mobileApp={mobileApp}
               onReady={
                 smoothPanes ? () => markReady(changeId(change)) : undefined
               }
