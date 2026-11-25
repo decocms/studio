@@ -193,6 +193,7 @@ const SETUP_KEYS = [
   "analytics_install",
   "bigquery",
   "orders",
+  "repository",
 ] as const;
 const SetupKeySchema = z.enum(SETUP_KEYS);
 export type SetupKey = z.infer<typeof SetupKeySchema>;

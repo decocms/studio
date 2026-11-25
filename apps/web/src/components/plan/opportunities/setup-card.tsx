@@ -1,7 +1,7 @@
 /**
  * What only the customer can give the analysis: the store's domain, the
- * competitors to compare with, Deco Analytics, the GA4 export and the store's
- * orders. The engine names what is missing; the analysis runs without all
+ * competitors to compare with, Deco Analytics, the GA4 export, the store's
+ * orders and the site's repository. The engine names what is missing; the analysis runs without all
  * but the domain, so this card asks without blocking anything.
  */
 
@@ -95,6 +95,16 @@ function NeedBlock({
               search={{ tab: "all" as const }}
             >
               {t("plan.opportunities.setup.ordersAction")}
+            </Link>
+          </Button>
+        </Need>
+      );
+    case "repository":
+      return (
+        <Need text={t("plan.opportunities.setup.repository")}>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/$org/settings/repositories" params={{ org: org.slug }}>
+              {t("plan.opportunities.setup.repositoryAction")}
             </Link>
           </Button>
         </Need>

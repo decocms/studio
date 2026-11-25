@@ -985,6 +985,17 @@ describe("setupNeeds", () => {
     expect(setupNeeds(view).map((n) => n.key)).toEqual(["domain"]);
   });
 
+  it("asks for the site's repository when the engine cannot read the code", () => {
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      setup: {
+        needs: [{ key: "repository", blocking: false }],
+        current: { domain: "loja.example", competitors: [] },
+      },
+    });
+    expect(setupNeeds(view).map((n) => n.key)).toEqual(["repository"]);
+  });
+
   it("is empty for an engine without setup", () => {
     expect(setupNeeds(StoreViewSchema.parse(storeViewFixture))).toEqual([]);
   });
