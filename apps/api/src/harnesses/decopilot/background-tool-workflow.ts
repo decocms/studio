@@ -37,6 +37,7 @@ import type { UIMessageChunk } from "ai";
 // reference the name without importing this module (which registers a workflow).
 export { BACKGROUND_TOOLS_QUEUE } from "@/dispatch-queue/queue-names";
 import { BACKGROUND_TOOLS_QUEUE } from "@/dispatch-queue/queue-names";
+import { listWorkflowsByIdPrefix } from "@/dbos/workflow-id-prefix";
 /** Per-org (per-partition) concurrency cap for heavy background tool runs. */
 export const BACKGROUND_TOOLS_PARTITION_CONCURRENCY = 5;
 
@@ -679,8 +680,7 @@ DBOS.registerWorkflow(backgroundToolWorkflowFn, {
 export async function cancelThreadBackgroundJobs(
   threadId: string,
 ): Promise<void> {
-  const active = await DBOS.listWorkflows({
-    workflow_id_prefix: `bgtool:${threadId}:`,
+  const active = await listWorkflowsByIdPrefix(`bgtool:${threadId}:`, {
     status: ["PENDING", "ENQUEUED"],
     loadInput: false,
     loadOutput: false,
@@ -698,8 +698,7 @@ export function createBackgroundToolDispatcher(
     start: async ({ toolName, input, toolCallId }) => {
       // Encode the threadId in the id so `cancelThreadBackgroundJobs` can find
       // this job (and its derived `:react`/`:subagent` runs) by prefix when the
-      // thread is cancelled. `:` can't appear in a threadId, so the prefix
-      // `bgtool:<threadId>:` won't match a different thread.
+      // thread is cancelled.
       const jobId = `bgtool:${snapshot.threadId}:${crypto.randomUUID()}`;
       const client = await getDbosClient();
       await client.enqueue<typeof backgroundToolWorkflowFn>(
