@@ -429,6 +429,38 @@ export const plan = {
   "plan.opportunities.domain.failed": "Could not save the domain",
   "plan.opportunities.domain.askAdmin":
     "Ask an admin to set the store's domain.",
+  "plan.opportunities.setup.heading": "Finish setting up the analysis",
+  "plan.opportunities.setup.description":
+    "These only you can tell us. The analysis already runs without them.",
+  "plan.opportunities.setup.askAdmin":
+    "Ask an admin to finish setting up the analysis.",
+  "plan.opportunities.setup.analytics":
+    "Install Deco Analytics to measure behaviour on the page.",
+  "plan.opportunities.setup.analyticsAction": "Open Analytics setup",
+  "plan.opportunities.setup.bigquery":
+    "The GA4 export in BigQuery did not answer.",
+  "plan.opportunities.setup.bigqueryAction": "Check the connection",
+  "plan.opportunities.setup.orders":
+    "No store orders yet, so no money estimate.",
+  "plan.opportunities.setup.ordersAction": "Connect the store platform",
+  "plan.opportunities.competitors.label": "Competitors to compare with",
+  "plan.opportunities.competitors.add": "Add",
+  "plan.opportunities.competitors.placeholder": "store.example",
+  "plan.opportunities.competitors.save": "Save list",
+  "plan.opportunities.competitors.cancel": "Cancel",
+  "plan.opportunities.competitors.remove": "Remove {domain}",
+  "plan.opportunities.competitors.current": "Compared with: {list}",
+  "plan.opportunities.competitors.suggested": "Suggested: {list}",
+  "plan.opportunities.competitors.confirm": "Confirm",
+  "plan.opportunities.competitors.edit": "Edit",
+  "plan.opportunities.competitors.invalid": "That is not a domain",
+  "plan.opportunities.competitors.duplicate": "Already on the list",
+  "plan.opportunities.competitors.failed": "Could not save the list",
+  "plan.opportunities.competitors.blocksBots":
+    "Blocks automated browsers; it may not be compared",
+  "plan.opportunities.gaps.provide": "For you to provide",
+  "plan.opportunities.gaps.provideAction": "Set it up",
+  "plan.opportunities.gaps.limitations": "Analysis limitations ({count})",
   "plan.opportunities.newRun.elsewhere.one":
     "An analysis of this page is already running: {pages}.",
   "plan.opportunities.newRun.elsewhere.other":

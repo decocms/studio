@@ -14,10 +14,10 @@ import { useT } from "@/i18n/use-t.ts";
 import { errorText } from "./opportunity-view.ts";
 import { useSiteProfile, useUpdateStoreDomain } from "./use-plan-diagnosis.ts";
 
-/** The engine's connection is the org's, so editing it follows the same
- *  permission as connecting it; if capabilities fail to load, the engine
- *  decides. Null while loading. */
-function useCanEditDomain(): boolean | null {
+/** The engine's connection is the org's, so editing its setup follows the
+ *  same permission as connecting it; if capabilities fail to load, the
+ *  engine decides. Null while loading. */
+export function useCanEditSetup(): boolean | null {
   const capability = useCapability("connections:manage");
   if (capability.loading) return null;
   return capability.granted || !!capability.error;
@@ -36,7 +36,7 @@ export function StoreDomainForm({
 }) {
   const t = useT();
   const inputId = useId();
-  const canEdit = useCanEditDomain();
+  const canEdit = useCanEditSetup();
   const update = useUpdateStoreDomain();
   const [domain, setDomain] = useState(initial);
   const value = domain.trim();
@@ -106,16 +106,20 @@ export function StoreDomainForm({
   );
 }
 
-/** "Store: www.example.com · Change", or the form while there is none. A
- *  failed read hides the row: a run still asks for the domain if it needs it. */
-export function StoreDomainRow() {
+/** "Store: www.example.com · Change", or the form while there is none.
+ *  `known` is the domain from the view's setup; undefined from an engine
+ *  without one, which is asked for the profile instead. A failed read hides
+ *  the row: a run still asks for the domain if it needs it. */
+export function StoreDomainRow({ known }: { known?: string | null }) {
   const t = useT();
-  const profile = useSiteProfile();
-  const canEdit = useCanEditDomain();
+  const profile = useSiteProfile({ enabled: known === undefined });
+  const canEdit = useCanEditSetup();
   const [editing, setEditing] = useState(false);
 
-  if (profile.isPending || profile.isError) return null;
-  const domain = profile.data?.domain ?? null;
+  if (known === undefined && (profile.isPending || profile.isError)) {
+    return null;
+  }
+  const domain = known === undefined ? (profile.data?.domain ?? null) : known;
 
   if (!domain || editing) {
     if (!domain && !canEdit) return null;

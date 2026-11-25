@@ -194,7 +194,7 @@ const SETUP_KEYS = [
   "bigquery",
   "orders",
 ] as const;
-export const SetupKeySchema = z.enum(SETUP_KEYS);
+const SetupKeySchema = z.enum(SETUP_KEYS);
 export type SetupKey = z.infer<typeof SetupKeySchema>;
 
 /** A key this Studio does not know stays a string, so a new engine need does

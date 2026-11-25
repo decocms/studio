@@ -75,8 +75,18 @@ export function useRequestRun(goal: RunGoal) {
   };
 }
 
+/** What the engine needs before it runs: its blocking needs, or the domain
+ *  from an engine that only flags it. */
+function blockingNeeds(error: Error): string[] {
+  if (!(error instanceof DiagnosisEngineError)) return [];
+  const keys = error.needs.filter((n) => n.blocking).map((n) => n.key);
+  if (keys.length > 0) return keys;
+  return error.needsDomain ? ["domain"] : [];
+}
+
 /** Why a run did not start, or which pages were already running elsewhere.
- *  Without the store's domain, asks for it and runs again once it is saved. */
+ *  Asks for each blocking need it has an input for (today, the domain) and
+ *  runs again once it is saved. */
 export function RunRequestNotice({
   error,
   elsewhere,
@@ -88,8 +98,7 @@ export function RunRequestNotice({
 }) {
   const t = useT();
   if (error) {
-    const needsDomain =
-      error instanceof DiagnosisEngineError && error.needsDomain;
+    const needsDomain = blockingNeeds(error).includes("domain");
     return (
       <div role="alert" className="flex items-start gap-2 text-xs">
         <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
