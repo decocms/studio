@@ -42,9 +42,26 @@ export function looksLikeHtml(input: string): boolean {
 export function parseImportedContent(input: string): ParsedImport {
   const trimmed = input.trim();
   if (!trimmed) return { title: "", sections: [] };
-  return looksLikeHtml(trimmed)
+  return looksLikeHtml(trimmed) && !isMarkdownWithInlineHtml(trimmed)
     ? htmlToSections(trimmed)
     : markdownToSections(trimmed);
+}
+
+const BLOCK_HTML =
+  /<(?:h[1-6]|p|ul|ol|div|img|hr|blockquote|section|article|figure|table)\b/i;
+
+/**
+ * Markdown whose only HTML is inline, like a `<br>` inside a pipe table's cell.
+ * The HTML parser reads blocks from tags alone and would find none in it.
+ */
+function isMarkdownWithInlineHtml(input: string): boolean {
+  if (BLOCK_HTML.test(input)) return false;
+  const lines = input.split(/\r\n?|\n/);
+  return lines.some(
+    (line, index) =>
+      line.includes("|") &&
+      isTableDelimiter(lines[index + 1] ?? "", splitTableRow(line).length),
+  );
 }
 
 // ------------------ HTML ------------------------------------------------------
@@ -224,6 +241,32 @@ function cellHtml(inner: string): string {
   return stripTags(html) ? html : "";
 }
 
+/** Every row as wide as the widest, so a short one cannot shift its columns. */
+function tableSection(headers: string[], rows: string[][]): ImportedSection {
+  const head = headers.some(Boolean) ? headers : [];
+  const width = rows.reduce(
+    (max, row) => Math.max(max, row.length),
+    head.length,
+  );
+  const pad = (cells: string[]) => [
+    ...cells,
+    ...Array<string>(width - cells.length).fill(""),
+  ];
+  return {
+    kind: "table",
+    headers: head.length > 0 ? pad(head) : [],
+    rows: rows.map(pad),
+  };
+}
+
+// Rows and cells end at their close tag or where the next one opens: HTML lets
+// `</tr>`, `</td>` and `</th>` be left out.
+const TABLE_HEAD_RE =
+  /<thead\b[^>]*>[\s\S]*?(?=<\/thead\s*>|<tbody\b|<tfoot\b|$)/i;
+const TABLE_ROW_RE =
+  /<tr\b[^>]*>([\s\S]*?)(?=<tr\b|<\/tr\s*>|<\/t(?:head|body|foot)\s*>|$)/gi;
+const TABLE_CELL_RE = /<(th|td)\b[^>]*>([\s\S]*?)(?=<t[hd]\b|<\/t[hd]\s*>|$)/gi;
+
 /**
  * A table's header and body rows. The header is the first row of `<thead>`, or
  * a first row made only of `<th>`; a table with neither has none. Matching the
@@ -231,30 +274,29 @@ function cellHtml(inner: string): string {
  * landing in the post as loose blocks. Merged cells are not expanded.
  */
 function tableToSection(inner: string): ImportedSection | null {
-  const thead = /<thead\b[^>]*>[\s\S]*?<\/thead\s*>/i.exec(inner);
+  const thead = TABLE_HEAD_RE.exec(inner);
   const headStart = thead?.index ?? -1;
   const headEnd = thead ? headStart + thead[0].length : -1;
 
   let headers: string[] | null = null;
   const rows: string[][] = [];
-  for (const row of inner.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi)) {
-    const cells = [
-      ...(row[1] ?? "").matchAll(/<(th|td)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi),
-    ];
+  for (const row of inner.matchAll(TABLE_ROW_RE)) {
+    const cells = [...(row[1] ?? "").matchAll(TABLE_CELL_RE)];
     if (cells.length === 0) continue;
     const values = cells.map((cell) => cellHtml(cell[2] ?? ""));
     const inHead = row.index >= headStart && row.index < headEnd;
     const allHeaderCells = cells.every((c) => c[1]?.toLowerCase() === "th");
     const isHeader =
-      headers === null &&
-      (inHead || (!thead && rows.length === 0 && allHeaderCells));
+      headers === null && (inHead || (rows.length === 0 && allHeaderCells));
     if (isHeader) headers = values;
     else if (values.some(Boolean)) rows.push(values);
   }
 
-  const head = headers?.some(Boolean) ? headers : [];
-  if (head.length === 0 && rows.length === 0) return null;
-  return { kind: "table", headers: head, rows };
+  const table = tableSection(headers ?? [], rows);
+  return table.kind === "table" &&
+    (table.headers.length > 0 || table.rows.length > 0)
+    ? table
+    : null;
 }
 
 function htmlToSections(html: string): ParsedImport {
@@ -263,7 +305,8 @@ function htmlToSections(html: string): ParsedImport {
   let title = "";
   const sections: ImportedSection[] = [];
 
-  for (const match of clean.matchAll(BLOCK_RE)) {
+  const blocks = new RegExp(BLOCK_RE.source, BLOCK_RE.flags);
+  for (let match = blocks.exec(clean); match; match = blocks.exec(clean)) {
     const tag = match[1]?.toLowerCase();
     const inner = match[2] ?? "";
     const whole = match[0];
@@ -310,13 +353,20 @@ function htmlToSections(html: string): ParsedImport {
       const table = tableToSection(inner);
       if (table) sections.push(table);
     } else if (tag === "figure") {
-      // A table some editors wrap in a figure. The lazy match stopped at the
-      // figure's own close, so the table inside is whole.
-      const wrapped = /<table\b[^>]*>([\s\S]*?)<\/table\s*>/i.exec(inner);
-      if (wrapped) {
-        const table = tableToSection(wrapped[1] ?? "");
-        if (table) sections.push(table);
-        continue;
+      // A table some editors wrap in a figure. A cell can hold a figure of
+      // its own, which is where the lazy match above would have stopped, so
+      // the table is read from the document and the scan resumes after it.
+      const tableAt = inner.search(/<table\b/i);
+      if (tableAt >= 0) {
+        const wrapped = /<table\b[^>]*>([\s\S]*?)<\/table\s*>/gi;
+        wrapped.lastIndex = match.index + whole.indexOf(">") + 1 + tableAt;
+        const found = wrapped.exec(clean);
+        if (found) {
+          const table = tableToSection(found[1] ?? "");
+          if (table) sections.push(table);
+          blocks.lastIndex = wrapped.lastIndex;
+          continue;
+        }
       }
       const imgTag = inner.match(/<img\b[^>]*>/i)?.[0];
       const url = imgTag ? attr(imgTag, "src") : "";
@@ -361,12 +411,15 @@ function splitTableRow(line: string): string[] {
 
 /** The `|---|:--:|` row that makes the line above it a table header. */
 function isTableDelimiter(line: string, columns: number): boolean {
-  if (!line.includes("-")) return false;
+  if (!line.includes("-") || !line.includes("|")) return false;
   const cells = splitTableRow(line);
   return (
     cells.length === columns && cells.every((cell) => /^:?-+:?$/.test(cell))
   );
 }
+
+/** A line that starts another block, ending a table that has no blank line after it. */
+const STARTS_MARKDOWN_BLOCK = /^(?:#{1,6}\s|>|\s*(?:[-*+]|\d+\.)\s)/;
 
 function markdownCell(cell: string): string {
   return sanitizeInlineHtml(inlineMarkdown(cell));
@@ -420,15 +473,18 @@ function markdownToSections(md: string): ParsedImport {
         for (; index < lines.length; index++) {
           const row = lines[index] ?? "";
           if (!row.trim() || !row.includes("|")) break;
-          rows.push(splitTableRow(row).map(markdownCell));
+          if (
+            !row.trimStart().startsWith("|") &&
+            STARTS_MARKDOWN_BLOCK.test(row)
+          )
+            break;
+          // Cells past the last column have no header to sit under.
+          rows.push(
+            splitTableRow(row).slice(0, header.length).map(markdownCell),
+          );
         }
         index--;
-        const headers = header.map(markdownCell);
-        sections.push({
-          kind: "table",
-          headers: headers.some(Boolean) ? headers : [],
-          rows,
-        });
+        sections.push(tableSection(header.map(markdownCell), rows));
         continue;
       }
     }

@@ -7,6 +7,7 @@ import {
   defaultScheduledDatetime,
   blogBlockTypeFor,
   customBlogSectionPaths,
+  blocksForFormat,
   discoverBlogBlockTypes,
   BLOG_KINDS,
   emptyBlogPayload,
@@ -2517,6 +2518,32 @@ describe("sectionResolveTypes", () => {
       Paragraph: "site/sections/Blog/Post/Paragraph.tsx",
       Quote: "acme-ui/sections/Blog/Quote.tsx",
     });
+  });
+});
+
+describe("blocksForFormat", () => {
+  const meta = metaWith([
+    "blog/sections/blocks/Heading.tsx",
+    "blog/sections/blocks/Table.tsx",
+    "site/sections/Blog/Post/Heading.tsx",
+    "site/sections/Blog/Post/Paragraph.tsx",
+  ]);
+  const names = (value: string) =>
+    blocksForFormat({ value }, meta, {}).map((block) => block.name);
+
+  test("a brief that links a shadowed block gets the one that answers to its name", () => {
+    expect(names("[@Heading](blog/sections/blocks/Heading.tsx)")).toEqual([
+      "Heading",
+    ]);
+  });
+
+  test("offers each name once, cited or not", () => {
+    expect(names("@Table and @Paragraph")).toEqual(["Paragraph", "Table"]);
+    expect(names("no citations").sort()).toEqual([
+      "Heading",
+      "Paragraph",
+      "Table",
+    ]);
   });
 });
 

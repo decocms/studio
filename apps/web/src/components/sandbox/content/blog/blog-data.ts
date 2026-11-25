@@ -2830,15 +2830,21 @@ export function blocksForFormat(
   const available = mentionableSections(meta, options);
   const byName = sectionResolveTypes(meta, options);
   const cited = new Set(citedSections(format.value, byName));
-  const wanted = available.filter((section) => cited.has(section.resolveType));
-  const chosen = wanted.length > 0 ? wanted : available;
+  // A brief can link the block that used to answer to a name. The citation is
+  // to the name, so it follows whichever block answers to it now.
+  const citedNames = new Set(
+    available
+      .filter((section) => cited.has(section.resolveType))
+      .map((section) => section.name),
+  );
+  const offered = available.filter(
+    (section) => byName[section.name] === section.resolveType,
+  );
+  const wanted = offered.filter((section) => citedNames.has(section.name));
+  const chosen = wanted.length > 0 ? wanted : offered;
 
-  const seen = new Set<string>();
   const blocks: GenerationBlock[] = [];
   for (const section of chosen) {
-    if (seen.has(section.name)) continue;
-    if (byName[section.name] !== section.resolveType) continue;
-    seen.add(section.name);
     const example =
       blockExample(section.resolveType, decofile) ??
       KNOWN_BLOG_BLOCK_EXAMPLES[section.name];
