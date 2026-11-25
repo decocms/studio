@@ -460,6 +460,7 @@ export const plan = {
   "plan.opportunities.competitors.edit": "Editar",
   "plan.opportunities.competitors.invalid": "Isso não é um domínio",
   "plan.opportunities.competitors.duplicate": "Já está na lista",
+  "plan.opportunities.competitors.full": "Até {max} concorrentes",
   "plan.opportunities.competitors.failed": "Não deu para salvar a lista",
   "plan.opportunities.competitors.blocksBots":
     "Bloqueia navegadores automáticos; pode não ser comparado",

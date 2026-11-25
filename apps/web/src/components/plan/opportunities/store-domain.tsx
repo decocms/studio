@@ -1,7 +1,7 @@
 /**
  * The store's domain, which the analysis opens and captures. The engine finds
  * it from the store's site in Studio when it can; otherwise a member sets it
- * here, from the section or from a run the engine refused for lack of one.
+ * from the run the engine refused for lack of one, and changes it here.
  */
 
 import { useId, useState } from "react";
@@ -106,10 +106,10 @@ export function StoreDomainForm({
   );
 }
 
-/** "Store: www.example.com · Change", or the form while there is none.
- *  `known` is the domain from the view's setup; undefined from an engine
- *  without one, which is asked for the profile instead. A failed read hides
- *  the row: a run still asks for the domain if it needs it. */
+/** "Store: www.example.com · Change". `known` is the domain from the view's
+ *  setup; undefined from an engine without one, which is asked for the
+ *  profile instead. With no domain, or a failed read, the row is hidden: the
+ *  refused run asks for it, so the page never shows two domain forms. */
 export function StoreDomainRow({ known }: { known?: string | null }) {
   const t = useT();
   const profile = useSiteProfile({ enabled: known === undefined });
@@ -120,15 +120,15 @@ export function StoreDomainRow({ known }: { known?: string | null }) {
     return null;
   }
   const domain = known === undefined ? (profile.data?.domain ?? null) : known;
+  if (!domain) return null;
 
-  if (!domain || editing) {
-    if (!domain && !canEdit) return null;
+  if (editing) {
     return (
       <div className="max-w-md">
         <StoreDomainForm
-          initial={domain ?? ""}
+          initial={domain}
           onSaved={() => setEditing(false)}
-          onCancel={domain ? () => setEditing(false) : undefined}
+          onCancel={() => setEditing(false)}
         />
       </div>
     );

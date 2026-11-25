@@ -424,12 +424,13 @@ export type ParsedToolResult<T> =
     };
 
 /** `needs_domain`: `start_ux_diagnosis` refused because the store has no
- *  domain. `rejected`: competitors that did not answer. */
+ *  domain. `rejected`: competitors that did not answer. A malformed list is
+ *  dropped so the refusal still shows its message. */
 const ToolErrorSchema = z.object({
   error: z.string(),
   needs_domain: z.boolean().optional(),
-  needs: z.array(SetupNeedSchema).optional(),
-  rejected: z.array(CompetitorRejectionSchema).optional(),
+  needs: z.array(SetupNeedSchema).optional().catch([]),
+  rejected: z.array(CompetitorRejectionSchema).optional().catch([]),
 });
 
 const CallToolResultSchema = z.object({

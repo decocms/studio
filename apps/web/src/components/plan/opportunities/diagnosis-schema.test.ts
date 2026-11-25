@@ -150,6 +150,24 @@ describe("parseToolResult", () => {
     });
   });
 
+  it("a malformed need or rejection keeps the engine's refusal", () => {
+    expect(
+      parseToolResult(StartRunSchema, {
+        status: "error",
+        error: "configure o domínio da loja",
+        needs_domain: true,
+        needs: [{ key: "domain", blocking: true }, { key: 7 }],
+        rejected: [{ domain: "morta.example" }],
+      }),
+    ).toEqual({
+      ok: false,
+      error: "configure o domínio da loja",
+      needs_domain: true,
+      needs: [],
+      rejected: [],
+    });
+  });
+
   it("garbage payload becomes ok:false", () => {
     for (const raw of [
       null,

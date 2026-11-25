@@ -204,20 +204,20 @@ export const storeViewWithSetupFixture = {
       ...storeViewWithGapsFixture.pages[0],
       gap_details: [
         {
-          source: "GA4",
+          source: "bigquery",
           owner: "customer",
-          key: "analytics_install",
+          key: "bigquery",
           message: "GA4: no dataset connected",
         },
         {
-          source: "Deco Analytics",
+          source: "heatmap",
           owner: "customer",
           key: "analytics_install",
           message: "Deco Analytics: site not found",
         },
         {
-          source: "Funil",
-          owner: "engine",
+          source: "bigquery",
+          owner: "ours",
           message: "Funil: esta análise não tem dado de funil da página",
         },
       ],

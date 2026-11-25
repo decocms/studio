@@ -17,13 +17,21 @@ export function normalizeDraft(raw: string): string | null {
   return DOMAIN.test(host) ? host : null;
 }
 
+/** The most competitors the engine accepts in one save. */
+export const MAX_COMPETITORS = 10;
+
+export function isFull(list: readonly string[]): boolean {
+  return list.length >= MAX_COMPETITORS;
+}
+
 /** The engine treats "www.x" and "x" as the same store. */
 const storeOf = (domain: string) => domain.replace(/^www\./, "");
 
 export function addDomain(
   list: string[],
   raw: string,
-): { list: string[]; error: "invalid" | "duplicate" | null } {
+): { list: string[]; error: "invalid" | "duplicate" | "full" | null } {
+  if (isFull(list)) return { list, error: "full" };
   const domain = normalizeDraft(raw);
   if (!domain) return { list, error: "invalid" };
   if (list.some((d) => storeOf(d) === storeOf(domain))) {
@@ -33,7 +41,8 @@ export function addDomain(
 }
 
 /** A list from the engine as the form edits it and saves it back: each
- *  domain normalized, once per store, what does not parse left out. */
+ *  domain normalized, once per store, what does not parse left out, and no
+ *  more than the engine accepts. */
 export function cleanList(list: readonly string[]): string[] {
   return list.reduce<string[]>((kept, raw) => addDomain(kept, raw).list, []);
 }

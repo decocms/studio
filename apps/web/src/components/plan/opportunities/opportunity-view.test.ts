@@ -932,9 +932,17 @@ describe("gapGroups", () => {
   });
 
   it("customer gaps are grouped once per key", () => {
-    const view = StoreViewSchema.parse(storeViewWithSetupFixture);
+    const [page] = storeViewWithSetupFixture.pages;
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      pages: [page, { ...page, page_type: "home", diagnosis_id: "diag_home" }],
+    });
     const { customer, limitations } = gapGroups(view);
-    expect(customer.map((g) => g.key)).toEqual(["analytics_install"]);
+    expect(customer.map((g) => g.key)).toEqual([
+      "bigquery",
+      "analytics_install",
+    ]);
+    expect(customer.map((g) => g.source)).toEqual(["bigquery", "heatmap"]);
     expect(limitations).toEqual([
       "Funil: esta análise não tem dado de funil da página",
     ]);

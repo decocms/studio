@@ -3,6 +3,8 @@ import {
   addDomain,
   canSave,
   cleanList,
+  isFull,
+  MAX_COMPETITORS,
   normalizeDraft,
 } from "./competitors-field.ts";
 
@@ -47,6 +49,30 @@ describe("addDomain", () => {
     expect(addDomain(["www.loja.example"], "https://loja.example/").error).toBe(
       "duplicate",
     );
+  });
+});
+
+describe("the cap", () => {
+  const full = Array.from(
+    { length: MAX_COMPETITORS },
+    (_, i) => `loja${i}.example`,
+  );
+
+  it("is the engine's 10", () => {
+    expect(MAX_COMPETITORS).toBe(10);
+  });
+
+  it("refuses an 11th competitor and keeps the list", () => {
+    expect(isFull(full)).toBe(true);
+    expect(isFull(full.slice(1))).toBe(false);
+    expect(addDomain(full, "outra.example")).toEqual({
+      list: full,
+      error: "full",
+    });
+  });
+
+  it("an engine list over the cap is cut to it", () => {
+    expect(cleanList([...full, "outra.example"])).toEqual(full);
   });
 });
 

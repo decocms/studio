@@ -455,6 +455,7 @@ export const plan = {
   "plan.opportunities.competitors.edit": "Edit",
   "plan.opportunities.competitors.invalid": "That is not a domain",
   "plan.opportunities.competitors.duplicate": "Already on the list",
+  "plan.opportunities.competitors.full": "Up to {max} competitors",
   "plan.opportunities.competitors.failed": "Could not save the list",
   "plan.opportunities.competitors.blocksBots":
     "Blocks automated browsers; it may not be compared",

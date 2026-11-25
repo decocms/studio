@@ -13,7 +13,13 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { CompetitorRejection } from "./diagnosis-schema.ts";
 import { DiagnosisEngineError } from "./diagnosis-state.ts";
-import { addDomain, canSave, cleanList } from "./competitors-field.ts";
+import {
+  addDomain,
+  canSave,
+  cleanList,
+  isFull,
+  MAX_COMPETITORS,
+} from "./competitors-field.ts";
 import { errorText } from "./opportunity-view.ts";
 import { useCanEditSetup } from "./store-domain.tsx";
 import {
@@ -40,9 +46,9 @@ function CompetitorsForm({
   const update = useUpdateCompetitors();
   const [list, setList] = useState(() => cleanList(initial));
   const [draft, setDraft] = useState("");
-  const [draftError, setDraftError] = useState<"invalid" | "duplicate" | null>(
-    null,
-  );
+  const [draftError, setDraftError] =
+    useState<ReturnType<typeof addDomain>["error"]>(null);
+  const full = isFull(list);
   const rejected = rejectionsOf(update.error);
   const unmatched = rejected.filter((r) => !list.includes(r.domain));
   const failure =
@@ -112,6 +118,7 @@ function CompetitorsForm({
             autoComplete="off"
             placeholder={t("plan.opportunities.competitors.placeholder")}
             value={draft}
+            disabled={full}
             onChange={(e) => {
               setDraft(e.target.value);
               setDraftError(null);
@@ -122,16 +129,23 @@ function CompetitorsForm({
             variant="outline"
             size="sm"
             className="shrink-0"
-            disabled={!draft.trim()}
+            disabled={full || !draft.trim()}
           >
             {t("plan.opportunities.competitors.add")}
           </Button>
         </div>
-        {draftError && (
+        {draftError && draftError !== "full" && (
           <p role="alert" className="text-xs text-destructive">
             {draftError === "invalid"
               ? t("plan.opportunities.competitors.invalid")
               : t("plan.opportunities.competitors.duplicate")}
+          </p>
+        )}
+        {full && (
+          <p className="text-xs text-muted-foreground">
+            {t("plan.opportunities.competitors.full", {
+              max: MAX_COMPETITORS,
+            })}
           </p>
         )}
       </form>
