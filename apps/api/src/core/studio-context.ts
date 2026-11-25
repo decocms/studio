@@ -309,6 +309,8 @@ import type { OrganizationSettingsStorage } from "../storage/organization-settin
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
 import type { SprintStorage } from "../storage/sprints";
+import type { PlanEngineStorage } from "../storage/plan-engine";
+import type { PlanEngineKnowledgeStorage } from "../storage/plan-engine-knowledge";
 import type { PlanGoalStorage } from "../storage/plan-goals";
 import type { ProjectSidebarStorage } from "../storage/project-sidebar";
 import type { ExperimentStorage } from "../storage/experiments";
@@ -382,6 +384,8 @@ export interface StudioStorage {
   tags: TagStorage;
   sprints: SprintStorage;
   planGoals: PlanGoalStorage;
+  planEngine: PlanEngineStorage;
+  planEngineKnowledge: PlanEngineKnowledgeStorage;
   projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;

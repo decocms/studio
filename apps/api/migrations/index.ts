@@ -12,6 +12,7 @@ import * as migration268plangoals from "./268-plan-goals";
 import * as migration269organizationinvitelinks from "./269-organization-invite-links";
 import * as migration270shortlinks from "./270-short-links";
 import * as migration271channelaccounts from "./271-channel-accounts";
+import * as migration272planengine from "./272-plan-engine";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -582,6 +583,7 @@ const migrations: Record<string, Migration> = {
   "269-organization-invite-links": migration269organizationinvitelinks,
   "270-short-links": migration270shortlinks,
   "271-channel-accounts": migration271channelaccounts,
+  "272-plan-engine": migration272planengine,
 };
 
 export default migrations;
