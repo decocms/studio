@@ -219,7 +219,7 @@ test("an absent pinned ref changes nothing", () => {
   }
 });
 
-/** `chat_harness_sandbox_only` changes only the repo-less rows; every other row must match flag-off exactly. */
+/** Sandbox chats change only the repo-less rows; every other row must match the Decopilot derivation exactly. */
 test.each([
   {
     row: "no repo",

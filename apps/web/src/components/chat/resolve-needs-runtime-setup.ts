@@ -18,7 +18,7 @@ export function resolveNeedsRuntimeSetup({
 }: {
   isThreadLocked: boolean;
   hasCloudProviderKeys: boolean;
-  /** The org's `chat_harness_sandbox_only` flag. */
+  /** Whether chats run in their own sandbox (`useSandboxOnlyChats`). */
   sandboxOnlyChats: boolean;
   /** A claude-code-capable org key or the user's own Claude or Copilot plan. */
   canRunClaudeCode: boolean;

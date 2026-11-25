@@ -34,10 +34,8 @@
  * coverage of all three.
  *
  * ── unified-control-plane T9 extension ────────────────────────────────
- * This cluster's `docker-compose.yml` pins every Studio pod to
- * `STUDIO_AGENT_SANDBOX_ENABLED=true` (see that file's comment on the
- * first service), so every dispatch in this suite uses the server-owned hosted
- * runtime. This test already drives a hosted streaming turn through the (now
+ * Every dispatch in this suite uses the server-owned hosted runtime. This
+ * test already drives a hosted streaming turn through the (now
  * v4) gate: dispatch →
  * `hostedHarnessWorkflow` (detached, not awaited) → `consumeRunProjection`
  * live-tailing the subject, identically to desktop. That makes this the

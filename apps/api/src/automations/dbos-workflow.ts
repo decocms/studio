@@ -73,7 +73,7 @@ import {
   type ResolvedAutomationModel,
 } from "./build-stream-request";
 import { computeNextRunAt, type StudioContextFactory } from "./fire";
-import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
+import { agentSandboxEnabled } from "@/settings";
 
 /**
  * Automation fires run on ONE partitioned queue, partitioned by orgId.
@@ -394,17 +394,10 @@ async function createRunThreadStep(
   triggerId: string | null,
 ): Promise<string> {
   const rt = requireRuntime();
-  const studioCtx = await rt.studioContextFactory(
-    automation.organization_id,
-    automation.created_by,
-  );
-  const sandboxOnly =
-    studioCtx !== null &&
-    (await sandboxOnlyChatsEnabled(studioCtx, automation.organization_id));
   return await rt.storage.createAutomationRunThread(
     automation,
     triggerId,
-    sandboxOnly ? "claude-code" : "decopilot",
+    agentSandboxEnabled() ? "claude-code" : "decopilot",
   );
 }
 

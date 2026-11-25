@@ -21,7 +21,7 @@ import {
  *
  * Read only by the web chat side panel, which shows the provider setup empty
  * state for a fresh thread when the organization has no cloud provider key —
- * or, under `chat_harness_sandbox_only`, no key claude-code can run on and no
+ * or, when chats run in sandboxes, no key claude-code can run on and no
  * linked Claude or GitHub Copilot plan.
  */
 export function useNeedsRuntimeSetup(): RuntimeSetupNeed {

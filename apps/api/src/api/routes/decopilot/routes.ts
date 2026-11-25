@@ -56,11 +56,7 @@ import {
 } from "./model-permissions";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import {
-  assertVirtualMcpOwnedByOrg,
-  type DispatchRunInput,
-  type HostedHarnessId,
-} from "./dispatch-run";
+import { type DispatchRunInput, type HostedHarnessId } from "./dispatch-run";
 import {
   assertHostedDispatchHarness,
   buildDurableDispatchInput,
@@ -99,7 +95,6 @@ import {
   hasCodexCredential,
   hasClaudeCodeCredential,
   userPlanCredentialId,
-  sandboxOnlyChatsEnabled,
 } from "@/harnesses/sandbox-only-chats";
 import { markTurn, startTurnClock } from "@/harnesses/turn-latency";
 import { deliverLiveMessage, liveRunIdOf } from "@/harnesses/live-messages";
@@ -345,7 +340,7 @@ export function applyThreadLock(args: {
   taskIdInput: string | undefined;
   thread: Pick<Thread, "harness_id" | "branch"> | null;
   requestedBranch: string | null | undefined;
-  /** The org's `chat_harness_sandbox_only` flag: unlocked threads take claude-code. */
+  /** Whether chats run in sandboxes (`agentSandboxEnabled()`): unlocked threads take claude-code. */
   sandboxOnlyChats?: boolean;
 }): {
   harnessId: HarnessId | null | undefined;
@@ -387,61 +382,15 @@ export function applyThreadLock(args: {
   };
 }
 
-/**
- * The harness a thread's FIRST message pins, for an agent that has never run.
- *
- * A Code Agent — an agent imported from a GitHub repo (`metadata.repository`) —
- * is a coding agent whose whole point is the checkout, so it runs `claude-code`
- * inside its sandbox rather than hosted Decopilot. Everything else stays on
- * Decopilot. Behind a default-off org flag: this swaps the runtime of every
- * chat on those agents, and claude-code emits a block at a time rather than
- * token deltas.
- *
- * Pure so the decision is testable without a DB; the I/O lives in
- * `resolveDefaultHarness`.
- */
-export function defaultHarnessForAgent(args: {
-  flagEnabled: boolean;
-  agentMetadata: unknown;
-}): HostedHarnessId {
-  if (!args.flagEnabled) return "decopilot";
-  const meta = args.agentMetadata as
-    | { repository?: { url?: unknown } | null }
-    | null
-    | undefined;
-  const url = meta?.repository?.url;
-  return typeof url === "string" && url.length > 0
-    ? "claude-code"
-    : "decopilot";
-}
-
-/** {@link defaultHarnessForAgent} with its two reads. Never throws: an agent or
- *  settings row we can't read falls back to Decopilot, which is what every
- *  thread got before this existed. */
+/** The harness an unpinned thread's first message pins. */
 async function resolveDefaultHarness(
   ctx: StudioContext,
   organizationId: string,
-  agentId: string,
   sandboxOnlyChats: boolean,
 ): Promise<HostedHarnessId> {
-  if (sandboxOnlyChats) return sandboxChatHarness(ctx, organizationId);
   // Without a hosted sandbox, claude-code only fails later, at dispatch.
-  if (!agentSandboxEnabled()) return "decopilot";
-  try {
-    const settings = await ctx.storage.organizationSettings.get(organizationId);
-    if (!orgFlagEnabled(settings?.flags, "coding_agents_claude_code")) {
-      return "decopilot";
-    }
-    const agent = await ctx.storage.virtualMcps.findById(agentId);
-    assertVirtualMcpOwnedByOrg(agent, organizationId);
-    return defaultHarnessForAgent({
-      flagEnabled: true,
-      agentMetadata: agent?.metadata,
-    });
-  } catch (err) {
-    console.warn("[decopilot:messages] harness resolution failed", err);
-    return "decopilot";
-  }
+  if (!sandboxOnlyChats) return "decopilot";
+  return sandboxChatHarness(ctx, organizationId);
 }
 
 const DESKTOP_ONLY_THREAD_MESSAGE =
@@ -637,12 +586,7 @@ async function validate(
     sandboxOnlyChats && lockedThread?.harness_id === "decopilot";
   const chatHarness =
     (legacySandboxMigration ? "claude-code" : lockedThread?.harness_id) ??
-    (await resolveDefaultHarness(
-      ctx,
-      organization.id,
-      agent.id,
-      sandboxOnlyChats,
-    ));
+    (await resolveDefaultHarness(ctx, organization.id, sandboxOnlyChats));
 
   assertHostedDispatchHarness(chatHarness);
   let resolvedModels = await resolvePerRequestModels(
@@ -828,10 +772,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // STUDIO_PLANS_ENABLED.
       await assertAiBudget(ctx, organizationId, "Chat");
 
-      const sandboxOnlyChats = await sandboxOnlyChatsEnabled(
-        ctx,
-        organizationId,
-      );
+      const sandboxOnlyChats = agentSandboxEnabled();
       const input = await validate(
         c,
         c.req.param("threadId"),
