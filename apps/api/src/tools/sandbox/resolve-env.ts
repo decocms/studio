@@ -17,7 +17,8 @@ interface ResolveParams {
   entries: RuntimeEnvEntry[] | null | undefined;
   /**
    * The organization's `sandbox_build_env` flag. Off, build-scoped entries are
-   * dropped and no `buildEnv` is produced, so nothing new reaches the daemon.
+   * never resolved; a project that still declares some gets an empty `buildEnv`
+   * so a sandbox provisioned while the flag was on stops holding them.
    */
   buildEnabled: boolean;
 }
@@ -27,10 +28,22 @@ export interface ResolvedSandboxEnv {
   env: Record<string, string>;
   /**
    * Build-scoped vars: git clone, submodule update and install only.
-   * `undefined` when the flag is off; otherwise the whole set, empty included,
-   * because the daemon replaces its build env with whatever it is sent.
+   * `undefined` when there is nothing to tell the daemon (flag off and no
+   * build-scoped entry); otherwise the set, empty included.
    */
   buildEnv: Record<string, string> | undefined;
+  /**
+   * False when a build-scoped secret could not be resolved for this caller.
+   * The daemon replaces its build env with whatever it is sent, so a partial
+   * set must not be pushed to a sandbox that may already hold the full one.
+   */
+  buildEnvComplete: boolean;
+}
+
+export function hasBuildScopedEntry(
+  entries: RuntimeEnvEntry[] | null | undefined,
+): boolean {
+  return (entries ?? []).some((entry) => entry.scope === "build");
 }
 
 /**
@@ -50,6 +63,7 @@ export async function resolveSandboxEnv({
 }: ResolveParams): Promise<ResolvedSandboxEnv> {
   const env: Record<string, string> = {};
   const buildEnv: Record<string, string> = {};
+  let buildEnvComplete = true;
   for (const entry of entries ?? []) {
     const isBuild = entry.scope === "build";
     if (isBuild && !buildEnabled) continue;
@@ -73,19 +87,26 @@ export async function resolveSandboxEnv({
         console.warn(
           `[SANDBOX_START] skipping env ${entry.key}: ${err.message}. Re-link or recreate the secret to restore.`,
         );
+        if (isBuild) buildEnvComplete = false;
         continue;
       }
       throw err;
     }
   }
-  return { env, buildEnv: buildEnabled ? buildEnv : undefined };
+  return {
+    env,
+    buildEnv:
+      buildEnabled || hasBuildScopedEntry(entries) ? buildEnv : undefined,
+    buildEnvComplete,
+  };
 }
 
 /**
  * PUTs resolved env to the sandbox daemon's /_sandbox/config. `env` is a
  * per-key merge on the daemon, so an empty one is not sent; `buildEnv` is a
- * whole-set replacement, so it is sent whenever it is defined — that is how a
- * deleted build var leaves a running sandbox.
+ * whole-set replacement, so a complete one is sent even when empty — that is
+ * how a deleted build var leaves a running sandbox. An incomplete one is
+ * withheld, leaving the daemon with the set it already has.
  *
  * `only: "build"` leaves `env` out: an env change is a transition the daemon
  * restarts the dev server for, which a clone step has no reason to cause.
@@ -108,14 +129,29 @@ export async function pushSandboxEnv({
   if (only !== "build" && Object.keys(resolved.env).length > 0) {
     patch.env = resolved.env;
   }
-  if (resolved.buildEnv) patch.buildEnv = resolved.buildEnv;
+  if (resolved.buildEnv && resolved.buildEnvComplete) {
+    patch.buildEnv = resolved.buildEnv;
+  }
   if (!patch.env && !patch.buildEnv) return;
 
-  const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
-    method: "PUT",
-    headers: new Headers({ "content-type": "application/json" }),
-    body: JSON.stringify(patch),
-  });
+  // Clearing a build env the sandbox most likely never had is housekeeping:
+  // it must not be able to fail a start that has nothing else to send.
+  const housekeeping =
+    !patch.env && Object.keys(patch.buildEnv ?? {}).length === 0;
+  let res: Response;
+  try {
+    res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
+      method: "PUT",
+      headers: new Headers({ "content-type": "application/json" }),
+      body: JSON.stringify(patch),
+    });
+  } catch (err) {
+    if (!housekeeping) throw err;
+    console.warn(
+      `[SANDBOX_START] could not clear build env: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return;
+  }
   if (!res.ok) {
     const body = await readBoundedText(res, CONFIG_RESPONSE_MAX_BYTES).catch(
       () => res.statusText,

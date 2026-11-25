@@ -55,7 +55,7 @@ func Validate(c *TenantConfig) string {
 	}
 	if c.BuildEnv != nil {
 		if reason := validateEnv(c.BuildEnv); reason != "" {
-			return "build" + reason
+			return "buildEnv: " + reason
 		}
 	}
 	if c.Operator != nil {

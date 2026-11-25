@@ -601,7 +601,7 @@ export const sandbox = {
   "sandbox.envVarsField.scopePrivate": "Private — only visible to me",
   "sandbox.envVarsField.envScopeBuild": "Build",
   "sandbox.envVarsField.envScopeHint":
-    "Build variables reach git clone, submodules and dependency install only, and apply the next time those run.",
+    "Build variables reach git clone, submodules and dependency install only, and apply the next time those run. Without org Git credentials, submodules are fetched only when a GIT_* variable is set.",
   "sandbox.envVarsField.envScopeLabel": "Env var {index} scope",
   "sandbox.envVarsField.envScopeRuntime": "Runtime",
   "sandbox.envVarsField.secret": "Secret",

@@ -40,7 +40,7 @@ export type RuntimeConfigMeta = {
  * hand-edited metadata may carry a non-array `env`, malformed entries, or
  * the wrong types under the discriminator. Returns only entries that
  * match the wire contract; everything else is silently dropped so a bad
- * row can't crash `resolveAndPushEnv`'s `for...of`.
+ * row can't crash `resolveSandboxEnv`'s `for...of`.
  */
 export function readValidatedRuntimeEnv(
   metadata: Record<string, unknown> | null | undefined,

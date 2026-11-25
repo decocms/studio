@@ -80,8 +80,9 @@ type CloneDeps struct {
 	TmpDir string
 	// Env is the tenant's build env (config.TenantConfig.BuildEnv), handed to
 	// every git process of this clone. gitStepEnv is laid over it, so it cannot
-	// re-enable a credential prompt. A non-empty one also turns on the submodule
-	// fetch for a repo with no SubmoduleCredentials.
+	// re-enable a credential prompt. One that configures git (see
+	// configuresGit) also turns on the submodule fetch for a repo with no
+	// SubmoduleCredentials.
 	Env     map[string]string
 	OnChunk func(data string)
 }
@@ -111,6 +112,20 @@ func GitStepEnv(buildEnv map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// configuresGit reports whether the build env carries a GIT_* variable. That
+// is the tenant's opt-in to a submodule fetch without SubmoduleCredentials:
+// git config supplied through env is the only way build env can authenticate
+// one, while a var meant for install (a registry token) must not start a
+// recursive fetch on every clone.
+func configuresGit(buildEnv map[string]string) bool {
+	for k := range buildEnv {
+		if strings.HasPrefix(k, "GIT_") {
+			return true
+		}
+	}
+	return false
 }
 
 // plainSubmoduleUpdateArgv is the submodule fetch for a repo with no
@@ -474,10 +489,9 @@ func SpawnClone(deps CloneDeps) CloneResult {
 			// synchronously ahead of install and the dev server, for a step whose
 			// failure is already tolerated. One attempt, then the warning.
 			run := func(argv []string) int { return runStep(argv, deps) }
-			// No credentials normally means "leave submodules alone". A tenant
-			// who set build env has opted in another way: it is the only thing
-			// they could have set it for that a plain clone does not already do.
-			if len(deps.SubmoduleCredentials) == 0 && len(deps.Env) > 0 {
+			// No credentials normally means "leave submodules alone"; build env
+			// that configures git is the other way to ask for them.
+			if len(deps.SubmoduleCredentials) == 0 && configuresGit(deps.Env) {
 				runPlainSubmoduleUpdate(dir, deps.OnChunk, run)
 			} else {
 				runSubmoduleUpdate(dir, deps.TmpDir, deps.SubmoduleCredentials, deps.OnChunk, run)

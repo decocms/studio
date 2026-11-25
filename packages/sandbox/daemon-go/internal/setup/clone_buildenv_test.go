@@ -25,6 +25,24 @@ func TestGitStepEnv(t *testing.T) {
 	}
 }
 
+func TestConfiguresGit(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+		want bool
+	}{
+		{"no build env", nil, false},
+		{"an install-only var does not start a submodule fetch", map[string]string{"NPM_TOKEN": "x"}, false},
+		{"a lookalike prefix does not count", map[string]string{"GITHUB_TOKEN": "x", "MY_GIT_VAR": "x"}, false},
+		{"git config through env opts in", map[string]string{"NPM_TOKEN": "x", "GIT_CONFIG_COUNT": "1"}, true},
+	}
+	for _, c := range cases {
+		if got := configuresGit(c.env); got != c.want {
+			t.Errorf("%s: configuresGit = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestRunPlainSubmoduleUpdate(t *testing.T) {
 	t.Run("fetches submodules with no credential helper", func(t *testing.T) {
 		var argv []string

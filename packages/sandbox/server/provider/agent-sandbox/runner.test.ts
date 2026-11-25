@@ -77,17 +77,14 @@ describe("build env persistence", () => {
     buildEnv: { NPM_TOKEN: "npm_buildsecret" },
   };
 
-  it("is kept for resurrection by a host that stores credentials", () => {
-    expect(stripEnsureOpts(opts)?.buildEnv).toEqual(opts.buildEnv);
-    expect(
-      stripEnsureOpts({ ...opts, buildEnv: {} })?.buildEnv,
-    ).toBeUndefined();
-  });
-
-  it("never reaches the state bytes of a host that must not", () => {
-    const bytes = JSON.stringify(withoutCredentials(opts, false));
-    expect(bytes).not.toContain("npm_buildsecret");
-    expect(bytes).not.toContain("buildEnv");
+  it("never reaches the persisted state bytes, on any host", () => {
+    const kept = stripEnsureOpts(opts);
+    expect(kept?.tenant).toEqual(opts.tenant);
+    for (const state of [kept, kept && withoutCredentials(kept, false)]) {
+      const bytes = JSON.stringify(state);
+      expect(bytes).not.toContain("npm_buildsecret");
+      expect(bytes).not.toContain("buildEnv");
+    }
   });
 });
 

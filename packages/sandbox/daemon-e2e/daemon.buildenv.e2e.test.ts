@@ -91,7 +91,11 @@ describe("daemon e2e: build env", () => {
     SETUP_TIMEOUT_MS,
   );
 
-  it("is never echoed by /config, and a later set replaces the whole one", async () => {
+  it("is never echoed by /config", async () => {
+    // A build-env-only patch on an unclaimed daemon is not persisted; claim it
+    // first so there is a stored build env for the responses to leak.
+    expect((await postConfig(d, { env: { CLAIMED: "1" } })).status).toBe(200);
+
     const put = await postConfig(d, {
       buildEnv: { NPM_TOKEN: "npm_supersecret", OLD: "x" },
     });
@@ -105,6 +109,7 @@ describe("daemon e2e: build env", () => {
       headers: authHeaders(),
     });
     const body = await get.text();
+    expect(body).toContain("CLAIMED");
     expect(body).not.toContain("NPM_TOKEN");
     expect(body).not.toContain("buildEnv");
   });
@@ -112,5 +117,6 @@ describe("daemon e2e: build env", () => {
   it("rejects an invalid key", async () => {
     const res = await postConfig(d, { buildEnv: { "not a key": "x" } });
     expect(res.status).toBe(400);
+    expect(await res.text()).toContain("buildEnv: env key invalid");
   });
 });

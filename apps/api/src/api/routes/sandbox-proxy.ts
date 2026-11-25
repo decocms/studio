@@ -46,6 +46,7 @@ import type { Env } from "../hono-env";
 import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
 import { handleVmEvents } from "./sandbox-events-handler";
 import {
+  hasBuildScopedEntry,
   pushSandboxEnv,
   resolveSandboxEnv,
 } from "../../tools/sandbox/resolve-env";
@@ -1145,16 +1146,33 @@ export const createSandboxRoutes = () => {
     // is the healthy dev server this flag exists to stop tearing down.
     //
     // A clone gets the build-scoped vars only: they are what git reads, and
-    // pushing them is not a transition, so the dev server is left alone.
-    if (step === "start" || step === "clone" || (step === "install" && force)) {
+    // pushing them is not a transition, so the dev server is left alone. A
+    // project that declares none skips this entirely — the clone step does no
+    // settings or vault work it did not do before build env existed.
+    const allEntries = readValidatedRuntimeEnv(claim.virtualMcpMetadata) ?? [];
+    const declaresBuildEnv = hasBuildScopedEntry(allEntries);
+    if (
+      step === "start" ||
+      (step === "clone" && declaresBuildEnv) ||
+      (step === "install" && force)
+    ) {
       {
         const ctx = c.var.studioContext;
         const organization = requireOrganization(ctx);
-        const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
+        const entries =
+          step === "clone"
+            ? allEntries.filter((entry) => entry.scope === "build")
+            : allEntries;
         try {
-          const orgSettings = await ctx.storage.organizationSettings.get(
-            organization.id,
-          );
+          // The flag only matters to a project with build-scoped entries, so
+          // only that project pays for the settings read.
+          const buildEnabled = declaresBuildEnv
+            ? orgFlagEnabled(
+                (await ctx.storage.organizationSettings.get(organization.id))
+                  ?.flags,
+                "sandbox_build_env",
+              )
+            : false;
           const resolved = await resolveSandboxEnv({
             ctx,
             orgId: organization.id,
@@ -1162,10 +1180,7 @@ export const createSandboxRoutes = () => {
             // never mint their private secrets into the sandbox.
             userId: claim.callerUserId,
             entries,
-            buildEnabled: orgFlagEnabled(
-              orgSettings?.flags,
-              "sandbox_build_env",
-            ),
+            buildEnabled,
           });
           await pushSandboxEnv({
             runner: podRunner,

@@ -612,7 +612,7 @@ export const sandbox = {
   "sandbox.envVarsField.scopePrivate": "Privado — visível apenas para mim",
   "sandbox.envVarsField.envScopeBuild": "Build",
   "sandbox.envVarsField.envScopeHint":
-    "Variáveis de build chegam apenas ao git clone, aos submódulos e à instalação de dependências, e valem na próxima vez que eles rodarem.",
+    "Variáveis de build chegam apenas ao git clone, aos submódulos e à instalação de dependências, e valem na próxima vez que eles rodarem. Sem credenciais Git da organização, os submódulos só são baixados quando há uma variável GIT_*.",
   "sandbox.envVarsField.envScopeLabel":
     "Escopo da variável de ambiente {index}",
   "sandbox.envVarsField.envScopeRuntime": "Runtime",

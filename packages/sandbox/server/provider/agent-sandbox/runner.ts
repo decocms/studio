@@ -3342,14 +3342,7 @@ export function withoutCredentials(
   opts: EnsureOptions,
   orgFsRedacted: boolean,
 ): { ensureOpts: EnsureOptions; orgFsRedacted?: true } {
-  // `buildEnv` holds resolved secrets, so it goes with the other credentials.
-  const {
-    orgFsConfigJson,
-    repo,
-    extraRepos,
-    buildEnv: _buildEnv,
-    ...rest
-  } = opts;
+  const { orgFsConfigJson, repo, extraRepos, ...rest } = opts;
   const ensureOpts: EnsureOptions = rest;
   const stripped = repo && withoutUserinfo(repo);
   if (stripped) ensureOpts.repo = stripped;
@@ -3378,10 +3371,9 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   if (opts.repo) out.repo = opts.repo;
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;
-  // So a recreated pod's re-clone and install see the same build env.
-  if (opts.buildEnv && Object.keys(opts.buildEnv).length > 0) {
-    out.buildEnv = opts.buildEnv;
-  }
+  // `buildEnv` is deliberately not carried: it is resolved secrets, and a
+  // replayed copy would outlive a rotation. A recreated pod gets it back from
+  // the next start or clone step, the same way it gets its runtime env.
   if (opts.tenant) out.tenant = opts.tenant;
   // Without this, a recreated warm-pool pod's rebootstrap would compute
   // `cloneOnly: false` (workloadConfigPayload only sees this persisted blob),

@@ -478,10 +478,11 @@ describe("SANDBOX_START", () => {
         buildEnv: build,
         pushed: [{ env: runtime, buildEnv: build }],
       });
-      // Off: the build var goes nowhere — not even into the runtime env.
+      // Off: the build var is never resolved — not even into the runtime
+      // env — and the empty set clears one a sandbox got while the flag was on.
       expect(await run({})).toEqual({
-        buildEnv: undefined,
-        pushed: [{ env: runtime }],
+        buildEnv: {},
+        pushed: [{ env: runtime, buildEnv: {} }],
       });
     } finally {
       mockRunner.proxyDaemonRequest = original;
