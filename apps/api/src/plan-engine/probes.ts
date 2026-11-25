@@ -58,7 +58,7 @@ export type ProbeResult =
     };
 
 /** Elementos tocados por dispositivo (cada um abre a página de novo). */
-export const MAX_TOUCH_PROBES = 2;
+const MAX_TOUCH_PROBES = 2;
 /** A partir disto de clique morto em elemento clicável, vale tocar. */
 const DEAD_SHARE = 0.3;
 const MIN_CLICKS = 200;

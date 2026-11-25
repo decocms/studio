@@ -32,7 +32,7 @@ export function monthlyValue(terms: MoneyTerms): number {
 }
 
 /** Problemas que impedem a conta de ir pra tela. Vazio = conta válida. */
-export function moneyProblems(terms: Partial<MoneyTerms>): string[] {
+function moneyProblems(terms: Partial<MoneyTerms>): string[] {
   const problems: string[] = [];
   const finite = (v: unknown): v is number =>
     typeof v === "number" && Number.isFinite(v);
@@ -148,7 +148,7 @@ export function capMoneyBase(
  * O canal de venda do site na VTEX: o que se chama "Principal" (ou o id 1, o
  * padrão da VTEX). O app vende por outro canal e não passa por estas páginas.
  */
-export function siteChannel(
+function siteChannel(
   revenue: RevenueBase | null | undefined,
 ): RevenueBase["by_channel"][number] | null {
   const channels = revenue?.by_channel ?? [];
@@ -228,5 +228,5 @@ export function lossMoney(input: {
 }
 
 /** O delta de uma perda medida fica nesta faixa (e nunca passa da própria perda). */
-export const MIN_LOSS_DELTA = 0.3;
-export const MAX_LOSS_DELTA = 3;
+const MIN_LOSS_DELTA = 0.3;
+const MAX_LOSS_DELTA = 3;

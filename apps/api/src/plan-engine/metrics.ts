@@ -124,15 +124,6 @@ export const UX_METRICS: Record<UxMetricKey, MetricDef> = {
   },
 };
 
-/** Eventos do GA4 que alguma métrica usa: o funil lê só estes. */
-export const GA4_METRIC_EVENTS: string[] = [
-  ...new Set(
-    Object.values(UX_METRICS).flatMap((d) =>
-      d.from && d.to ? [d.from, d.to] : [],
-    ),
-  ),
-];
-
 export const isMetricKey = (v: unknown): v is UxMetricKey =>
   typeof v === "string" && Object.hasOwn(UX_METRICS, v);
 
@@ -232,7 +223,7 @@ type PageFunnel = { visitors: number; viewed: number; carted: number };
  * (em algum dispositivo), senão o GA4. Uma fonte só pra todos os
  * dispositivos, pra que a comparação celular × computador não misture contas.
  */
-export function pageFunnelSource(evidence: DiagnosisEvidence): {
+function pageFunnelSource(evidence: DiagnosisEvidence): {
   source: "deco_analytics" | "ga4";
   funnel: (d: UxDevice) => PageFunnel | null;
 } | null {

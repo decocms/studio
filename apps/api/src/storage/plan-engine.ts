@@ -137,7 +137,7 @@ const val = (v: unknown): RawBuilder<unknown> | undefined =>
   v === undefined ? undefined : sql`${v}`;
 
 /** Observations were plain strings before they cited facts; those read with none. */
-export function decodeObservations(raw: unknown): UxObservation[] | null {
+function decodeObservations(raw: unknown): UxObservation[] | null {
   const list = fromJson<unknown[] | null>(raw, null);
   if (!Array.isArray(list)) return null;
   return list.flatMap((x): UxObservation[] => {
@@ -350,7 +350,7 @@ export type HypothesisDraft = Omit<
 >;
 
 /** Stable per (diagnosis, kind, rank), so a replayed step finds the row. */
-export function hypothesisId(
+function hypothesisId(
   diagnosisId: string,
   rank: number,
   kind: HypothesisKind,
@@ -384,7 +384,7 @@ function rowToOpportunity(row: Row): UxOpportunity {
 }
 
 /** Stable per (diagnosis, rank): the hypotheses step finds the row by it. */
-export function opportunityId(diagnosisId: string, rank: number): string {
+function opportunityId(diagnosisId: string, rank: number): string {
   return `${diagnosisId}:o${rank}`;
 }
 
@@ -429,7 +429,7 @@ export function legacyOpportunities(hypotheses: UxHypothesis[]): {
 const BENCHMARK_TTL_DAYS = 30;
 
 /** The cache key: the domain for a PDP, `domain#type` for other pages. */
-export const benchmarkKey = (domain: string, pageType: UxPageType = "pdp") =>
+const benchmarkKey = (domain: string, pageType: UxPageType = "pdp") =>
   pageType === "pdp" ? domain : `${domain}#${pageType}`;
 
 const RETIRED = sql`IN ('true', '1')`;

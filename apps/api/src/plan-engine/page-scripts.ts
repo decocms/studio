@@ -1454,9 +1454,9 @@ export async function measureSitePageInPage(
     }
     if (url.origin !== location.origin || !pdpPattern.test(url.pathname))
       continue;
-    // O card é o menor ancestral com foto e preço (até 6 níveis): na Monte
-    // Carlo o link mais próximo de um <li> é o slide da foto, sem preço
-    // (16/11). Sem preço à vista, o item de lista mais próximo.
+    // O card é o menor ancestral com foto e preço (até 6 níveis): numa loja
+    // o link mais próximo de um <li> era o slide da foto, sem preço. Sem
+    // preço à vista, o item de lista mais próximo.
     let card: Element | null = null;
     for (
       let n: Element | null = a, depth = 0;

@@ -31,8 +31,8 @@ const Z_POWER = 0.841621; // poder 80%
 const MIN_RELATIVE_EFFECT = 0.03;
 /** Sem efeito dito, meio ponto. */
 const DEFAULT_EFFECT_PP = 0.5;
-export const MIN_WEEKS = 2;
-export const MAX_WEEKS = 8;
+const MIN_WEEKS = 2;
+const MAX_WEEKS = 8;
 
 /** Amostra por grupo pra detectar p1 → p2. Infinity se não há diferença. */
 export function sampleSizePerGroup(p1: number, p2: number): number {

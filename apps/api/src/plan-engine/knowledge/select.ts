@@ -27,7 +27,7 @@ export interface KnowledgeBlock {
 const DAY_MS = 86_400_000;
 const STORE_ORIGINS = new Set(["manual", "veredito", "decisao"]);
 
-export const isStoreEntry = (e: KnowledgeEntry) => STORE_ORIGINS.has(e.origem);
+const isStoreEntry = (e: KnowledgeEntry) => STORE_ORIGINS.has(e.origem);
 
 export function knowledgeScore(e: KnowledgeEntry, now = Date.now()): number {
   const age = (now - Date.parse(e.updated_at)) / DAY_MS;

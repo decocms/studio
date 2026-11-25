@@ -178,7 +178,7 @@ export const PAGE_TYPES: Record<UxPageType, PageTypeSpec> = {
   },
 };
 
-export const isPageType = (v: unknown): v is UxPageType =>
+const isPageType = (v: unknown): v is UxPageType =>
   typeof v === "string" && Object.hasOwn(PAGE_TYPES, v);
 
 /** Tipo de página de um valor qualquer (linha antiga sem valor = PDP). */
@@ -187,13 +187,6 @@ export const asPageType = (v: unknown): UxPageType =>
 
 export const pageSpec = (t: UxPageType | null | undefined): PageTypeSpec =>
   PAGE_TYPES[asPageType(t)];
-
-/** As partes medidas deste tipo de página, em texto, pro prompt. */
-export function partsForPrompt(t: UxPageType): string {
-  return Object.entries(pageSpec(t).parts)
-    .map(([key, word]) => `${key} (${word})`)
-    .join(", ");
-}
 
 /**
  * Todas as partes de todos os tipos → texto. Parte que aparece em mais de um

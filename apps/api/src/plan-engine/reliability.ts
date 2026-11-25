@@ -59,7 +59,7 @@ export interface DataReliability {
 /** Abaixo disso a taxa não sustenta nada. */
 export const MIN_SAMPLE = 400;
 /** Abaixo disso a taxa vale, com cuidado. */
-export const SOLID_SAMPLE = 2_000;
+const SOLID_SAMPLE = 2_000;
 /** GA4 x Deco Analytics contando a mesma etapa: fora desta razão, algo mede errado. */
 const MAX_SOURCE_RATIO = 3;
 

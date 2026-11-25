@@ -34,7 +34,7 @@ import type { DiagnosisEvidence, UxPart } from "./types.ts";
 
 export type HypothesisCategory = KnowledgeCategory;
 
-export const CATEGORIES: HypothesisCategory[] = [
+const CATEGORIES: HypothesisCategory[] = [
   "ux",
   "performance",
   "confianca",
@@ -57,10 +57,7 @@ export const CATEGORY_WORD: Record<HypothesisCategory, string> = {
  * menos intenção" é uma explicação válida sem nenhuma mudança de UI pra
  * propor. Nas outras, hipótese sem intervenção não entra.
  */
-export const MAY_HAVE_NO_INTERVENTION: HypothesisCategory[] = [
-  "trafego",
-  "comercial",
-];
+const MAY_HAVE_NO_INTERVENTION: HypothesisCategory[] = ["trafego", "comercial"];
 
 export interface UxClaim {
   text: string;
@@ -136,7 +133,7 @@ const normalize = (v: string) =>
     .replace(/^ux.*/, "ux")
     .trim();
 
-export const asCategory = (v: unknown): HypothesisCategory | null => {
+const asCategory = (v: unknown): HypothesisCategory | null => {
   const t = text(v).toLowerCase();
   return CATEGORIES.find((c) => c === t) ?? null;
 };

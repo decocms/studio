@@ -154,7 +154,7 @@ export function productCount(links: StoreLinks): number {
 }
 
 /** Uma página com 4+ produtos é vitrine ou resultado de busca. */
-export const MIN_LISTED_PRODUCTS = 4;
+const MIN_LISTED_PRODUCTS = 4;
 
 /** Item de menu que não é tipo de produto. */
 const NOT_A_TERM =
@@ -246,7 +246,7 @@ export function detectPlatform(html: string): Platform | null {
  * A rota de busca de cada plataforma; `{q}` é o termo. `/s?q=` é a do deco,
  * `/busca?ft=` a do VTEX legado e `/<termo>?_q=<termo>&map=ft` a do VTEX IO.
  */
-export const PLATFORM_SEARCH_ROUTES: Record<Platform, string[]> = {
+const PLATFORM_SEARCH_ROUTES: Record<Platform, string[]> = {
   "vtex-io": ["/{q}?_q={q}&map=ft"],
   "vtex-legacy": ["/busca?ft={q}"],
   magento: ["/catalogsearch/result/?q={q}"],

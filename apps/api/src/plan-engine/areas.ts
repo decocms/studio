@@ -11,7 +11,7 @@
  * sem dizer de qual página.
  */
 
-import { PAGE_TYPE_ORDER, PAGE_TYPES } from "./page-types.ts";
+import { PAGE_TYPES } from "./page-types.ts";
 import type { UxArea, UxPageType } from "./types.ts";
 
 /** Parte → o que ela cobre, do jeito que o prompt descreve. */
@@ -46,34 +46,9 @@ export const UX_AREAS: Record<UxArea, string> = {
     "FORA da página analisada: carrinho e checkout, o que acontece depois de adicionar",
 };
 
-/** De que tipo de página é a área. `pagina_geral` é de todas. */
-export function pageTypeOfArea(area: UxArea): UxPageType | null {
-  if (area === "pagina_geral") return null;
-  for (const t of PAGE_TYPE_ORDER) {
-    if (PAGE_TYPES[t].areas.includes(area)) return t;
-  }
-  return null;
-}
-
 /** A área é da página analisada (ou da página inteira)? */
 export function isAreaOfPage(area: UxArea, pageType: UxPageType): boolean {
   return area === "pagina_geral" || PAGE_TYPES[pageType].areas.includes(area);
-}
-
-/** A área é uma parte da PDP (ou a página inteira, num diagnóstico de PDP)? */
-export function isPdpArea(area: UxArea): boolean {
-  return isAreaOfPage(area, "pdp");
-}
-
-/** De qual página é a área, em texto corrido ("…é de busca e vitrines"). */
-export function areaPageLabel(
-  area: UxArea,
-  pageType: UxPageType = "pdp",
-): string {
-  if (area === "navegacao") return "busca e vitrines";
-  if (area === "carrinho_checkout") return "carrinho e checkout";
-  const t = pageTypeOfArea(area) ?? pageType;
-  return t === "pdp" ? "PDP" : PAGE_TYPES[t].label.toLowerCase();
 }
 
 export function asArea(v: unknown): UxArea {

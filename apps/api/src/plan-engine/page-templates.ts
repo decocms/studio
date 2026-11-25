@@ -22,7 +22,7 @@ export interface PageRoute {
 }
 
 /** Quantas rotas de categoria o perfil guarda. */
-export const MAX_CATEGORY_ROUTES = 8;
+const MAX_CATEGORY_ROUTES = 8;
 
 const SEARCH_ROUTE = /^\/(s|busca|buscar|search|pesquisa)(\/|$)/i;
 
@@ -99,7 +99,7 @@ export function heatmapRouteFor(
 }
 
 /** Rotas detectadas há mais de uma semana são lidas de novo. */
-export const TEMPLATES_MAX_AGE_DAYS = 7;
+const TEMPLATES_MAX_AGE_DAYS = 7;
 
 export function templatesAreStale(
   t: PageTemplates | null | undefined,

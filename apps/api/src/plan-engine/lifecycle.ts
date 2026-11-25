@@ -29,18 +29,6 @@ export type Lifecycle =
   | "bloqueada"
   | "sem_relevancia";
 
-export const LIFECYCLES: Lifecycle[] = [
-  "gerada",
-  "em_investigacao",
-  "condicao_confirmada",
-  "relevancia_avaliada",
-  "pronta_para_experimento",
-  "refutada",
-  "inconclusiva",
-  "bloqueada",
-  "sem_relevancia",
-];
-
 export const LIFECYCLE_WORD: Record<Lifecycle, string> = {
   gerada: "gerada",
   em_investigacao: "em investigação",
@@ -85,7 +73,7 @@ const NEXT: Record<Lifecycle, Lifecycle[]> = {
   sem_relevancia: ["em_investigacao", "relevancia_avaliada"],
 };
 
-export const canMove = (from: Lifecycle, to: Lifecycle) =>
+const canMove = (from: Lifecycle, to: Lifecycle) =>
   from === to || NEXT[from].includes(to);
 
 /**
@@ -141,11 +129,10 @@ export function lifecycleOf(
 }
 
 /** Estados em que a hipótese caiu de vez nesta rodada. */
-export const isNegative = (s: Lifecycle) =>
-  s === "refutada" || s === "sem_relevancia";
+const isNegative = (s: Lifecycle) => s === "refutada" || s === "sem_relevancia";
 
 /** A condição já foi vista na página (ou nos dados). */
-export const CONFIRMED: Lifecycle[] = [
+const CONFIRMED: Lifecycle[] = [
   "condicao_confirmada",
   "relevancia_avaliada",
   "pronta_para_experimento",
@@ -155,7 +142,7 @@ export const CONFIRMED: Lifecycle[] = [
  * Aprovar pra teste exige a hipótese pronta: condição confirmada, relevância
  * pelo menos média, teste mensurável e dados confiáveis (priority.ts).
  */
-export const APPROVABLE: Lifecycle[] = ["pronta_para_experimento"];
+const APPROVABLE: Lifecycle[] = ["pronta_para_experimento"];
 
 export const canApprove = (s: Lifecycle) => APPROVABLE.includes(s);
 

@@ -79,8 +79,8 @@ export interface ElementFacts {
   rect: { x: number; y: number; width: number; height: number } | null;
   /**
    * O alvo é um invólucro de tamanho zero (largura ou altura < 2) e `rect`,
-   * cor e cursor são do maior filho visível dele. O #NewsletterPopup da Monte
-   * Carlo mede 390×0 aberto: quem aparece é o filho `position: fixed` (14/11).
+   * cor e cursor são do maior filho visível dele. Um pop-up de newsletter
+   * pode medir 390×0 aberto: quem aparece é o filho `position: fixed`.
    * O texto, o link e a trava de clique continuam sendo do alvo.
    */
   wrapper?: { width: number; height: number; child: string } | null;

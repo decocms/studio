@@ -98,14 +98,6 @@ export interface HypothesisVerification {
   novas_linhas?: string[];
 }
 
-export const MAX_CHECKS = 4;
-export const MAX_STEPS = 8;
-/**
- * Teto de um passo `wait`. Era 3 s; em 14/11 o pop-up de newsletter da Monte
- * Carlo ainda media 0×0 aos 3 s (abre com atraso), e o teste não decidiu.
- */
-export const MAX_WAIT_MS = 8000;
-
 const VERDICTS: readonly string[] = [
   "confirmada",
   "desmentida",

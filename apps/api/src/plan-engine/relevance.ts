@@ -54,8 +54,8 @@ export interface HypothesisRelevance {
 }
 
 /** Abaixo disso a mudança atinge gente demais pouca pra um teste. */
-export const MIN_AFFECTED_WEEK = 500;
-export const MIN_AFFECTED_PCT = 5;
+const MIN_AFFECTED_WEEK = 500;
+const MIN_AFFECTED_PCT = 5;
 const LOW_PCT = 20;
 const HIGH_PCT = 50;
 /** Sinal do alvo a partir de 1,2× o da página conta como "diferente". */

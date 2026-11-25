@@ -23,7 +23,7 @@ const AREA_CATEGORY: Partial<Record<UxArea, KnowledgeCategory>> = {
   checkout: "comercial",
 };
 
-export const categoryForArea = (area: UxArea): KnowledgeCategory =>
+const categoryForArea = (area: UxArea): KnowledgeCategory =>
   AREA_CATEGORY[area] ?? "ux";
 
 /** A parte da página que cada alvo da árvore mira. */

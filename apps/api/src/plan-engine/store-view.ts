@@ -106,7 +106,7 @@ const DEVICES: UxDevice[] = ["mobile", "desktop"];
  * A etapa padrão da página, por dispositivo: quem chega por semana e a taxa
  * de quem passa para a seguinte. Dispositivo sem dado fica de fora.
  */
-export function pageFunnel(
+function pageFunnel(
   evidence: DiagnosisEvidence,
   pageType: UxPageType,
 ): StoreFunnelPoint[] {
@@ -130,7 +130,7 @@ export function pageFunnel(
 }
 
 /** As fontes que trouxeram dado nesta evidência. */
-export function evidenceSources(evidence: DiagnosisEvidence): StoreSource[] {
+function evidenceSources(evidence: DiagnosisEvidence): StoreSource[] {
   const has: Record<StoreSource, boolean> = {
     GA4: evidence.platform_funnel.some((f) => f.steps.length > 0),
     "Deco Analytics": evidence.pdp_behaviour.length > 0,

@@ -20,7 +20,7 @@ import { type MeasuredMetric, UX_METRICS } from "./metrics.ts";
 import type { FunnelSegment, SegmentDim, UxDevice } from "./types.ts";
 
 /** Abaixo disso, o recorte não entra na conta de "se repete". */
-export const MIN_CUT_SAMPLE = 300;
+const MIN_CUT_SAMPLE = 300;
 
 export interface SegmentCut {
   dim: SegmentDim;

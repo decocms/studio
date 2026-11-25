@@ -58,7 +58,7 @@ export interface MeasuredLoss {
 }
 
 /** Quantas perdas de segmento por etapa e dispositivo (as maiores). */
-export const MAX_SEGMENT_LOSSES = 2;
+const MAX_SEGMENT_LOSSES = 2;
 
 /**
  * O segmento converte no máximo isto do resto pra ser uma perda dele. Numa loja de moda
@@ -66,7 +66,7 @@ export const MAX_SEGMENT_LOSSES = 2;
  * distância: amostra grande deixa tudo significativo, e nada disso é um
  * problema de canal.
  */
-export const SEGMENT_MAX_RATIO = 0.85;
+const SEGMENT_MAX_RATIO = 0.85;
 
 /** Recortes que não são um público: sobra de classificação. */
 const NOT_A_SEGMENT = new Set(["outros", "sem_dado"]);

@@ -36,10 +36,10 @@ import type {
 } from "./types.ts";
 
 /** Quantas oportunidades vão pra tela (as demais viram reserva). */
-export const MAX_OPPORTUNITIES = 2;
+const MAX_OPPORTUNITIES = 2;
 
 /** Quantas observações por oportunidade. */
-export const MAX_OBSERVATIONS = 4;
+const MAX_OBSERVATIONS = 4;
 
 /**
  * Abaixo disso (pp), o que sobra do gap entre as telas depois de descontar a
@@ -53,10 +53,10 @@ export const MIN_RESIDUAL_PP = 1;
  * centenas de milhares, 49,4% x 51,3% fica fora do ruído e não é problema de
  * tela nenhuma (categoria e busca de uma loja de moda, 16/11, no replay de 19/11).
  */
-export const DEVICE_MAX_RATIO = 0.9;
+const DEVICE_MAX_RATIO = 0.9;
 
 /** O valor da oportunidade é por este tanto de pp (o teto é o resíduo inteiro). */
-export const VALUE_STEP_PP = 1;
+const VALUE_STEP_PP = 1;
 
 /** Diferença de cobertura (pp) das camadas sobre a 1ª tela entre as telas que conta. */
 const LAYER_GAP_PP = 20;
@@ -237,7 +237,7 @@ export function contrastObservations(facts: UxFact[]): UxObservation[] {
 }
 
 /** A perda medida como o primeiro número do "baseado em". */
-export function lossSource(loss: MeasuredLoss): UxSourceRef {
+function lossSource(loss: MeasuredLoss): UxSourceRef {
   const m = loss.measured;
   const value = loss.premise
     ? `${pctWord(loss.premise.rate)} (resto ${pctWord(loss.premise.rest_rate)})`
@@ -254,7 +254,7 @@ export function lossSource(loss: MeasuredLoss): UxSourceRef {
 }
 
 /** O resumo da oportunidade, em código: a perda, a mistura e o que sobra. */
-export function lossSummary(loss: MeasuredLoss, r: LossResidual): string {
+function lossSummary(loss: MeasuredLoss, r: LossResidual): string {
   if (loss.control === "segmento" && loss.premise) {
     const name = SEGMENT_WORD[loss.premise.key] ?? loss.premise.key;
     return `${name.charAt(0).toUpperCase()}${name.slice(1)} converte ${pp(loss.loss_pp)} pp abaixo do resto no ${DEVICE_WORD[loss.device]} (n=${loss.premise.n.toLocaleString("pt-BR")}). A causa tem que pesar mais nesse público.`;
