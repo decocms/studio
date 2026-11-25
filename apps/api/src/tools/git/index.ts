@@ -624,3 +624,4 @@ export const REPOSITORY_DELETE = defineTool({
 });
 
 export { REPOSITORY_SEARCH_BRANCHES } from "./branches";
+export { REPOSITORY_COMMIT_FILES, REPOSITORY_READ_FILE } from "./files";

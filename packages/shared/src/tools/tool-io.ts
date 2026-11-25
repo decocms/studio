@@ -9636,6 +9636,33 @@ export interface StudioToolIO {
       nextCursor: string | null;
     };
   };
+  REPOSITORY_READ_FILE: {
+    input: {
+      path: string;
+      ref?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: { path: string; sha: string; content: string | null };
+  };
+  REPOSITORY_COMMIT_FILES: {
+    input: {
+      branch: string;
+      message: string;
+      files: (
+        | { path: string; content: string }
+        | { path: string; deleted: true }
+      )[];
+      base?: string | undefined;
+      baseSha?: string | undefined;
+      expectedHead?: string | undefined;
+      repositoryId?: string | undefined;
+      repoUrl?: string | undefined;
+      connectionId?: string | undefined;
+    };
+    output: { branch: string; base: string; sha: string; created: boolean };
+  };
   CHANGE_REQUEST_STATE: {
     input: {
       branch: string;

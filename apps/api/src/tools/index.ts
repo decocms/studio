@@ -381,6 +381,8 @@ export const CORE_TOOLS = [
   GitTools.REPOSITORY_DEPLOYS_LIST,
   GitTools.REPOSITORY_DELETE,
   GitTools.REPOSITORY_SEARCH_BRANCHES,
+  GitTools.REPOSITORY_READ_FILE,
+  GitTools.REPOSITORY_COMMIT_FILES,
 
   // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
   ChangeRequestTools.CHANGE_REQUEST_STATE,
