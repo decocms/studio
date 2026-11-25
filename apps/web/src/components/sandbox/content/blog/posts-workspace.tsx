@@ -62,6 +62,7 @@ import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   buildPlanningPostBlock,
   canDeletePost,
+  customBlogSectionPaths,
   emptyDraftPostPayload,
   getBlogPayload,
   listAllPostsWithMeta,
@@ -420,7 +421,10 @@ export function PostsWorkspace({
     const parsed = parseImportedContent(text);
     const sections = sectionsToBlocks(
       parsed.sections,
-      sectionResolveTypes(meta, { hideDefaults }),
+      sectionResolveTypes(meta, {
+        hideDefaults,
+        customPaths: customBlogSectionPaths(decofile),
+      }),
     );
     return sections.length > 0 || parsed.title.trim()
       ? { title: parsed.title, body: { sections } }

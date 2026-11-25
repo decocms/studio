@@ -1290,9 +1290,11 @@ export function blockComponentName(resolveType: string): string {
   return base.replace(/\.(tsx?|jsx?)$/, "");
 }
 
+const SITE_POST_BLOCK_PREFIX = "site/sections/Blog/Post/";
+
 const BLOG_POST_BLOCK_PREFIXES = [
   "blog/sections/blocks/",
-  "site/sections/Blog/Post/",
+  SITE_POST_BLOCK_PREFIX,
 ] as const;
 
 /**
@@ -2815,9 +2817,9 @@ export function blockExample(
  * loosely written format must not leave a post with nothing to be made of.
  *
  * Several blocks can share a component name (a site's override of an app
- * block). The writer only ever sees the name, so the first wins here the same
- * way it does in {@link sectionResolveTypes} — the two must agree, or a section
- * would be written against one schema and saved as another.
+ * block). The writer only ever sees the name, so the one
+ * {@link sectionResolveTypes} picks is the one offered here — the two must
+ * agree, or a section would be written against one schema and saved as another.
  */
 export function blocksForFormat(
   format: { value: string },
@@ -2861,17 +2863,48 @@ export function blocksForFormat(
  * that is `blog/sections/blocks/Heading.tsx` or its own
  * `site/sections/Blog/Post/Heading.tsx`. Keeping the mapping here means the
  * model never sees a resolveType and so can never invent one.
+ *
+ * When several folders define the same name the most specific wins: a section
+ * under the blog app's `customSectionPaths`, then the site's own
+ * `sections/Blog/Post`, then the app's built-in. Each name is settled on its
+ * own, so a post can mix the site's Paragraph with the app's Table.
  */
 export function sectionResolveTypes(
   meta: LiveMeta,
   options?: BlogBlockDiscoveryOptions,
 ): Record<string, string> {
+  const customPaths = options?.customPaths ?? [];
+  const candidates = discoverBlogBlockTypes(meta, options)
+    .map((block) => block.resolveType)
+    .sort(
+      (a, b) =>
+        blogBlockRank(a, customPaths) - blogBlockRank(b, customPaths) ||
+        a.localeCompare(b),
+    );
   const byName: Record<string, string> = {};
-  for (const block of discoverBlogBlockTypes(meta, options)) {
-    const name = blockComponentName(block.resolveType);
-    if (!(name in byName)) byName[name] = block.resolveType;
+  for (const resolveType of candidates) {
+    const name = blockComponentName(resolveType);
+    if (!(name in byName)) byName[name] = resolveType;
   }
   return byName;
+}
+
+/**
+ * Lower wins. Custom paths rank in the order the blog app lists them, ahead of
+ * the site's post sections, which are ahead of the app's own blocks.
+ */
+function blogBlockRank(
+  resolveType: string,
+  customPaths: readonly string[],
+): number {
+  const rt = resolveType.toLowerCase();
+  const custom = customPaths.findIndex(
+    (path) => rt === path || rt.startsWith(`${path}/`),
+  );
+  if (custom >= 0) return custom;
+  return resolveType.startsWith(SITE_POST_BLOCK_PREFIX)
+    ? customPaths.length
+    : customPaths.length + 1;
 }
 
 type DraftSection =

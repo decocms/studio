@@ -13,6 +13,7 @@ import {
   type CampaignEntry,
   type CategoryRef,
   contextForTools,
+  customBlogSectionPaths,
   emptyDraftPostPayload,
   listAuthorRefs,
   listBlogPayloads,
@@ -153,6 +154,7 @@ export function useGeneratePost({
     const authors: AuthorRef[] = listAuthorRefs(decofile);
     const blocks = blocksForFormat(briefing.format, meta, decofile, {
       hideDefaults,
+      customPaths: customBlogSectionPaths(decofile),
     });
     // How each block already stores its product slot, so the ids the writer
     // chose land in the shape this site reads.
@@ -317,7 +319,10 @@ export function useGeneratePost({
        */
       const covers = await illustrate(result.posts, briefing);
 
-      const resolveTypes = sectionResolveTypes(meta, { hideDefaults });
+      const resolveTypes = sectionResolveTypes(meta, {
+        hideDefaults,
+        customPaths: customBlogSectionPaths(decofile),
+      });
       const takenSlugs = listPostsWithMeta(decofile).map((post) => post.slug);
       for (const [i, draft] of result.posts.entries()) {
         const key = keys[i];

@@ -21,7 +21,8 @@ export type ImportedSection =
   | { kind: "list"; items: string[]; ordered: boolean }
   | { kind: "quote"; text: string }
   | { kind: "divider" }
-  | { kind: "image"; url: string; alt: string; caption: string };
+  | { kind: "image"; url: string; alt: string; caption: string }
+  | { kind: "table"; headers: string[]; rows: string[][] };
 
 export interface ParsedImport {
   /** The first H1 (HTML) or first `#` (Markdown), used as the post title. */
@@ -202,10 +203,59 @@ function attr(tag: string, name: string): string {
  * A flat, block-level scan. The content this imports is well-structured
  * ("bem mastigadinho" — h1/h2/p/ul/img), so matching block elements in document
  * order is enough and stays dependency-free. Deeply nested same-tag structures
- * (a list inside a list) are the known limitation; they degrade, never crash.
+ * (a list inside a list, a table inside a table) are the known limitation; they
+ * degrade, never crash.
  */
 const BLOCK_RE =
-  /<(h[1-6]|p|ul|ol|blockquote|figure)\b[^>]*>([\s\S]*?)<\/\1\s*>|<hr\b[^>]*\/?>|<img\b[^>]*>/gi;
+  /<(h[1-6]|p|ul|ol|blockquote|figure|table)\b[^>]*>([\s\S]*?)<\/\1\s*>|<hr\b[^>]*\/?>|<img\b[^>]*>/gi;
+
+/** Where one block ends inside a table cell, which can only hold inline HTML. */
+const CELL_BREAK = /<\/(?:p|li|div|h[1-6])\s*>|<br\b[^>]*>/gi;
+
+/**
+ * A cell's content as the Table block stores it: inline HTML, sanitized like a
+ * paragraph. The blocks a cell held are kept apart by line breaks.
+ */
+function cellHtml(inner: string): string {
+  const html = sanitizeInlineHtml(inner.replace(CELL_BREAK, "<br>"))
+    .replace(/\s+/g, " ")
+    .replace(/(?:<br> ?)+/g, "<br>")
+    .replace(/^(?:<br>| )+|(?:<br>| )+$/g, "");
+  return stripTags(html) ? html : "";
+}
+
+/**
+ * A table's header and body rows. The header is the first row of `<thead>`, or
+ * a first row made only of `<th>`; a table with neither has none. Matching the
+ * whole table as one block also keeps a cell's paragraphs and lists from
+ * landing in the post as loose blocks. Merged cells are not expanded.
+ */
+function tableToSection(inner: string): ImportedSection | null {
+  const thead = /<thead\b[^>]*>[\s\S]*?<\/thead\s*>/i.exec(inner);
+  const headStart = thead?.index ?? -1;
+  const headEnd = thead ? headStart + thead[0].length : -1;
+
+  let headers: string[] | null = null;
+  const rows: string[][] = [];
+  for (const row of inner.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi)) {
+    const cells = [
+      ...(row[1] ?? "").matchAll(/<(th|td)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi),
+    ];
+    if (cells.length === 0) continue;
+    const values = cells.map((cell) => cellHtml(cell[2] ?? ""));
+    const inHead = row.index >= headStart && row.index < headEnd;
+    const allHeaderCells = cells.every((c) => c[1]?.toLowerCase() === "th");
+    const isHeader =
+      headers === null &&
+      (inHead || (!thead && rows.length === 0 && allHeaderCells));
+    if (isHeader) headers = values;
+    else if (values.some(Boolean)) rows.push(values);
+  }
+
+  const head = headers?.some(Boolean) ? headers : [];
+  if (head.length === 0 && rows.length === 0) return null;
+  return { kind: "table", headers: head, rows };
+}
 
 function htmlToSections(html: string): ParsedImport {
   const clean = stripHostileMarkup(html);
@@ -256,7 +306,18 @@ function htmlToSections(html: string): ParsedImport {
     } else if (tag === "blockquote") {
       const text = stripTags(inner);
       if (text) sections.push({ kind: "quote", text });
+    } else if (tag === "table") {
+      const table = tableToSection(inner);
+      if (table) sections.push(table);
     } else if (tag === "figure") {
+      // A table some editors wrap in a figure. The lazy match stopped at the
+      // figure's own close, so the table inside is whole.
+      const wrapped = /<table\b[^>]*>([\s\S]*?)<\/table\s*>/i.exec(inner);
+      if (wrapped) {
+        const table = tableToSection(wrapped[1] ?? "");
+        if (table) sections.push(table);
+        continue;
+      }
       const imgTag = inner.match(/<img\b[^>]*>/i)?.[0];
       const url = imgTag ? attr(imgTag, "src") : "";
       const caption = stripTags(
@@ -286,6 +347,29 @@ function inlineMarkdown(text: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+/** A pipe table row's cells, without the optional outer pipes. */
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/(?<!\\)\|$/, "")
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replace(/\\\|/g, "|"));
+}
+
+/** The `|---|:--:|` row that makes the line above it a table header. */
+function isTableDelimiter(line: string, columns: number): boolean {
+  if (!line.includes("-")) return false;
+  const cells = splitTableRow(line);
+  return (
+    cells.length === columns && cells.every((cell) => /^:?-+:?$/.test(cell))
+  );
+}
+
+function markdownCell(cell: string): string {
+  return sanitizeInlineHtml(inlineMarkdown(cell));
 }
 
 function markdownToSections(md: string): ParsedImport {
@@ -324,8 +408,31 @@ function markdownToSections(md: string): ParsedImport {
     flushQuote();
   };
 
-  for (const raw of lines) {
-    const line = raw.trimEnd();
+  for (let index = 0; index < lines.length; index++) {
+    const line = (lines[index] ?? "").trimEnd();
+
+    if (line.includes("|")) {
+      const header = splitTableRow(line);
+      if (isTableDelimiter(lines[index + 1] ?? "", header.length)) {
+        flushAll();
+        const rows: string[][] = [];
+        index += 2;
+        for (; index < lines.length; index++) {
+          const row = lines[index] ?? "";
+          if (!row.trim() || !row.includes("|")) break;
+          rows.push(splitTableRow(row).map(markdownCell));
+        }
+        index--;
+        const headers = header.map(markdownCell);
+        sections.push({
+          kind: "table",
+          headers: headers.some(Boolean) ? headers : [],
+          rows,
+        });
+        continue;
+      }
+    }
+
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     const image = line.match(/^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/);
     const listItem = line.match(/^\s*(?:[-*+]|\d+\.)\s+(.*)$/);
@@ -378,6 +485,7 @@ const COMPONENT_FOR_KIND: Record<ImportedSection["kind"], string> = {
   quote: "Quote",
   divider: "Divider",
   image: "BlockImage",
+  table: "Table",
 };
 
 /**
@@ -425,6 +533,13 @@ export function sectionsToBlocks(
           alt: section.alt,
           caption: section.caption,
           size: "normal",
+        });
+        break;
+      case "table":
+        blocks.push({
+          __resolveType,
+          headers: JSON.stringify(section.headers),
+          rows: JSON.stringify(section.rows),
         });
         break;
     }

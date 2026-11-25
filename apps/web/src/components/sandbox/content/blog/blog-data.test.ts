@@ -2426,14 +2426,63 @@ describe("sectionResolveTypes", () => {
     ).toEqual({ Heading: "site/sections/Blog/Post/Heading.tsx" });
   });
 
-  test("one name wins when app and site both define it", () => {
-    const map = sectionResolveTypes(
-      metaWith([
-        "blog/sections/blocks/Paragraph.tsx",
-        "site/sections/Blog/Post/Paragraph.tsx",
-      ]),
-    );
-    expect(Object.keys(map)).toEqual(["Paragraph"]);
+  test("a custom path beats the site's post sections, which beat the app", () => {
+    const all = [
+      "blog/sections/blocks/Paragraph.tsx",
+      "site/sections/Blog/Post/Paragraph.tsx",
+      "acme-ui/sections/Blog/Paragraph.tsx",
+    ];
+    for (const order of [all, [...all].reverse()]) {
+      expect(
+        sectionResolveTypes(metaWith(order), {
+          customPaths: ["acme-ui/sections/blog"],
+        }),
+      ).toEqual({ Paragraph: "acme-ui/sections/Blog/Paragraph.tsx" });
+      expect(sectionResolveTypes(metaWith(order))).toEqual({
+        Paragraph: "site/sections/Blog/Post/Paragraph.tsx",
+      });
+    }
+  });
+
+  test("the site wins whatever the blocks are titled", () => {
+    expect(
+      sectionResolveTypes(
+        metaWithSchemas([
+          { resolveType: "blog/sections/blocks/Heading.tsx" },
+          {
+            resolveType: "site/sections/Blog/Post/Heading.tsx",
+            title: "Zebra heading",
+          },
+        ]),
+      ),
+    ).toEqual({ Heading: "site/sections/Blog/Post/Heading.tsx" });
+  });
+
+  test("each name is settled on its own, so sources can mix", () => {
+    expect(
+      sectionResolveTypes(
+        metaWith([
+          "blog/sections/blocks/Paragraph.tsx",
+          "blog/sections/blocks/Table.tsx",
+          "site/sections/Blog/Post/Paragraph.tsx",
+        ]),
+      ),
+    ).toEqual({
+      Paragraph: "site/sections/Blog/Post/Paragraph.tsx",
+      Table: "blog/sections/blocks/Table.tsx",
+    });
+  });
+
+  test("custom paths rank in the order the blog app lists them", () => {
+    const meta = metaWith([
+      "a-ui/sections/Blog/Table.tsx",
+      "b-ui/sections/Blog/Table.tsx",
+    ]);
+    expect(
+      sectionResolveTypes(meta, {
+        customPaths: ["b-ui/sections/blog", "a-ui/sections/blog"],
+      }),
+    ).toEqual({ Table: "b-ui/sections/Blog/Table.tsx" });
   });
 
   test("a site with no post sections maps nothing", () => {
@@ -2452,6 +2501,22 @@ describe("sectionResolveTypes", () => {
         { hideDefaults: true },
       ),
     ).toEqual({ Paragraph: "site/sections/Blog/Post/Paragraph.tsx" });
+  });
+
+  test("hideDefaults drops an app block even when nothing else has that name", () => {
+    expect(
+      sectionResolveTypes(
+        metaWith([
+          "blog/sections/blocks/Table.tsx",
+          "site/sections/Blog/Post/Paragraph.tsx",
+          "acme-ui/sections/Blog/Quote.tsx",
+        ]),
+        { hideDefaults: true, customPaths: ["acme-ui/sections/blog"] },
+      ),
+    ).toEqual({
+      Paragraph: "site/sections/Blog/Post/Paragraph.tsx",
+      Quote: "acme-ui/sections/Blog/Quote.tsx",
+    });
   });
 });
 
