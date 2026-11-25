@@ -5,7 +5,12 @@
  */
 
 import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
-import type { ParsedToolResult, StoreView } from "./diagnosis-schema.ts";
+import type {
+  CompetitorRejection,
+  ParsedToolResult,
+  SetupNeed,
+  StoreView,
+} from "./diagnosis-schema.ts";
 
 type StatusOutput = StudioToolOutput<"PLAN_DIAGNOSIS_STATUS">;
 type UnconfiguredReason = NonNullable<StatusOutput["reason"]>;
@@ -60,6 +65,8 @@ export class DiagnosisEngineError extends Error {
     message: string,
     /** `start_ux_diagnosis` needs the store's domain first. */
     readonly needsDomain = false,
+    readonly needs: SetupNeed[] = [],
+    readonly rejected: CompetitorRejection[] = [],
   ) {
     super(message);
     this.name = "DiagnosisEngineError";
@@ -68,7 +75,12 @@ export class DiagnosisEngineError extends Error {
 
 export function unwrapEngineResult<T>(result: ParsedToolResult<T>): T {
   if (result.ok) return result.value;
-  throw new DiagnosisEngineError(result.error, result.needs_domain === true);
+  throw new DiagnosisEngineError(
+    result.error,
+    result.needs_domain === true,
+    result.needs,
+    result.rejected,
+  );
 }
 
 /** An engine answer is deterministic, so only a transport failure is retried. */
