@@ -4325,6 +4325,216 @@ export interface StudioToolIO {
       reason?: "flag_off" | "service_unset" | "not_connected" | undefined;
     };
   };
+  PLAN_UX_SITE_PROFILE_GET: {
+    input: { [x: string]: never };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { profile: object | null };
+  };
+  PLAN_UX_SITE_PROFILE_UPDATE: {
+    input: {
+      domain?: string | undefined;
+      studio_site?: string | null | undefined;
+      pdp_path_template?: string | undefined;
+      competitors?: string[] | undefined;
+      code_project_id?: string | null | undefined;
+      code_repo?: string | null | undefined;
+      code_volume?: string | null | undefined;
+    };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | {
+          profile: object;
+          warnings?: { domain: string; reason: string }[] | undefined;
+        };
+  };
+  PLAN_UX_SITE_SOURCES_DETECT: {
+    input: { [x: string]: never };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { profile: object | null; sources: object | null };
+  };
+  PLAN_UX_STORE_VIEW: {
+    input: { goal_id?: string | undefined };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | {
+          pages: object[];
+          top: object[];
+          others: object[];
+          sources: string[];
+          running: boolean;
+          setup?: object | undefined;
+        };
+  };
+  PLAN_UX_SITE_RUN_LIST: {
+    input: { goal_id?: string | undefined; limit?: number | undefined };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | {
+          runs: {
+            site_run_id: string;
+            goal_id: string | null;
+            objective_statement: string | null;
+            started_at: string;
+            status: "error" | "done" | "running";
+            pages: (
+              | "home"
+              | "categoria"
+              | "busca"
+              | "pdp"
+              | "carrinho_checkout"
+            )[];
+          }[];
+        };
+  };
+  PLAN_UX_SITE_RUN_GET: {
+    input: { site_run_id: string };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | {
+          site_run_id: string;
+          diagnoses: object[];
+          opportunities: object[];
+          hidden_elsewhere: number;
+        };
+  };
+  PLAN_UX_DIAGNOSIS_LIST: {
+    input: { limit?: number | undefined };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { diagnoses: object[] };
+  };
+  PLAN_UX_DIAGNOSIS_GET: {
+    input: { diagnosis_id: string };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | {
+          diagnosis: object;
+          format: "v1" | "v2";
+          opportunities: object[];
+          hypotheses: object[];
+        };
+  };
+  PLAN_UX_OPPORTUNITY_GET: {
+    input: { opportunity_id: string };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { opportunity: object };
+  };
+  PLAN_UX_DOSSIER_GET: {
+    input: { hypothesis_id: string };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { markdown: string };
+  };
+  PLAN_UX_HYPOTHESIS_STATUS_UPDATE: {
+    input: {
+      hypothesis_id: string;
+      status: "pending" | "approved" | "dismissed";
+      note?: string | undefined;
+    };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { hypothesis: object };
+  };
+  PLAN_UX_QUEUE_LIST: {
+    input: { [x: string]: never };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { hypotheses: object[] };
+  };
+  PLAN_UX_KNOWLEDGE_LIST: {
+    input: { [x: string]: never };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { store: object[]; curated: object[]; publishers: object[] };
+  };
+  PLAN_UX_KNOWLEDGE_UPSERT: {
+    input: {
+      entry: {
+        conhecimento: string;
+        categoria:
+          | "confianca"
+          | "ux"
+          | "performance"
+          | "comercial"
+          | "trafego"
+          | "tecnologia";
+        fonte: string;
+        tipo_fonte:
+          | "benchmark"
+          | "ab_desta_loja"
+          | "estudo"
+          | "ab_outra_loja"
+          | "boa_pratica"
+          | "opiniao";
+        fonte_url?: string | null | undefined;
+        contexto?: string | undefined;
+        areas?: string[] | undefined;
+        evidencia?: string | undefined;
+        trecho?: string | null | undefined;
+        confiabilidade?: "alta" | "media" | "baixa" | undefined;
+        limitacoes?: string | undefined;
+        resultado?: "positivo" | "negativo" | "neutro" | null | undefined;
+      };
+      id?: string | undefined;
+    };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { entry: object };
+  };
+  PLAN_UX_KNOWLEDGE_ACTIVE_SET: {
+    input: { id: string; active: boolean };
+    output:
+      | {
+          error: string;
+          rejected?: { domain: string; reason: string }[] | undefined;
+        }
+      | { entry: object };
+  };
   COLLECTION_VIRTUAL_MCP_CREATE: {
     input: {
       data: {
