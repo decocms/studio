@@ -46,6 +46,7 @@ import { SaveStatus } from "./save-status";
 import {
   BRAND_BLOCK_KEY,
   brandBlockToSave,
+  customBlogSectionPaths,
   type BrandRule,
   CONTEXT_BLOCK_KEY,
   defaultFormatSections,
@@ -255,13 +256,13 @@ function BlogContextForm({
     setFormatsData({ ...formatsData, formats: rules });
 
   /** The sections a format's brief may cite, and the `@` picker's contents. */
-  const sections = mentionableSections(meta, {
+  const blockDiscovery = {
     hideDefaults: hideDefaultBlocks,
-  });
+    customPaths: customBlogSectionPaths(decofile),
+  };
+  const sections = mentionableSections(meta, blockDiscovery);
   /** Component name → resolveType, for reading briefs that cite the bare name. */
-  const sectionsByName = sectionResolveTypes(meta, {
-    hideDefaults: hideDefaultBlocks,
-  });
+  const sectionsByName = sectionResolveTypes(meta, blockDiscovery);
   const sectionRefs = sections.map((s) => s.resolveType);
   const mentions: MarkdownMentions = {
     items: sections.map((s) => ({ ...s, href: s.resolveType })),

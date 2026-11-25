@@ -226,6 +226,212 @@ describe("parseImportedContent — untrusted markup", () => {
   });
 });
 
+describe("parseImportedContent — tables", () => {
+  const table = (html: string) =>
+    parseImportedContent(html).sections.filter((s) => s.kind === "table");
+
+  test("a thead becomes the headers and the body rows keep their order", () => {
+    const { sections } = parseImportedContent(
+      "<p>Before</p><table><thead><tr><th>Model</th><th>BTUs</th></tr></thead>" +
+        "<tbody><tr><td>A</td><td>9000</td></tr><tr><td>B</td><td>12000</td></tr></tbody></table><p>After</p>",
+    );
+    expect(sections).toEqual([
+      { kind: "paragraph", html: "Before" },
+      {
+        kind: "table",
+        headers: ["Model", "BTUs"],
+        rows: [
+          ["A", "9000"],
+          ["B", "12000"],
+        ],
+      },
+      { kind: "paragraph", html: "After" },
+    ]);
+  });
+
+  test("without a thead, a first row of th cells is the header", () => {
+    expect(
+      table(
+        "<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>",
+      ),
+    ).toEqual([{ kind: "table", headers: ["A", "B"], rows: [["1", "2"]] }]);
+  });
+
+  test("a table with no header cells has no headers", () => {
+    expect(
+      table(
+        "<table><tr><td>1</td><td>2</td></tr><tr><th>x</th><td>3</td></tr></table>",
+      ),
+    ).toEqual([
+      {
+        kind: "table",
+        headers: [],
+        rows: [
+          ["1", "2"],
+          ["x", "3"],
+        ],
+      },
+    ]);
+  });
+
+  test("a cell's paragraphs and lists stay in the cell, not loose in the post", () => {
+    const { sections } = parseImportedContent(
+      "<table><tr><td><p>one</p><p>two</p></td><td><ul><li>a</li><li>b</li></ul></td></tr></table>",
+    );
+    expect(sections).toEqual([
+      { kind: "table", headers: [], rows: [["one<br>two", "a<br>b"]] },
+    ]);
+  });
+
+  test("a cell keeps inline formatting and loses everything else", () => {
+    const [parsed] = table(
+      '<table><tr><td><strong>b</strong> <a href="https://x.dev" onclick="x()">l</a></td>' +
+        '<td><img src=x onerror="alert(1)">t<a href="javascript:alert(1)">j</a></td></tr></table>',
+    );
+    expect(parsed).toEqual({
+      kind: "table",
+      headers: [],
+      rows: [['<strong>b</strong> <a href="https://x.dev">l</a>', "t<a>j</a>"]],
+    });
+  });
+
+  test("a table wrapped in a figure is still a table", () => {
+    expect(
+      table(
+        '<figure class="wp-block-table"><table><tr><td>1</td></tr></table><figcaption>c</figcaption></figure>',
+      ),
+    ).toEqual([{ kind: "table", headers: [], rows: [["1"]] }]);
+  });
+
+  test("a table with nothing in it is skipped, as are its empty rows", () => {
+    expect(table("<table><tr><td> </td><td><br></td></tr></table>")).toEqual(
+      [],
+    );
+    expect(
+      table("<table><tr><td></td></tr><tr><td>1</td></tr></table>"),
+    ).toEqual([{ kind: "table", headers: [], rows: [["1"]] }]);
+  });
+
+  test("a Markdown pipe table, with alignment and inline marks", () => {
+    const { sections } = parseImportedContent(
+      "intro\n\n| Model | BTUs |\n|:--|--:|\n| **A** | 9000 |\n| [B](https://x.dev) | a \\| b |\nafter",
+    );
+    expect(sections).toEqual([
+      { kind: "paragraph", html: "intro" },
+      {
+        kind: "table",
+        headers: ["Model", "BTUs"],
+        rows: [
+          ["<strong>A</strong>", "9000"],
+          ['<a href="https://x.dev">B</a>', "a | b"],
+        ],
+      },
+      { kind: "paragraph", html: "after" },
+    ]);
+  });
+
+  test("a cell holding its own figure does not cut a figure-wrapped table short", () => {
+    const { sections } = parseImportedContent(
+      '<figure><table><tr><td><figure><img src="https://x.dev/a.png"></figure></td><td>Spec</td></tr>' +
+        "<tr><td>A</td><td>B</td></tr></table></figure><p>After</p>",
+    );
+    expect(sections).toEqual([
+      {
+        kind: "table",
+        headers: [],
+        rows: [
+          ["", "Spec"],
+          ["A", "B"],
+        ],
+      },
+      { kind: "paragraph", html: "After" },
+    ]);
+  });
+
+  test("rows and cells whose end tags were left out are still read", () => {
+    expect(
+      table(
+        "<table><thead><tr><th>M<th>B<tbody><tr><td>A<td>9000<tr><td>B<td>12000</table>",
+      ),
+    ).toEqual([
+      {
+        kind: "table",
+        headers: ["M", "B"],
+        rows: [
+          ["A", "9000"],
+          ["B", "12000"],
+        ],
+      },
+    ]);
+  });
+
+  test("an empty thead leaves a first row of th cells as the header", () => {
+    expect(
+      table(
+        "<table><thead></thead><tbody><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></tbody></table>",
+      ),
+    ).toEqual([{ kind: "table", headers: ["A", "B"], rows: [["1", "2"]] }]);
+  });
+
+  test("short rows are padded so no column shifts", () => {
+    expect(
+      table(
+        "<table><tr><th>A</th><th>B</th><th>C</th></tr><tr><td>1</td></tr></table>",
+      ),
+    ).toEqual([
+      { kind: "table", headers: ["A", "B", "C"], rows: [["1", "", ""]] },
+    ]);
+    expect(
+      parseImportedContent("| A | B |\n|---|---|\n| 1 |\n| 2 | 3 | extra |")
+        .sections,
+    ).toEqual([
+      {
+        kind: "table",
+        headers: ["A", "B"],
+        rows: [
+          ["1", ""],
+          ["2", "3"],
+        ],
+      },
+    ]);
+  });
+
+  test("a divider under a line with a pipe does not make it a table", () => {
+    expect(parseImportedContent("| Note\n---\nnext").sections).toEqual([
+      { kind: "paragraph", html: "| Note" },
+      { kind: "divider" },
+      { kind: "paragraph", html: "next" },
+    ]);
+  });
+
+  test("a heading, list or quote right after a table is not one of its rows", () => {
+    for (const [line, kind] of [
+      ["## Pros | Cons", "heading"],
+      ["- a | b", "list"],
+      ["> a | b", "quote"],
+    ] as const) {
+      const { sections } = parseImportedContent(
+        `| A | B |\n|---|---|\n| 1 | 2 |\n${line}`,
+      );
+      expect(sections.map((s) => s.kind)).toEqual(["table", kind]);
+    }
+  });
+
+  test("a pipe table with inline HTML in a cell is still read as Markdown", () => {
+    expect(
+      parseImportedContent("| A | B |\n|---|---|\n| 1 | x<br>y |").sections,
+    ).toEqual([
+      { kind: "table", headers: ["A", "B"], rows: [["1", "x<br>y"]] },
+    ]);
+  });
+
+  test("a pipe in prose, with no delimiter row under it, stays a paragraph", () => {
+    expect(parseImportedContent("a | b\nc | d").sections).toEqual([
+      { kind: "paragraph", html: "a | b c | d" },
+    ]);
+  });
+});
+
 describe("sectionsToBlocks", () => {
   const resolveTypes = {
     Heading: "blog/sections/blocks/Heading.tsx",
@@ -269,6 +475,16 @@ describe("sectionsToBlocks", () => {
     expect(sectionsToBlocks(sections, { Heading: "rt/Heading" })).toEqual([
       { __resolveType: "rt/Heading", text: "T", level: "1" },
     ]);
+  });
+
+  test("a table is stored as JSON-encoded headers and rows", () => {
+    const sections: ImportedSection[] = [
+      { kind: "table", headers: ["A"], rows: [["1"], ["2"]] },
+    ];
+    expect(sectionsToBlocks(sections, { Table: "rt/Table" })).toEqual([
+      { __resolveType: "rt/Table", headers: '["A"]', rows: '[["1"],["2"]]' },
+    ]);
+    expect(sectionsToBlocks(sections, resolveTypes)).toEqual([]);
   });
 });
 
