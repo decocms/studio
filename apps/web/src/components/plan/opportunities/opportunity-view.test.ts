@@ -15,6 +15,7 @@ import {
   opportunityDetailFixture,
   storeViewFixture,
   storeViewWithGapsFixture,
+  storeViewWithSetupFixture,
 } from "./fixtures.ts";
 import {
   canApprove,
@@ -43,6 +44,8 @@ import {
   stageCards,
   startRunInput,
   summaryNumbers,
+  gapGroups,
+  setupNeeds,
   viewGaps,
   viewScope,
 } from "./opportunity-view.ts";
@@ -898,5 +901,64 @@ describe("runRequestedEvent", () => {
       scope: "pages",
       count: 2,
     });
+  });
+});
+
+describe("gapGroups", () => {
+  it("old engine: every gap is a limitation", () => {
+    const old = StoreViewSchema.parse(storeViewWithGapsFixture);
+    expect(gapGroups(old)).toEqual({
+      customer: [],
+      limitations: viewGaps(old),
+    });
+  });
+
+  it("customer gaps are grouped once per key", () => {
+    const view = StoreViewSchema.parse(storeViewWithSetupFixture);
+    const { customer, limitations } = gapGroups(view);
+    expect(customer.map((g) => g.key)).toEqual(["analytics_install"]);
+    expect(limitations).toEqual([
+      "Funil: esta análise não tem dado de funil da página",
+    ]);
+  });
+
+  it("unknown owners count as limitations", () => {
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      pages: [
+        {
+          ...storeViewWithSetupFixture.pages[0],
+          gap_details: [
+            { source: "X", owner: "vendor", key: "domain", message: "a" },
+            { source: "Y", owner: "customer", key: "new_key", message: "b" },
+            { source: "Z", owner: "customer", message: "b" },
+          ],
+        },
+      ],
+    });
+    expect(gapGroups(view)).toEqual({
+      customer: [],
+      limitations: ["a", "b"],
+    });
+  });
+});
+
+describe("setupNeeds", () => {
+  it("keeps the known keys and drops the rest", () => {
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      setup: {
+        needs: [
+          { key: "domain", blocking: true },
+          { key: "something_new", blocking: false },
+        ],
+        current: { domain: null, competitors: [] },
+      },
+    });
+    expect(setupNeeds(view).map((n) => n.key)).toEqual(["domain"]);
+  });
+
+  it("is empty for an engine without setup", () => {
+    expect(setupNeeds(StoreViewSchema.parse(storeViewFixture))).toEqual([]);
   });
 });

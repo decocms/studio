@@ -196,6 +196,46 @@ export const storeViewWithGapsFixture = {
   running: false,
 };
 
+/** A store whose engine names who closes each gap, with its setup needs. */
+export const storeViewWithSetupFixture = {
+  ...storeViewWithGapsFixture,
+  pages: [
+    {
+      ...storeViewWithGapsFixture.pages[0],
+      gap_details: [
+        {
+          source: "GA4",
+          owner: "customer",
+          key: "analytics_install",
+          message: "GA4: no dataset connected",
+        },
+        {
+          source: "Deco Analytics",
+          owner: "customer",
+          key: "analytics_install",
+          message: "Deco Analytics: site not found",
+        },
+        {
+          source: "Funil",
+          owner: "engine",
+          message: "Funil: esta análise não tem dado de funil da página",
+        },
+      ],
+    },
+  ],
+  setup: {
+    needs: [
+      { key: "domain", blocking: true },
+      {
+        key: "competitors",
+        blocking: false,
+        suggested: ["rival.example"],
+      },
+    ],
+    current: { domain: null, competitors: [] },
+  },
+};
+
 export const opportunityDetailFixture = {
   opportunity: {
     ...storeViewFixture.top[0],
