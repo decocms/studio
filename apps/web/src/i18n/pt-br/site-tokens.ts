@@ -17,4 +17,11 @@ export const siteTokens = {
   "siteTokens.copy": "Copiar token do site",
   "siteTokens.copied": "Token do site copiado para a área de transferência",
   "siteTokens.done": "Concluir",
+  "siteTokens.revoke": "Revogar",
+  "siteTokens.revokeLabel": "Revogar o token do site {kid}",
+  "siteTokens.revokeTitle": "Revogar este token do site?",
+  "siteTokens.revokeDescription":
+    "O token {kid} para de funcionar no deco schema push na hora. A telemetria que o site envia com ele continua sendo aceita. Não dá para desfazer.",
+  "siteTokens.revoked": "Token do site revogado",
+  "siteTokens.cancel": "Cancelar",
 } satisfies Record<keyof typeof enSiteTokens, string>;
