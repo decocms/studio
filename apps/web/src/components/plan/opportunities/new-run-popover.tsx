@@ -4,7 +4,7 @@
  * hand back the run it already has.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AlertCircle, InfoCircle } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
@@ -29,6 +29,7 @@ import {
   runningElsewhere,
   startRunInput,
 } from "./opportunity-view.ts";
+import { StoreDomainForm } from "./store-domain.tsx";
 import { useStartRun, useStoreView } from "./use-plan-diagnosis.ts";
 
 /** `pending` while the goals load; a run then would have no goal. */
@@ -38,17 +39,18 @@ export interface RunGoal {
   pending: boolean;
 }
 
+type RunScope = "site" | readonly PageType[];
+
 /** Starts a run for the active goal. `elsewhere` names the pages the engine
  *  said were already running in a run this goal's view does not show. */
 export function useRequestRun(goal: RunGoal) {
   const start = useStartRun();
   const view = useStoreView(goal).data;
   const [elsewhere, setElsewhere] = useState<PageType[]>([]);
-  const request = (
-    scope: "site" | readonly PageType[],
-    onStarted?: () => void,
-  ) => {
+  const last = useRef<{ scope: RunScope; onStarted?: () => void } | null>(null);
+  const request = (scope: RunScope, onStarted?: () => void) => {
     if (goal.pending) return;
+    last.current = { scope, onStarted };
     const input = startRunInput(goal, scope);
     track("plan_run_requested", runRequestedEvent(input));
     setElsewhere([]);
@@ -60,8 +62,12 @@ export function useRequestRun(goal: RunGoal) {
       },
     });
   };
+  const retry = () => {
+    if (last.current) request(last.current.scope, last.current.onStarted);
+  };
   return {
     request,
+    retry,
     pending: start.isPending,
     blocked: goal.pending || start.isPending,
     error: start.error,
@@ -69,13 +75,16 @@ export function useRequestRun(goal: RunGoal) {
   };
 }
 
-/** Why a run did not start, or which pages were already running elsewhere. */
+/** Why a run did not start, or which pages were already running elsewhere.
+ *  Without the store's domain, asks for it and runs again once it is saved. */
 export function RunRequestNotice({
   error,
   elsewhere,
+  onDomainSaved,
 }: {
   error: Error | null;
   elsewhere: readonly PageType[];
+  onDomainSaved: () => void;
 }) {
   const t = useT();
   if (error) {
@@ -84,7 +93,7 @@ export function RunRequestNotice({
     return (
       <div role="alert" className="flex items-start gap-2 text-xs">
         <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-        <span className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="text-foreground">
             {needsDomain
               ? t("plan.opportunities.newRun.needsDomain")
@@ -95,7 +104,15 @@ export function RunRequestNotice({
               {errorText(error)}
             </span>
           )}
-        </span>
+          {needsDomain && (
+            <div className="pt-1.5">
+              <StoreDomainForm
+                submitLabel={t("plan.opportunities.domain.saveAndRun")}
+                onSaved={onDomainSaved}
+              />
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -222,7 +239,11 @@ function NewRunForm({ goal, onDone }: { goal: RunGoal; onDone: () => void }) {
           />
         ))}
       </div>
-      <RunRequestNotice error={run.error} elsewhere={run.elsewhere} />
+      <RunRequestNotice
+        error={run.error}
+        elsewhere={run.elsewhere}
+        onDomainSaved={run.retry}
+      />
       <div className="flex justify-end border-t border-border pt-3">
         <Button
           size="sm"

@@ -345,6 +345,14 @@ export const DecideHypothesisSchema = z.object({
   }),
 });
 
+// ── get_ux_site_profile / update_ux_site_profile ─────────────────────────────
+
+/** The store the engine analyses. Only the domain is read here; null until
+ *  someone sets it or the engine finds the store's site in Studio. */
+export const SiteProfileSchema = z.object({
+  profile: z.object({ domain: z.string() }).nullable(),
+});
+
 // ── Reading a tool result ────────────────────────────────────────────────────
 
 export type ParsedToolResult<T> =

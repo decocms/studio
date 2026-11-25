@@ -30,6 +30,7 @@ import {
   viewScope,
 } from "./opportunity-view.ts";
 import { RunStatus } from "./run-status.tsx";
+import { StoreDomainRow } from "./store-domain.tsx";
 import { usePlanDiagnosisStatus, useStoreView } from "./use-plan-diagnosis.ts";
 
 export interface OpportunitiesSectionProps extends OpportunityActions {
@@ -344,6 +345,7 @@ function StoreSection({
     return (
       <section className="flex flex-col gap-4">
         <RunStatus pages={view.pages} />
+        <StoreDomainRow />
         {stale}
       </section>
     );
@@ -352,6 +354,7 @@ function StoreSection({
   if (phase.phase !== "results") {
     return (
       <Frame eyebrow={eyebrow}>
+        <StoreDomainRow />
         {stale}
         <Empty view={view} reason={phase.phase} onNewRun={onNewRun} />
       </Frame>
@@ -361,6 +364,7 @@ function StoreSection({
   const others = view.others.length;
   return (
     <Frame eyebrow={eyebrow} action={<NewRunButton onNewRun={onNewRun} />}>
+      <StoreDomainRow />
       {stale}
       {phase.refreshing && (
         <p className="text-sm text-muted-foreground" role="status">

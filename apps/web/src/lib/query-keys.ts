@@ -527,6 +527,10 @@ export const KEYS = {
       goalId,
       connectionId,
     ] as const,
+  planSiteProfiles: (organizationId: string) =>
+    ["plan-diagnosis", organizationId, "site-profile"] as const,
+  planSiteProfile: (organizationId: string, connectionId: string) =>
+    ["plan-diagnosis", organizationId, "site-profile", connectionId] as const,
   planOpportunities: (organizationId: string) =>
     ["plan-diagnosis", organizationId, "opportunity"] as const,
   planOpportunity: (

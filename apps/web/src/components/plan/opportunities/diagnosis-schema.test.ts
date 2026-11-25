@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   DecideHypothesisSchema,
   GetOpportunitySchema,
+  SiteProfileSchema,
   StartRunSchema,
   StoreViewSchema,
   parseToolResult,
@@ -258,5 +259,47 @@ describe("toolPayload", () => {
     const raw = toolPayload({ isError: true, content: [] });
     const result = parseToolResult(StoreViewSchema, raw);
     expect(!result.ok && result.error.length > 0).toBe(true);
+  });
+});
+
+describe("SiteProfileSchema", () => {
+  it("reads a store with no profile yet as null", () => {
+    expect(parseToolResult(SiteProfileSchema, { profile: null })).toEqual({
+      ok: true,
+      value: { profile: null },
+    });
+  });
+
+  it("keeps only the domain of a full profile", () => {
+    expect(
+      parseToolResult(
+        SiteProfileSchema,
+        toolPayload({
+          content: [{ type: "text", text: "ignored" }],
+          structuredContent: {
+            profile: {
+              domain: "www.example.com",
+              studio_site: null,
+              pdp_path_template: "/:product/p",
+              competitors: [],
+              updated_at: "2026-11-25T00:00:00.000Z",
+            },
+          },
+        }),
+      ),
+    ).toEqual({ ok: true, value: { profile: { domain: "www.example.com" } } });
+  });
+
+  it("returns the engine's refusal of an invalid domain", () => {
+    expect(
+      parseToolResult(SiteProfileSchema, { error: "domínio inválido: ::" }),
+    ).toEqual({ ok: false, error: "domínio inválido: ::" });
+  });
+
+  it("rejects a profile without a domain", () => {
+    const result = parseToolResult(SiteProfileSchema, {
+      profile: { studio_site: "store" },
+    });
+    expect(result.ok).toBe(false);
   });
 });

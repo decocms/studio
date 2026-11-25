@@ -418,7 +418,17 @@ export const plan = {
   "plan.opportunities.newRun.submitNone": "Choose a part",
   "plan.opportunities.newRun.failed": "We could not start the analysis",
   "plan.opportunities.newRun.needsDomain":
-    "The store's domain is missing. Connect the store's site to this organization and try again.",
+    "The analysis needs the store's domain to open its pages.",
+  "plan.opportunities.domain.label": "Store domain",
+  "plan.opportunities.domain.placeholder": "www.example.com",
+  "plan.opportunities.domain.save": "Save",
+  "plan.opportunities.domain.saveAndRun": "Save and analyse",
+  "plan.opportunities.domain.cancel": "Cancel",
+  "plan.opportunities.domain.change": "Change",
+  "plan.opportunities.domain.current": "Store: {domain}",
+  "plan.opportunities.domain.failed": "Could not save the domain",
+  "plan.opportunities.domain.askAdmin":
+    "Ask an admin to set the store's domain.",
   "plan.opportunities.newRun.elsewhere.one":
     "An analysis of this page is already running: {pages}.",
   "plan.opportunities.newRun.elsewhere.other":

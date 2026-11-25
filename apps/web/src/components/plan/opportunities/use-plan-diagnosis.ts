@@ -15,6 +15,7 @@ import { useStudioTools } from "@/lib/studio-tools";
 import {
   DecideHypothesisSchema,
   GetOpportunitySchema,
+  SiteProfileSchema,
   type StartRunInput,
   StartRunSchema,
   StoreViewSchema,
@@ -32,6 +33,8 @@ import {
 } from "./diagnosis-state.ts";
 
 type EngineTool =
+  | "get_ux_site_profile"
+  | "update_ux_site_profile"
   | "get_ux_store_view"
   | "get_ux_opportunity"
   | "start_ux_diagnosis"
@@ -155,9 +158,45 @@ export function useStartRun() {
   return useMutation({
     mutationFn: (input: StartRunInput) =>
       engine.call(StartRunSchema, "start_ux_diagnosis", { ...input }),
+    // A run can fill the store's profile from its site in Studio.
+    onSettled: () =>
+      Promise.all([
+        engine.queryClient.invalidateQueries({
+          queryKey: KEYS.planStoreViews(engine.orgId),
+        }),
+        engine.queryClient.invalidateQueries({
+          queryKey: KEYS.planSiteProfiles(engine.orgId),
+        }),
+      ]),
+  });
+}
+
+/** The store the engine analyses; null until its domain is known. */
+export function useSiteProfile() {
+  const engine = useEngine();
+  return useQuery({
+    queryKey: KEYS.planSiteProfile(engine.orgId, engine.connectionId ?? ""),
+    enabled: engine.connectionId !== null,
+    retry: retryEngineRead,
+    queryFn: async () =>
+      (await engine.call(SiteProfileSchema, "get_ux_site_profile", {})).profile,
+  });
+}
+
+/** Sets the store's domain. Rejects with the engine's message, such as an
+ *  invalid domain. */
+export function useUpdateStoreDomain() {
+  const engine = useEngine();
+  return useMutation({
+    mutationFn: async (domain: string) =>
+      (
+        await engine.call(SiteProfileSchema, "update_ux_site_profile", {
+          domain,
+        })
+      ).profile,
     onSettled: () =>
       engine.queryClient.invalidateQueries({
-        queryKey: KEYS.planStoreViews(engine.orgId),
+        queryKey: KEYS.planSiteProfiles(engine.orgId),
       }),
   });
 }

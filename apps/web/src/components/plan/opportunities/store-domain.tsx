@@ -1,0 +1,151 @@
+/**
+ * The store's domain, which the analysis opens and captures. The engine finds
+ * it from the store's site in Studio when it can; otherwise a member sets it
+ * here, from the section or from a run the engine refused for lack of one.
+ */
+
+import { useId, useState } from "react";
+import { Edit03 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { useCapability } from "@/hooks/use-capability";
+import { useT } from "@/i18n/use-t.ts";
+import { errorText } from "./opportunity-view.ts";
+import { useSiteProfile, useUpdateStoreDomain } from "./use-plan-diagnosis.ts";
+
+/** The engine's connection is the org's, so editing it follows the same
+ *  permission as connecting it; if capabilities fail to load, the engine
+ *  decides. Null while loading. */
+function useCanEditDomain(): boolean | null {
+  const capability = useCapability("connections:manage");
+  if (capability.loading) return null;
+  return capability.granted || !!capability.error;
+}
+
+export function StoreDomainForm({
+  initial = "",
+  submitLabel,
+  onSaved,
+  onCancel,
+}: {
+  initial?: string;
+  submitLabel?: string;
+  onSaved?: () => void;
+  onCancel?: () => void;
+}) {
+  const t = useT();
+  const inputId = useId();
+  const canEdit = useCanEditDomain();
+  const update = useUpdateStoreDomain();
+  const [domain, setDomain] = useState(initial);
+  const value = domain.trim();
+
+  if (canEdit === null) return null;
+  if (!canEdit) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {t("plan.opportunities.domain.askAdmin")}
+      </p>
+    );
+  }
+
+  const failure = update.isError
+    ? (errorText(update.error) ?? t("plan.opportunities.domain.failed"))
+    : null;
+
+  return (
+    <form
+      className="flex flex-col gap-1.5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!value || update.isPending) return;
+        update.mutate(value, { onSuccess: () => onSaved?.() });
+      }}
+    >
+      <label htmlFor={inputId} className="text-xs text-muted-foreground">
+        {t("plan.opportunities.domain.label")}
+      </label>
+      <div className="flex gap-2">
+        <Input
+          id={inputId}
+          autoFocus
+          inputMode="url"
+          autoComplete="off"
+          placeholder={t("plan.opportunities.domain.placeholder")}
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+        />
+        <Button
+          type="submit"
+          size="sm"
+          className="shrink-0"
+          disabled={!value || update.isPending}
+        >
+          {update.isPending && <Spinner size="2xs" />}
+          {submitLabel ?? t("plan.opportunities.domain.save")}
+        </Button>
+        {onCancel && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            onClick={onCancel}
+          >
+            {t("plan.opportunities.domain.cancel")}
+          </Button>
+        )}
+      </div>
+      {failure && (
+        <p role="alert" className="break-words text-xs text-destructive">
+          {failure}
+        </p>
+      )}
+    </form>
+  );
+}
+
+/** "Store: www.example.com · Change", or the form while there is none. A
+ *  failed read hides the row: a run still asks for the domain if it needs it. */
+export function StoreDomainRow() {
+  const t = useT();
+  const profile = useSiteProfile();
+  const canEdit = useCanEditDomain();
+  const [editing, setEditing] = useState(false);
+
+  if (profile.isPending || profile.isError) return null;
+  const domain = profile.data?.domain ?? null;
+
+  if (!domain || editing) {
+    if (!domain && !canEdit) return null;
+    return (
+      <div className="max-w-md">
+        <StoreDomainForm
+          initial={domain ?? ""}
+          onSaved={() => setEditing(false)}
+          onCancel={domain ? () => setEditing(false) : undefined}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <span className="min-w-0 truncate">
+        {t("plan.opportunities.domain.current", { domain })}
+      </span>
+      {canEdit && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-2"
+          onClick={() => setEditing(true)}
+        >
+          <Edit03 />
+          {t("plan.opportunities.domain.change")}
+        </Button>
+      )}
+    </div>
+  );
+}

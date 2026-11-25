@@ -422,7 +422,17 @@ export const plan = {
   "plan.opportunities.newRun.submitNone": "Escolha uma parte",
   "plan.opportunities.newRun.failed": "Não foi possível começar a análise",
   "plan.opportunities.newRun.needsDomain":
-    "Falta o domínio da loja. Ligue o site da loja a esta organização e tente de novo.",
+    "A análise precisa do domínio da loja para abrir as páginas.",
+  "plan.opportunities.domain.label": "Domínio da loja",
+  "plan.opportunities.domain.placeholder": "www.exemplo.com.br",
+  "plan.opportunities.domain.save": "Salvar",
+  "plan.opportunities.domain.saveAndRun": "Salvar e analisar",
+  "plan.opportunities.domain.cancel": "Cancelar",
+  "plan.opportunities.domain.change": "Trocar",
+  "plan.opportunities.domain.current": "Loja: {domain}",
+  "plan.opportunities.domain.failed": "Não deu para salvar o domínio",
+  "plan.opportunities.domain.askAdmin":
+    "Peça a um admin para informar o domínio da loja.",
   "plan.opportunities.newRun.elsewhere.one":
     "Já existe uma análise desta página rodando: {pages}.",
   "plan.opportunities.newRun.elsewhere.other":
