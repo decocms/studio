@@ -125,8 +125,7 @@ export interface SiteProfile {
    */
   code_project_id: string | null;
   /**
-   * Volume do espelho do repo no org-fs do Studio. Só vale enquanto o deploy
-   * não tem o STUDIO_SERVICE_TOKEN (verify/code-source.ts). NULL = sem espelho.
+   * Volume do espelho do repo no org-fs do Studio. NULL = sem espelho.
    */
   code_volume: string | null;
   updated_at: string;
