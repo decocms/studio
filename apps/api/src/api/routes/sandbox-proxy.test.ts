@@ -8,8 +8,41 @@ import {
   fetchDaemonJson,
   parseSetupForce,
   redactRepoDir,
+  sameOriginRedirectTarget,
   withClaimGitLock,
 } from "./sandbox-proxy";
+
+describe("sameOriginRedirectTarget", () => {
+  const from = "https://preview.example.com/deco/invoke/x";
+
+  it("follows a relative or absolute same-origin location", () => {
+    expect(sameOriginRedirectTarget(from, "/pt-br/")).toBe(
+      "https://preview.example.com/pt-br/",
+    );
+    expect(
+      sameOriginRedirectTarget(from, "https://preview.example.com/a?b=1"),
+    ).toBe("https://preview.example.com/a?b=1");
+  });
+
+  it("refuses a location on any other origin", () => {
+    for (const location of [
+      "http://169.254.169.254/latest/meta-data/",
+      "http://127.0.0.1:8080/",
+      "//internal.example.com/",
+      "http://preview.example.com/",
+      "https://preview.example.com:8443/",
+      "file:///etc/passwd",
+    ]) {
+      expect(sameOriginRedirectTarget(from, location)).toBeNull();
+    }
+  });
+
+  it("refuses a missing or unparseable location", () => {
+    expect(sameOriginRedirectTarget(from, null)).toBeNull();
+    expect(sameOriginRedirectTarget(from, "")).toBeNull();
+    expect(sameOriginRedirectTarget(from, "http://[::1")).toBeNull();
+  });
+});
 
 describe("redactRepoDir", () => {
   it("nulls a container-internal repoDir while preserving other fields", () => {
