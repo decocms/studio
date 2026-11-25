@@ -22,6 +22,19 @@ describe("parseSections", () => {
     expect(parsed[0]?.label).toBe("Site Header");
   });
 
+  it("labels an unnamed saved block by its key, accents intact", () => {
+    const parsed = parseSections(
+      [{ __resolveType: "benefícios app versão att" }],
+      {
+        "benefícios app versão att": {
+          __resolveType: "website/flags/multivariate/section.ts",
+        },
+      },
+    );
+    expect(parsed[0]?.isSavedBlock).toBe(true);
+    expect(parsed[0]?.label).toBe("Benefícios App Versão Att");
+  });
+
   it("detects lazy-wrapped saved blocks", () => {
     const parsed = parseSections(
       [

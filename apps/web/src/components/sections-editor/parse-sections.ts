@@ -1,6 +1,7 @@
 import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import {
+  capitalizeWords,
   labelFromResolveType,
   isNeverMatcherResolveType,
   type RawSection,
@@ -34,7 +35,7 @@ function resolvedBlockLabel(
     | undefined;
   return (
     (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
-    blockKey.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ||
+    capitalizeWords(blockKey.replace(/[-_]/g, " ")) ||
     `Section ${idx + 1}`
   );
 }
