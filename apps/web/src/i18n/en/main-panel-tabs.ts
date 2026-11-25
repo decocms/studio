@@ -448,11 +448,24 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.frameLoading": "Loading the live page…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "The site did not answer",
   "mainPanelTabs.analyticsTab.heatmap.timeoutHint":
-    "Move the mouse over the page or accept its cookies, then try again.",
+    "The store may not let Studio show it here. Open it in a window instead.",
   "mainPanelTabs.analyticsTab.heatmap.timeoutRetry": "Try again",
   "mainPanelTabs.analyticsTab.heatmap.timeoutWhy": "Why this happens",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
-    "The page has not started the analytics view mode yet. If the site loads analytics only after an interaction or cookie consent, move the mouse over the page or accept its cookies. Otherwise check that it runs the current Deco Analytics runtime and lets Studio frame it.",
+    "Some stores don't let other sites show them in a frame, so the page can't load here. Opened in a window, the map works the same. If the store loads analytics only after an interaction or cookie consent, move the mouse over the page or accept its cookies. Otherwise check that it runs the current Deco Analytics runtime.",
+  "mainPanelTabs.analyticsTab.heatmap.openWindow": "Open in a window",
+  "mainPanelTabs.analyticsTab.heatmap.windowTitle":
+    "The map is open in another window",
+  "mainPanelTabs.analyticsTab.heatmap.windowShow": "Show window",
+  "mainPanelTabs.analyticsTab.heatmap.windowBack": "Show here",
+  "mainPanelTabs.analyticsTab.heatmap.windowBlockedTitle":
+    "The browser blocked the window",
+  "mainPanelTabs.analyticsTab.heatmap.windowClosedTitle":
+    "The window was closed",
+  "mainPanelTabs.analyticsTab.heatmap.windowTimeoutTitle":
+    "The store did not answer",
+  "mainPanelTabs.analyticsTab.heatmap.windowTimeoutDescription":
+    "Check that the store runs the current Deco Analytics runtime.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle": "No heatmap visits here",
   "mainPanelTabs.analyticsTab.heatmap.noViewsDescription":
     "No visit to this page on {device} in the period. Try another period or device.",
