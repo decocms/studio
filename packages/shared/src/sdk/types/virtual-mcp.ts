@@ -409,16 +409,25 @@ const envVarKey = z.string().min(1).regex(ENV_VAR_KEY_RE, {
  * the secret's NAME — a single secret can back multiple env keys across
  * different agents.
  */
+const RuntimeEnvScopeSchema = z
+  .enum(["runtime", "build"])
+  .optional()
+  .describe(
+    "Where the var is available. `runtime` (default when absent): install and the dev server. `build`: git clone, submodule update and install only — never the dev server.",
+  );
+
 const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     key: envVarKey,
     kind: z.literal("literal"),
     value: z.string().max(RUNTIME_ENV_LITERAL_VALUE_MAX),
+    scope: RuntimeEnvScopeSchema,
   }),
   z.object({
     key: envVarKey,
     kind: z.literal("secret"),
     secretId: z.string().min(1),
+    scope: RuntimeEnvScopeSchema,
   }),
 ]);
 
@@ -480,7 +489,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that Studio resolves via the credential vault before posting /_sandbox/config.",
+      "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that Studio resolves via the credential vault before posting /_sandbox/config. Each entry's `scope` picks where it lands: `runtime` (default) or `build` (clone, submodules and install only; needs the organization's `sandbox_build_env` flag).",
     ),
 });
 

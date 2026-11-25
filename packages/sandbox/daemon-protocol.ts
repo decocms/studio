@@ -99,6 +99,13 @@ export interface TenantConfig {
   readonly application?: Application;
   readonly env?: Readonly<Record<string, string>>;
   /**
+   * Env for git clone, submodule update and dependency install only — never
+   * the dev server, exec or a harness run. A `/config` body that carries it
+   * replaces the whole set; one that omits it keeps the current set. Redacted
+   * from `/config` responses.
+   */
+  readonly buildEnv?: Readonly<Record<string, string>>;
+  /**
    * Owning organization. Informational to the boot itself — the daemon uses it
    * only to stamp provenance on artifacts that outlive the pod, so a consumer
    * outside it can tell whose they are.

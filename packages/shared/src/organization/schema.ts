@@ -287,6 +287,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Keep a Freestyle snapshot of each project repo at its default branch's head, with its dependencies installed and its dev server running, so a new sandbox for that repo starts already serving. Off by default: each push to a default branch costs a snapshot build the next time a sandbox starts.",
     ),
+  sandbox_build_env: z
+    .boolean()
+    .optional()
+    .describe(
+      "Let a project's sandbox env vars be scoped to the build: a build-scoped var reaches git clone, submodule update and dependency install, and never the dev server. Off by default: build-scoped vars are ignored and the scope selector is hidden.",
+    ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
     .optional()

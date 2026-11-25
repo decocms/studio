@@ -130,6 +130,7 @@ export interface StudioToolIO {
             sandbox_run_metadata?: boolean | undefined;
             sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
+            sandbox_build_env?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -227,6 +228,7 @@ export interface StudioToolIO {
             sandbox_run_metadata?: boolean | undefined;
             sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
+            sandbox_build_env?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -316,6 +318,7 @@ export interface StudioToolIO {
             sandbox_run_metadata?: boolean | undefined;
             sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
+            sandbox_build_env?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
             hosting_enabled?: boolean | undefined;
             deco_analytics_enabled?: boolean | undefined;
@@ -4180,8 +4183,18 @@ export interface StudioToolIO {
                 apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
-                      | { key: string; kind: "literal"; value: string }
-                      | { key: string; kind: "secret"; secretId: string }
+                      | {
+                          key: string;
+                          kind: "literal";
+                          value: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
+                      | {
+                          key: string;
+                          kind: "secret";
+                          secretId: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
                     )[]
                   | null
                   | undefined;
@@ -4504,8 +4517,18 @@ export interface StudioToolIO {
                     apps?: { path: string }[] | null | undefined;
                     env?:
                       | (
-                          | { key: string; kind: "literal"; value: string }
-                          | { key: string; kind: "secret"; secretId: string }
+                          | {
+                              key: string;
+                              kind: "literal";
+                              value: string;
+                              scope?: "runtime" | "build" | undefined;
+                            }
+                          | {
+                              key: string;
+                              kind: "secret";
+                              secretId: string;
+                              scope?: "runtime" | "build" | undefined;
+                            }
                         )[]
                       | null
                       | undefined;
@@ -4734,8 +4757,18 @@ export interface StudioToolIO {
                 apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
-                      | { key: string; kind: "literal"; value: string }
-                      | { key: string; kind: "secret"; secretId: string }
+                      | {
+                          key: string;
+                          kind: "literal";
+                          value: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
+                      | {
+                          key: string;
+                          kind: "secret";
+                          secretId: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
                     )[]
                   | null
                   | undefined;
@@ -5003,8 +5036,18 @@ export interface StudioToolIO {
                 apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
-                      | { key: string; kind: "literal"; value: string }
-                      | { key: string; kind: "secret"; secretId: string }
+                      | {
+                          key: string;
+                          kind: "literal";
+                          value: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
+                      | {
+                          key: string;
+                          kind: "secret";
+                          secretId: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
                     )[]
                   | null
                   | undefined;
@@ -5263,8 +5306,18 @@ export interface StudioToolIO {
                 apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
-                      | { key: string; kind: "literal"; value: string }
-                      | { key: string; kind: "secret"; secretId: string }
+                      | {
+                          key: string;
+                          kind: "literal";
+                          value: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
+                      | {
+                          key: string;
+                          kind: "secret";
+                          secretId: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
                     )[]
                   | null
                   | undefined;
@@ -5525,8 +5578,18 @@ export interface StudioToolIO {
                     apps?: { path: string }[] | null | undefined;
                     env?:
                       | (
-                          | { key: string; kind: "literal"; value: string }
-                          | { key: string; kind: "secret"; secretId: string }
+                          | {
+                              key: string;
+                              kind: "literal";
+                              value: string;
+                              scope?: "runtime" | "build" | undefined;
+                            }
+                          | {
+                              key: string;
+                              kind: "secret";
+                              secretId: string;
+                              scope?: "runtime" | "build" | undefined;
+                            }
                         )[]
                       | null
                       | undefined;
@@ -5763,8 +5826,18 @@ export interface StudioToolIO {
                 apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
-                      | { key: string; kind: "literal"; value: string }
-                      | { key: string; kind: "secret"; secretId: string }
+                      | {
+                          key: string;
+                          kind: "literal";
+                          value: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
+                      | {
+                          key: string;
+                          kind: "secret";
+                          secretId: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
                     )[]
                   | null
                   | undefined;
@@ -6021,8 +6094,18 @@ export interface StudioToolIO {
                 apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
-                      | { key: string; kind: "literal"; value: string }
-                      | { key: string; kind: "secret"; secretId: string }
+                      | {
+                          key: string;
+                          kind: "literal";
+                          value: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
+                      | {
+                          key: string;
+                          kind: "secret";
+                          secretId: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
                     )[]
                   | null
                   | undefined;
@@ -7726,8 +7809,18 @@ export interface StudioToolIO {
                 apps?: { path: string }[] | null | undefined;
                 env?:
                   | (
-                      | { key: string; kind: "literal"; value: string }
-                      | { key: string; kind: "secret"; secretId: string }
+                      | {
+                          key: string;
+                          kind: "literal";
+                          value: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
+                      | {
+                          key: string;
+                          kind: "secret";
+                          secretId: string;
+                          scope?: "runtime" | "build" | undefined;
+                        }
                     )[]
                   | null
                   | undefined;

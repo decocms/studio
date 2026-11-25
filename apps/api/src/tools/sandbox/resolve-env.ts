@@ -10,39 +10,52 @@ import { readBoundedText } from "../../lib/bounded-text";
 /** Matches the cap `sandbox-proxy.ts` applies to `/_sandbox/config` responses. */
 const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;
 
-interface ResolveAndPushParams {
+interface ResolveParams {
   ctx: StudioContext;
-  runner: Pick<SandboxProvider, "proxyDaemonRequest">;
-  handle: string;
   orgId: string;
   userId: string;
   entries: RuntimeEnvEntry[] | null | undefined;
+  /**
+   * The organization's `sandbox_build_env` flag. Off, build-scoped entries are
+   * dropped and no `buildEnv` is produced, so nothing new reaches the daemon.
+   */
+  buildEnabled: boolean;
+}
+
+export interface ResolvedSandboxEnv {
+  /** Runtime-scoped vars: install, dev server, exec. */
+  env: Record<string, string>;
+  /**
+   * Build-scoped vars: git clone, submodule update and install only.
+   * `undefined` when the flag is off; otherwise the whole set, empty included,
+   * because the daemon replaces its build env with whatever it is sent.
+   */
+  buildEnv: Record<string, string> | undefined;
 }
 
 /**
- * Resolves env entries declared on a virtual MCP (literal | secret) into
- * a flat KEY→value map and PUTs it to the sandbox daemon's
- * /_sandbox/config so the resolved env is available before install +
- * dev script run.
+ * Resolves env entries declared on a virtual MCP (literal | secret) into flat
+ * KEY→value maps, split by scope.
  *
  * Secrets that fail to resolve (deleted by the owner, or user-scoped to a
  * different caller) are logged and skipped — boot continues without that
  * key rather than crashing the whole start.
  */
-export async function resolveAndPushEnv({
+export async function resolveSandboxEnv({
   ctx,
-  runner,
-  handle,
   orgId,
   userId,
   entries,
-}: ResolveAndPushParams): Promise<void> {
-  if (!entries || entries.length === 0) return;
-
+  buildEnabled,
+}: ResolveParams): Promise<ResolvedSandboxEnv> {
   const env: Record<string, string> = {};
-  for (const entry of entries) {
+  const buildEnv: Record<string, string> = {};
+  for (const entry of entries ?? []) {
+    const isBuild = entry.scope === "build";
+    if (isBuild && !buildEnabled) continue;
+    const target = isBuild ? buildEnv : env;
     if (entry.kind === "literal") {
-      env[entry.key] = entry.value;
+      target[entry.key] = entry.value;
       continue;
     }
     try {
@@ -51,7 +64,7 @@ export async function resolveAndPushEnv({
         orgId,
         userId,
       );
-      env[entry.key] = value;
+      target[entry.key] = value;
     } catch (err) {
       if (
         err instanceof SecretNotFoundError ||
@@ -65,13 +78,43 @@ export async function resolveAndPushEnv({
       throw err;
     }
   }
+  return { env, buildEnv: buildEnabled ? buildEnv : undefined };
+}
 
-  if (Object.keys(env).length === 0) return;
+/**
+ * PUTs resolved env to the sandbox daemon's /_sandbox/config. `env` is a
+ * per-key merge on the daemon, so an empty one is not sent; `buildEnv` is a
+ * whole-set replacement, so it is sent whenever it is defined — that is how a
+ * deleted build var leaves a running sandbox.
+ *
+ * `only: "build"` leaves `env` out: an env change is a transition the daemon
+ * restarts the dev server for, which a clone step has no reason to cause.
+ */
+export async function pushSandboxEnv({
+  runner,
+  handle,
+  resolved,
+  only,
+}: {
+  runner: Pick<SandboxProvider, "proxyDaemonRequest">;
+  handle: string;
+  resolved: ResolvedSandboxEnv;
+  only?: "build";
+}): Promise<void> {
+  const patch: {
+    env?: Record<string, string>;
+    buildEnv?: Record<string, string>;
+  } = {};
+  if (only !== "build" && Object.keys(resolved.env).length > 0) {
+    patch.env = resolved.env;
+  }
+  if (resolved.buildEnv) patch.buildEnv = resolved.buildEnv;
+  if (!patch.env && !patch.buildEnv) return;
 
   const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
     method: "PUT",
     headers: new Headers({ "content-type": "application/json" }),
-    body: JSON.stringify({ env }),
+    body: JSON.stringify(patch),
   });
   if (!res.ok) {
     const body = await readBoundedText(res, CONFIG_RESPONSE_MAX_BYTES).catch(

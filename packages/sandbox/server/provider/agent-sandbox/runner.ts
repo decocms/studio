@@ -1614,6 +1614,7 @@ export class AgentSandboxProvider {
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       apps: opts?.workload?.apps,
       tenant: opts?.tenant ?? undefined,
+      buildEnv: opts?.buildEnv,
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a
       // previous claim's clone-only config gets it cleared on a normal one.
       //
@@ -3341,7 +3342,14 @@ export function withoutCredentials(
   opts: EnsureOptions,
   orgFsRedacted: boolean,
 ): { ensureOpts: EnsureOptions; orgFsRedacted?: true } {
-  const { orgFsConfigJson, repo, extraRepos, ...rest } = opts;
+  // `buildEnv` holds resolved secrets, so it goes with the other credentials.
+  const {
+    orgFsConfigJson,
+    repo,
+    extraRepos,
+    buildEnv: _buildEnv,
+    ...rest
+  } = opts;
   const ensureOpts: EnsureOptions = rest;
   const stripped = repo && withoutUserinfo(repo);
   if (stripped) ensureOpts.repo = stripped;
@@ -3370,6 +3378,10 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   if (opts.repo) out.repo = opts.repo;
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;
+  // So a recreated pod's re-clone and install see the same build env.
+  if (opts.buildEnv && Object.keys(opts.buildEnv).length > 0) {
+    out.buildEnv = opts.buildEnv;
+  }
   if (opts.tenant) out.tenant = opts.tenant;
   // Without this, a recreated warm-pool pod's rebootstrap would compute
   // `cloneOnly: false` (workloadConfigPayload only sees this persisted blob),

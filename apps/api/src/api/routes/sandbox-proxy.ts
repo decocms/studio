@@ -45,8 +45,12 @@ import {
 import type { Env } from "../hono-env";
 import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
 import { handleVmEvents } from "./sandbox-events-handler";
-import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
+import {
+  pushSandboxEnv,
+  resolveSandboxEnv,
+} from "../../tools/sandbox/resolve-env";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   type GitDiffLike,
   type GitStatusLike,
@@ -1139,20 +1143,35 @@ export const createSandboxRoutes = () => {
     // the caller's secrets, answers 502 when one cannot be resolved, and an env
     // that DID change is itself a transition the daemon restarts dev for. That
     // is the healthy dev server this flag exists to stop tearing down.
-    if (step === "start" || (step === "install" && force)) {
+    //
+    // A clone gets the build-scoped vars only: they are what git reads, and
+    // pushing them is not a transition, so the dev server is left alone.
+    if (step === "start" || step === "clone" || (step === "install" && force)) {
       {
-        const organization = requireOrganization(c.var.studioContext);
+        const ctx = c.var.studioContext;
+        const organization = requireOrganization(ctx);
         const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
         try {
-          await resolveAndPushEnv({
-            ctx: c.var.studioContext,
-            runner: podRunner,
-            handle: claim.claimName,
+          const orgSettings = await ctx.storage.organizationSettings.get(
+            organization.id,
+          );
+          const resolved = await resolveSandboxEnv({
+            ctx,
             orgId: organization.id,
             // Secrets resolve as the CALLER — viewing a teammate's thread must
             // never mint their private secrets into the sandbox.
             userId: claim.callerUserId,
             entries,
+            buildEnabled: orgFlagEnabled(
+              orgSettings?.flags,
+              "sandbox_build_env",
+            ),
+          });
+          await pushSandboxEnv({
+            runner: podRunner,
+            handle: claim.claimName,
+            resolved,
+            ...(step === "clone" ? { only: "build" as const } : {}),
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

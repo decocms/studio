@@ -153,6 +153,42 @@ describe("buildConfigPayload", () => {
   });
 });
 
+describe("build env", () => {
+  const repo = {
+    cloneUrl: "https://github.com/acme/widgets.git",
+    userName: "Jane",
+    userEmail: "jane@example.com",
+  };
+
+  it("sends it beside the repo, an empty set included so a deletion clears", () => {
+    const base = { runtime: "node" as const, packageManager: null, repo };
+    expect(
+      buildConfigPayload({ ...base, buildEnv: { NPM_TOKEN: "t" } })?.buildEnv,
+    ).toEqual({ NPM_TOKEN: "t" });
+    expect(buildConfigPayload({ ...base, buildEnv: {} })?.buildEnv).toEqual({});
+  });
+
+  it("omits it when the caller has none, so the daemon keeps its own", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo,
+    });
+    expect(payload && "buildEnv" in payload).toBe(false);
+  });
+
+  it("drops it without a repo: nothing clones or installs", () => {
+    expect(
+      buildConfigPayload({
+        runtime: "node",
+        packageManager: null,
+        repo: null,
+        buildEnv: { NPM_TOKEN: "t" },
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("extra apps", () => {
   it("sends apps with the application, an empty list included", () => {
     const payload = (apps?: string[]) =>

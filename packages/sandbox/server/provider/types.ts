@@ -220,6 +220,15 @@ export interface EnsureOptions {
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
   env?: Record<string, string>;
   /**
+   * Env for the setup steps that fetch code — git clone, submodule update and
+   * dependency install — and for nothing else: the dev server and the agent
+   * never see it. Unlike `env` it is not container env; it travels in the
+   * daemon's bootstrap config, so it is in place before the clone starts.
+   * Sent as the whole set (an empty one clears it); absent leaves the daemon's
+   * current set alone.
+   */
+  buildEnv?: Record<string, string>;
+  /**
    * Tenant identity for cost attribution, surfaced as platform-native metadata
    * (k8s pod labels) so
    * downstream metrics pipelines can attribute resource usage to the owning

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
-import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
+import type {
+  RuntimeEnvEntry,
+  SandboxMap,
+  SandboxRecord,
+} from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type {
   EnsureOptions,
@@ -176,6 +180,7 @@ type Metadata = {
     port: string;
     path?: string | null;
     apps?: { path: string }[];
+    env?: RuntimeEnvEntry[];
   };
   sandboxMap?: SandboxMap;
 };
@@ -431,6 +436,56 @@ describe("SANDBOX_START", () => {
 
     const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
     expect(opts.repo?.submoduleCredentials).toEqual([]);
+  });
+
+  it("sends build-scoped env in the provision and only the rest as runtime env, behind sandbox_build_env", async () => {
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      runtime: {
+        ...BASE_METADATA.runtime,
+        env: [
+          { key: "API_URL", kind: "literal", value: "https://example.test" },
+          {
+            key: "NPM_TOKEN",
+            kind: "secret",
+            secretId: "sec_1",
+            scope: "build",
+          },
+        ],
+      },
+    };
+    const original = mockRunner.proxyDaemonRequest;
+    const run = async (flags: Record<string, boolean>) => {
+      mockEnsure.mockClear();
+      const pushed: unknown[] = [];
+      mockRunner.proxyDaemonRequest = async (_handle, _path, init) => {
+        pushed.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 204 });
+      };
+      await SANDBOX_START.handler(
+        { virtualMcpId: VMCP_ID, branch: BRANCH },
+        makeCtx({ virtualMcp: makeVirtualMcp(ORG_ID, metadata), flags }),
+      );
+      const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+      return { buildEnv: opts.buildEnv, pushed };
+    };
+    try {
+      const runtime = { API_URL: "https://example.test" };
+      const build = { NPM_TOKEN: "token-for-sec_1" };
+      // On: in the provision so the clone has it, and pushed again so a resumed
+      // sandbox — which gets no bootstrap — is updated too.
+      expect(await run({ sandbox_build_env: true })).toEqual({
+        buildEnv: build,
+        pushed: [{ env: runtime, buildEnv: build }],
+      });
+      // Off: the build var goes nowhere — not even into the runtime env.
+      expect(await run({})).toEqual({
+        buildEnv: undefined,
+        pushed: [{ env: runtime }],
+      });
+    } finally {
+      mockRunner.proxyDaemonRequest = original;
+    }
   });
 
   it("sends a real git branch for a synthetic thread branch, keeping the ref synthetic", async () => {

@@ -154,6 +154,30 @@ describe("readValidatedRuntimeEnv", () => {
     ]);
   });
 
+  it("keeps a build scope and reads anything else as runtime", () => {
+    const result = readValidatedRuntimeEnv({
+      runtime: {
+        env: [
+          {
+            key: "NPM_TOKEN",
+            kind: "secret",
+            secretId: "sec_1",
+            scope: "build",
+          },
+          { key: "GIT_SSL", kind: "literal", value: "1", scope: "build" },
+          { key: "API_URL", kind: "literal", value: "x", scope: "runtime" },
+          { key: "ODD", kind: "literal", value: "y", scope: "deploy" },
+        ],
+      },
+    });
+    expect(result).toEqual([
+      { key: "NPM_TOKEN", kind: "secret", secretId: "sec_1", scope: "build" },
+      { key: "GIT_SSL", kind: "literal", value: "1", scope: "build" },
+      { key: "API_URL", kind: "literal", value: "x" },
+      { key: "ODD", kind: "literal", value: "y" },
+    ]);
+  });
+
   it("returns null when every entry is invalid", () => {
     expect(
       readValidatedRuntimeEnv({

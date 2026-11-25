@@ -91,6 +91,13 @@ type TenantConfig struct {
 	CloneOnly   *bool             `json:"cloneOnly,omitempty"`
 	Application *Application      `json:"application,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+	// BuildEnv is env for the steps that fetch code — git clone, submodule
+	// update, dependency install — and for nothing else. It is kept apart from
+	// Env precisely so it never reaches the dev server, /exec or a harness run:
+	// pass it per spawn, never os.Setenv it. Unlike Env a patch replaces the
+	// whole set (see mergeBuildEnv). ⚠️ SECURITY: holds resolved secrets — never
+	// in a `/_sandbox/config` response (see routes.redactConfig).
+	BuildEnv map[string]string `json:"buildEnv,omitempty"`
 	// Owning organization, stamped by Studio. Nothing in the boot path reads it;
 	// it exists so artifacts that outlive the pod can record whose they are.
 	//
@@ -114,6 +121,10 @@ type Patch struct {
 	Application *Application
 	Env         map[string]*string
 	HasEnv      bool
+	// Whole-set replacement, so no per-key nulls. HasBuildEnv tells an explicit
+	// empty set (clear) from an absent field (keep current).
+	BuildEnv    map[string]string
+	HasBuildEnv bool
 	// Pointer, not string: DeepMerge rebuilds TenantConfig field by field, so a
 	// field absent from BOTH the patch and the merge is silently dropped on every
 	// apply. Nil here means "not in this patch, keep current".
@@ -150,6 +161,12 @@ func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
 	if v, ok := raw["env"]; ok && !isNull(v) {
 		p.HasEnv = true
 		if err := json.Unmarshal(v, &p.Env); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := raw["buildEnv"]; ok && !isNull(v) {
+		p.HasBuildEnv = true
+		if err := json.Unmarshal(v, &p.BuildEnv); err != nil {
 			return nil, err
 		}
 	}

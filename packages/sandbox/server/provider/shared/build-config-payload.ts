@@ -23,6 +23,8 @@ export function buildConfigPayload(args: {
   cloneOnly?: boolean;
   /** Extra monorepo apps by path; an empty list stops the ones running. */
   apps?: string[];
+  /** Env for clone, submodules and install. Dropped when there is no repo. */
+  buildEnv?: EnsureOptions["buildEnv"];
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -115,6 +117,9 @@ export function buildConfigPayload(args: {
     // be able to turn itself back off on a normal (dev-server) provision.
     ...(args.cloneOnly !== undefined ? { cloneOnly: args.cloneOnly } : {}),
     ...(application ? { application } : {}),
+    // Only beside a repo: with nothing to clone or install it has no reader.
+    // An empty set is sent as-is — it is how a deleted build var is cleared.
+    ...(git && args.buildEnv ? { buildEnv: args.buildEnv } : {}),
   };
 }
 

@@ -599,6 +599,11 @@ export const sandbox = {
   "sandbox.envVarsField.scopeOrganization":
     "Organization — visible to all members",
   "sandbox.envVarsField.scopePrivate": "Private — only visible to me",
+  "sandbox.envVarsField.envScopeBuild": "Build",
+  "sandbox.envVarsField.envScopeHint":
+    "Build variables reach git clone, submodules and dependency install only, and apply the next time those run.",
+  "sandbox.envVarsField.envScopeLabel": "Env var {index} scope",
+  "sandbox.envVarsField.envScopeRuntime": "Runtime",
   "sandbox.envVarsField.secret": "Secret",
   "sandbox.envVarsField.secretSaved": 'Saved secret "{name}"',
   "sandbox.envVarsField.secretValuePlaceholder": "secret value",

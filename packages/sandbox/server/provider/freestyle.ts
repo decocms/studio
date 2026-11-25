@@ -1014,6 +1014,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       tenant: opts.tenant,
       cloneOnly: opts.cloneOnly === true,
       apps: opts.workload?.apps,
+      buildEnv: opts.buildEnv,
     });
   }
 

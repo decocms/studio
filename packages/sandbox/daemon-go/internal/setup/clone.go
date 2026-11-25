@@ -77,7 +77,12 @@ type CloneDeps struct {
 	// TmpDir is the daemon's own scratch dir, where the submodule fetch parks its
 	// credentials file. Empty disables the submodule fetch rather than falling
 	// back to the shared /tmp.
-	TmpDir  string
+	TmpDir string
+	// Env is the tenant's build env (config.TenantConfig.BuildEnv), handed to
+	// every git process of this clone. gitStepEnv is laid over it, so it cannot
+	// re-enable a credential prompt. A non-empty one also turns on the submodule
+	// fetch for a repo with no SubmoduleCredentials.
+	Env     map[string]string
 	OnChunk func(data string)
 }
 
@@ -92,7 +97,38 @@ func runStep(argv []string, deps CloneDeps) int {
 	deps.OnChunk("$ " + formatArgv(argv) + "\r\n")
 	return SpawnStepArgv(argv, func(data string) {
 		deps.OnChunk(normalizeCarriageReturns(data))
-	}, gitStepEnv)
+	}, GitStepEnv(deps.Env))
+}
+
+// GitStepEnv is the env for a daemon-owned git step: the tenant's build env
+// with gitStepEnv over it, so git never prompts whatever the tenant set.
+func GitStepEnv(buildEnv map[string]string) map[string]string {
+	out := make(map[string]string, len(buildEnv)+len(gitStepEnv))
+	for k, v := range buildEnv {
+		out[k] = v
+	}
+	for k, v := range gitStepEnv {
+		out[k] = v
+	}
+	return out
+}
+
+// plainSubmoduleUpdateArgv is the submodule fetch for a repo with no
+// SubmoduleCredentials: no store helper and no rewrites, so whatever
+// authenticates it comes from the tenant's build env (or it is public).
+func plainSubmoduleUpdateArgv(dir string) []string {
+	return gitArgv("-C", dir, "submodule", "update", "--init", "--recursive", "--depth", "1")
+}
+
+// runPlainSubmoduleUpdate is runSubmoduleUpdate without credentials. Same
+// best-effort contract: a failure warns and the checkout stands.
+func runPlainSubmoduleUpdate(dir string, onChunk func(string), run func(argv []string) int) {
+	if _, err := os.Stat(filepath.Join(dir, ".gitmodules")); err != nil {
+		return
+	}
+	if code := run(plainSubmoduleUpdateArgv(dir)); code != 0 {
+		onChunk(fmt.Sprintf("\r\n[clone] warning: submodule update failed (exit %d); continuing without submodules\r\n", code))
+	}
 }
 
 func isTransient(output string) bool {
@@ -437,9 +473,15 @@ func SpawnClone(deps CloneDeps) CloneResult {
 			// resolve host") and buys 4 full recursive passes plus 9s of sleeps —
 			// synchronously ahead of install and the dev server, for a step whose
 			// failure is already tolerated. One attempt, then the warning.
-			runSubmoduleUpdate(dir, deps.TmpDir, deps.SubmoduleCredentials, deps.OnChunk, func(argv []string) int {
-				return runStep(argv, deps)
-			})
+			run := func(argv []string) int { return runStep(argv, deps) }
+			// No credentials normally means "leave submodules alone". A tenant
+			// who set build env has opted in another way: it is the only thing
+			// they could have set it for that a plain clone does not already do.
+			if len(deps.SubmoduleCredentials) == 0 && len(deps.Env) > 0 {
+				runPlainSubmoduleUpdate(dir, deps.OnChunk, run)
+			} else {
+				runSubmoduleUpdate(dir, deps.TmpDir, deps.SubmoduleCredentials, deps.OnChunk, run)
+			}
 		}
 		return res
 	}

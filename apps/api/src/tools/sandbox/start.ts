@@ -38,7 +38,7 @@ import {
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
 } from "./helpers";
-import { resolveAndPushEnv } from "./resolve-env";
+import { pushSandboxEnv, resolveSandboxEnv } from "./resolve-env";
 import { resolveSubmoduleCredentials } from "./resolve-submodule-creds";
 import {
   readSandboxMap,
@@ -625,6 +625,16 @@ async function provisionSandbox(params: StartParams): Promise<{
     entries: orgSettings?.submodule_credentials,
   });
 
+  // Resolved before the provision, not after: build-scoped vars ride the
+  // bootstrap config so they are in place when the daemon starts cloning.
+  const resolvedEnv = await resolveSandboxEnv({
+    ctx,
+    orgId,
+    userId,
+    entries: readValidatedRuntimeEnv(metadata),
+    buildEnabled: orgFlagEnabled(orgSettings?.flags, "sandbox_build_env"),
+  });
+
   // Skip clone + lockfile probe entirely when no repo is connected — the
   // sandbox boots blank.
   let repoOpts:
@@ -884,6 +894,7 @@ async function provisionSandbox(params: StartParams): Promise<{
           ...(orgFlagEnabled(orgSettings?.flags, "sandbox_repo_snapshots")
             ? { repoSnapshot: true }
             : {}),
+          ...(resolvedEnv.buildEnv ? { buildEnv: resolvedEnv.buildEnv } : {}),
           ...(purpose ? { purpose } : {}),
           ...(provider ? { provider } : {}),
           ...(sandboxImage !== "default" ? { sandboxImage } : {}),
@@ -907,18 +918,15 @@ async function provisionSandbox(params: StartParams): Promise<{
     },
   );
 
-  // Resolve declared env (literals + secret refs) and push to the daemon
-  // *before* it can start install/dev. Daemon deep-merges, so resuming an
-  // already-claimed sandbox stays idempotent.
+  // Push declared env (literals + secret refs) to the daemon *before* it can
+  // start install/dev. Daemon deep-merges, so resuming an already-claimed
+  // sandbox stays idempotent. Build env goes too: a resume posts no bootstrap,
+  // so this is what updates it on a sandbox that is already running.
   mark("provider-ensure");
-  const envEntries = readValidatedRuntimeEnv(metadata);
-  await resolveAndPushEnv({
-    ctx,
+  await pushSandboxEnv({
     runner,
     handle: sandbox.handle,
-    orgId,
-    userId,
-    entries: envEntries,
+    resolved: resolvedEnv,
   });
   mark("env");
 

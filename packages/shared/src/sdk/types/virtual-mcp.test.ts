@@ -520,6 +520,29 @@ test("VirtualMCPCreateDataSchema rejects more than 100 knowledge files", () => {
   expect(result.success).toBe(false);
 });
 
+test("VirtualMCPUpdateDataSchema keeps a runtime env var's scope and rejects an unknown one", () => {
+  const parse = (scope: string | undefined) =>
+    VirtualMCPUpdateDataSchema.safeParse({
+      metadata: {
+        runtime: {
+          env: [
+            { key: "NPM_TOKEN", kind: "secret", secretId: "sec_1", scope },
+            { key: "API_URL", kind: "literal", value: "x", scope },
+          ],
+        },
+      },
+    });
+  const build = parse("build");
+  expect(build.success).toBe(true);
+  expect(build.data?.metadata?.runtime?.env?.map((e) => e.scope)).toEqual([
+    "build",
+    "build",
+  ]);
+  expect(parse("runtime").success).toBe(true);
+  expect(parse(undefined).success).toBe(true);
+  expect(parse("deploy").success).toBe(false);
+});
+
 test("VirtualMCPUpdateDataSchema rejects more than 100 runtime env vars", () => {
   const result = VirtualMCPUpdateDataSchema.safeParse({
     metadata: {

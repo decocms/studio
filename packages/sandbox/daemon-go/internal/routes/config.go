@@ -65,9 +65,20 @@ func stripDerived(c *config.Enriched) *config.TenantConfig {
 //
 // Copies rather than mutates: the input aliases the live store's config, so
 // clearing the field in place would disarm the clone step itself.
+//
+// Build env goes the same way and for the same reason: it holds resolved
+// secrets, and nothing outside the daemon needs to read it back.
 func stripSubmoduleTokens(c *config.TenantConfig) *config.TenantConfig {
-	if c == nil || c.Git == nil {
+	if c == nil {
 		return c
+	}
+	if c.Git == nil {
+		if c.BuildEnv == nil {
+			return c
+		}
+		out := *c
+		out.BuildEnv = nil
+		return &out
 	}
 	git := *c.Git
 	if git.Repository != nil {
@@ -85,6 +96,7 @@ func stripSubmoduleTokens(c *config.TenantConfig) *config.TenantConfig {
 	}
 	out := *c
 	out.Git = &git
+	out.BuildEnv = nil
 	return &out
 }
 

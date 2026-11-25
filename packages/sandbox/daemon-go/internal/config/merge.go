@@ -22,6 +22,7 @@ func DeepMerge(current *TenantConfig, patch *Patch) *TenantConfig {
 		CloneOnly:   cloneOnly,
 		Application: mergeApplication(base.Application, patch.Application),
 		Env:         mergeEnv(base.Env, patch),
+		BuildEnv:    mergeBuildEnv(base.BuildEnv, patch),
 		OrgId:       orgId,
 	}
 	return out
@@ -51,6 +52,24 @@ func mergeEnv(current map[string]string, patch *Patch) map[string]string {
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+// mergeBuildEnv: absent keeps current, present replaces the whole set. Studio
+// always sends every build var it knows, so replacing is what makes a deleted
+// one go away — a per-key merge would need Studio to remember what it sent.
+func mergeBuildEnv(current map[string]string, patch *Patch) map[string]string {
+	src := current
+	if patch.HasBuildEnv {
+		src = patch.BuildEnv
+	}
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
+	for k, v := range src {
+		out[k] = v
 	}
 	return out
 }

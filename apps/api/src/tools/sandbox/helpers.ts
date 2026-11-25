@@ -55,8 +55,10 @@ export function readValidatedRuntimeEnv(
     if (!item || typeof item !== "object") continue;
     const e = item as Record<string, unknown>;
     if (typeof e.key !== "string" || !ENV_VAR_KEY_RE.test(e.key)) continue;
+    // Only an explicit "build" is kept; anything else reads as runtime.
+    const scope = e.scope === "build" ? { scope: "build" as const } : {};
     if (e.kind === "literal" && typeof e.value === "string") {
-      out.push({ key: e.key, kind: "literal", value: e.value });
+      out.push({ key: e.key, kind: "literal", value: e.value, ...scope });
       continue;
     }
     if (
@@ -64,7 +66,12 @@ export function readValidatedRuntimeEnv(
       typeof e.secretId === "string" &&
       e.secretId.length > 0
     ) {
-      out.push({ key: e.key, kind: "secret", secretId: e.secretId });
+      out.push({
+        key: e.key,
+        kind: "secret",
+        secretId: e.secretId,
+        ...scope,
+      });
     }
   }
   return out.length === 0 ? null : out;

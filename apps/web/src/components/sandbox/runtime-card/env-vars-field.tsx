@@ -10,6 +10,7 @@ import type {
 import { Controller, useFieldArray, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { ENV_VAR_KEY_RE } from "@/sdk";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -89,6 +90,7 @@ export function EnvVarsField<T extends FieldValues>({
   sandboxMap,
 }: EnvVarsFieldProps<T>) {
   const t = useT();
+  const buildScope = useOrgFlag("sandbox_build_env");
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
@@ -98,6 +100,7 @@ export function EnvVarsField<T extends FieldValues>({
       </div>
       <p className="text-xs text-muted-foreground">
         {t("sandbox.envVarsField.description")}
+        {buildScope ? ` ${t("sandbox.envVarsField.envScopeHint")}` : null}
       </p>
       <RunningSandboxNotice
         control={control}
@@ -285,6 +288,7 @@ function EnvVarsEditor<T extends FieldValues>({
     });
   };
 
+  const showScope = useOrgFlag("sandbox_build_env");
   const secrets = useSecrets();
   const secretById = new Map<string, SecretInfo>();
   for (const s of secrets) secretById.set(s.id, s);
@@ -324,11 +328,13 @@ function EnvVarsEditor<T extends FieldValues>({
     }
     const existing = (form.getValues(fieldPath) ?? []) as Array<{
       key?: string;
+      scope?: string;
     }>;
+    // Pasted rows are runtime ones, and a key may exist once per scope.
     const existingKeys = new Set<string>();
     for (const e of existing) {
       const k = (e.key ?? "").trim();
-      if (k) existingKeys.add(k);
+      if (k && e.scope !== "build") existingKeys.add(k);
     }
     let added = 0;
     let skipped = 0;
@@ -366,6 +372,7 @@ function EnvVarsEditor<T extends FieldValues>({
               form={form}
               onUpdateEntry={updateEntry}
               fieldPath={fieldPath}
+              showScope={showScope}
               secrets={secrets}
               secretById={secretById}
               onSaveAsSecret={(presetKey, presetValue) =>
@@ -430,6 +437,11 @@ function EnvVarsEditor<T extends FieldValues>({
               key,
               kind: "secret",
               secretId,
+              ...scopeField(
+                form.getValues(
+                  `${fieldPath}.${dialogMode.index}.scope` as FieldPath<T>,
+                ),
+              ),
             });
             setDialogMode(null);
           }}
@@ -445,11 +457,20 @@ interface EnvRowProps<T extends FieldValues> {
   form: UseFormReturn<T>;
   onUpdateEntry: (index: number, entry: unknown) => void;
   fieldPath: FieldPath<T>;
+  /** The organization's `sandbox_build_env` flag: off hides the selector. */
+  showScope: boolean;
   secrets: SecretInfo[];
   secretById: Map<string, SecretInfo>;
   onSaveAsSecret: (presetKey: string, presetValue: string) => void;
   onCreateNewSecret: (presetKey: string) => void;
   onRemove: () => void;
+}
+
+type EnvScope = "runtime" | "build";
+
+/** Runtime is the absent default, so only "build" is ever written. */
+function scopeField(scope: unknown): { scope?: "build" } {
+  return scope === "build" ? { scope: "build" } : {};
 }
 
 function EnvRow<T extends FieldValues>({
@@ -458,6 +479,7 @@ function EnvRow<T extends FieldValues>({
   form,
   onUpdateEntry,
   fieldPath,
+  showScope,
   secrets,
   secretById,
   onSaveAsSecret,
@@ -469,6 +491,9 @@ function EnvRow<T extends FieldValues>({
   const valueName = `${fieldPath}.${index}.value` as FieldPath<T>;
   const secretIdName = `${fieldPath}.${index}.secretId` as FieldPath<T>;
   const kindName = `${fieldPath}.${index}.kind` as FieldPath<T>;
+  const scopeName = `${fieldPath}.${index}.scope` as FieldPath<T>;
+  const scope: EnvScope =
+    useWatch({ control, name: scopeName }) === "build" ? "build" : "runtime";
 
   // useWatch subscribes the row to its kind so a switch causes an immediate
   // re-render with the correct value-column shape. `form.getValues()` alone
@@ -484,7 +509,12 @@ function EnvRow<T extends FieldValues>({
     const key =
       (form.getValues(keyName) as unknown as string | undefined)?.trim() ?? "";
     if (next === "literal") {
-      onUpdateEntry(index, { key, kind: "literal", value: "" });
+      onUpdateEntry(index, {
+        key,
+        kind: "literal",
+        value: "",
+        ...scopeField(scope),
+      });
       return;
     }
     // Literal → Secret: if there's already a value (often from a .env paste),
@@ -496,7 +526,19 @@ function EnvRow<T extends FieldValues>({
       onSaveAsSecret(key, currentValue);
       return;
     }
-    onUpdateEntry(index, { key, kind: "secret", secretId: "" });
+    onUpdateEntry(index, {
+      key,
+      kind: "secret",
+      secretId: "",
+      ...scopeField(scope),
+    });
+  };
+
+  const switchScope = (next: EnvScope) => {
+    const { scope: _previous, ...entry } = form.getValues(
+      `${fieldPath}.${index}` as FieldPath<T>,
+    ) as Record<string, unknown>;
+    onUpdateEntry(index, { ...entry, ...scopeField(next) });
   };
 
   return (
@@ -568,6 +610,32 @@ function EnvRow<T extends FieldValues>({
           </SelectContent>
         </Select>
       </div>
+
+      {showScope ? (
+        <div className="shrink-0">
+          <Select
+            value={scope}
+            onValueChange={(v) => switchScope(v as EnvScope)}
+          >
+            <SelectTrigger
+              className="h-9 w-[110px]"
+              aria-label={t("sandbox.envVarsField.envScopeLabel", {
+                index: index + 1,
+              })}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="runtime">
+                {t("sandbox.envVarsField.envScopeRuntime")}
+              </SelectItem>
+              <SelectItem value="build">
+                {t("sandbox.envVarsField.envScopeBuild")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
 
       <div className="flex flex-[2] min-w-0 items-center gap-1">
         {kind === "literal" ? (
@@ -878,6 +946,10 @@ function SaveAsSecretDialog({
 
 // Mirrors `stripIncompleteEnvEntries` in views/virtual-mcp/index.tsx so the
 // banner's notion of "changed" matches what autosave actually sends.
+//
+// Build-scoped entries are left out: the banner offers to restart the dev
+// server, which never reads them. Moving a var to build still counts, because
+// it leaves the runtime set.
 function normalizeEnvForCompare(value: unknown): unknown[] {
   if (!Array.isArray(value)) return [];
   const out: unknown[] = [];
@@ -888,7 +960,9 @@ function normalizeEnvForCompare(value: unknown): unknown[] {
       kind?: string;
       value?: string;
       secretId?: string;
+      scope?: string;
     };
+    if (e.scope === "build") continue;
     const key = (e.key ?? "").trim();
     if (!key || !ENV_VAR_KEY_RE.test(key)) continue;
     if (e.kind === "literal") {

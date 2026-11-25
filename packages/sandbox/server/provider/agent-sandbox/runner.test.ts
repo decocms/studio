@@ -71,6 +71,26 @@ describe("withoutCredentials", () => {
   });
 });
 
+describe("build env persistence", () => {
+  const opts: EnsureOptions = {
+    tenant: { orgId: "o1", userId: "u1" },
+    buildEnv: { NPM_TOKEN: "npm_buildsecret" },
+  };
+
+  it("is kept for resurrection by a host that stores credentials", () => {
+    expect(stripEnsureOpts(opts)?.buildEnv).toEqual(opts.buildEnv);
+    expect(
+      stripEnsureOpts({ ...opts, buildEnv: {} })?.buildEnv,
+    ).toBeUndefined();
+  });
+
+  it("never reaches the state bytes of a host that must not", () => {
+    const bytes = JSON.stringify(withoutCredentials(opts, false));
+    expect(bytes).not.toContain("npm_buildsecret");
+    expect(bytes).not.toContain("buildEnv");
+  });
+});
+
 describe("stripEnsureOpts", () => {
   it("retains orgFsConfigJson so resurrection replays org-fs mounts", () => {
     const opts: EnsureOptions = { orgFsConfigJson: '{"mounts":[]}' };

@@ -560,6 +560,7 @@ func (o *Orchestrator) stepCloneInner() bool {
 			CloneUrl:             cloneUrl,
 			Branch:               cfg.Branch(),
 			SubmoduleCredentials: cfg.SubmoduleCredentials(),
+			Env:                  cfg.BuildEnv,
 			// LogsDir IS the daemon's tmp dir (appRoot/tmp); the submodule fetch
 			// parks its credentials file there rather than in the shared /tmp.
 			TmpDir: o.deps.LogsDir,
@@ -702,6 +703,7 @@ func (o *Orchestrator) cloneSecondaryRepos(cfg *config.Enriched) {
 				CloneUrl:             j.cloneUrl,
 				Branch:               j.branch,
 				SubmoduleCredentials: j.submodules,
+				Env:                  cfg.BuildEnv,
 				TmpDir:               SecondaryCloneTmpDir(o.deps.LogsDir, j.name),
 				// Output is dropped rather than streamed: N clones interleaving
 				// line-by-line is unreadable, and the primary owns the stream.
@@ -822,7 +824,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 	os.Remove(installLogPath)
 	installTee := proc.NewLogTee(installLogPath, installLogMaxBytes)
 
-	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) {
+	code, ran := SpawnInstall(cfg, o.deps.RepoDir, installEnv(cfg), func(data string) {
 		o.rawChunk(data)
 		installTee.Write(data)
 	})
@@ -888,7 +890,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 // finishGoldenInstall); the bool says which happened.
 func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSource) bool {
 	o.chunk(fmt.Sprintf("[orchestrator] relinking workspaces after %s golden restore\r\n", tier))
-	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) { o.rawChunk(data) })
+	code, ran := SpawnInstall(cfg, o.deps.RepoDir, installEnv(cfg), func(data string) { o.rawChunk(data) })
 	if !ran {
 		return true
 	}
@@ -1160,14 +1162,35 @@ func (o *Orchestrator) installGitCredentials(cfg *config.Enriched) {
 	}
 }
 
+// installEnv is what a dependency install runs with: the runtime env it has
+// always had, with the build env over it. The one place the two meet — the dev
+// server and everything after it get cfg.Env alone.
+func installEnv(cfg *config.Enriched) map[string]string {
+	if len(cfg.BuildEnv) == 0 {
+		return cfg.Env
+	}
+	out := make(map[string]string, len(cfg.Env)+len(cfg.BuildEnv))
+	for k, v := range cfg.Env {
+		out[k] = v
+	}
+	for k, v := range cfg.BuildEnv {
+		out[k] = v
+	}
+	return out
+}
+
 func (o *Orchestrator) checkoutBranch(branch string) error {
 	repoDir := o.deps.RepoDir
+	var buildEnv map[string]string
+	if cfg := o.deps.Store.Read(); cfg != nil {
+		buildEnv = cfg.BuildEnv
+	}
 	return gitx.CheckoutBranch(gitx.CheckoutBranchParams{
 		RepoDir: repoDir,
 		Branch:  branch,
 		RunStep: func(argv []string) int {
 			o.rawChunk("$ " + formatArgv(argv) + "\r\n")
-			return SpawnStepArgv(argv, func(data string) { o.rawChunk(data) }, gitStepEnv)
+			return SpawnStepArgv(argv, func(data string) { o.rawChunk(data) }, GitStepEnv(buildEnv))
 		},
 		Log: func(message string) { o.chunk(message) },
 	})
