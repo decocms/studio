@@ -247,11 +247,25 @@ function Summary({ view, needs }: { view: StoreView; needs: CardNeeds }) {
 
 /** What did not answer: what the customer can provide, each pointing to the
  *  setup card when the card asks for it, and the analysis's own limits,
- *  folded away. */
+ *  folded away. An old engine's gaps have no owner and stay listed open. */
 function Gaps({ view, needs }: { view: StoreView; needs: CardNeeds }) {
   const t = useT();
-  const { customer, limitations } = gapGroups(view);
+  const { legacy, customer, limitations } = gapGroups(view);
   if (customer.length === 0 && limitations.length === 0) return null;
+  if (legacy) {
+    return (
+      <div className="flex flex-col gap-1 text-xs">
+        <span className="text-muted-foreground">
+          {t("plan.opportunities.summary.gaps")}
+        </span>
+        <ul className="flex flex-col gap-0.5 text-warning">
+          {limitations.map((gap) => (
+            <li key={gap}>{gap}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3 text-xs">
       {customer.length > 0 && (

@@ -905,11 +905,29 @@ describe("runRequestedEvent", () => {
 });
 
 describe("gapGroups", () => {
-  it("old engine: every gap is a limitation", () => {
+  it("old engine: every gap is listed as it is, in legacy mode", () => {
     const old = StoreViewSchema.parse(storeViewWithGapsFixture);
+    expect(viewGaps(old).length).toBeGreaterThan(0);
     expect(gapGroups(old)).toEqual({
+      legacy: true,
       customer: [],
       limitations: viewGaps(old),
+    });
+  });
+
+  it("an engine with gap_details is not legacy, even with none on a page", () => {
+    const view = StoreViewSchema.parse(storeViewWithSetupFixture);
+    expect(gapGroups(view).legacy).toBe(false);
+    const noGaps = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      pages: [
+        { ...storeViewWithSetupFixture.pages[0], gaps: [], gap_details: [] },
+      ],
+    });
+    expect(gapGroups(noGaps)).toEqual({
+      legacy: false,
+      customer: [],
+      limitations: [],
     });
   });
 
@@ -937,6 +955,7 @@ describe("gapGroups", () => {
       ],
     });
     expect(gapGroups(view)).toEqual({
+      legacy: false,
       customer: [],
       limitations: ["a", "b"],
     });

@@ -206,14 +206,15 @@ export function setupNeeds(v: StoreView): (SetupNeed & { key: SetupKey })[] {
 
 /** Gaps split by who can close them: what the customer provides (once per
  *  key) and the analysis's own limits. An engine without `gap_details` has
- *  no owners, so every gap is a limitation. */
+ *  no owners, so its gaps come back `legacy`, to be listed as they are. */
 export function gapGroups(v: StoreView): {
+  legacy: boolean;
   customer: GapDetail[];
   limitations: string[];
 } {
   const details = v.pages.flatMap((p) => p.gap_details ?? []);
   if (!v.pages.some((p) => p.gap_details)) {
-    return { customer: [], limitations: viewGaps(v) };
+    return { legacy: true, customer: [], limitations: viewGaps(v) };
   }
   const customer = new Map<string, GapDetail>();
   const limitations = new Set<string>();
@@ -224,7 +225,11 @@ export function gapGroups(v: StoreView): {
       limitations.add(d.message);
     }
   }
-  return { customer: [...customer.values()], limitations: [...limitations] };
+  return {
+    legacy: false,
+    customer: [...customer.values()],
+    limitations: [...limitations],
+  };
 }
 
 /** A page's first analysis carries its start as `analysed_at`, so until it

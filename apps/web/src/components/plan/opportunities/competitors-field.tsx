@@ -44,6 +44,7 @@ function CompetitorsForm({
     null,
   );
   const rejected = rejectionsOf(update.error);
+  const unmatched = rejected.filter((r) => !list.includes(r.domain));
   const failure =
     update.isError && rejected.length === 0
       ? (errorText(update.error) ?? t("plan.opportunities.competitors.failed"))
@@ -138,6 +139,16 @@ function CompetitorsForm({
         <p role="alert" className="break-words text-xs text-destructive">
           {failure}
         </p>
+      )}
+      {unmatched.length > 0 && (
+        <ul
+          role="alert"
+          className="flex flex-col gap-0.5 break-words text-xs text-destructive"
+        >
+          {unmatched.map((r) => (
+            <li key={r.domain}>{`${r.domain}: ${r.reason}`}</li>
+          ))}
+        </ul>
       )}
       <div className="flex gap-2">
         <Button
