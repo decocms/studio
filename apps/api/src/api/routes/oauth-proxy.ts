@@ -20,7 +20,7 @@ import { auth } from "../../auth";
 import { retry, RetryError } from "@decocms/shared/std";
 import {
   createNoRedirectFetch,
-  isPrivateUrl,
+  guardAgainstPrivateUrl,
 } from "@/mcp-clients/url-security";
 import {
   authorizationServerMetadataUrls,
@@ -66,10 +66,46 @@ async function getConnectionUrl(
   return connection?.connection_url ?? null;
 }
 
+/**
+ * Connection URLs and the OAuth URLs an origin advertises are caller- or
+ * origin-controlled, and discovery runs on unauthenticated routes. Resolve DNS
+ * before trusting a hostname so a name pointing at a private address is
+ * refused too.
+ */
+async function privateUrlBlockedResponse(
+  url: string,
+): Promise<Response | null> {
+  const blocked = await guardAgainstPrivateUrl(url);
+  if (!blocked) return null;
+  return new Response(JSON.stringify({ error: blocked }), {
+    status: 502,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Keeps the origin's status (MCP clients branch on it during discovery) but
+ * drops its body, so these public routes don't echo third-party responses.
+ */
+async function upstreamErrorResponse(response: Response): Promise<Response> {
+  await drainDiscardedBody(response);
+  return new Response(
+    JSON.stringify({
+      error: "Origin OAuth metadata request failed",
+      status: response.status,
+    }),
+    {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+}
+
 async function checkOriginSupportsOAuth(
   connectionUrl: string,
   headers: Record<string, string> = {},
 ): Promise<string | null> {
+  if (await guardAgainstPrivateUrl(connectionUrl)) return null;
   try {
     const response = await fetchWithTimeout(connectionUrl, {
       method: "POST",
@@ -161,6 +197,9 @@ async function checkHasOAuthMetadata(connectionUrl: string): Promise<boolean> {
 export async function fetchProtectedResourceMetadata(
   connectionUrl: string,
 ): Promise<Response> {
+  const blocked = await privateUrlBlockedResponse(connectionUrl);
+  if (blocked) return blocked;
+
   // URL formats (resource-relative, well-known prefix, root) per RFC 9728 are
   // built in oauth-proxy-metadata.ts; here we just probe them in order. Each
   // fetch is timeout-bounded and retried for transient failures so a slow/hung
@@ -524,21 +563,12 @@ export const protectedResourceMetadataHandler = async (c: {
         });
       }
 
-      // Server doesn't support OAuth at all - pass through the error
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: { "Content-Type": "application/json" },
-      });
+      // Server doesn't support OAuth at all - pass through the status
+      return upstreamErrorResponse(response);
     }
 
-    // For other non-OK responses, pass through the error
     if (!response.ok) {
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: { "Content-Type": "application/json" },
-      });
+      return upstreamErrorResponse(response);
     }
 
     // Parse the response and rewrite URLs to point to our proxy
@@ -672,7 +702,7 @@ const METADATA_FETCH_TIMEOUT_MS = 4000;
  * retry; callers that want transient-failure resilience use
  * `fetchMetadataWithRetry`.
  */
-// Refuses 3xx so an attacker-controlled origin can't redirect this fetch to a private address and bypass isPrivateUrl.
+// Refuses 3xx so an attacker-controlled origin can't redirect this fetch to a private address and bypass guardAgainstPrivateUrl.
 function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -745,28 +775,18 @@ async function fetchMetadataWithRetry(
  * fetches or redirects to it server-side — same guard as `authServerUrl`
  * above, applied one hop further downstream.
  */
-export function assertOriginEndpointIsSafe(url: string): Response | null {
-  if (!isPrivateUrl(url)) return null;
-  return new Response(
-    JSON.stringify({
-      error: "URLs targeting private networks are not allowed",
-    }),
-    { status: 502, headers: { "Content-Type": "application/json" } },
-  );
+export function assertOriginEndpointIsSafe(
+  url: string,
+): Promise<Response | null> {
+  return privateUrlBlockedResponse(url);
 }
 
 export async function fetchAuthorizationServerMetadata(
   authServerUrl: string,
 ): Promise<Response> {
-  // Origin-controlled (via authorization_servers[0]) — reject an obvious private/internal target before fetching it.
-  if (isPrivateUrl(authServerUrl)) {
-    return new Response(
-      JSON.stringify({
-        error: "URLs targeting private networks are not allowed",
-      }),
-      { status: 502, headers: { "Content-Type": "application/json" } },
-    );
-  }
+  // Origin-controlled (via authorization_servers[0]).
+  const blocked = await privateUrlBlockedResponse(authServerUrl);
+  if (blocked) return blocked;
 
   // URL formats (OAuth 2.0 / OIDC, with/without path component) per RFC 8414
   // are built in oauth-proxy-metadata.ts; here we just probe them in order.
@@ -838,11 +858,7 @@ const authServerMetadataHandler = async (c: {
     const response = await fetchAuthorizationServerMetadata(originAuthServer);
 
     if (!response.ok) {
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: { "Content-Type": "application/json" },
-      });
+      return upstreamErrorResponse(response);
     }
 
     // Parse and rewrite URLs to point to our proxy

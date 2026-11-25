@@ -63,7 +63,8 @@ export function isPrivateUrl(url: string): boolean {
       return true;
     }
 
-    const hostname = parsed.hostname.toLowerCase();
+    // A fully-qualified name ("localhost.") resolves like its dotless form.
+    const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, "");
 
     if (
       hostname === "localhost" ||
@@ -147,6 +148,7 @@ export async function resolvesToPrivateAddress(
  */
 export async function guardAgainstPrivateUrl(
   url: string,
+  resolveHost?: (host: string) => Promise<string[]>,
 ): Promise<string | null> {
   const blockedMessage = "URLs targeting private networks are not allowed";
 
@@ -165,7 +167,7 @@ export async function guardAgainstPrivateUrl(
 
   try {
     const blocked = await withTimeout(
-      resolvesToPrivateAddress(hostname),
+      resolvesToPrivateAddress(hostname, resolveHost),
       5_000,
       "DNS resolution timeout",
     );

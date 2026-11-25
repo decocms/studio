@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   createNoRedirectFetch,
+  guardAgainstPrivateUrl,
   isPrivateUrl,
   resolvesToPrivateAddress,
   withTimeout,
@@ -75,6 +76,38 @@ describe("isPrivateUrl", () => {
   it("still allows http and https", () => {
     expect(isPrivateUrl("http://example.com/")).toBe(false);
     expect(isPrivateUrl("https://example.com/mcp")).toBe(false);
+  });
+
+  it("blocks fully-qualified names with a trailing dot", () => {
+    expect(isPrivateUrl("http://localhost./")).toBe(true);
+    expect(isPrivateUrl("http://metadata.google.internal./")).toBe(true);
+    expect(isPrivateUrl("http://printer.local./")).toBe(true);
+    expect(isPrivateUrl("https://example.com./")).toBe(false);
+  });
+});
+
+describe("guardAgainstPrivateUrl", () => {
+  it("blocks a public-looking hostname that resolves to a private address", async () => {
+    const resolveHost = async () => ["169.254.169.254"];
+    expect(
+      await guardAgainstPrivateUrl("https://rebind.example/", resolveHost),
+    ).toMatch(/private networks/i);
+  });
+
+  it("allows a hostname that resolves only to public addresses", async () => {
+    const resolveHost = async () => ["93.184.216.34"];
+    expect(
+      await guardAgainstPrivateUrl("https://public.example/", resolveHost),
+    ).toBeNull();
+  });
+
+  it("fails closed when the hostname cannot be resolved", async () => {
+    const resolveHost = async () => {
+      throw new Error("ENOTFOUND");
+    };
+    expect(
+      await guardAgainstPrivateUrl("https://nowhere.example/", resolveHost),
+    ).toMatch(/private networks/i);
   });
 });
 

@@ -94,7 +94,7 @@ describe("org-scoped API coexistence", () => {
         created_by: "user_1",
         title: "Test Connection",
         connection_type: "HTTP",
-        connection_url: "https://example.test",
+        connection_url: "https://203.0.113.10",
         status: "active",
         pinned: false,
         created_at: now,
@@ -272,7 +272,7 @@ describe("org-scoped API coexistence", () => {
           status: 401,
           headers: {
             "WWW-Authenticate":
-              'Bearer realm="origin", resource_metadata="https://example.test/.well-known/oauth-protected-resource"',
+              'Bearer realm="origin", resource_metadata="https://203.0.113.10/.well-known/oauth-protected-resource"',
           },
         });
       }
@@ -334,7 +334,7 @@ describe("org-scoped API coexistence", () => {
           status: 401,
           headers: {
             "WWW-Authenticate":
-              'Bearer realm="origin", resource_metadata="https://example.test/.well-known/oauth-protected-resource"',
+              'Bearer realm="origin", resource_metadata="https://203.0.113.10/.well-known/oauth-protected-resource"',
           },
         });
       }
@@ -411,8 +411,8 @@ describe("org-scoped API coexistence", () => {
       if (url.includes("oauth-protected-resource")) {
         return new Response(
           JSON.stringify({
-            resource: "https://example.test",
-            authorization_servers: ["https://example.test"],
+            resource: "https://203.0.113.10",
+            authorization_servers: ["https://203.0.113.10"],
           }),
           { status: 200 },
         );
@@ -420,10 +420,10 @@ describe("org-scoped API coexistence", () => {
       if (url.includes("oauth-authorization-server")) {
         return new Response(
           JSON.stringify({
-            issuer: "https://example.test",
-            authorization_endpoint: "https://example.test/authorize",
-            token_endpoint: "https://example.test/token",
-            registration_endpoint: "https://example.test/register",
+            issuer: "https://203.0.113.10",
+            authorization_endpoint: "https://203.0.113.10/authorize",
+            token_endpoint: "https://203.0.113.10/token",
+            registration_endpoint: "https://203.0.113.10/register",
           }),
           { status: 200 },
         );
@@ -492,10 +492,10 @@ describe("org-scoped API coexistence", () => {
       if (url.includes("oauth-authorization-server")) {
         return new Response(
           JSON.stringify({
-            issuer: "https://example.test",
-            authorization_endpoint: "https://example.test/authorize",
-            token_endpoint: "https://example.test/token",
-            registration_endpoint: "https://example.test/register",
+            issuer: "https://203.0.113.10",
+            authorization_endpoint: "https://203.0.113.10/authorize",
+            token_endpoint: "https://203.0.113.10/token",
+            registration_endpoint: "https://203.0.113.10/register",
           }),
           { status: 200 },
         );
@@ -581,7 +581,7 @@ describe("org-scoped API coexistence", () => {
         created_by: "user_1",
         title: "OAuth Connection",
         connection_type: "HTTP",
-        connection_url: "https://example.test",
+        connection_url: "https://203.0.113.10",
         status: "active",
         pinned: false,
         oauth_config: JSON.stringify({
@@ -660,10 +660,10 @@ describe("org-scoped API coexistence", () => {
       if (url.includes("oauth-authorization-server")) {
         return new Response(
           JSON.stringify({
-            issuer: "https://example.test",
-            authorization_endpoint: "https://example.test/authorize",
-            token_endpoint: "https://example.test/token",
-            registration_endpoint: "https://example.test/register",
+            issuer: "https://203.0.113.10",
+            authorization_endpoint: "https://203.0.113.10/authorize",
+            token_endpoint: "https://203.0.113.10/token",
+            registration_endpoint: "https://203.0.113.10/register",
           }),
           { status: 200 },
         );
@@ -744,10 +744,10 @@ describe("org-scoped API coexistence", () => {
       if (url.includes("oauth-authorization-server")) {
         return new Response(
           JSON.stringify({
-            issuer: "https://example.test",
-            authorization_endpoint: "https://example.test/authorize",
-            token_endpoint: "https://example.test/token",
-            registration_endpoint: "https://example.test/register",
+            issuer: "https://203.0.113.10",
+            authorization_endpoint: "https://203.0.113.10/authorize",
+            token_endpoint: "https://203.0.113.10/token",
+            registration_endpoint: "https://203.0.113.10/register",
           }),
           { status: 200 },
         );
@@ -815,10 +815,10 @@ describe("org-scoped API coexistence", () => {
       if (url.includes("oauth-authorization-server")) {
         return new Response(
           JSON.stringify({
-            issuer: "https://example.test",
-            authorization_endpoint: "https://example.test/authorize",
-            token_endpoint: "https://example.test/token",
-            registration_endpoint: "https://example.test/register",
+            issuer: "https://203.0.113.10",
+            authorization_endpoint: "https://203.0.113.10/authorize",
+            token_endpoint: "https://203.0.113.10/token",
+            registration_endpoint: "https://203.0.113.10/register",
           }),
           { status: 200 },
         );
@@ -854,6 +854,65 @@ describe("org-scoped API coexistence", () => {
       expect(res.status).toBe(200);
       expect(captured.body).toBe(rawBody);
       expect(captured.contentType).toBe("application/x-www-form-urlencoded");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("anonymous discovery refuses a stored private connection URL without fetching it", async () => {
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: "conn_private",
+        organization_id: "org_1",
+        created_by: "user_1",
+        title: "Private Connection",
+        connection_type: "HTTP",
+        connection_url: "http://169.254.169.254/latest/meta-data",
+        status: "active",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("internal", { status: 200 }) as never);
+
+    try {
+      for (const path of [
+        "/.well-known/oauth-protected-resource/mcp/conn_private",
+        "/mcp/conn_private/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-authorization-server/oauth-proxy/conn_private",
+      ]) {
+        const res = await app.fetch(
+          new Request(`http://studio.localhost${path}`),
+        );
+        expect(res.status).toBe(502);
+        expect(await res.text()).not.toContain("internal");
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("anonymous discovery keeps the origin's error status but not its body", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response("origin-error-detail", { status: 403 }) as never,
+      );
+
+    try {
+      const res = await app.fetch(
+        new Request(
+          "http://studio.localhost/.well-known/oauth-protected-resource/mcp/conn_1",
+        ),
+      );
+      expect(res.status).toBe(403);
+      expect(await res.text()).not.toContain("origin-error-detail");
     } finally {
       fetchSpy.mockRestore();
     }
