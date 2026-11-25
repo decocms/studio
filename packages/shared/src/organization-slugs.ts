@@ -26,6 +26,7 @@ export const RESERVED_ORGANIZATION_SLUGS: ReadonlySet<string> = new Set([
   "oauth",
   "oauth-proxy",
   "onboarding",
+  "open-app",
   "org",
   "report",
   "reports-onboarding",

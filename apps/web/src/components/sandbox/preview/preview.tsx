@@ -198,7 +198,13 @@ import {
 } from "@/components/sections-editor/preview-draft-link";
 import { hostedPreviewUrls } from "./hosted-preview-urls";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
-import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
+import {
+  type PreviewDeviceSize,
+  defaultPreviewDeviceSize,
+  withDeviceHint,
+} from "./device-hint";
+import { MobileAppPreviewButton } from "./mobile-app-preview-button";
+import { mobileAppConfig } from "@decocms/shared/mobile-app";
 import { PreviewAsControl } from "./preview-as-control";
 import {
   hasPreviewOptions,
@@ -456,12 +462,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         existing && EDITING_MODES.includes(existing) ? existing : null,
     );
   const editingMode = storedEditingMode ?? defaultEditingMode;
-  const [previewDeviceSize, setPreviewDeviceSize] =
-    useLocalStorage<PreviewDeviceSize>(
-      LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId),
+  /** Settings › Preview › Mobile app: the canvas only approximates the app. */
+  const mobileApp = mobileAppConfig(agent?.metadata);
+  /** `null` until the user picks a size, like the editing mode above, so the
+   *  default follows the project (a mobile app opens on mobile). A mobile
+   *  app keeps its own key: the old initializer stored `desktop` for every
+   *  canvas opened before, which would otherwise win over that default. */
+  const [storedDeviceSize, setPreviewDeviceSize] =
+    useLocalStorage<PreviewDeviceSize | null>(
+      LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId, !!mobileApp),
       (existing) =>
-        existing && DEVICE_CYCLE.includes(existing) ? existing : "desktop",
+        existing && DEVICE_CYCLE.includes(existing) ? existing : null,
     );
+  const previewDeviceSize =
+    storedDeviceSize ?? defaultPreviewDeviceSize(!!mobileApp);
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   /**
@@ -2358,6 +2372,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               available={
                 !!servePointerBase || !showsPublished || !previewOptionsActive
               }
+            />
+          )}
+          {mobileApp && (
+            <MobileAppPreviewButton
+              virtualMcpId={virtualMcpId}
+              config={mobileApp}
+              draftPointer={hostedPointer}
+              path={resolvedPath}
             />
           )}
           <ToolbarIconButton

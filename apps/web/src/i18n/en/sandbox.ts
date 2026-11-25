@@ -1094,6 +1094,15 @@ export const sandbox = {
   "sandbox.preview.siteRoutes": "Site routes",
   "sandbox.preview.noServerRunning": "No server running",
   "sandbox.preview.openInNewTab": "Open in new tab",
+  "sandbox.preview.mobileApp.button": "View on phone",
+  "sandbox.preview.mobileApp.instruction":
+    "Scan with the camera of a phone that has the Dev app",
+  "sandbox.preview.mobileApp.waiting":
+    "The QR code shows up as soon as your changes are ready to open.",
+  "sandbox.preview.mobileApp.noProtocol":
+    "Set the app's Eitri protocol in the project settings, under Preview.",
+  "sandbox.preview.mobileApp.copied": "Link copied",
+  "sandbox.preview.mobileApp.new": "New: see your changes in the app",
   "sandbox.preview.pageAlreadyExists":
     'A page with path "{path}" already exists.',
   "sandbox.preview.pageCreated": 'Page "{name}" created',
@@ -1236,6 +1245,19 @@ export const sandbox = {
     "Opening a pull request from the version switcher edits its content on the pull request's own preview, without starting a sandbox.",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
     "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
+  "sandbox.cmsSettings.mobileApp.label": "Mobile app (Eitri)",
+  "sandbox.cmsSettings.mobileApp.description":
+    "This project is an Eitri mobile app: the canvas is an approximation, and editors see their changes for real on a phone, in the app's Dev build.",
+  "sandbox.cmsSettings.mobileApp.protocolLabel": "App's Eitri protocol",
+  "sandbox.cmsSettings.mobileApp.protocolHint":
+    "The same as in the Eitri Console, under the app's settings. The Dev app opens <protocol>-dev://.",
+  "sandbox.cmsSettings.mobileApp.protocolInvalid":
+    "Use lowercase letters, numbers, dots, dashes or +, starting with a letter.",
+  "sandbox.cmsSettings.mobileApp.iosInstallUrlLabel": "iOS install link",
+  "sandbox.cmsSettings.mobileApp.androidInstallUrlLabel":
+    "Android install link",
+  "sandbox.cmsSettings.mobileApp.installHint":
+    "Optional. The QR code opens a Studio page that launches the app, or offers these links when it isn't installed. Install links must be https.",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "The Site Editor offers Content and opens Blocks beside Preview on desktop.",
