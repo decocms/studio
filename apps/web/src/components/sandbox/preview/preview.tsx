@@ -465,10 +465,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** Settings › Preview › Mobile app: the canvas only approximates the app. */
   const mobileApp = mobileAppConfig(agent?.metadata);
   /** `null` until the user picks a size, like the editing mode above, so the
-   *  default follows the project (a mobile app opens on mobile). */
+   *  default follows the project (a mobile app opens on mobile). A mobile
+   *  app keeps its own key: the old initializer stored `desktop` for every
+   *  canvas opened before, which would otherwise win over that default. */
   const [storedDeviceSize, setPreviewDeviceSize] =
     useLocalStorage<PreviewDeviceSize | null>(
-      LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId),
+      LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId, !!mobileApp),
       (existing) =>
         existing && DEVICE_CYCLE.includes(existing) ? existing : null,
     );
