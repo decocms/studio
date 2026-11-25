@@ -471,11 +471,24 @@ export const mainPanelTabs = {
     "Carregando a página real…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "O site não respondeu",
   "mainPanelTabs.analyticsTab.heatmap.timeoutHint":
-    "Passe o mouse sobre a página ou aceite os cookies dela e tente de novo.",
+    "A loja pode não permitir que o Studio a mostre aqui. Abra numa janela.",
   "mainPanelTabs.analyticsTab.heatmap.timeoutRetry": "Tentar de novo",
   "mainPanelTabs.analyticsTab.heatmap.timeoutWhy": "Por que isso acontece",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
-    "A página ainda não iniciou o modo de visualização do analytics. Se o site só carrega o analytics depois de uma interação ou do aceite de cookies, passe o mouse sobre a página ou aceite os cookies. Se não, confira se ele roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
+    "Algumas lojas não permitem ser exibidas dentro de outro site, e a página não carrega aqui. Numa janela, o mapa funciona igual. Se a loja só carrega o analytics depois de uma interação ou do aceite de cookies, passe o mouse sobre a página ou aceite os cookies. Se não, confira se ela roda o runtime atual do Deco Analytics.",
+  "mainPanelTabs.analyticsTab.heatmap.openWindow": "Abrir em janela",
+  "mainPanelTabs.analyticsTab.heatmap.windowTitle":
+    "O mapa está aberto em outra janela",
+  "mainPanelTabs.analyticsTab.heatmap.windowShow": "Mostrar janela",
+  "mainPanelTabs.analyticsTab.heatmap.windowBack": "Mostrar aqui",
+  "mainPanelTabs.analyticsTab.heatmap.windowBlockedTitle":
+    "O navegador bloqueou a janela",
+  "mainPanelTabs.analyticsTab.heatmap.windowClosedTitle":
+    "A janela foi fechada",
+  "mainPanelTabs.analyticsTab.heatmap.windowTimeoutTitle":
+    "A loja não respondeu",
+  "mainPanelTabs.analyticsTab.heatmap.windowTimeoutDescription":
+    "Confira se a loja roda o runtime atual do Deco Analytics.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle":
     "Nenhuma visita com mapa de calor aqui",
   "mainPanelTabs.analyticsTab.heatmap.noViewsDescription":

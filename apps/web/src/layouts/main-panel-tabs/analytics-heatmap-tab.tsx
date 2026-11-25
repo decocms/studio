@@ -10,6 +10,7 @@
  * redirect to another (`loja.com` → `www.loja.com`); the origin that answers
  * `ready` is pinned, and every later message is addressed to it alone — a
  * frame that navigated away gets nothing.
+ * A store whose `frame-ancestors` refuses Studio is opened in a window instead.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -18,6 +19,7 @@ import {
   ArrowLeft,
   Check,
   CursorClick01,
+  LinkExternal01,
   Monitor04,
   Phone02,
   Settings01,
@@ -89,6 +91,8 @@ const k = (s: HeatKey): TranslationKey => `${P}.${s}`;
 const DEVICE_ICON = { desktop: Monitor04, tablet: Tablet01, mobile: Phone02 };
 /** The site answers `init` once its lazy view-mode chunk has loaded; give up after this. */
 const HANDSHAKE_MS = 20_000;
+/** One heatmap window per Studio tab: a new page or device replaces it. */
+const WINDOW_NAME = "decocms-heatmap";
 
 type Placed = {
   items: PlacedItem[];
@@ -133,6 +137,8 @@ export function HeatmapView({
   const [mode, setMode] = useState<HeatMode>("clicks");
   const [clickType, setClickType] = useState<ClickType>("all");
   const [sample, setSample] = useState("");
+  // Kept across pages and devices: a store that can't be framed can't be framed on any page.
+  const [inWindow, setInWindow] = useState(false);
   const enabled = modules.includes("heatmap");
   const origins = [...new Set(domains.flatMap((d) => siteOrigin(d) ?? []))];
   const origin = origins[0];
@@ -297,6 +303,8 @@ export function HeatmapView({
           counts={counts}
           controls={controls}
           fill={fill}
+          inWindow={inWindow}
+          onInWindow={setInWindow}
         />
       )}
     </div>
@@ -421,6 +429,8 @@ function Viewer({
   counts,
   controls,
   fill,
+  inWindow,
+  onInWindow,
 }: {
   t: TFunction;
   locale: string;
@@ -439,6 +449,9 @@ function Viewer({
   /** The page, device and period, at the end of the mode row. */
   controls: ReactNode;
   fill: boolean;
+  /** Show the page in a window Studio opens instead of the frame. */
+  inWindow: boolean;
+  onInWindow: (v: boolean) => void;
 }) {
   const [ramp, setRamp] = useState<HeatRamp>("thermal");
   const [opacity, setOpacity] = useState(0.85);
@@ -447,6 +460,9 @@ function Viewer({
     "loading",
   );
   const [attempt, setAttempt] = useState(0);
+  const [win, setWin] = useState<"none" | "open" | "blocked" | "closed">(
+    "none",
+  );
   const [placed, setPlaced] = useState<Placed | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [rowHover, setRowHover] = useState<string | null>(null);
@@ -455,28 +471,23 @@ function Viewer({
   const [rankBy, setRankBy] = useState<"clicks" | "ctr">("clicks");
   const [avail, setAvail] = useState({ w: 1000, h: 640 });
 
-  // The frame bridge lives as long as this document (the Viewer is keyed by
-  // it): window listener + handshake retries, attached by the ref callback.
-  const [{ frameRef, stageRef, post }] = useState(() => {
+  // Lives as long as this document (the Viewer is keyed by it); talks to the frame or the window.
+  const [bridge] = useState(() => {
     let frame: HTMLIFrameElement | null = null;
+    let popup: Window | null = null;
     let timer = 0;
+    let watch = 0;
     // Pinned by `ready`; until then only `init` goes out, to every registered origin.
     let peer: string | null = null;
+    const target = () => popup ?? frame?.contentWindow;
     const post = (m: Record<string, unknown>) => {
       const targets = peer ? [peer] : m.t === "init" ? origins : [];
-      for (const target of targets) {
-        frame?.contentWindow?.postMessage(
-          { dq: "hm", v: VIEW_PROTOCOL, ...m },
-          target,
-        );
+      for (const origin of targets) {
+        target()?.postMessage({ dq: "hm", v: VIEW_PROTOCOL, ...m }, origin);
       }
     };
     const onMessage = (e: MessageEvent) => {
-      const m = readViewMessage(
-        e,
-        frame?.contentWindow,
-        peer ? [peer] : origins,
-      );
+      const m = readViewMessage(e, target(), peer ? [peer] : origins);
       if (!m || (!peer && m.t !== "ready")) return;
       if (m.t === "ready") {
         peer = e.origin;
@@ -485,6 +496,8 @@ function Viewer({
       } else if (m.t === "placed") {
         setPlaced(m);
       } else if (m.t === "hover") {
+        // The tooltip is placed over the frame; a window has none here.
+        if (popup) return;
         setHover(
           m.x == null
             ? null
@@ -506,36 +519,88 @@ function Viewer({
         );
       }
     };
-    // React 19 ref callbacks: the returned function runs on detach.
-    const frameRef = (el: HTMLIFrameElement) => {
-      frame = el;
-      window.addEventListener("message", onMessage);
+    const handshake = () => {
+      window.clearInterval(timer);
+      peer = null;
+      setStatus("loading");
       const started = Date.now();
       // Keeps asking past the timeout: a storefront may load its analytics
       // tag only after the first interaction or a cookie consent, both of
-      // which the user can still give inside the frame.
+      // which the user can still give inside the page.
       timer = window.setInterval(() => {
         if (Date.now() - started > HANDSHAKE_MS) {
           setStatus((s) => (s === "ready" ? s : "timeout"));
         }
         post({ t: "init" });
       }, 400);
+    };
+    const closeWindow = () => {
+      window.clearInterval(watch);
+      popup?.close();
+      popup = null;
+    };
+    // Needs a recent click, or the browser blocks it.
+    const openWindow = (url: string, width: number) => {
+      closeWindow();
+      popup = window.open(
+        url,
+        WINDOW_NAME,
+        `popup,width=${width},height=${Math.round(window.screen.availHeight * 0.85)}`,
+      );
+      if (!popup) {
+        setWin("blocked");
+        return;
+      }
+      setWin("open");
+      setHover(null);
+      handshake();
+      watch = window.setInterval(() => {
+        if (!popup?.closed) return;
+        closeWindow();
+        window.clearInterval(timer);
+        setWin("closed");
+      }, 1000);
+    };
+    const focusWindow = () => popup?.focus();
+    // React 19 ref callbacks: the returned function runs on detach.
+    const frameRef = (el: HTMLIFrameElement) => {
+      frame = el;
+      handshake();
       return () => {
         frame = null;
-        window.clearInterval(timer);
-        window.removeEventListener("message", onMessage);
+        if (!popup) window.clearInterval(timer);
       };
     };
     const stageRef = (el: HTMLDivElement) => {
+      window.addEventListener("message", onMessage);
       const ro = new ResizeObserver(([entry]) => {
         if (entry)
-          setAvail({ w: entry.contentRect.width, h: entry.contentRect.height });
+          setAvail({
+            w: entry.contentRect.width,
+            h: entry.contentRect.height,
+          });
       });
       ro.observe(el);
-      return () => ro.disconnect();
+      return () => {
+        ro.disconnect();
+        window.removeEventListener("message", onMessage);
+        window.clearInterval(timer);
+        closeWindow();
+      };
     };
-    return { frameRef, stageRef, post };
+    return { frameRef, stageRef, post, openWindow, focusWindow, closeWindow };
   });
+  const { frameRef, stageRef, post, openWindow, focusWindow, closeWindow } =
+    bridge;
+  const toWindow = (url: string) => {
+    onInWindow(true);
+    openWindow(url, width);
+  };
+  const toFrame = () => {
+    closeWindow();
+    setWin("none");
+    onInWindow(false);
+  };
 
   const payload = viewData(model, {
     mode,
@@ -735,7 +800,16 @@ function Viewer({
               )}
             >
               {zoom !== "fit" && <div style={{ width, height: 1 }} />}
-              {src ? (
+              {src && inWindow ? (
+                <WindowCover
+                  t={t}
+                  win={win}
+                  status={status}
+                  onOpen={() => toWindow(src)}
+                  onFocus={focusWindow}
+                  onFrame={toFrame}
+                />
+              ) : src ? (
                 <iframe
                   key={attempt}
                   ref={frameRef}
@@ -761,24 +835,25 @@ function Viewer({
                   onPick={onSample}
                 />
               )}
-              {src && status === "loading" && (
+              {src && !inWindow && status === "loading" && (
                 <Cover>
                   <span className="flex items-center gap-2">
                     <Spinner size="xs" /> {t(k("frameLoading"))}
                   </span>
                 </Cover>
               )}
-              {src && status === "timeout" && (
+              {src && !inWindow && status === "timeout" && (
                 <Cover title={t(k("timeoutTitle"))}>
                   <span className="block">{t(k("timeoutHint"))}</span>
                   <span className="pointer-events-auto mt-3 flex items-center justify-center gap-2">
+                    <Button size="sm" onClick={() => toWindow(src)}>
+                      <LinkExternal01 className="size-4" />
+                      {t(k("openWindow"))}
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        setStatus("loading");
-                        setAttempt((n) => n + 1);
-                      }}
+                      onClick={() => setAttempt((n) => n + 1)}
                     >
                       {t(k("timeoutRetry"))}
                     </Button>
@@ -791,7 +866,7 @@ function Viewer({
                   </details>
                 </Cover>
               )}
-              {src && status === "ready" && model.views === 0 && (
+              {src && !inWindow && status === "ready" && model.views === 0 && (
                 <Cover title={t(k("noViewsTitle"))}>
                   {t(k("noViewsDescription"), {
                     device: t(k(device)).toLowerCase(),
@@ -1745,6 +1820,67 @@ function Cover({ title, children }: { title?: string; children: ReactNode }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/** The stage while the page is in a window: where it is, and the way back. */
+function WindowCover({
+  t,
+  win,
+  status,
+  onOpen,
+  onFocus,
+  onFrame,
+}: {
+  t: TFunction;
+  win: "none" | "open" | "blocked" | "closed";
+  status: "loading" | "ready" | "timeout";
+  onOpen: () => void;
+  onFocus: () => void;
+  onFrame: () => void;
+}) {
+  // On mount, the click that changed the page or device still lets the window open.
+  const autoOpen = (el: HTMLSpanElement | null) => {
+    if (el && win === "none") onOpen();
+  };
+  const open = win === "open" && status !== "timeout";
+  const title =
+    win === "blocked"
+      ? t(k("windowBlockedTitle"))
+      : win === "closed"
+        ? t(k("windowClosedTitle"))
+        : win === "open" && status === "timeout"
+          ? t(k("windowTimeoutTitle"))
+          : t(k("windowTitle"));
+  return (
+    <Cover title={title}>
+      {win === "open" && status === "loading" && (
+        <span className="flex items-center justify-center gap-2">
+          <Spinner size="xs" /> {t(k("frameLoading"))}
+        </span>
+      )}
+      {win === "open" && status === "timeout" && (
+        <span className="block">{t(k("windowTimeoutDescription"))}</span>
+      )}
+      <span
+        ref={autoOpen}
+        className="pointer-events-auto mt-3 flex items-center justify-center gap-2"
+      >
+        {open ? (
+          <Button size="sm" onClick={onFocus}>
+            {t(k("windowShow"))}
+          </Button>
+        ) : (
+          <Button size="sm" onClick={onOpen}>
+            <LinkExternal01 className="size-4" />
+            {t(k("openWindow"))}
+          </Button>
+        )}
+        <Button size="sm" variant="outline" onClick={onFrame}>
+          {t(k("windowBack"))}
+        </Button>
+      </span>
+    </Cover>
   );
 }
 
