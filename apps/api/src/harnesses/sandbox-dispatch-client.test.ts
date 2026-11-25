@@ -1329,6 +1329,14 @@ describe("sandboxStateInstruction", () => {
     expect(text).toContain("Never clone with an access token typed into a");
   });
 
+  // Asked for a repository's issues, a chat ran `gh` with no login, then looked for a GitHub connection.
+  test("a run in an empty checkout directory is told issues and pull requests go through the repository", () => {
+    const text = sandboxStateInstruction(false, emptyCheckoutDir);
+    expect(text).toContain("lives in its repositories, not in a connection");
+    expect(text).toContain("(code, issues, pull requests)");
+    expect(text).toContain("(`gh` or `glab`), which have no login before that");
+  });
+
   // `TASK_ADD_REPO` clones into the run's own checkout directory, which a run on a shared sandbox does not have.
   test("a run on a shared sandbox is not pointed at TASK_ADD_REPO", () => {
     const text = sandboxStateInstruction(false, sharedSandbox);

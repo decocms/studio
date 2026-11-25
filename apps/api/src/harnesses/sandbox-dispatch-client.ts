@@ -1021,11 +1021,13 @@ export function sandboxStateInstruction(
       "once it sits idle, so save what the person should keep under " +
       `\`${SANDBOX_ORG_ROOT}/output/\`.`,
     inCheckoutDir
-      ? "To work on one of the organization's repositories, call " +
+      ? "The organization's GitHub and GitLab access lives in its repositories, " +
+        "not in a connection. For anything about one of them (code, issues, " +
+        "pull requests), call " +
         `${studioTool("TASK_ADD_REPO")} (with no arguments it lists them): it ` +
         "clones the repository into your working directory and authenticates " +
-        "`git` and the provider's CLI (`gh` or `glab`). Never clone with an " +
-        "access token typed into a command."
+        "`git` and the provider's CLI (`gh` or `glab`), which have no login " +
+        "before that. Never clone with an access token typed into a command."
       : null,
   ]
     .filter(Boolean)
