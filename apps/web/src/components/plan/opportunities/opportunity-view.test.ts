@@ -15,6 +15,7 @@ import {
   opportunityDetailFixture,
   storeViewFixture,
   storeViewWithGapsFixture,
+  storeViewWithSetupFixture,
 } from "./fixtures.ts";
 import {
   canApprove,
@@ -43,6 +44,8 @@ import {
   stageCards,
   startRunInput,
   summaryNumbers,
+  gapGroups,
+  setupNeeds,
   viewGaps,
   viewScope,
 } from "./opportunity-view.ts";
@@ -898,5 +901,91 @@ describe("runRequestedEvent", () => {
       scope: "pages",
       count: 2,
     });
+  });
+});
+
+describe("gapGroups", () => {
+  it("old engine: every gap is listed as it is, in legacy mode", () => {
+    const old = StoreViewSchema.parse(storeViewWithGapsFixture);
+    expect(viewGaps(old).length).toBeGreaterThan(0);
+    expect(gapGroups(old)).toEqual({
+      legacy: true,
+      customer: [],
+      limitations: viewGaps(old),
+    });
+  });
+
+  it("an engine with gap_details is not legacy, even with none on a page", () => {
+    const view = StoreViewSchema.parse(storeViewWithSetupFixture);
+    expect(gapGroups(view).legacy).toBe(false);
+    const noGaps = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      pages: [
+        { ...storeViewWithSetupFixture.pages[0], gaps: [], gap_details: [] },
+      ],
+    });
+    expect(gapGroups(noGaps)).toEqual({
+      legacy: false,
+      customer: [],
+      limitations: [],
+    });
+  });
+
+  it("customer gaps are grouped once per key", () => {
+    const [page] = storeViewWithSetupFixture.pages;
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      pages: [page, { ...page, page_type: "home", diagnosis_id: "diag_home" }],
+    });
+    const { customer, limitations } = gapGroups(view);
+    expect(customer.map((g) => g.key)).toEqual([
+      "bigquery",
+      "analytics_install",
+    ]);
+    expect(customer.map((g) => g.source)).toEqual(["bigquery", "heatmap"]);
+    expect(limitations).toEqual([
+      "Funil: esta análise não tem dado de funil da página",
+    ]);
+  });
+
+  it("unknown owners count as limitations", () => {
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      pages: [
+        {
+          ...storeViewWithSetupFixture.pages[0],
+          gap_details: [
+            { source: "X", owner: "vendor", key: "domain", message: "a" },
+            { source: "Y", owner: "customer", key: "new_key", message: "b" },
+            { source: "Z", owner: "customer", message: "b" },
+          ],
+        },
+      ],
+    });
+    expect(gapGroups(view)).toEqual({
+      legacy: false,
+      customer: [],
+      limitations: ["a", "b"],
+    });
+  });
+});
+
+describe("setupNeeds", () => {
+  it("keeps the known keys and drops the rest", () => {
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      setup: {
+        needs: [
+          { key: "domain", blocking: true },
+          { key: "something_new", blocking: false },
+        ],
+        current: { domain: null, competitors: [] },
+      },
+    });
+    expect(setupNeeds(view).map((n) => n.key)).toEqual(["domain"]);
+  });
+
+  it("is empty for an engine without setup", () => {
+    expect(setupNeeds(StoreViewSchema.parse(storeViewFixture))).toEqual([]);
   });
 });

@@ -114,7 +114,12 @@ describe("unwrapEngineResult", () => {
     }
     const notFound = (() => {
       try {
-        unwrapEngineResult({ ok: false, error: "oportunidade não encontrada" });
+        unwrapEngineResult({
+          ok: false,
+          error: "oportunidade não encontrada",
+          needs: [],
+          rejected: [],
+        });
       } catch (error) {
         return error;
       }
@@ -122,6 +127,47 @@ describe("unwrapEngineResult", () => {
     })();
     expect(notFound).toBeInstanceOf(DiagnosisEngineError);
     expect((notFound as DiagnosisEngineError).needsDomain).toBe(false);
+  });
+});
+
+describe("unwrapEngineResult with setup details", () => {
+  function thrown(raw: unknown): DiagnosisEngineError {
+    try {
+      unwrapEngineResult(parseToolResult(StoreViewSchema, raw));
+    } catch (error) {
+      if (error instanceof DiagnosisEngineError) return error;
+    }
+    throw new Error("expected a DiagnosisEngineError");
+  }
+
+  it("refusal with needs and rejected keeps both", () => {
+    const needs = [{ key: "competitors", blocking: false }];
+    const rejected = [{ domain: "rival.example", reason: "sem resposta" }];
+    const error = thrown({
+      error: "concorrente não respondeu",
+      needs,
+      rejected,
+    });
+    expect(error.needs).toEqual(needs);
+    expect(error.rejected).toEqual(rejected);
+    expect(error.needsDomain).toBe(false);
+  });
+
+  it("needs with a blocking domain sets needsDomain", () => {
+    const error = thrown({
+      status: "error",
+      error: "configure o domínio da loja",
+      needs: [{ key: "domain", blocking: true, suggested: null }],
+    });
+    expect(error.needsDomain).toBe(true);
+  });
+
+  it("a non-blocking domain need does not set needsDomain", () => {
+    const error = thrown({
+      error: "x",
+      needs: [{ key: "domain", blocking: false }],
+    });
+    expect(error.needsDomain).toBe(false);
   });
 });
 

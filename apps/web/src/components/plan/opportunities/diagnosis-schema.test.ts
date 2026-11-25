@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import {
   DecideHypothesisSchema,
   GetOpportunitySchema,
+  SiteProfileSchema,
   StartRunSchema,
+  UpdateProfileSchema,
+  isSetupKey,
   StoreViewSchema,
   parseToolResult,
   toolPayload,
@@ -110,7 +113,12 @@ describe("parseToolResult", () => {
       parseToolResult(StoreViewSchema, {
         error: "oportunidade não encontrada",
       }),
-    ).toEqual({ ok: false, error: "oportunidade não encontrada" });
+    ).toEqual({
+      ok: false,
+      error: "oportunidade não encontrada",
+      needs: [],
+      rejected: [],
+    });
     // start_ux_diagnosis answers errors as { status: "error", error }.
     expect(
       parseToolResult(StartRunSchema, {
@@ -122,6 +130,8 @@ describe("parseToolResult", () => {
       ok: false,
       error: "configure o domínio da loja",
       needs_domain: true,
+      needs: [],
+      rejected: [],
     });
     // A tool-level error in the MCP result carries the message as text.
     expect(
@@ -132,7 +142,30 @@ describe("parseToolResult", () => {
           content: [{ type: "text", text: "engine unavailable" }],
         }),
       ),
-    ).toEqual({ ok: false, error: "engine unavailable" });
+    ).toEqual({
+      ok: false,
+      error: "engine unavailable",
+      needs: [],
+      rejected: [],
+    });
+  });
+
+  it("a malformed need or rejection keeps the engine's refusal", () => {
+    expect(
+      parseToolResult(StartRunSchema, {
+        status: "error",
+        error: "configure o domínio da loja",
+        needs_domain: true,
+        needs: [{ key: "domain", blocking: true }, { key: 7 }],
+        rejected: [{ domain: "morta.example" }],
+      }),
+    ).toEqual({
+      ok: false,
+      error: "configure o domínio da loja",
+      needs_domain: true,
+      needs: [],
+      rejected: [],
+    });
   });
 
   it("garbage payload becomes ok:false", () => {
@@ -229,6 +262,8 @@ describe("parseToolResult", () => {
     ).toEqual({
       ok: false,
       error: "Só dá pra aprovar pra teste a hipótese pronta",
+      needs: [],
+      rejected: [],
     });
   });
 });
@@ -258,5 +293,114 @@ describe("toolPayload", () => {
     const raw = toolPayload({ isError: true, content: [] });
     const result = parseToolResult(StoreViewSchema, raw);
     expect(!result.ok && result.error.length > 0).toBe(true);
+  });
+});
+
+describe("SiteProfileSchema", () => {
+  it("reads a store with no profile yet as null", () => {
+    expect(parseToolResult(SiteProfileSchema, { profile: null })).toEqual({
+      ok: true,
+      value: { profile: null },
+    });
+  });
+
+  it("keeps the domain and competitors of a full profile", () => {
+    expect(
+      parseToolResult(
+        SiteProfileSchema,
+        toolPayload({
+          content: [{ type: "text", text: "ignored" }],
+          structuredContent: {
+            profile: {
+              domain: "www.example.com",
+              studio_site: null,
+              pdp_path_template: "/:product/p",
+              competitors: [],
+              updated_at: "2026-11-25T00:00:00.000Z",
+            },
+          },
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      value: { profile: { domain: "www.example.com", competitors: [] } },
+    });
+  });
+
+  it("returns the engine's refusal of an invalid domain", () => {
+    expect(
+      parseToolResult(SiteProfileSchema, { error: "domínio inválido: ::" }),
+    ).toEqual({
+      ok: false,
+      error: "domínio inválido: ::",
+      needs: [],
+      rejected: [],
+    });
+  });
+
+  it("rejects a profile without a domain", () => {
+    const result = parseToolResult(SiteProfileSchema, {
+      profile: { studio_site: "store" },
+    });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("setup and gap_details", () => {
+  const withSetup = {
+    ...storeViewFixture,
+    setup: {
+      needs: [
+        { key: "domain", blocking: true, suggested: null },
+        { key: "competitors", blocking: false, suggested: ["rival.example"] },
+        { key: "future_source", blocking: false },
+      ],
+      current: { domain: null, competitors: [] },
+    },
+  };
+
+  it("old store view without setup parses", () => {
+    const view = parsedView(storeViewFixture);
+    expect(view.setup).toBeUndefined();
+    expect(view.pages[0]?.gap_details).toBeUndefined();
+  });
+
+  it("setup with an unknown key parses", () => {
+    const view = parsedView(withSetup);
+    const keys = view.setup?.needs.map((n) => n.key) ?? [];
+    expect(keys).toEqual(["domain", "competitors", "future_source"]);
+    expect(keys.map(isSetupKey)).toEqual([true, true, false]);
+  });
+
+  it("reads gap_details with an unknown owner", () => {
+    const [page] = storeViewFixture.pages;
+    const view = parsedView({
+      ...storeViewFixture,
+      pages: [
+        {
+          ...page,
+          gap_details: [
+            { source: "ga4", owner: "someone_new", message: "sem GA4" },
+          ],
+        },
+      ],
+    });
+    expect(view.pages[0]?.gap_details).toEqual([
+      { source: "ga4", owner: "someone_new", message: "sem GA4" },
+    ]);
+  });
+
+  it("update profile keeps competitors and warnings", () => {
+    const result = parseToolResult(UpdateProfileSchema, {
+      profile: { domain: "loja.example", competitors: ["rival.example"] },
+      warnings: [{ domain: "rival.example", reason: "sem resposta" }],
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        profile: { domain: "loja.example", competitors: ["rival.example"] },
+        warnings: [{ domain: "rival.example", reason: "sem resposta" }],
+      },
+    });
   });
 });

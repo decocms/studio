@@ -218,7 +218,11 @@ function PagePanel({
           </Button>
         </div>
 
-        <RunRequestNotice error={run.error} elsewhere={run.elsewhere} />
+        <RunRequestNotice
+          error={run.error}
+          elsewhere={run.elsewhere}
+          onDomainSaved={run.retry}
+        />
 
         {running && (
           <p

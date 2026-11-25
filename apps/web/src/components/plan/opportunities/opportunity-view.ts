@@ -5,10 +5,14 @@
  */
 
 import { z } from "zod";
-import type {
-  Lifecycle,
+import {
+  isSetupKey,
+  type GapDetail,
+  type Lifecycle,
   OpportunityHypothesis,
   PageType,
+  SetupKey,
+  SetupNeed,
   StartRunInput,
   StartRunResult,
   StoreOpportunity,
@@ -191,6 +195,41 @@ export function sectionPhase(v: StoreView): SectionPhase {
 /** The sources that did not answer, named once across pages. */
 export function viewGaps(v: StoreView): string[] {
   return [...new Set(v.pages.flatMap((p) => p.gaps))];
+}
+
+/** What the setup card asks for, narrowed to the needs this Studio knows. */
+export function setupNeeds(v: StoreView): (SetupNeed & { key: SetupKey })[] {
+  return (v.setup?.needs ?? []).flatMap((n) =>
+    isSetupKey(n.key) ? [{ ...n, key: n.key }] : [],
+  );
+}
+
+/** Gaps split by who can close them: what the customer provides (once per
+ *  key) and the analysis's own limits. An engine without `gap_details` has
+ *  no owners, so its gaps come back `legacy`, to be listed as they are. */
+export function gapGroups(v: StoreView): {
+  legacy: boolean;
+  customer: GapDetail[];
+  limitations: string[];
+} {
+  const details = v.pages.flatMap((p) => p.gap_details ?? []);
+  if (!v.pages.some((p) => p.gap_details)) {
+    return { legacy: true, customer: [], limitations: viewGaps(v) };
+  }
+  const customer = new Map<string, GapDetail>();
+  const limitations = new Set<string>();
+  for (const d of details) {
+    if (d.owner === "customer" && d.key !== undefined && isSetupKey(d.key)) {
+      if (!customer.has(d.key)) customer.set(d.key, d);
+    } else {
+      limitations.add(d.message);
+    }
+  }
+  return {
+    legacy: false,
+    customer: [...customer.values()],
+    limitations: [...limitations],
+  };
 }
 
 /** A page's first analysis carries its start as `analysed_at`, so until it

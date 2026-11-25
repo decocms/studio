@@ -158,6 +158,14 @@ const DateStringSchema = z
   .string()
   .refine((s) => !Number.isNaN(Date.parse(s)), "Expected a date");
 
+const GapDetailSchema = z.object({
+  source: z.string(),
+  owner: z.string(),
+  key: z.string().optional(),
+  message: z.string(),
+});
+export type GapDetail = z.infer<typeof GapDetailSchema>;
+
 const StorePageSchema = z.object({
   page_type: PageTypeSchema,
   diagnosis_id: z.string(),
@@ -175,8 +183,40 @@ const StorePageSchema = z.object({
   capture_url: z.string().nullable(),
   observations: z.array(z.string()),
   gaps: z.array(z.string()),
+  gap_details: z.array(GapDetailSchema).optional(),
 });
 export type StorePage = z.infer<typeof StorePageSchema>;
+
+const SETUP_KEYS = [
+  "domain",
+  "competitors",
+  "analytics_install",
+  "bigquery",
+  "orders",
+] as const;
+const SetupKeySchema = z.enum(SETUP_KEYS);
+export type SetupKey = z.infer<typeof SetupKeySchema>;
+
+/** A key this Studio does not know stays a string, so a new engine need does
+ *  not fail the view; callers narrow it with `isSetupKey`. */
+export function isSetupKey(key: string): key is SetupKey {
+  return SetupKeySchema.safeParse(key).success;
+}
+
+const SetupNeedSchema = z.object({
+  key: z.string(),
+  blocking: z.boolean(),
+  suggested: z.array(z.string()).nullable().optional(),
+});
+export type SetupNeed = z.infer<typeof SetupNeedSchema>;
+
+const SetupSchema = z.object({
+  needs: z.array(SetupNeedSchema),
+  current: z.object({
+    domain: z.string().nullable(),
+    competitors: z.array(z.string()),
+  }),
+});
 
 export const StoreViewSchema = z.object({
   pages: z.array(StorePageSchema),
@@ -184,6 +224,7 @@ export const StoreViewSchema = z.object({
   others: z.array(StoreOpportunitySchema),
   sources: z.array(z.string()),
   running: z.boolean(),
+  setup: SetupSchema.optional(),
 });
 export type StoreView = z.infer<typeof StoreViewSchema>;
 
@@ -345,16 +386,51 @@ export const DecideHypothesisSchema = z.object({
   }),
 });
 
+// ── get_ux_site_profile / update_ux_site_profile ─────────────────────────────
+
+const CompetitorRejectionSchema = z.object({
+  domain: z.string(),
+  reason: z.string(),
+});
+export type CompetitorRejection = z.infer<typeof CompetitorRejectionSchema>;
+
+/** The store the engine analyses. Only the domain and competitors are read
+ *  here; null until someone sets it or the engine finds the store's site in
+ *  Studio. */
+export const SiteProfileSchema = z.object({
+  profile: z
+    .object({
+      domain: z.string(),
+      competitors: z.array(z.string()).optional(),
+    })
+    .nullable(),
+});
+
+/** `update_ux_site_profile`: `warnings` are competitors kept but unchecked. */
+export const UpdateProfileSchema = SiteProfileSchema.extend({
+  warnings: z.array(CompetitorRejectionSchema).optional(),
+});
+
 // ── Reading a tool result ────────────────────────────────────────────────────
 
 export type ParsedToolResult<T> =
   | { ok: true; value: T }
-  | { ok: false; error: string; needs_domain?: true };
+  | {
+      ok: false;
+      error: string;
+      needs_domain?: true;
+      needs: SetupNeed[];
+      rejected: CompetitorRejection[];
+    };
 
-/** `needs_domain`: `start_ux_diagnosis` refused because the store has no domain. */
+/** `needs_domain`: `start_ux_diagnosis` refused because the store has no
+ *  domain. `rejected`: competitors that did not answer. A malformed list is
+ *  dropped so the refusal still shows its message. */
 const ToolErrorSchema = z.object({
   error: z.string(),
   needs_domain: z.boolean().optional(),
+  needs: z.array(SetupNeedSchema).optional().catch([]),
+  rejected: z.array(CompetitorRejectionSchema).optional().catch([]),
 });
 
 const CallToolResultSchema = z.object({
@@ -393,14 +469,24 @@ export function parseToolResult<T>(
 ): ParsedToolResult<T> {
   const engineError = ToolErrorSchema.safeParse(raw);
   if (engineError.success) {
-    const { error, needs_domain } = engineError.data;
+    const { error, needs_domain, needs = [], rejected = [] } = engineError.data;
+    const blocksOnDomain = needs.some((n) => n.key === "domain" && n.blocking);
     return {
       ok: false,
       error: error || UNNAMED_TOOL_ERROR,
-      ...(needs_domain ? { needs_domain: true as const } : {}),
+      ...(needs_domain || blocksOnDomain
+        ? { needs_domain: true as const }
+        : {}),
+      needs,
+      rejected,
     };
   }
   const parsed = schema.safeParse(raw);
   if (parsed.success) return { ok: true, value: parsed.data };
-  return { ok: false, error: z.prettifyError(parsed.error) };
+  return {
+    ok: false,
+    error: z.prettifyError(parsed.error),
+    needs: [],
+    rejected: [],
+  };
 }

@@ -6,16 +6,27 @@
  */
 
 import type { ReactNode } from "react";
-import { AlertCircle, ArrowRight, RefreshCw01 } from "@untitledui/icons";
+import {
+  AlertCircle,
+  ArrowRight,
+  ChevronDown,
+  RefreshCw01,
+} from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@decocms/ui/components/collapsible.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { type TFunction, useT } from "@/i18n/use-t.ts";
+import { CompetitorsRow } from "./competitors-field.tsx";
 import { ConnectCard } from "./connect-card.tsx";
 import type { RunGoal } from "./new-run-popover.tsx";
-import type { StoreView } from "./diagnosis-schema.ts";
+import type { SetupKey, SetupNeed, StoreView } from "./diagnosis-schema.ts";
 import { PAGE_LABEL } from "./labels.ts";
 import {
   type OpportunityActions,
@@ -24,12 +35,15 @@ import {
 import {
   errorText,
   formatMoney,
+  gapGroups,
   sectionPhase,
+  setupNeeds,
   summaryNumbers,
-  viewGaps,
   viewScope,
 } from "./opportunity-view.ts";
 import { RunStatus } from "./run-status.tsx";
+import { SETUP_CARD_ID, SetupCard } from "./setup-card.tsx";
+import { StoreDomainRow } from "./store-domain.tsx";
 import { usePlanDiagnosisStatus, useStoreView } from "./use-plan-diagnosis.ts";
 
 export interface OpportunitiesSectionProps extends OpportunityActions {
@@ -161,11 +175,10 @@ function scopeLine(
   return `${where} · ${t("plan.opportunities.scope.analysed", { date })}`;
 }
 
-function Summary({ view }: { view: StoreView }) {
+function Summary({ view, needs }: { view: StoreView; needs: CardNeeds }) {
   const t = useT();
   const [{ language }] = usePreferences();
   const numbers = summaryNumbers(view);
-  const gaps = viewGaps(view);
   const biggest = view.top[0];
   const stat = (value: string, label: string) => (
     <div className="flex flex-col gap-0.5">
@@ -227,24 +240,105 @@ function Summary({ view }: { view: StoreView }) {
           </div>
         </div>
       </div>
-      {gaps.length > 0 && <Gaps gaps={gaps} />}
+      <Gaps view={view} needs={needs} />
     </Card>
   );
 }
 
-function Gaps({ gaps }: { gaps: string[] }) {
+/** What did not answer: what the customer can provide, each pointing to the
+ *  setup card when the card asks for it, and the analysis's own limits,
+ *  folded away. An old engine's gaps have no owner and stay listed open. */
+function Gaps({ view, needs }: { view: StoreView; needs: CardNeeds }) {
   const t = useT();
+  const { legacy, customer, limitations } = gapGroups(view);
+  if (customer.length === 0 && limitations.length === 0) return null;
+  if (legacy) {
+    return (
+      <div className="flex flex-col gap-1 text-xs">
+        <span className="text-muted-foreground">
+          {t("plan.opportunities.summary.gaps")}
+        </span>
+        <ul className="flex flex-col gap-0.5 text-warning">
+          {limitations.map((gap) => (
+            <li key={gap}>{gap}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-1 text-xs">
-      <span className="text-muted-foreground">
-        {t("plan.opportunities.summary.gaps")}
-      </span>
-      <ul className="flex flex-col gap-0.5 text-warning">
-        {gaps.map((gap) => (
-          <li key={gap}>{gap}</li>
-        ))}
-      </ul>
+    <div className="flex flex-col gap-3 text-xs">
+      {customer.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-muted-foreground">
+            {t("plan.opportunities.gaps.provide")}
+          </span>
+          <ul className="flex flex-col gap-0.5">
+            {customer.map((gap) => (
+              <li
+                key={gap.key ?? gap.message}
+                className="flex flex-wrap gap-x-2"
+              >
+                <span className="text-warning">{gap.message}</span>
+                {needs.some((n) => n.key === gap.key) && (
+                  <a
+                    href={`#${SETUP_CARD_ID}`}
+                    className="rounded-sm text-foreground underline-offset-2 hover:underline focus-ring"
+                  >
+                    {t("plan.opportunities.gaps.provideAction")}
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {limitations.length > 0 && (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md text-muted-foreground hover:text-foreground focus-ring">
+            {t("plan.opportunities.gaps.limitations", {
+              count: limitations.length,
+            })}
+            <ChevronDown className="size-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="flex flex-col gap-0.5 pt-1 text-muted-foreground">
+              {limitations.map((gap) => (
+                <li key={gap}>{gap}</li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
     </div>
+  );
+}
+
+type CardNeeds = (SetupNeed & { key: SetupKey })[];
+
+/** The setup card shows once a need does not block a run, and then asks for
+ *  every need; a blocking need alone is asked when a run is refused for it. */
+function cardNeeds(view: StoreView): CardNeeds {
+  const needs = setupNeeds(view);
+  return needs.some((n) => !n.blocking) ? needs : [];
+}
+
+/** The rows show what is set, unless the card is asking for it. */
+function StoreSetup({ view, needs }: { view: StoreView; needs: CardNeeds }) {
+  const asks = (key: SetupKey) => needs.some((n) => n.key === key);
+  // The engine's field is named `current`; a destructure keeps it apart from a ref.
+  const { current } = view.setup ?? {};
+  const competitors = current?.competitors ?? [];
+  return (
+    <>
+      {needs.length > 0 && (
+        <SetupCard needs={needs} competitors={competitors} />
+      )}
+      {!asks("domain") && <StoreDomainRow known={current?.domain} />}
+      {!asks("competitors") && competitors.length > 0 && (
+        <CompetitorsRow list={competitors} />
+      )}
+    </>
   );
 }
 
@@ -268,14 +362,15 @@ const EMPTY_TEXT = {
 function Empty({
   view,
   reason,
+  needs,
   onNewRun,
 }: {
   view: StoreView;
   reason: keyof typeof EMPTY_TEXT;
+  needs: CardNeeds;
   onNewRun?: (anchor: HTMLElement) => void;
 }) {
   const t = useT();
-  const gaps = viewGaps(view);
   const failed = view.pages.filter(
     (p) => p.status === "error" && p.progress_note,
   );
@@ -303,7 +398,7 @@ function Empty({
           </ul>
         </div>
       )}
-      {gaps.length > 0 && <Gaps gaps={gaps} />}
+      <Gaps view={view} needs={needs} />
       <NewRunButton onNewRun={onNewRun} />
     </Card>
   );
@@ -339,11 +434,14 @@ function StoreSection({
   );
   const phase = sectionPhase(view);
   const eyebrow = scopeLine(view, t, language);
+  const needs = cardNeeds(view);
+  const setup = <StoreSetup view={view} needs={needs} />;
 
   if (phase.phase === "running") {
     return (
       <section className="flex flex-col gap-4">
         <RunStatus pages={view.pages} />
+        {setup}
         {stale}
       </section>
     );
@@ -352,8 +450,14 @@ function StoreSection({
   if (phase.phase !== "results") {
     return (
       <Frame eyebrow={eyebrow}>
+        {setup}
         {stale}
-        <Empty view={view} reason={phase.phase} onNewRun={onNewRun} />
+        <Empty
+          view={view}
+          reason={phase.phase}
+          needs={needs}
+          onNewRun={onNewRun}
+        />
       </Frame>
     );
   }
@@ -361,13 +465,14 @@ function StoreSection({
   const others = view.others.length;
   return (
     <Frame eyebrow={eyebrow} action={<NewRunButton onNewRun={onNewRun} />}>
+      {setup}
       {stale}
       {phase.refreshing && (
         <p className="text-sm text-muted-foreground" role="status">
           {t("plan.opportunities.refreshing")}
         </p>
       )}
-      <Summary view={view} />
+      <Summary view={view} needs={needs} />
       <div className="grid items-start gap-4 md:grid-cols-2">
         {view.top.map((opportunity, position) => (
           <OpportunityCard

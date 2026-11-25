@@ -6,7 +6,12 @@
  * `DiagnosisEngineError`, so React Query keeps the last good data.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { z } from "zod";
 import type { StudioToolInput } from "@decocms/shared/tools/tool-io";
 import { mcpClientQueryOptions, useProjectContext } from "@/sdk";
@@ -15,9 +20,11 @@ import { useStudioTools } from "@/lib/studio-tools";
 import {
   DecideHypothesisSchema,
   GetOpportunitySchema,
+  SiteProfileSchema,
   type StartRunInput,
   StartRunSchema,
   StoreViewSchema,
+  UpdateProfileSchema,
   parseToolResult,
   toolPayload,
 } from "./diagnosis-schema.ts";
@@ -32,6 +39,8 @@ import {
 } from "./diagnosis-state.ts";
 
 type EngineTool =
+  | "get_ux_site_profile"
+  | "update_ux_site_profile"
   | "get_ux_store_view"
   | "get_ux_opportunity"
   | "start_ux_diagnosis"
@@ -155,11 +164,89 @@ export function useStartRun() {
   return useMutation({
     mutationFn: (input: StartRunInput) =>
       engine.call(StartRunSchema, "start_ux_diagnosis", { ...input }),
+    // A run can fill the store's profile from its site in Studio.
     onSettled: () =>
-      engine.queryClient.invalidateQueries({
-        queryKey: KEYS.planStoreViews(engine.orgId),
-      }),
+      Promise.all([
+        engine.queryClient.invalidateQueries({
+          queryKey: KEYS.planStoreViews(engine.orgId),
+        }),
+        engine.queryClient.invalidateQueries({
+          queryKey: KEYS.planSiteProfiles(engine.orgId),
+        }),
+      ]),
   });
+}
+
+/** The store the engine analyses; null until its domain is known. Off
+ *  when the store view already carries it. */
+export function useSiteProfile({ enabled = true } = {}) {
+  const engine = useEngine();
+  return useQuery({
+    queryKey: KEYS.planSiteProfile(engine.orgId, engine.connectionId ?? ""),
+    enabled: enabled && engine.connectionId !== null,
+    retry: retryEngineRead,
+    queryFn: async () =>
+      (await engine.call(SiteProfileSchema, "get_ux_site_profile", {})).profile,
+  });
+}
+
+/** Sets the store's domain. Rejects with the engine's message, such as an
+ *  invalid domain. */
+export function useUpdateStoreDomain() {
+  const engine = useEngine();
+  return useMutation({
+    mutationFn: async (domain: string) =>
+      (
+        await engine.call(SiteProfileSchema, "update_ux_site_profile", {
+          domain,
+        })
+      ).profile,
+    onSettled: () => invalidateSetup(engine),
+  });
+}
+
+/** The view's setup needs are read from the profile, so both refetch. */
+function invalidateSetup(engine: Engine) {
+  return Promise.all([
+    engine.queryClient.invalidateQueries({
+      queryKey: KEYS.planSiteProfiles(engine.orgId),
+    }),
+    engine.queryClient.invalidateQueries({
+      queryKey: KEYS.planStoreViews(engine.orgId),
+    }),
+  ]);
+}
+
+const competitorsMutationKey = (orgId: string) =>
+  [...KEYS.planSiteProfiles(orgId), "competitors"] as const;
+
+/** Saves and confirms the competitors list, sent normalized. Rejects with a
+ *  `DiagnosisEngineError` whose `rejected` names each domain that did not
+ *  answer; then nothing is saved. */
+export function useUpdateCompetitors() {
+  const engine = useEngine();
+  return useMutation({
+    mutationKey: competitorsMutationKey(engine.orgId),
+    mutationFn: (competitors: string[]) =>
+      engine.call(UpdateProfileSchema, "update_ux_site_profile", {
+        competitors,
+      }),
+    onSettled: () => invalidateSetup(engine),
+  });
+}
+
+/** The competitors the last save kept without checking. Read from the
+ *  mutation cache: the form that saved is gone once its need is met. */
+export function useCompetitorWarnings() {
+  const { org } = useProjectContext();
+  const saves = useMutationState({
+    filters: { mutationKey: competitorsMutationKey(org.id) },
+    select: (mutation) => mutation.state,
+  });
+  const last = saves.at(-1);
+  return last?.status === "success"
+    ? (UpdateProfileSchema.safeParse(last.data).data?.warnings ?? [])
+    : [];
 }
 
 /** `pending` undoes an earlier decision. */
