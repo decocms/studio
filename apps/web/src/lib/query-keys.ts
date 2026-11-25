@@ -1019,6 +1019,9 @@ export const KEYS = {
   // hosted CMS's `POST /drafts` on open.
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
+  // A hosted v8 site's live release as a `?__draft=` pointer.
+  protocolPublishedPointer: (orgSlug: string, virtualMcpId: string) =>
+    ["protocol-published-pointer", orgSlug, virtualMcpId] as const,
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,

@@ -42,13 +42,14 @@ import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { formatRelativeTime } from "@/lib/format-time.ts";
 import {
   lastPreviewPageKey,
   readLastPreviewPage,
 } from "@/components/sandbox/preview/last-preview-page.ts";
 import { changeId, PublishChangeCard } from "./cms-publish-change-card.tsx";
-import { PublishCompare } from "./cms-publish-compare.tsx";
+import { type CompareDevice, PublishCompare } from "./cms-publish-compare.tsx";
 import type { CompareDraft } from "./cms-publish-compare-path.ts";
 import {
   PublishFrame,
@@ -659,6 +660,18 @@ function SandboxContentPublish({
   );
 }
 
+/** The editor canvas's device (read only: the canvas owns the key). */
+function canvasCompareDevice(virtualMcpId: string): CompareDevice {
+  try {
+    const raw = localStorage.getItem(
+      LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId),
+    );
+    return raw && JSON.parse(raw) === "mobile" ? "mobile" : "desktop";
+  } catch {
+    return "desktop";
+  }
+}
+
 function CmsPublishView({
   source,
   publishLockRef,
@@ -1064,6 +1077,7 @@ function CmsPublishView({
               draft={compareDraft}
               lastPage={lastPreviewPage}
               v8={source.v8}
+              initialDevice={canvasCompareDevice(virtualMcpId)}
               onReady={
                 smoothPanes ? () => markReady(changeId(change)) : undefined
               }

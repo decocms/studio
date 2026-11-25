@@ -333,6 +333,38 @@ export function draftToken(latestId: string | null, state: DraftState): string {
     .slice(0, 22);
 }
 
+/**
+ * The site's published-content folder: an empty draft at a fixed slug, so
+ * `latest ⊕ nothing` renders exactly the live release. The publish compare's
+ * "Before" sends its pointer instead of `__draft=off`: a deployment that
+ * previews this site's content without being the site (the NB Eitri app on
+ * the FastStore site) reads `off` as its OWN published content. It never
+ * holds names, so its URL grants nothing latest.json doesn't; no drafts row
+ * points at it, so no discard or list ever meets it.
+ */
+function publishedSlug(site: string): string {
+  return createHash("sha256")
+    .update(`published:${site}`, "utf8")
+    .digest("base64url")
+    .slice(0, 22);
+}
+
+/**
+ * Makes sure {@link publishedSlug}'s index exists and is empty, and answers
+ * its `?__draft=` pointer at the live revision's token (it moves with every
+ * publish, so a preview's draft cache never serves an old release).
+ */
+export async function publishedPointer(
+  store: DeliveryStore,
+  site: string,
+  latestId: string | null,
+): Promise<string> {
+  const slug = publishedSlug(site);
+  const index = await updateDraftIndex(store, site, slug, () => []);
+  const token = draftToken(latestId, { index, files: new Map() });
+  return `${draftPointerTarget(site, slug)}@${token}`;
+}
+
 /** A draft name: today's branch rule, at most 255 characters (contract §1.5). */
 const DRAFT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9/._-]*$/;
 

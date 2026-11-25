@@ -41,6 +41,7 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useContentBackend } from "@/cms/use-content-backend.ts";
 import { settleAfterPublish } from "./publish-completion.ts";
 import { useContentChanges } from "@/cms/content-changes.ts";
+import { useProtocolPublishedPointer } from "@/cms/content-protocol-api";
 import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
 import {
   contentSyncScope,
@@ -167,6 +168,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
   );
   const changesQuery = useContentChanges(hosted ? backend : null, cacheKey);
+  // "Before" in the publish compare: the live release, read on each open.
+  const publishedPointer = useProtocolPublishedPointer(
+    hosted && surface.open ? { orgSlug: org.slug, virtualMcpId } : null,
+  );
   // A hosted draft's links send the preview frame's `__draft` exactly: its
   // pointer with the frame's forced variants and "Preview as" options.
   const hostedDraftValue = usePreviewDraftValue(
@@ -571,6 +576,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
                   kind: "pointer",
                   pointer: draftPointer,
                   ...(hostedDraftValue ? { link: hostedDraftValue } : {}),
+                  ...(publishedPointer ? { published: publishedPointer } : {}),
                 }
               : null
           }

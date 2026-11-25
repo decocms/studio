@@ -243,6 +243,42 @@ describe("drafts", () => {
     expect((await t.call("DELETE", "acme/drafts/missing")).status).toBe(404);
   });
 
+  it("published-pointer: an empty draft folder at a fixed slug, its token moving with the release", async () => {
+    const t = cmsTestApp();
+    const first = await t.call("POST", "acme/published-pointer", {});
+    expect(first.status).toBe(200);
+    const match =
+      /^delivery\.decocms\.com\/sites\/acme\/drafts\/([A-Za-z0-9_-]{22})\/index\.json@([A-Za-z0-9_-]{22})$/.exec(
+        first.body.pointer,
+      );
+    expect(match).not.toBeNull();
+    const slug = match![1]!;
+    expect(
+      JSON.parse(
+        t.delivery.objects.get(deliveryKeys.draftIndex("acme", slug))!.text,
+      ),
+    ).toEqual({ names: [] });
+    // Idempotent; no drafts row, so it never shows in the list.
+    const again = await t.call("POST", "acme/published-pointer", {});
+    expect(again.body.pointer).toBe(first.body.pointer);
+    expect((await t.call("GET", "acme/drafts")).body.drafts).toEqual([]);
+    // A publish moves latest.json, so the token moves too.
+    await t.call("POST", "acme/drafts", { name: "d" });
+    const save = await t.rpc("acme", "d", "blocks.apply", {
+      set: { home: { __resolveType: "website/pages/Page.tsx", path: "/" } },
+      ifMatch: { home: null },
+    });
+    expect(save.body.error).toBeUndefined();
+    expect((await t.call("POST", "acme/drafts/d/publish", {})).status).toBe(
+      200,
+    );
+    const after = await t.call("POST", "acme/published-pointer", {});
+    expect(
+      after.body.pointer.startsWith(first.body.pointer.split("@")[0]),
+    ).toBe(true);
+    expect(after.body.pointer).not.toBe(first.body.pointer);
+  });
+
   it("refuses a save without a precondition for every block it touches", async () => {
     const t = cmsTestApp();
     await t.call("POST", "acme/drafts", { name: "d" });

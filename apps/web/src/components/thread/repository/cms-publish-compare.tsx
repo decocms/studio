@@ -26,10 +26,7 @@ import {
 } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { type ElementSize, useElementSize } from "@/hooks/use-element-size.ts";
-import {
-  DRAFT_OFF,
-  withDraftPointer,
-} from "@/components/sections-editor/section-preview-url.ts";
+import { withDraftPointer } from "@/components/sections-editor/section-preview-url.ts";
 import { extractPathParams } from "@/components/sections-editor/page-path-utils.ts";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
@@ -38,6 +35,7 @@ import { PublishGhost } from "./cms-publish-frame.tsx";
 import {
   blockComparePath,
   canRenderCompare,
+  compareBeforePointer,
   compareDraftLink,
   compareDraftUrl,
   comparePlaceholder,
@@ -67,7 +65,7 @@ type CompareView = (typeof COMPARE_VIEWS)[number];
 function isCompareView(value: string): value is CompareView {
   return (COMPARE_VIEWS as readonly string[]).includes(value);
 }
-type CompareDevice = "desktop" | "mobile";
+export type CompareDevice = "desktop" | "mobile";
 
 /** Logical render widths — the frames scale down to fit, never reflow. */
 const DEVICE_WIDTH: Record<CompareDevice, number> = {
@@ -99,6 +97,8 @@ interface PublishCompareProps {
    * the panel can keep the previous pane on screen until then. v8 only.
    */
   onReady?: () => void;
+  /** The device the panes open on: the editor canvas's. Desktop when absent. */
+  initialDevice?: CompareDevice;
 }
 
 /**
@@ -157,6 +157,7 @@ export function PublishCompare({
   lastPage,
   v8,
   onReady,
+  initialDevice = "desktop",
 }: PublishCompareProps) {
   const t = useT();
   const showsCode = use(PublishCodeTab);
@@ -178,7 +179,7 @@ export function PublishCompare({
    *  and kind can still arrive after the pane mounts. */
   const [pickedView, setView] = useState<CompareView | null>(null);
   const view: CompareView = !canRender ? "code" : (pickedView ?? "split");
-  const [device, setDevice] = useState<CompareDevice>("desktop");
+  const [device, setDevice] = useState<CompareDevice>(initialDevice);
   const [typedPath, setPath] = useState<string | null>(null);
   const path =
     typedPath ??
@@ -196,7 +197,9 @@ export function PublishCompare({
       : null;
   const url = urlOn(previewServerUrl);
   const draftUrl = urlOn(draftServerUrl) ?? url;
-  const beforeUrl = url ? withDraftPointer(url.toString(), DRAFT_OFF) : null;
+  const beforeUrl = url
+    ? withDraftPointer(url.toString(), compareBeforePointer(draft))
+    : null;
   const afterUrl = draftUrl ? compareDraftUrl(draftUrl, draft) : null;
   /** "Open draft": the preview frame's `__draft` (compareDraftLink). */
   const afterLink = draftUrl ? compareDraftLink(draftUrl, draft) : null;

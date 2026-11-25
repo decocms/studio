@@ -35,7 +35,12 @@ import {
 } from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
-import { cmsBlockVersion, cmsSiteOf, ensureCmsDraft } from "@/cms/cms-api";
+import {
+  cmsBlockVersion,
+  cmsSiteOf,
+  ensureCmsDraft,
+  fetchCmsPublishedPointer,
+} from "@/cms/cms-api";
 import { rememberConflictEditor } from "@/components/sections-editor/conflict-editor";
 import { keepContentBookkeeping } from "@/components/sections-editor/content-bookkeeping";
 import {
@@ -1409,6 +1414,29 @@ export function useProtocolDraftRead(params: DecofileScopeParams | null): {
     return { pointer: null, pending };
   }
   return { pointer: `${data.draft}@${data.version}`, pending: false };
+}
+
+/**
+ * A hosted v8 project's live release as a `?__draft=` pointer, read while
+ * `params` is set (the publish dialog is open): re-read on every open, since
+ * its token moves with each publish. Null until it answers, or on failure
+ * (the compare's "Before" then falls back to `__draft=off`).
+ */
+export function useProtocolPublishedPointer(
+  params: { orgSlug: string; virtualMcpId: string } | null,
+): string | null {
+  const site = cmsSiteOf(useVirtualMCP(params?.virtualMcpId)?.metadata);
+  const { data } = useQuery({
+    queryKey: KEYS.protocolPublishedPointer(
+      params?.orgSlug ?? "",
+      params?.virtualMcpId ?? "",
+    ),
+    queryFn: () => fetchCmsPublishedPointer(site!),
+    enabled: !!params && !!site,
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+  return params ? (data ?? null) : null;
 }
 
 /** {@link useProtocolDraftRead}'s pointer alone. */

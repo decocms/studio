@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   blockComparePath,
   canRenderCompare,
+  compareBeforePointer,
   compareDraftUrl,
   comparePageUrl,
   comparePlaceholder,
@@ -166,6 +167,28 @@ describe("compareSectionUrl", () => {
 
   test("an unparsable site origin is not renderable", () => {
     expect(compareSectionUrl("not a url", "Header Global")).toBeNull();
+  });
+});
+
+describe("compareBeforePointer", () => {
+  test("the live release's pointer when the draft carries one", () => {
+    expect(
+      compareBeforePointer({
+        kind: "pointer",
+        pointer: "d@1",
+        published: "p@9",
+      }),
+    ).toBe("p@9");
+  });
+
+  test("off without one, a sandbox, or no draft yet", () => {
+    expect(compareBeforePointer({ kind: "pointer", pointer: "d@1" })).toBe(
+      "off",
+    );
+    expect(compareBeforePointer({ kind: "sandbox", previewUrl: SITE })).toBe(
+      "off",
+    );
+    expect(compareBeforePointer(null)).toBe("off");
   });
 });
 

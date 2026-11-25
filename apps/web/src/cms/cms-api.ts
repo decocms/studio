@@ -144,6 +144,21 @@ export async function ensureCmsDraft(
 }
 
 /**
+ * The live release as a `?__draft=` pointer (`POST /published-pointer`): an
+ * empty draft folder, at a token that moves with every publish. The publish
+ * compare's "Before" renders it, so a deployment that previews this site's
+ * content without being the site still shows this site's release.
+ */
+export async function fetchCmsPublishedPointer(site: string): Promise<string> {
+  const { pointer } = await cmsRequest<{ pointer: string }>(
+    site,
+    "published-pointer",
+    { method: "POST" },
+  );
+  return pointer;
+}
+
+/**
  * A block's version on the hosted CMS, as the server computes it: the first
  * 16 bytes of `sha256(canonicalJson(block))`, 22 characters of base64url.
  * A copy of `@decocms/blocks/protocol`'s `blockVersion` until a release

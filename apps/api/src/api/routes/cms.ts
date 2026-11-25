@@ -6,6 +6,7 @@
  *   GET    /api/cms/:site/drafts                      list (the drafts table)
  *   POST   /api/cms/:site/drafts                      create, idempotent { name }
  *   GET    /api/cms/:site/drafts/:name                resolve (slug, ETag, preview link)
+ *   POST   /api/cms/:site/published-pointer           the live release as a `?__draft=` pointer
  *   DELETE /api/cms/:site/drafts/:name                discard (files, index, then row)
  *   POST   /api/cms/:site/drafts/:name/rpc            content protocol + cms.index / cms.blocks
  *   POST   /api/cms/:site/drafts/:name/publish        publish { message? }
@@ -64,6 +65,7 @@ import {
   draftResource,
   draftToken,
   isValidDraftName,
+  publishedPointer,
 } from "@/hosted/cms-drafts";
 import {
   NotPublishedError,
@@ -456,6 +458,23 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
           "Cache-Control": "no-store",
         },
       );
+    } catch (err) {
+      return cmsError(c, err);
+    }
+  });
+
+  // A write: the first call creates the empty folder (create-only after).
+  app.post("/:site/published-pointer", async (c) => {
+    const site = c.get("cmsSite").site;
+    try {
+      const store = c.get("buckets").store;
+      const live = await readLatest(store, site);
+      const pointer = await publishedPointer(
+        store,
+        site,
+        live?.latest.revision ?? null,
+      );
+      return c.json({ pointer }, 200, { "Cache-Control": "no-store" });
     } catch (err) {
       return cmsError(c, err);
     }

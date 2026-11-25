@@ -287,3 +287,31 @@ describe("the review frames (publish review)", () => {
     view.unmount();
   });
 });
+
+describe("the compare's panes", () => {
+  test("Before renders the live release's pointer, on the canvas's device", () => {
+    const view = render(
+      <PublishCompare
+        change={page}
+        diff={null}
+        bodyPending={false}
+        previewServerUrl="https://site.example"
+        draft={{ kind: "pointer", pointer: "d@1", published: "p@9" }}
+        lastPage={null}
+        v8={{ blocks: {} }}
+        initialDevice="mobile"
+      />,
+    );
+    const frames = [...view.container.querySelectorAll("iframe")].map(
+      (f) => new URL(f.getAttribute("src") ?? ""),
+    );
+    expect(frames.map((u) => u.searchParams.get("__draft"))).toEqual([
+      "p@9",
+      "d@1",
+    ]);
+    expect(
+      frames.every((u) => u.searchParams.get("deviceHint") === "mobile"),
+    ).toBe(true);
+    view.unmount();
+  });
+});

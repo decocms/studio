@@ -6,6 +6,7 @@ import { previewPageForBlock } from "@/components/sections-editor/page-list.tsx"
 import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
 import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
 import {
+  DRAFT_OFF,
   globalSectionPreviewUrl,
   withDraftPointer,
 } from "@/components/sections-editor/section-preview-url.ts";
@@ -154,8 +155,20 @@ export type CompareDraft =
        * pointer when absent. The compare's panes render the bare pointer.
        */
       link?: string;
+      /**
+       * The live release as a pointer (a hosted v8 site's empty draft
+       * folder), which "Before" renders instead of `__draft=off`: a
+       * deployment previewing this site's content without being the site
+       * reads `off` as its own content. Absent: `off`.
+       */
+      published?: string;
     }
   | { kind: "sandbox"; previewUrl: string };
+
+/** The `__draft` "Before" renders: the live release's pointer, else `off`. */
+export function compareBeforePointer(draft: CompareDraft | null): string {
+  return (draft?.kind === "pointer" && draft.published) || DRAFT_OFF;
+}
 
 /**
  * The "Open draft" link for `url`: what {@link compareDraftUrl} renders, with
