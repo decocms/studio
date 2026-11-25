@@ -15,6 +15,7 @@ import {
 } from "@/hosted/delivery-store";
 import { newRevisionId } from "@/hosted/revision-id";
 import { SCHEMA_TEXT } from "@/hosted/hosted-test-helpers";
+import { cmsPermission } from "./cms";
 import { cmsTestApp } from "./cms-test-app";
 
 beforeEach(() => {
@@ -589,5 +590,158 @@ describe("releases and rollback", () => {
     const res = await t.call("GET", "acme/releases");
     expect(res.status).toBe(503);
     expect(res.body.code).toBe("unavailable");
+  });
+});
+
+describe("permissions: an API key is bounded by its own allowlist", () => {
+  const key = (permissions: Record<string, string[]>) => ({
+    userId: "usr_ana",
+    method: "apiKey" as const,
+    apiKey: true,
+    // The key's owner is an admin: the role must not widen the key.
+    role: "admin",
+    permissions,
+  });
+  const rollback = () => `acme/releases/${newRevisionId(Date.now())}/rollback`;
+
+  it("a key without CMS permissions gets 403 on every route and changes nothing", async () => {
+    for (const permissions of [
+      { self: ["ORGANIZATION_GET"] },
+      // An org-fs key, as a sandbox mount carries.
+      { self: ["ORG_FS_READ", "ORG_FS_WRITE"] },
+      // An automation webhook token.
+      { "webhook:trg_1": ["FIRE"] },
+      {},
+    ] as Array<Record<string, string[]>>) {
+      const t = cmsTestApp();
+      t.as(key(permissions));
+      const requests: Array<[string, string, string?]> = [
+        ["GET", "acme/drafts"],
+        ["POST", "acme/drafts"],
+        ["GET", "acme/drafts/main"],
+        ["DELETE", "acme/drafts/main"],
+        ["POST", "acme/drafts/main/rpc"],
+        ["POST", "acme/drafts/main/publish"],
+        ["GET", "acme/releases"],
+        ["POST", rollback()],
+        ["PUT", "acme/schema", SCHEMA_TEXT],
+        ["GET", "acme/site-tokens"],
+        ["POST", "acme/site-tokens"],
+      ];
+      for (const [method, path, raw] of requests) {
+        const body =
+          raw !== undefined || method === "GET" ? undefined : { name: "main" };
+        const res = await t.call(method, path, body, raw);
+        expect([method, path, res.status, res.body.code]).toEqual([
+          method,
+          path,
+          403,
+          "forbidden",
+        ]);
+      }
+      expect(t.delivery.objects.size).toBe(0);
+      expect(await t.table.list("acme")).toEqual([]);
+    }
+  });
+
+  it("CMS_READ reads but doesn't write", async () => {
+    const t = cmsTestApp();
+    t.as(key({ self: ["CMS_READ"] }));
+    expect((await t.call("GET", "acme/drafts")).status).toBe(200);
+    expect((await t.call("GET", "acme/releases")).status).toBe(200);
+    for (const path of [
+      "acme/drafts",
+      "acme/drafts/main/publish",
+      rollback(),
+      "acme/site-tokens",
+    ]) {
+      expect((await t.call("POST", path, { name: "main" })).status).toBe(403);
+    }
+  });
+
+  it("CMS_WRITE edits, publishes and pushes the schema, but can't issue a site token", async () => {
+    const t = cmsTestApp();
+    t.as(key({ self: ["CMS_WRITE"] }));
+    expect((await t.call("POST", "acme/drafts", { name: "main" })).status).toBe(
+      200,
+    );
+    // Past the gate, to the handler's own answer.
+    expect(
+      (await t.call("POST", "acme/drafts/nope/publish", {})).body.code,
+    ).toBe("draft_not_found");
+    expect(
+      (await t.call("PUT", "acme/schema", undefined, SCHEMA_TEXT)).status,
+    ).toBe(200);
+    const issue = await t.call("POST", "acme/site-tokens");
+    expect(issue.status).toBe(403);
+    expect(issue.body.code).toBe("forbidden");
+    // An encoded path still resolves to the issuing route.
+    expect((await t.call("POST", "acme/site%2Dtokens")).status).toBe(403);
+    // A draft named `site-tokens` is a write, not issuance.
+    expect((await t.call("DELETE", "acme/drafts/site-tokens")).body.code).toBe(
+      "draft_not_found",
+    );
+  });
+
+  it("CMS_SITE_TOKEN_ISSUE issues tokens and nothing else", async () => {
+    const t = cmsTestApp();
+    t.as(key({ self: ["CMS_SITE_TOKEN_ISSUE"] }));
+    // Past the gate: this Studio has no signing key configured.
+    expect((await t.call("POST", "acme/site-tokens")).body.code).toBe(
+      "hosted_delivery_unconfigured",
+    );
+    expect((await t.call("DELETE", "acme/drafts/site-tokens")).status).toBe(
+      403,
+    );
+    expect((await t.call("POST", "acme/drafts", { name: "main" })).status).toBe(
+      403,
+    );
+  });
+
+  it("a full-access key keeps the whole API", async () => {
+    const t = cmsTestApp();
+    t.as(key({ "*": ["*"] }));
+    expect((await t.call("POST", "acme/drafts", { name: "main" })).status).toBe(
+      200,
+    );
+    expect((await t.call("POST", "acme/site-tokens")).body.code).toBe(
+      "hosted_delivery_unconfigured",
+    );
+  });
+
+  it("members keep the whole API, whatever their role", async () => {
+    for (const role of ["user", "editor", "admin"]) {
+      const t = cmsTestApp();
+      t.as({
+        userId: "usr_ana",
+        method: "session",
+        role,
+        // A custom role that grants no tool at all.
+        ...(role === "editor" ? { permissions: { projects: ["*"] } } : {}),
+      });
+      expect(
+        (await t.call("POST", "acme/drafts", { name: "main" })).status,
+      ).toBe(200);
+      expect(
+        (await t.call("POST", "acme/drafts/nope/publish", {})).body.code,
+      ).toBe("draft_not_found");
+      expect((await t.call("POST", "acme/site-tokens")).body.code).toBe(
+        "hosted_delivery_unconfigured",
+      );
+    }
+  });
+});
+
+describe("cmsPermission", () => {
+  it("maps reads, writes and site-token issuance by route pattern", () => {
+    expect(cmsPermission(false, "/api/cms/:site/site-tokens")).toBe("CMS_READ");
+    expect(cmsPermission(true, "/api/cms/:site/site-tokens")).toBe(
+      "CMS_SITE_TOKEN_ISSUE",
+    );
+    expect(cmsPermission(true, "/api/cms/:site/drafts/:name")).toBe(
+      "CMS_WRITE",
+    );
+    // An unmatched write ends on the gate's own pattern: a write.
+    expect(cmsPermission(true, "/api/cms/:site/*")).toBe("CMS_WRITE");
   });
 });
