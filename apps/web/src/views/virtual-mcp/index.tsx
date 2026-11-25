@@ -97,6 +97,7 @@ import {
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { omitServerManagedMetadata } from "@/lib/omit-server-managed-metadata";
 import { RepositoryCard } from "./settings/repository-card";
+import { RepositoryCollaboratorsSection } from "./settings/repository-collaborators";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
 import { RuntimeAppsField } from "@/components/sandbox/runtime-card/runtime-apps-field";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
@@ -397,6 +398,7 @@ function VirtualMcpDetailViewWithData({
 
   // Repo info for the Runtime card (display-only — loose check is intentional)
   const repositoryForRuntimeCard = getActiveRepository(virtualMcp);
+  const repositoryId = repositoryForRuntimeCard?.repositoryId;
   const runtimeCardRepo = repositoryForRuntimeCard
     ? {
         owner: repositoryForRuntimeCard.owner,
@@ -1216,6 +1218,9 @@ function VirtualMcpDetailViewWithData({
                     return flushAndSave();
                   }}
                 />
+              )}
+              {section === "repository" && repositoryId && (
+                <RepositoryCollaboratorsSection repositoryId={repositoryId} />
               )}
               {section === "repository" && (
                 <SettingsSection

@@ -32,6 +32,14 @@ export type Repository =
 
 type RepositorySearchPage = StudioToolIO["REPOSITORY_SEARCH"]["output"];
 
+export type CollaboratorPermission = NonNullable<
+  StudioToolIO["REPOSITORY_COLLABORATORS_LIST"]["output"]["collaborators"][number]["permission"]
+>;
+
+export type GrantablePermission = NonNullable<
+  StudioToolIO["REPOSITORY_COLLABORATOR_ADD"]["input"]["permission"]
+>;
+
 /** Capabilities are deployment config — they only change on a redeploy. */
 const CAPABILITIES_STALE_MS = 5 * 60_000;
 
@@ -64,6 +72,65 @@ export function useRepositories(accountId?: string) {
     queryFn: async () =>
       (await studio.call("REPOSITORY_LIST", accountId ? { accountId } : {}))
         .repositories,
+  });
+}
+
+/** People with direct access to a linked repository, and pending invitations. */
+/** Whether Studio manages who has access to the repository, or its owner does on GitHub. */
+export function useRepositoryAccessMode(
+  repositoryId: string,
+  { enabled }: { enabled: boolean },
+) {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  return useQuery({
+    queryKey: KEYS.repositoryAccessMode(org.id, repositoryId),
+    enabled,
+    staleTime: 5 * 60_000,
+    queryFn: () => studio.call("REPOSITORY_ACCESS_MODE", { repositoryId }),
+  });
+}
+
+export function useRepositoryCollaborators(repositoryId: string) {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  return useQuery({
+    queryKey: KEYS.repositoryCollaborators(org.id, repositoryId),
+    retry: false,
+    queryFn: () =>
+      studio.call("REPOSITORY_COLLABORATORS_LIST", { repositoryId }),
+  });
+}
+
+function useInvalidateCollaborators(repositoryId: string) {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  return () =>
+    queryClient.invalidateQueries({
+      queryKey: KEYS.repositoryCollaborators(org.id, repositoryId),
+    });
+}
+
+export function useAddCollaborator(repositoryId: string) {
+  const studio = useStudioTools();
+  const invalidate = useInvalidateCollaborators(repositoryId);
+  return useMutation({
+    mutationFn: (input: {
+      username: string;
+      permission: GrantablePermission;
+    }) =>
+      studio.call("REPOSITORY_COLLABORATOR_ADD", { repositoryId, ...input }),
+    onSettled: invalidate,
+  });
+}
+
+export function useRemoveCollaborator(repositoryId: string) {
+  const studio = useStudioTools();
+  const invalidate = useInvalidateCollaborators(repositoryId);
+  return useMutation({
+    mutationFn: (username: string) =>
+      studio.call("REPOSITORY_COLLABORATOR_REMOVE", { repositoryId, username }),
+    onSettled: invalidate,
   });
 }
 

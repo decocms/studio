@@ -36,6 +36,7 @@ export * from "./insights";
 export * from "./credentials";
 export * from "./clients";
 export * from "./capabilities";
+export * from "./access-mode";
 
 /**
  * The pre-repository world, re-exported so callers still on it need not reach

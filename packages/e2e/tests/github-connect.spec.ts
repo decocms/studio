@@ -5,7 +5,13 @@ import {
   randomUUID,
 } from "node:crypto";
 import type { APIRequestContext } from "@playwright/test";
-import { expect, test, newApiContext, type AuthedPage } from "../fixtures/test";
+import {
+  expect,
+  getE2EAppOrigin,
+  test,
+  newApiContext,
+  type AuthedPage,
+} from "../fixtures/test";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
@@ -1854,4 +1860,237 @@ test("linked repository reads reuse its recorded id and reject a narrowed grant"
   const denied = await page.request.get(endpoint);
   expect(denied.status()).toBe(502);
   expect(await reads()).toBe(readsBeforeRevoke);
+});
+
+test("an admin invites, lists and withdraws a repository collaborator from project settings; a member cannot", async ({
+  authedPage,
+  playwright,
+}) => {
+  // The project settings page is the first UI this suite opens: Vite compiles it cold.
+  test.setTimeout(120_000);
+  const { page, orgSlug } = authedPage;
+  // `hosted-sites` is in GITHUB_MANAGED_OWNERS (playwright.github-connect.config.ts).
+  const repo = { id: 8101, owner: "hosted-sites", name: "site" };
+  const seeded = await page.request.post(`${fixtureOrigin}/__admin/repos`, {
+    data: {
+      owner: repo.owner,
+      repo: repo.name,
+      id: repo.id,
+      branches: { main: { files: { "README.md": "site" } } },
+      collaborators: { "host-engineer": "admin" },
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  const org = installation(repo.owner, "Organization", [{ id: repo.id }]);
+  const flow = await seedFlow(authedPage, [org]);
+  const connected = await page.request.post(flow.path, {
+    data: await grantInput(page.request, flow.path, org),
+  });
+  expect(connected.status()).toBe(200);
+  const { account } = (await connected.json()) as { account: { id: string } };
+  const { repository } = await callSelfMcpTool<{
+    repository: { id: string };
+  }>(page.request, orgSlug, "REPOSITORY_LINK", {
+    accountId: account.id,
+    url: `https://github.com/${repo.owner}/${repo.name}`,
+  });
+  const { item: project } = await callSelfMcpTool<{ item: { id: string } }>(
+    page.request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title: "Collaborators",
+        connections: [],
+        metadata: {
+          repository: {
+            owner: repo.owner,
+            name: repo.name,
+            url: `https://github.com/${repo.owner}/${repo.name}`,
+            repositoryId: repository.id,
+          },
+        },
+      },
+    },
+  );
+
+  const memberCtx = await newApiContext(playwright);
+  const member = await signUpViaApi(memberCtx);
+  const invitation = await page.request.post(
+    "/api/auth/organization/invite-member",
+    {
+      data: { organizationId: flow.orgId, email: member.email, role: "user" },
+      headers: { Origin: getE2EAppOrigin() },
+    },
+  );
+  expect(invitation.ok(), await invitation.text()).toBe(true);
+  const invitationJson = (await invitation.json()) as {
+    id?: string;
+    invitation?: { id?: string };
+  };
+  const accepted = await memberCtx.post(
+    "/api/auth/organization/accept-invitation",
+    {
+      data: {
+        invitationId: invitationJson.id ?? invitationJson.invitation?.id,
+      },
+    },
+  );
+  expect(accepted.ok(), await accepted.text()).toBe(true);
+  for (const [name, args] of [
+    ["REPOSITORY_COLLABORATORS_LIST", { repositoryId: repository.id }],
+    [
+      "REPOSITORY_COLLABORATOR_ADD",
+      { repositoryId: repository.id, username: "member-pick" },
+    ],
+    [
+      "REPOSITORY_COLLABORATOR_REMOVE",
+      { repositoryId: repository.id, username: "member-pick" },
+    ],
+  ] as const) {
+    await expect(
+      callSelfMcpTool(memberCtx, orgSlug, name, args),
+    ).rejects.toThrow(/access denied|owners and admins/i);
+  }
+  await memberCtx.dispose();
+
+  await page.goto(
+    `/${orgSlug}/projects/${project.id}/settings?section=repository`,
+  );
+  // The host's own admin is listed, but Studio cannot touch them.
+  await expect(page.getByText("Managed by the host")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText("host-engineer")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove access" })).toHaveCount(
+    0,
+  );
+  await expect(
+    callSelfMcpTool(page.request, orgSlug, "REPOSITORY_COLLABORATOR_REMOVE", {
+      repositoryId: repository.id,
+      username: "host-engineer",
+    }),
+  ).rejects.toThrow(/managed by the repository's host/);
+  await expect(
+    callSelfMcpTool(page.request, orgSlug, "REPOSITORY_COLLABORATOR_ADD", {
+      repositoryId: repository.id,
+      username: "someone",
+      permission: "admin",
+    }),
+  ).rejects.toThrow();
+
+  const invite = async (login: string) => {
+    await page.getByRole("button", { name: "Add collaborator" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add a collaborator" });
+    await dialog.getByLabel("GitHub username").fill(login);
+    await dialog.getByRole("button", { name: "Send invitation" }).click();
+    return dialog;
+  };
+
+  const missing = await invite("missing-person");
+  await expect(
+    page.getByText("GitHub has no user named missing-person."),
+  ).toBeVisible();
+  await missing.getByRole("button", { name: "Cancel" }).click();
+
+  await invite("octo-person");
+  await expect(page.getByText("Invitation pending")).toBeVisible();
+  const listed = await callSelfMcpTool<{
+    invitations: Array<{ login: string; permission: string | null }>;
+  }>(page.request, orgSlug, "REPOSITORY_COLLABORATORS_LIST", {
+    repositoryId: repository.id,
+  });
+  expect(listed.invitations).toEqual([
+    expect.objectContaining({ login: "octo-person", permission: "write" }),
+  ]);
+
+  await page.getByRole("button", { name: "Cancel invitation" }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Cancel invitation" })
+    .click();
+  await expect(page.getByText("Invitation pending")).toHaveCount(0);
+});
+
+test("a repository in the customer's own GitHub account links to GitHub instead of managing access", async ({
+  authedPage,
+}) => {
+  test.setTimeout(120_000);
+  const { page, orgSlug } = authedPage;
+  const repo = { id: 8201, owner: "customer-organization", name: "site" };
+  const seeded = await page.request.post(`${fixtureOrigin}/__admin/repos`, {
+    data: {
+      owner: repo.owner,
+      repo: repo.name,
+      id: repo.id,
+      branches: { main: { files: { "README.md": "site" } } },
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  const org = installation(repo.owner, "Organization", [{ id: repo.id }]);
+  const flow = await seedFlow(authedPage, [org]);
+  const connected = await page.request.post(flow.path, {
+    data: await grantInput(page.request, flow.path, org),
+  });
+  expect(connected.status()).toBe(200);
+  const { account } = (await connected.json()) as { account: { id: string } };
+  const { repository } = await callSelfMcpTool<{
+    repository: { id: string };
+  }>(page.request, orgSlug, "REPOSITORY_LINK", {
+    accountId: account.id,
+    url: `https://github.com/${repo.owner}/${repo.name}`,
+  });
+  const mode = await callSelfMcpTool<{ mode: string; manageUrl: string }>(
+    page.request,
+    orgSlug,
+    "REPOSITORY_ACCESS_MODE",
+    { repositoryId: repository.id },
+  );
+  expect(mode).toEqual({
+    mode: "self",
+    manageUrl: `https://github.com/${repo.owner}/${repo.name}/settings/access`,
+  });
+  for (const [name, args] of [
+    ["REPOSITORY_COLLABORATORS_LIST", { repositoryId: repository.id }],
+    [
+      "REPOSITORY_COLLABORATOR_ADD",
+      { repositoryId: repository.id, username: "someone" },
+    ],
+  ] as const) {
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, name, args),
+    ).rejects.toThrow(/on GitHub/);
+  }
+
+  const { item: project } = await callSelfMcpTool<{ item: { id: string } }>(
+    page.request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title: "Own repository",
+        connections: [],
+        metadata: {
+          repository: {
+            owner: repo.owner,
+            name: repo.name,
+            url: `https://github.com/${repo.owner}/${repo.name}`,
+            repositoryId: repository.id,
+          },
+        },
+      },
+    },
+  );
+  await page.goto(
+    `/${orgSlug}/projects/${project.id}/settings?section=repository`,
+  );
+  await expect(page.getByText("Access is managed on GitHub")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(
+    page.getByRole("link", { name: "Manage on GitHub" }),
+  ).toHaveAttribute("href", mode.manageUrl);
+  await expect(
+    page.getByRole("button", { name: "Add collaborator" }),
+  ).toHaveCount(0);
 });

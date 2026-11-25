@@ -35,6 +35,11 @@
  *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits } (branch or sha)
  *   GET   /repos/{o}/{r}/commits                      -> [ { sha } ] (default-branch head)
  *   POST  /repos/{o}/{r}/generate                     -> 201 new repo from this template (422 name taken)
+ *   GET   /repos/{o}/{r}/collaborators                -> [ { login, role_name } ]
+ *   GET   /repos/{o}/{r}/invitations                  -> [ { id, invitee, permissions } ]
+ *   PUT   /repos/{o}/{r}/collaborators/{login}        -> 201 invited / 204 updated (404 for `missing-*`)
+ *   DELETE /repos/{o}/{r}/collaborators/{login}       -> 204
+ *   DELETE /repos/{o}/{r}/invitations/{id}            -> 204 / 404
  *
  * GitHub App endpoints (the git-provider account suite):
  *   GET   /user/installations                          -> { installations }
@@ -124,6 +129,9 @@ interface RepoState {
   contentsReads: number;
   blobReads: number;
   rateLimit: StubRateLimit | null;
+  /** login -> GitHub's `role_name` / write `permission` */
+  collaborators: Map<string, string>;
+  invitations: Array<{ id: number; login: string; permissions: string }>;
 }
 
 interface SeedRepoBody {
@@ -144,6 +152,8 @@ interface SeedRepoBody {
    *  large for GitHub's recursive listing. */
   truncateRecursive?: boolean;
   rateLimit?: StubRateLimit;
+  /** login -> GitHub's `role_name` (e.g. `admin`) for people already on the repo. */
+  collaborators?: Record<string, string>;
 }
 
 const repos = new Map<string, RepoState>();
@@ -301,6 +311,8 @@ function seedRepo(body: SeedRepoBody): RepoState {
     contentsReads: 0,
     blobReads: 0,
     rateLimit: body.rateLimit ?? null,
+    collaborators: new Map(Object.entries(body.collaborators ?? {})),
+    invitations: [],
   };
 
   const branches = body.branches ?? {};
@@ -559,6 +571,85 @@ async function handleRepos(
       default_branch: repo.defaultBranch,
       owner: { login: repo.owner },
     });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/collaborators — one page holds everything the suite seeds.
+  if (
+    req.method === "GET" &&
+    rest.length === 1 &&
+    rest[0] === "collaborators"
+  ) {
+    json(
+      res,
+      200,
+      [...repo.collaborators].map(([login, role_name]) => ({
+        login,
+        avatar_url: null,
+        role_name,
+      })),
+    );
+    return;
+  }
+
+  // GET /repos/{o}/{r}/invitations
+  if (req.method === "GET" && rest.length === 1 && rest[0] === "invitations") {
+    json(
+      res,
+      200,
+      repo.invitations.map((invitation) => ({
+        id: invitation.id,
+        invitee: { login: invitation.login, avatar_url: null },
+        permissions: invitation.permissions,
+      })),
+    );
+    return;
+  }
+
+  // PUT|DELETE /repos/{o}/{r}/collaborators/{login}; `missing-*` logins do not exist.
+  if (rest.length === 2 && rest[0] === "collaborators") {
+    const login = rest[1]!;
+    if (login.startsWith("missing-")) {
+      notFound(res);
+      return;
+    }
+    if (req.method === "PUT") {
+      const { permission = "push" } = JSON.parse(
+        (await readBody(req)) || "{}",
+      ) as { permission?: string };
+      if (repo.collaborators.has(login)) {
+        repo.collaborators.set(login, permission);
+        json(res, 204);
+        return;
+      }
+      repo.invitations = repo.invitations.filter((i) => i.login !== login);
+      repo.invitations.push({
+        id: nextRepoId(),
+        login,
+        permissions: permission,
+      });
+      json(res, 201, {});
+      return;
+    }
+    if (req.method === "DELETE") {
+      repo.collaborators.delete(login);
+      json(res, 204);
+      return;
+    }
+  }
+
+  // DELETE /repos/{o}/{r}/invitations/{id}
+  if (
+    req.method === "DELETE" &&
+    rest.length === 2 &&
+    rest[0] === "invitations"
+  ) {
+    const before = repo.invitations.length;
+    repo.invitations = repo.invitations.filter(
+      (invitation) => invitation.id !== Number(rest[1]),
+    );
+    if (repo.invitations.length === before) notFound(res);
+    else json(res, 204);
     return;
   }
 

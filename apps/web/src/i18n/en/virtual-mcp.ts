@@ -153,6 +153,57 @@ export const virtualMcp = {
     "Connect a GitHub repository to edit and preview this project's site.",
   "virtualMcp.settings.repository.connect": "Connect repository",
   "virtualMcp.settings.repository.change": "Change",
+  "virtualMcp.settings.repository.collaborators.title": "Collaborators",
+  "virtualMcp.settings.repository.collaborators.description":
+    "This repository is hosted for your organization, so its access is managed here. Invite the people who need it; the highest level you can give is Write.",
+  "virtualMcp.settings.repository.collaborators.selfTitle":
+    "Access is managed on GitHub",
+  "virtualMcp.settings.repository.collaborators.selfDescription":
+    "This repository belongs to your GitHub account or organization. Add or remove people in its settings on GitHub.",
+  "virtualMcp.settings.repository.collaborators.manageOnGithub":
+    "Manage on GitHub",
+  "virtualMcp.settings.repository.collaborators.hostAccess":
+    "Managed by the host",
+  "virtualMcp.settings.repository.collaborators.add": "Add collaborator",
+  "virtualMcp.settings.repository.collaborators.addTitle": "Add a collaborator",
+  "virtualMcp.settings.repository.collaborators.addDescription":
+    "GitHub sends them an invitation. They get access once they accept it.",
+  "virtualMcp.settings.repository.collaborators.username": "GitHub username",
+  "virtualMcp.settings.repository.collaborators.permissionLabel": "Access",
+  "virtualMcp.settings.repository.collaborators.send": "Send invitation",
+  "virtualMcp.settings.repository.collaborators.cancel": "Cancel",
+  "virtualMcp.settings.repository.collaborators.loading":
+    "Loading collaborators…",
+  "virtualMcp.settings.repository.collaborators.loadFailed":
+    "Could not load collaborators",
+  "virtualMcp.settings.repository.collaborators.empty":
+    "No one has direct access yet",
+  "virtualMcp.settings.repository.collaborators.pending": "Invitation pending",
+  "virtualMcp.settings.repository.collaborators.remove": "Remove access",
+  "virtualMcp.settings.repository.collaborators.cancelInvitation":
+    "Cancel invitation",
+  "virtualMcp.settings.repository.collaborators.removeTitle":
+    "Remove {login}'s access?",
+  "virtualMcp.settings.repository.collaborators.cancelInvitationTitle":
+    "Cancel {login}'s invitation?",
+  "virtualMcp.settings.repository.collaborators.removeDescription":
+    "They lose direct access to the repository on GitHub. You can invite them again later.",
+  "virtualMcp.settings.repository.collaborators.invited":
+    "Invitation sent to {login}. They need to accept it on GitHub.",
+  "virtualMcp.settings.repository.collaborators.updated":
+    "Updated {login}'s access",
+  "virtualMcp.settings.repository.collaborators.removed":
+    "Removed {login}'s access",
+  "virtualMcp.settings.repository.collaborators.cancelled":
+    "Cancelled {login}'s invitation",
+  "virtualMcp.settings.repository.collaborators.permission.read": "Read",
+  "virtualMcp.settings.repository.collaborators.permission.triage": "Triage",
+  "virtualMcp.settings.repository.collaborators.permission.write": "Write",
+  "virtualMcp.settings.repository.collaborators.permission.maintain":
+    "Maintain",
+  "virtualMcp.settings.repository.collaborators.permission.admin": "Admin",
+  "virtualMcp.settings.repository.collaborators.permission.custom":
+    "Custom role",
   "virtualMcp.settings.repository.connected": "Connected {name}",
   "virtualMcp.settings.cmsEmpty":
     "Connect the site's repository to turn the CMS on.",

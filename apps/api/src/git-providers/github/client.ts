@@ -18,19 +18,29 @@ import {
 } from "@decocms/shared/git-providers";
 import { GITHUB_SCOPED_PERMISSIONS } from "@decocms/shared/github-repo-scope";
 import { retry } from "@decocms/shared/std";
+import type { z } from "zod";
 import {
+  type CollaboratorPermission,
   type CreateFromTemplateParams,
   type GitAccessToken,
   type GitIdentity,
   type GitProviderClient,
   GitProviderError,
   type ListReposOptions,
+  type RepoCollaborators,
   type RepoSummary,
   type RepoVisibility,
   type TokenOptions,
   type TokenSource,
 } from "../types";
 import { type GithubAppAuth, MAX_TOKEN_REPOSITORIES } from "./app-auth";
+import {
+  GithubCollaboratorsPageSchema,
+  GithubInvitationsPageSchema,
+  githubPermissionParam,
+  mapGithubCollaborators,
+  mapGithubInvitations,
+} from "./collaborators";
 import {
   githubApiBaseUrl,
   type GithubFetchInit,
@@ -68,6 +78,15 @@ const CREATE_REPO_PERMISSIONS: Record<string, string> = {
   contents: "read",
   metadata: "read",
 };
+
+/** List, invite and remove a repository's collaborators. */
+const MANAGE_ACCESS_PERMISSIONS: Record<string, string> = {
+  administration: "write",
+  metadata: "read",
+};
+
+/** Pages of 100 read per collaborator listing; past that the list is cut short. */
+const MAX_COLLABORATOR_PAGES = 10;
 
 /** GitHub copies a template asynchronously; how long to wait for the first commit. */
 const TEMPLATE_COPY_ATTEMPTS = 8;
@@ -178,6 +197,21 @@ function cannotCreateIn(
     message: viaApp
       ? `Studio cannot create repositories in ${owner}. The GitHub App needs the Administration permission there; ask an owner of ${owner} to accept it.`
       : `The connected GitHub account cannot create repositories in ${owner}.`,
+  });
+}
+
+function cannotManageAccessIn(
+  repo: RepoRef,
+  status: number,
+  viaApp: boolean,
+): GitProviderError {
+  const { owner } = splitOwnerName(repo);
+  return new GitProviderError({
+    provider: "github",
+    status,
+    message: viaApp
+      ? `Studio cannot manage who has access to ${repo.path}. The GitHub App needs the Administration permission there; ask an owner of ${owner} to accept it.`
+      : `The connected GitHub account cannot manage who has access to ${repo.path}. It needs admin access to the repository.`,
   });
 }
 
@@ -486,6 +520,215 @@ export class GithubProviderClient implements GitProviderClient {
         isRetriable: (err) => err instanceof TemplateStillCopying,
       },
     );
+  }
+
+  async listCollaborators(repo: RepoRef): Promise<RepoCollaborators> {
+    const base = this.repoPath(repo);
+    const collaborators = await this.readAllPages(
+      repo,
+      `${base}/collaborators?affiliation=direct`,
+      "list_collaborators",
+      GithubCollaboratorsPageSchema,
+    );
+    const invitations = await this.readAllPages(
+      repo,
+      `${base}/invitations`,
+      "list_invitations",
+      GithubInvitationsPageSchema,
+    );
+    return {
+      collaborators: mapGithubCollaborators(collaborators),
+      invitations: mapGithubInvitations(invitations),
+    };
+  }
+
+  async addCollaborator(
+    repo: RepoRef,
+    login: string,
+    permission: CollaboratorPermission,
+  ): Promise<"invited" | "updated"> {
+    const operation = "add_collaborator";
+    const res = await this.manageAccessRequest(
+      repo,
+      `${this.repoPath(repo)}/collaborators/${encodeURIComponent(login)}`,
+      {
+        method: "PUT",
+        operation,
+        body: { permission: githubPermissionParam(permission) },
+      },
+    );
+    // 201 creates an invitation; 204 changes the access of someone who has it.
+    if (res.status !== 201 && res.status !== 204) {
+      throw await this.manageAccessFailure(repo, res, operation, login);
+    }
+    await res.body?.cancel().catch(() => {});
+    return res.status === 201 ? "invited" : "updated";
+  }
+
+  async removeCollaborator(repo: RepoRef, login: string): Promise<void> {
+    const base = this.repoPath(repo);
+    const pending = (
+      await this.readAllPages(
+        repo,
+        `${base}/invitations`,
+        "list_invitations",
+        GithubInvitationsPageSchema,
+      )
+    ).filter(
+      (invitation) =>
+        invitation.invitee?.login.toLowerCase() === login.toLowerCase(),
+    );
+    for (const invitation of pending) {
+      const operation = "cancel_invitation";
+      const res = await this.manageAccessRequest(
+        repo,
+        `${base}/invitations/${invitation.id}`,
+        { method: "DELETE", operation },
+      );
+      // 404: accepted or withdrawn since the listing.
+      if (!res.ok && res.status !== 404) {
+        throw await this.manageAccessFailure(repo, res, operation);
+      }
+      await res.body?.cancel().catch(() => {});
+    }
+    const operation = "remove_collaborator";
+    const res = await this.manageAccessRequest(
+      repo,
+      `${base}/collaborators/${encodeURIComponent(login)}`,
+      { method: "DELETE", operation },
+    );
+    if (res.ok || (res.status === 404 && pending.length > 0)) {
+      await res.body?.cancel().catch(() => {});
+      return;
+    }
+    throw await this.manageAccessFailure(repo, res, operation, login);
+  }
+
+  private repoPath(repo: RepoRef): string {
+    const { owner, name } = splitOwnerName(repo);
+    return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  }
+
+  /** Every page of a listing that needs the Administration permission, up to the cap. */
+  private async readAllPages<T>(
+    repo: RepoRef,
+    path: string,
+    operation: string,
+    schema: z.ZodType<T[]>,
+  ): Promise<T[]> {
+    const items: T[] = [];
+    const separator = path.includes("?") ? "&" : "?";
+    for (let page = 1; page <= MAX_COLLABORATOR_PAGES; page++) {
+      const res = await this.manageAccessRequest(
+        repo,
+        `${path}${separator}per_page=${MAX_PER_PAGE}&page=${page}`,
+        { operation },
+      );
+      if (!res.ok) throw await this.manageAccessFailure(repo, res, operation);
+      const parsed = schema.safeParse(
+        await githubJson<unknown>(res, operation),
+      );
+      if (!parsed.success) {
+        throw new GitProviderError({
+          provider: "github",
+          status: res.status,
+          message: `GitHub ${operation} returned an unexpected response`,
+          cause: parsed.error,
+        });
+      }
+      items.push(...parsed.data);
+      if (parsed.data.length < MAX_PER_PAGE) break;
+    }
+    return items;
+  }
+
+  private async manageAccessFailure(
+    repo: RepoRef,
+    res: Response,
+    operation: string,
+    login?: string,
+  ): Promise<GitProviderError> {
+    const viaApp = "appAuth" in this.options;
+    if (res.status === 403) {
+      await res.body?.cancel().catch(() => {});
+      return cannotManageAccessIn(repo, 403, viaApp);
+    }
+    if (res.status === 404 && login !== undefined) {
+      await res.body?.cancel().catch(() => {});
+      return new GitProviderError({
+        provider: "github",
+        status: 404,
+        message: `GitHub has no user named ${login}.`,
+      });
+    }
+    if (res.status === 422) {
+      const detail = githubErrorMessage(await res.text().catch(() => ""));
+      return new GitProviderError({
+        provider: "github",
+        status: 422,
+        message: `GitHub refused the change to ${repo.path}${detail ? `: ${detail}` : "."}`,
+      });
+    }
+    return githubFailure(res, operation);
+  }
+
+  /**
+   * A token that may change who has access to `repo`, and nothing else. It
+   * needs the Administration permission, which installations accept
+   * separately from the rest; a mint without it answers 422.
+   */
+  private async manageAccessToken(
+    repo: RepoRef,
+    opts: TokenOptions = {},
+  ): Promise<string> {
+    const options = this.options;
+    if (!("appAuth" in options)) {
+      return (await this.sourceToken(options.tokenSource, opts)).token;
+    }
+    const granted = options.repositoryIds ?? null;
+    try {
+      const minted = await options.appAuth.installationToken(
+        options.installationId,
+        {
+          ...(granted
+            ? {
+                repositoryIds: [
+                  await this.grantedRepositoryId(
+                    repo,
+                    options.installationId,
+                    granted,
+                  ),
+                ],
+              }
+            : { repositories: [repoName(repo)] }),
+          permissions: MANAGE_ACCESS_PERMISSIONS,
+          forceRefresh: opts.forceRefresh,
+        },
+      );
+      return minted.token;
+    } catch (err) {
+      if (err instanceof GitProviderError && err.status === 422) {
+        throw cannotManageAccessIn(repo, 403, true);
+      }
+      throw err;
+    }
+  }
+
+  /** `request`, with a token from `manageAccessToken`. */
+  private async manageAccessRequest(
+    repo: RepoRef,
+    path: string,
+    init: Omit<GithubFetchInit, "token">,
+  ): Promise<Response> {
+    const url = `${this.apiBaseUrl}${path}`;
+    const first = await this.manageAccessToken(repo);
+    const res = await githubFetch(url, { ...init, token: first });
+    if (res.status !== 401) return res;
+    await res.body?.cancel().catch(() => {});
+    const refreshed = await this.manageAccessToken(repo, {
+      forceRefresh: true,
+    });
+    return githubFetch(url, { ...init, token: refreshed });
   }
 
   private async sourceToken(
