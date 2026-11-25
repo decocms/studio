@@ -1,12 +1,16 @@
 /**
- * Write files to a branch, for an app that proposes a change by pull request.
+ * Read a file and write files to a branch, for an app that proposes a change
+ * by pull request.
  *
  * Until now a member's writes reached a repository only through the site
  * editor's decofile path, so content that lives outside the CMS (a site's
  * `content/blog/` posts, read at build time) had no way in: CHANGE_REQUEST_OPEN
  * could open the pull request, but nothing could put the change on its branch.
- * This is that missing half. It never writes the default branch, and a branch
- * that already exists takes a commit only on top of the head the caller saw.
+ * These are that missing half. Writing never touches the default branch, and a
+ * branch that already exists takes a commit only on top of the head the caller
+ * saw. Read a file, then start the branch at the commit you read it from
+ * (`baseSha`): a concurrent edit to the same lines then shows as a conflict on
+ * the pull request instead of being silently overwritten.
  */
 
 import { z } from "zod";
@@ -16,7 +20,13 @@ import {
   RepoWriteConflict,
   requireBranchHead,
 } from "@/git-providers";
-import { MAX_COMMIT_FILES, branchNameIssue, filesIssues } from "./commit-rules";
+import {
+  MAX_COMMIT_FILES,
+  branchNameIssue,
+  filesIssues,
+  isCommitSha,
+  pathShapeIssue,
+} from "./commit-rules";
 import { repoTargetInput, repoTargetOf } from "./repo-target";
 
 const FileInputSchema = z.union([
@@ -33,7 +43,7 @@ const FileInputSchema = z.union([
 export const REPOSITORY_COMMIT_FILES = defineTool({
   name: "REPOSITORY_COMMIT_FILES",
   description:
-    "Write files to a branch in one commit, to propose them with CHANGE_REQUEST_OPEN. A missing branch is created from `base` (default: the repository's default branch). An existing branch takes the commit only when `expectedHead` is its current head. Never writes the default branch, .git/ or .github/.",
+    "Write files to a branch in one commit, to propose them with CHANGE_REQUEST_OPEN. A missing branch is created at `baseSha` when given (the commit REPOSITORY_READ_FILE returned), else at the head of `base` (default: the repository's default branch). An existing branch takes the commit only when `expectedHead` is its current head. Never writes the default branch, .git/ or .github/.",
   annotations: {
     title: "Commit files to a branch",
     readOnlyHint: false,
@@ -52,6 +62,12 @@ export const REPOSITORY_COMMIT_FILES = defineTool({
       .optional()
       .describe(
         "Where a new branch starts. Default: the repository's default branch",
+      ),
+    baseSha: z
+      .string()
+      .optional()
+      .describe(
+        "Where a new branch starts, as a commit id: the `sha` REPOSITORY_READ_FILE returned, so the change applies to what you read",
       ),
     expectedHead: z
       .string()
@@ -78,6 +94,8 @@ export const REPOSITORY_COMMIT_FILES = defineTool({
 
     const branchIssue = branchNameIssue(input.branch);
     if (branchIssue) throw new Error(`branch ${branchIssue}`);
+    if (input.baseSha !== undefined && !isCommitSha(input.baseSha))
+      throw new Error("baseSha must be a full commit id (40 hex characters)");
     const issues = filesIssues(input.files);
     if (issues.length) throw new Error(`Cannot write: ${issues.join("; ")}`);
 
@@ -111,7 +129,7 @@ export const REPOSITORY_COMMIT_FILES = defineTool({
       }
       parent = head.sha;
     } else {
-      parent = await requireBranchHead(client, base);
+      parent = input.baseSha ?? (await requireBranchHead(client, base));
       // If the commit below fails, the branch stays where `base` was: no
       // change to propose, and a retry names it with expectedHead.
       await client.createBranch(input.branch, parent);
@@ -126,5 +144,54 @@ export const REPOSITORY_COMMIT_FILES = defineTool({
       inlineContent: true,
     });
     return { branch: input.branch, base, sha, created };
+  },
+});
+
+export const REPOSITORY_READ_FILE = defineTool({
+  name: "REPOSITORY_READ_FILE",
+  description:
+    "Read one file's text at a branch or commit (default: the repository's default branch). Returns the commit id it read from; pass it as REPOSITORY_COMMIT_FILES's `baseSha` so a change applies to what you read.",
+  annotations: {
+    title: "Read a repository file",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  _meta: { ui: { visibility: "app" } },
+  inputSchema: z.object({
+    ...repoTargetInput,
+    path: z.string().describe("Path from the repository root"),
+    ref: z
+      .string()
+      .optional()
+      .describe(
+        "Branch name or full commit id. Default: the repository's default branch",
+      ),
+  }),
+  outputSchema: z.object({
+    path: z.string(),
+    /** The commit the file was read at. */
+    sha: z.string(),
+    /** The file's text, or null when it does not exist at that commit. */
+    content: z.string().nullable(),
+  }),
+  handler: async (input, ctx) => {
+    await ctx.access.check();
+    const organizationId = ctx.organization?.id;
+    if (!organizationId) throw new Error("Organization context required");
+    const pathIssue = pathShapeIssue(input.path);
+    if (pathIssue) throw new Error(`path ${pathIssue}`);
+
+    const client = await contentClientForTarget(
+      ctx,
+      organizationId,
+      repoTargetOf(input),
+    );
+    const ref = input.ref ?? (await client.getDefaultBranch());
+    // Pin the read to a commit, so the caller can start a branch exactly there.
+    const sha = isCommitSha(ref) ? ref : await requireBranchHead(client, ref);
+    const content = await client.readFileAtRef(sha, input.path);
+    return { path: input.path, sha, content };
   },
 });

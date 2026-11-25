@@ -60,6 +60,7 @@ describe("change request permissions", () => {
   it("lets the built-in user propose changes (write a branch, open a change request)", () => {
     expect(USER_ROLE_TOOLS.has("CHANGE_REQUEST_OPEN")).toBe(true);
     expect(USER_ROLE_TOOLS.has("REPOSITORY_COMMIT_FILES")).toBe(true);
+    expect(USER_ROLE_TOOLS.has("REPOSITORY_READ_FILE")).toBe(true);
     expect(
       resolveCapabilities({ self: [...USER_ROLE_TOOLS] })["changes:propose"],
     ).toBe(true);
@@ -70,5 +71,6 @@ describe("change request permissions", () => {
     expect(BASIC_USAGE_TOOLS.has("CHANGE_REQUEST_MERGE")).toBe(false);
     expect(BASIC_USAGE_TOOLS.has("CHANGE_REQUEST_OPEN")).toBe(false);
     expect(BASIC_USAGE_TOOLS.has("REPOSITORY_COMMIT_FILES")).toBe(false);
+    expect(BASIC_USAGE_TOOLS.has("REPOSITORY_READ_FILE")).toBe(false);
   });
 });

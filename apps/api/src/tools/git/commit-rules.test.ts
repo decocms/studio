@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { branchNameIssue, filesIssues } from "./commit-rules";
+import {
+  branchNameIssue,
+  filesIssues,
+  isCommitSha,
+  pathShapeIssue,
+} from "./commit-rules";
 
 describe("branchNameIssue", () => {
   test("accepts the names an app proposes from", () => {
@@ -81,5 +86,26 @@ describe("filesIssues", () => {
         Array.from({ length: 6 }, (_, i) => file(`f${i}.json`, fifth)),
       ),
     ).toContain("the files add up to over 5242880 bytes");
+  });
+});
+
+describe("pathShapeIssue (reading)", () => {
+  test("reads any normalized path, .github/ included", () => {
+    expect(pathShapeIssue("content/blog/posts/a.json")).toBeNull();
+    expect(pathShapeIssue(".github/workflows/ci.yml")).toBeNull();
+  });
+
+  test("refuses paths that escape or are not normalized", () => {
+    for (const path of ["", "/abs", "../x", "a//b", "./a"])
+      expect(pathShapeIssue(path)).not.toBeNull();
+  });
+});
+
+describe("isCommitSha", () => {
+  test("accepts only a full lowercase hex commit id", () => {
+    expect(isCommitSha("a".repeat(40))).toBe(true);
+    expect(isCommitSha("a".repeat(39))).toBe(false);
+    expect(isCommitSha("main")).toBe(false);
+    expect(isCommitSha("A".repeat(40))).toBe(false);
   });
 });

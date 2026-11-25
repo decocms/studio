@@ -305,6 +305,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_DEPLOYS_LIST",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
+  "REPOSITORY_READ_FILE",
   "REPOSITORY_COMMIT_FILES",
 
   // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
@@ -1520,6 +1521,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Git",
   },
   {
+    name: "REPOSITORY_READ_FILE",
+    description: "Read one file's text at a branch or commit",
+    category: "Git",
+  },
+  {
     name: "REPOSITORY_COMMIT_FILES",
     description:
       "Write files to a new or known branch in one commit, never the default branch",
@@ -2314,16 +2320,21 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     section: "Organization",
     tools: ["GIT_ACCOUNT_CONNECT_TOKEN", "REPOSITORY_LINK"],
   },
-  // Proposing writes a branch and opens a change request onto it; it changes
-  // no deployed branch (REPOSITORY_COMMIT_FILES refuses the default branch).
+  // Proposing reads the file, writes a branch and opens a change request onto
+  // it; it changes no deployed branch (REPOSITORY_COMMIT_FILES refuses the
+  // default branch).
   // Merging (CHANGE_REQUEST_MERGE) is what ships, and stays out of this grant.
   {
     id: "changes:propose",
     label: "Propose changes",
     description:
-      "Write changes to a branch and open pull requests (merge requests) for review. Merging is not included",
+      "Read files, write changes to a branch and open pull requests (merge requests) for review. Merging is not included",
     section: "Organization",
-    tools: ["REPOSITORY_COMMIT_FILES", "CHANGE_REQUEST_OPEN"],
+    tools: [
+      "REPOSITORY_READ_FILE",
+      "REPOSITORY_COMMIT_FILES",
+      "CHANGE_REQUEST_OPEN",
+    ],
   },
   // File Configs
   {

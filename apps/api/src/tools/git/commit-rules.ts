@@ -1,7 +1,8 @@
 /**
- * What REPOSITORY_COMMIT_FILES refuses to write, as pure checks: the branch
- * name, each path, and the size of a call. Kept apart from the tool so they are
- * testable without a repository.
+ * What REPOSITORY_COMMIT_FILES refuses to write (and REPOSITORY_READ_FILE to
+ * read), as pure checks: the branch name, each path, a commit sha and the size
+ * of a call. Kept apart from the tools so they are testable without a
+ * repository.
  */
 
 /** Per call: enough for a post and its assets, small enough to review. */
@@ -37,12 +38,8 @@ export function branchNameIssue(name: string): string | null {
   return null;
 }
 
-/**
- * Why `path` cannot be written, or null. Relative, normalized paths only, and
- * never `.git/` or `.github/`: CI definitions run with the repository's
- * secrets, so changing them is not a content edit.
- */
-function filePathIssue(path: string): string | null {
+/** Why `path` is not a relative, normalized path in a repository, or null. */
+export function pathShapeIssue(path: string): string | null {
   if (!path || path.length > 1024) return "must be 1 to 1024 characters";
   if (path.includes("\\") || hasControl(path))
     return "has a backslash or a control character";
@@ -50,10 +47,27 @@ function filePathIssue(path: string): string | null {
   const parts = path.split("/");
   if (parts.some((part) => part === "" || part === "." || part === ".."))
     return "must not have empty, . or .. segments";
+  return null;
+}
+
+/**
+ * Why `path` cannot be written, or null: a well-shaped path, never `.git/` or
+ * `.github/`. CI definitions run with the repository's secrets, so changing
+ * them is not a content edit.
+ */
+function filePathIssue(path: string): string | null {
+  const shape = pathShapeIssue(path);
+  if (shape) return shape;
+  const parts = path.split("/");
   if (parts.includes(".git")) return "must not be inside .git/";
   if (parts[0] === ".github")
     return "must not be inside .github/ (CI runs with the repository's secrets)";
   return null;
+}
+
+/** A full commit id: 40 hex characters (GitHub, GitLab and Bitbucket all use SHA-1 ids). */
+export function isCommitSha(value: string): boolean {
+  return /^[0-9a-f]{40}$/.test(value);
 }
 
 type FileInput =
