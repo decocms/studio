@@ -25,7 +25,6 @@ import {
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { Page } from "@/components/page";
 import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import {
@@ -241,9 +240,9 @@ function Cards({
     },
     {
       title: t("mainPanelTabs.cdnTab.avgLatency"),
-      value: `${Math.round(summary.avg_latency_ms)} ms`,
-      current: summary.avg_latency_ms,
-      prior: previous?.avg_latency_ms,
+      value: formatMs(summary.avg_latency_ms),
+      current: summary.avg_latency_ms || undefined,
+      prior: previous?.avg_latency_ms || undefined,
       better: "down",
     },
     {
@@ -728,7 +727,10 @@ const SITE_COLORS = [
   "var(--chart-5)",
 ];
 
-const formatMs = (ms: number) => `${Math.round(ms)} ms`;
+// The warehouse averages only requests that reported an upstream latency, so 0
+// means none did (a site whose serving path doesn't report it), not 0 ms.
+const formatMs = (ms: number | null) =>
+  ms && ms > 0 ? `${Math.round(ms)} ms` : "—";
 const ONE_DECIMAL = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
@@ -874,7 +876,7 @@ function OrgPerformance({
   const action = <RangeAction value={range} onChange={setRange} />;
   const loading = summaries.some((q) => q.isLoading);
 
-  const rows = projects
+  const all = projects
     .map((project, i) => {
       const at = onCdn.indexOf(project);
       return {
@@ -890,10 +892,13 @@ function OrgPerformance({
       (a, b) =>
         (b.summary?.total_requests ?? -1) - (a.summary?.total_requests ?? -1),
     );
+  // A project whose CDN read failed is left out; the error shows only when
+  // every read failed (the warehouse is down, not one project unreadable).
+  const rows = all.filter((r) => !r.error);
   const serving = rows.filter((r) => (r.summary?.total_requests ?? 0) > 0);
 
   if (!loading && serving.length === 0) {
-    const failed = rows.find((r) => r.error)?.error;
+    const failed = rows.length === 0 ? all.find((r) => r.error)?.error : null;
     return (
       <>
         {action}
@@ -927,7 +932,7 @@ function OrgPerformance({
       weight: r.summary?.total_requests ?? 0,
     }));
   const cache = weighted((s) => s.cache_hit_ratio);
-  const latency = weighted((s) => s.avg_latency_ms);
+  const latency = weighted((s) => s.avg_latency_ms).filter((v) => v.value > 0);
   const sites = onCdn.flatMap((project, i) => {
     const points = timelines[i]?.data;
     return points && points.some((p) => p.requests > 0)
@@ -976,7 +981,7 @@ function OrgPerformance({
             />
             <MetricCard
               title={t("mainPanelTabs.cdnTab.avgLatency")}
-              value={formatMs(weightedMean(latency) ?? 0)}
+              value={formatMs(weightedMean(latency))}
               caption={
                 <Spread values={latency} format={formatMs} lowerIsBetter />
               }
@@ -1071,16 +1076,11 @@ function OrgPerformance({
                   ) : (
                     <td
                       colSpan={4}
-                      className={cn(
-                        "text-meta px-4 py-2.5 text-right",
-                        row.error && "text-destructive",
-                      )}
+                      className="text-meta px-4 py-2.5 text-right"
                     >
                       {row.v8
                         ? t("monitor.performance.org.blocks8")
-                        : row.error
-                          ? t("mainPanelTabs.cdnTab.errorTitle")
-                          : t("monitor.performance.org.noCdn")}
+                        : t("monitor.performance.org.noCdn")}
                     </td>
                   )}
                 </tr>

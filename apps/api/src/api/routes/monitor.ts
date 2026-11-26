@@ -948,6 +948,29 @@ async function requireOwnedSite(
 export const createMonitorRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
+  // GET /api/:org/monitor/sites?slugs=a,b — which of these slugs the org owns,
+  // so the Monitor lists only projects whose site it can read. Answers only for
+  // the slugs asked about, never the org's whole list: no more than probing
+  // each `/:site` route would tell.
+  app.get("/sites", async (c) => {
+    const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const org = requireOrganization(ctx);
+    const asked = new Set(
+      (c.req.query("slugs") ?? "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    if (asked.size === 0) return c.json({ owned: [] });
+    const sites = await ctx.storage.orgSites.listByOrg(org.id);
+    return c.json({
+      owned: sites.map((s) => s.slug).filter((slug) => asked.has(slug)),
+    });
+  });
+
   // GET /api/:org/monitor/:site/cdn/data?view=&range= — one CDN view, tenant
   // scoped. `{ available:false }` (not an error) when the warehouse isn't wired
   // so the tab can show a configuration/empty state instead of failing.
