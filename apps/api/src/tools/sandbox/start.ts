@@ -1103,7 +1103,7 @@ const CAPACITY_POLL_MS = 5_000;
  * retrying. The status stays in the message for the logs; `cause` keeps the
  * original for anything that wants it.
  */
-async function ensureOrRephrase(
+export async function ensureOrRephrase(
   runner: SandboxProvider,
   ...args: Parameters<SandboxProvider["ensure"]>
 ): Promise<Awaited<ReturnType<SandboxProvider["ensure"]>>> {
@@ -1118,7 +1118,7 @@ async function ensureOrRephrase(
   }
 }
 
-async function waitForSchedulableCapacity(
+export async function waitForSchedulableCapacity(
   runner: SandboxProvider,
 ): Promise<void> {
   const deadline = Date.now() + CAPACITY_WAIT_MS;

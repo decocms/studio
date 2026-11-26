@@ -1,8 +1,8 @@
 /**
- * The browser and the store's code, until Studio provides them (a sandbox
- * browser, the git providers). The run records the same named gaps the engine
- * recorded when they were missing, owned by us: the customer has nothing to
- * fix.
+ * What a run records when the browser or the store's code is out of reach in
+ * this install (the browser flag or hosted sandboxes off, no object storage;
+ * the git providers not wired yet). Named gaps owned by us: the customer has
+ * nothing to fix.
  */
 
 import { repoIdentityOf } from "../verify/studio-repo.ts";
@@ -18,6 +18,10 @@ export const browserGap = (): SourceGap => ({
   source: "browser",
   error: BROWSER_UNAVAILABLE,
 });
+
+/** Why captures are not kept: nowhere to put the images. */
+export const MEDIA_UNAVAILABLE =
+  "armazenamento de imagens indisponível nesta instalação";
 
 /**
  * How this run reads the store's code. Only the gap exists for now: a site
