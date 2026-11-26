@@ -23,7 +23,6 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import {
   type MonitorBoard,
-  scopeBoard,
   type SourceId,
   sortSignals,
   storeTimezone,
@@ -206,7 +205,7 @@ function Board({
 }
 
 export function MonitorPage({
-  board: orgBoard,
+  board,
   loading,
   error,
   orgSlug,
@@ -236,7 +235,6 @@ export function MonitorPage({
   );
   const onProject = (project: string | null) =>
     onSelect({ view: selection.view, project: project ?? undefined });
-  const board = scopeBoard(orgBoard, scopeId);
   /** A past day's last second in the store's own timezone. */
   const storeDayEnd = (connectionId: string, date: string | undefined) => {
     const store = board.stores.find(
