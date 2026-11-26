@@ -15,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
@@ -81,6 +82,7 @@ export function BlockDocument({
   onSaveReferencedBlock,
   emptyMessage = "No content yet. Add your first block below.",
   allowBlocks,
+  dense = false,
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
@@ -99,6 +101,8 @@ export function BlockDocument({
   emptyMessage?: string;
   /** Component names the pickers are limited to. Unset offers every blog block. */
   allowBlocks?: readonly string[];
+  /** A document nested in another block: narrow rows and a quiet add button. */
+  dense?: boolean;
 }) {
   const t = useT();
   const hideDefaults = useHideDefaultBlogBlocks();
@@ -181,7 +185,7 @@ export function BlockDocument({
   };
 
   return (
-    <div className="mt-2">
+    <div className={cn(!dense && "mt-2")}>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -205,13 +209,14 @@ export function BlockDocument({
                 sandboxRef={sandboxRef}
                 previewBaseUrl={previewBaseUrl}
                 onSaveReferencedBlock={onSaveReferencedBlock}
+                dense={dense}
               />
             </div>
           ))}
         </SortableContext>
       </DndContext>
 
-      {blocks.length === 0 && (
+      {blocks.length === 0 && emptyMessage && (
         <p className="px-3 pb-1 pt-2 text-sm text-muted-foreground">
           {emptyMessage}
         </p>
@@ -223,9 +228,14 @@ export function BlockDocument({
       >
         <button
           type="button"
-          className="mt-1 flex w-full items-center gap-2 rounded-md py-2 pl-14 pr-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+          className={cn(
+            "flex cursor-pointer items-center rounded-md text-muted-foreground transition-colors hover:text-foreground",
+            dense
+              ? "ml-6 gap-1.5 py-1 text-xs"
+              : "mt-1 w-full gap-2 py-2 pl-14 pr-2 text-sm hover:bg-accent",
+          )}
         >
-          <Plus size={16} />
+          <Plus size={dense ? 13 : 16} />
           {t("sandbox.blockDocument.addBlock")}
         </button>
       </BlockPicker>

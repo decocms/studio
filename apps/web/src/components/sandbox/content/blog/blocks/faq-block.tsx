@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { ChevronDown, Link01 } from "@untitledui/icons";
+import { ChevronDown, Link01, MessageQuestionSquare } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useT } from "@/i18n/use-t.ts";
 import { BlockDocument } from "../block-document";
 import { uid } from "../block-items";
+import { customBlogSectionPaths, sectionResolveTypes } from "../blog-data";
 import { type RawBlock } from "./block-registry";
 import { type FaqItem, parseFaqItems } from "./faq-items";
 import { InlineRichCell } from "./inline-rich-cell";
@@ -23,9 +25,10 @@ const ANSWER_BLOCKS = [
 ] as const;
 
 /**
- * Inline editor for the blog FAQ block: a list of questions, each a line of
- * inline rich text answered by a nested block document. The site renders an
- * answer section by section, so it is edited the way a post body is.
+ * Inline editor for the blog FAQ block, drawn as the accordion the site
+ * renders: one card, a row per question, the answer under it. A question is a
+ * line of inline rich text. An answer is a nested block document, because the
+ * site renders it section by section.
  *
  * Rows collapse so a long FAQ stays navigable. They start open, because a
  * collapsed answer reads as an empty one.
@@ -51,6 +54,11 @@ export function FaqBlock({
 }) {
   const t = useT();
   const linkSources = useLinkSources({ decofile, sandboxRef });
+  const hideDefaults = useHideDefaultBlogBlocks();
+  const paragraph = sectionResolveTypes(meta, {
+    hideDefaults,
+    customPaths: decofile ? customBlogSectionPaths(decofile) : [],
+  }).Paragraph;
   const [menuHost, setMenuHost] = useState<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
@@ -73,8 +81,15 @@ export function FaqBlock({
       ids,
     );
 
+  // A new answer opens with a paragraph, so it can be typed straight away.
   const add = () =>
-    commit([...items, { title: "", body: [] }], [...ids, uid()]);
+    commit(
+      [
+        ...items,
+        { title: "", body: paragraph ? [{ __resolveType: paragraph }] : [] },
+      ],
+      [...ids, uid()],
+    );
 
   const remove = (index: number) =>
     commit(
@@ -90,77 +105,99 @@ export function FaqBlock({
     });
 
   return (
-    <div className="relative space-y-2">
-      <ul className="border-t border-border/60">
-        {items.map((item, index) => {
-          const id = ids[index] ?? String(index);
-          const open = !collapsed.has(id);
-          return (
-            <li key={id} className="border-b border-border/60 py-2.5">
-              {/* Padded on the right so the remove button clears the row's own controls. */}
-              <div className="group/item flex items-start gap-2 pr-14">
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  aria-label={t("sandbox.faqBlock.toggleQuestion")}
-                  onClick={() => toggle(id)}
-                  className="mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    <div className="relative">
+      <div className="rounded-lg border">
+        <div className="flex items-center gap-1.5 rounded-t-lg border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+          <MessageQuestionSquare size={13} className="shrink-0" />
+          {t("sandbox.faqBlock.title")}
+        </div>
+
+        <ul className="divide-y">
+          {items.map((item, index) => {
+            const id = ids[index] ?? String(index);
+            const open = !collapsed.has(id);
+            return (
+              <li key={id}>
+                <div
+                  className={cn(
+                    "group/item flex items-start gap-2 px-3 pt-2.5",
+                    open ? "pb-1" : "pb-2.5",
+                  )}
                 >
-                  <ChevronDown
-                    size={14}
-                    className={cn(
-                      "transition-transform",
-                      !open && "-rotate-90",
-                    )}
-                  />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <InlineRichCell
-                    value={item.title}
-                    onChange={(title) => patch(index, { title })}
-                    placeholder={t("sandbox.faqBlock.questionPlaceholder")}
-                    className="text-[15px] font-semibold leading-snug"
-                    menuHost={menuHost}
-                    sources={linkSources}
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-label={t("sandbox.faqBlock.toggleQuestion")}
+                    onClick={() => toggle(id)}
+                    className="mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <ChevronDown
+                      size={14}
+                      className={cn(
+                        "transition-transform",
+                        !open && "-rotate-90",
+                      )}
+                    />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <InlineRichCell
+                      value={item.title}
+                      onChange={(title) => patch(index, { title })}
+                      placeholder={t("sandbox.faqBlock.questionPlaceholder")}
+                      className="text-[15px] font-medium leading-snug"
+                      menuHost={menuHost}
+                      sources={linkSources}
+                    />
+                  </div>
+                  <RemoveButton
+                    label={t("sandbox.faqBlock.removeQuestion")}
+                    onClick={() => remove(index)}
                   />
                 </div>
-                <RemoveButton
-                  label={t("sandbox.faqBlock.removeQuestion")}
-                  onClick={() => remove(index)}
-                />
-              </div>
-              {open && (
-                <BlockDocument
-                  value={item.body}
-                  onChange={(body) => patch(index, { body })}
-                  meta={meta}
-                  decofile={decofile}
-                  sandboxRef={sandboxRef}
-                  previewBaseUrl={previewBaseUrl}
-                  onSaveReferencedBlock={onSaveReferencedBlock}
-                  allowBlocks={ANSWER_BLOCKS}
-                  emptyMessage={t("sandbox.faqBlock.answerEmpty")}
-                />
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                {open && (
+                  <div className="pb-2.5 pl-4 pr-3">
+                    <BlockDocument
+                      value={item.body}
+                      onChange={(body) => patch(index, { body })}
+                      meta={meta}
+                      decofile={decofile}
+                      sandboxRef={sandboxRef}
+                      previewBaseUrl={previewBaseUrl}
+                      onSaveReferencedBlock={onSaveReferencedBlock}
+                      allowBlocks={ANSWER_BLOCKS}
+                      emptyMessage=""
+                      dense
+                    />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
 
-      <AddButton label={t("sandbox.faqBlock.addQuestion")} onClick={add} />
-
-      <label className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
-        <Link01 size={12} className="shrink-0" />
-        <span className="shrink-0">{t("sandbox.faqBlock.anchorIdLabel")}</span>
-        <input
-          value={str(block.faqId)}
-          onChange={(e) =>
-            onChange({ ...block, faqId: normalizeAnchorId(e.target.value) })
-          }
-          placeholder={t("sandbox.faqBlock.anchorIdPlaceholder")}
-          className="min-w-0 flex-1 border-0 bg-transparent p-0 font-mono text-xs outline-none placeholder:text-muted-foreground/50 focus:ring-0"
-        />
-      </label>
+        <div
+          className={cn(
+            "flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-2",
+            items.length > 0 && "border-t",
+          )}
+        >
+          <AddButton label={t("sandbox.faqBlock.addQuestion")} onClick={add} />
+          <label className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <Link01 size={12} className="shrink-0" />
+            <span className="shrink-0">
+              {t("sandbox.faqBlock.anchorIdLabel")}
+            </span>
+            <input
+              value={str(block.faqId)}
+              onChange={(e) =>
+                onChange({ ...block, faqId: normalizeAnchorId(e.target.value) })
+              }
+              placeholder={t("sandbox.faqBlock.anchorIdPlaceholder")}
+              className="w-24 min-w-0 border-0 bg-transparent p-0 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+            />
+          </label>
+        </div>
+      </div>
 
       <div ref={setMenuHost} className="absolute z-20" />
     </div>

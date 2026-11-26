@@ -30,6 +30,7 @@ export function BlockRow({
   sandboxRef,
   previewBaseUrl,
   onSaveReferencedBlock,
+  dense = false,
 }: {
   id: string;
   block: RawBlock;
@@ -41,6 +42,8 @@ export function BlockRow({
   sandboxRef?: SandboxConfig | null;
   previewBaseUrl?: string | null;
   onSaveReferencedBlock?: ReferencedBlockSaveFn;
+  /** A row of a document nested in another block: a narrow gutter, no hover fill. */
+  dense?: boolean;
 }) {
   const t = useT();
   const {
@@ -60,7 +63,10 @@ export function BlockRow({
         transition,
       }}
       className={cn(
-        "relative rounded-md py-1.5 pl-12 pr-2 transition-colors hover:bg-accent [&:hover>[data-row-control]]:opacity-100",
+        "relative rounded-md [&:hover>[data-row-control]]:opacity-100",
+        dense
+          ? "py-1 pl-6 pr-1"
+          : "py-1.5 pl-12 pr-2 transition-colors hover:bg-accent",
         isDragging && "opacity-50",
       )}
     >
@@ -68,7 +74,10 @@ export function BlockRow({
         type="button"
         aria-label={t("sandbox.blockRow.dragToReorder")}
         data-row-control
-        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing rounded-lg"
+        className={cn(
+          "absolute flex cursor-grab items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing",
+          dense ? "left-0 top-1 h-5 w-5" : "left-1 top-1.5 h-6 w-6",
+        )}
         {...attributes}
         {...listeners}
       >

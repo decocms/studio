@@ -619,10 +619,9 @@ export const sandbox = {
   "sandbox.faqBlock.addQuestion": "Adicionar pergunta",
   "sandbox.faqBlock.anchorIdLabel": "Id da âncora",
   "sandbox.faqBlock.anchorIdPlaceholder": "opcional",
-  "sandbox.faqBlock.answerEmpty":
-    "Sem resposta ainda. Adicione um bloco abaixo.",
   "sandbox.faqBlock.questionPlaceholder": "Pergunta",
   "sandbox.faqBlock.removeQuestion": "Remover pergunta",
+  "sandbox.faqBlock.title": "FAQ",
   "sandbox.faqBlock.toggleQuestion": "Mostrar ou esconder a resposta",
   "sandbox.fileExplorer.askTheAiPlaceholder": "Pergunte à IA...",
   "sandbox.fileExplorer.deleteFailed": "Falha ao deletar",

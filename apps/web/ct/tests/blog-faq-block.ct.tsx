@@ -9,18 +9,19 @@ const SHOTS = process.env.FAQ_SCREENSHOTS;
 const rt = (name: string) => `blog/sections/blocks/${name}.tsx`;
 const FAQ = rt("FAQ");
 
+const BLOCKS = [
+  "FAQ",
+  "Paragraph",
+  "List",
+  "BlockImage",
+  "Divider",
+  "Table",
+  "Heading",
+  "Callout",
+];
+
 /** A `/live/_meta` exposing the blog app's blocks an FAQ is tested against. */
-function blogMeta() {
-  const names = [
-    "FAQ",
-    "Paragraph",
-    "List",
-    "BlockImage",
-    "Divider",
-    "Table",
-    "Heading",
-    "Callout",
-  ];
+function blogMeta(names: string[] = BLOCKS) {
   const sections: Record<string, { $ref: string }> = {};
   const definitions: Record<string, unknown> = {};
   for (const name of names) {
@@ -81,7 +82,9 @@ test("a question is added and stored as inline HTML", async ({
   await page.keyboard.type("Qual o prazo?");
   await expect
     .poll(async () => (await docValue(component))[0]?.items)
-    .toEqual([{ title: "Qual o prazo?", body: [] }]);
+    .toEqual([
+      { title: "Qual o prazo?", body: [{ __resolveType: rt("Paragraph") }] },
+    ]);
 
   await question.click({ clickCount: 3 });
   await page.getByRole("button", { name: "Bold" }).click();
@@ -89,7 +92,51 @@ test("a question is added and stored as inline HTML", async ({
 
   await expect
     .poll(async () => (await docValue(component))[0]?.items)
-    .toEqual([{ title: "<strong>Qual o prazo?</strong>", body: [] }]);
+    .toEqual([
+      {
+        title: "<strong>Qual o prazo?</strong>",
+        body: [{ __resolveType: rt("Paragraph") }],
+      },
+    ]);
+});
+
+test("a new question's answer can be typed straight away", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <BlogFaqHarness meta={blogMeta()} initial={[{ __resolveType: FAQ }]} />,
+  );
+
+  await component.getByRole("button", { name: "Add question" }).click();
+  await component.locator('[contenteditable="true"]').nth(1).click();
+  await page.keyboard.type("Dois dias.");
+
+  await expect
+    .poll(async () => {
+      const items = (await docValue(component))[0]?.items as Array<{
+        body: Array<{ __resolveType: string; html?: string }>;
+      }>;
+      return items[0]?.body;
+    })
+    .toEqual([{ __resolveType: rt("Paragraph"), html: "<p>Dois dias.</p>" }]);
+});
+
+test("on a site with no Paragraph block a new answer starts empty", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <BlogFaqHarness
+      meta={blogMeta(BLOCKS.filter((name) => name !== "Paragraph"))}
+      initial={[{ __resolveType: FAQ }]}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Add question" }).click();
+
+  await expect
+    .poll(async () => (await docValue(component))[0]?.items)
+    .toEqual([{ title: "", body: [] }]);
 });
 
 test("an answer's pickers offer only the blocks an answer is made of", async ({
@@ -240,7 +287,7 @@ test("items stored as a JSON string are read, and become an array on the first e
     .poll(async () => (await docValue(component))[0]?.items)
     .toEqual([
       { title: "Troca?", body: [] },
-      { title: "", body: [] },
+      { title: "", body: [{ __resolveType: rt("Paragraph") }] },
     ]);
 });
 
