@@ -31,6 +31,7 @@ import { setPlanEngineContextFactory } from "../../plan-engine/run/engine-run";
 import type { OpportunityDraft } from "../../plan-engine/types";
 import { AIProviderKeyStorage } from "../../storage/ai-provider-keys";
 import { ConnectionStorage } from "../../storage/connection";
+import { GitProviderAccountStorage } from "../../storage/git-provider-accounts";
 import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import { OrgSiteStorage } from "../../storage/org-sites";
 import {
@@ -39,6 +40,7 @@ import {
 } from "../../storage/plan-engine";
 import { PlanEngineCostStorage } from "../../storage/plan-engine-costs";
 import { PlanEngineKnowledgeStorage } from "../../storage/plan-engine-knowledge";
+import { RepositoryStorage } from "../../storage/repositories";
 import { VirtualMCPStorage } from "../../storage/virtual";
 import { PLAN_UX_DIAGNOSIS_START, PLAN_UX_HYPOTHESES_VERIFY } from "./index";
 
@@ -231,6 +233,8 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
       connections: new ConnectionStorage(database.db, vault),
       orgSites: new OrgSiteStorage(database.db),
       virtualMcps: new VirtualMCPStorage(database.db),
+      repositories: new RepositoryStorage(database.db),
+      gitProviderAccounts: new GitProviderAccountStorage(database.db),
     };
 
     DBOS.setConfig(
@@ -372,6 +376,51 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
       expect(gaps.some((g) => g.source === "heatmap")).toBe(true);
       // A tenant's run never reads or writes another's rows.
       expect(await planEngine.listDiagnoses(OTHER)).toEqual([]);
+    }, 60_000);
+
+    it("a repository the org did not link: the customer's gap, and no theme", async () => {
+      await planEngine.upsertSiteProfile(ORG, { domain: "loja.example" });
+      await planEngine.upsertSiteProfile(ORG, {
+        code_repo: "acme/loja-exemplo",
+      });
+      await new RepositoryStorage(database.db).upsert({
+        organizationId: OTHER,
+        ref: {
+          provider: "github",
+          host: "github.com",
+          path: "acme/loja-exemplo",
+        },
+      });
+      const out = await PLAN_UX_DIAGNOSIS_START.handler(
+        { page_type: "pdp" },
+        makeCtx(),
+      );
+      if (out.status !== "started") throw new Error(JSON.stringify(out));
+      const [started] = out.diagnoses;
+      if (!started) throw new Error("expected a diagnosis");
+      await waitFor(`plan-ux-diagnosis:${started.diagnosis_id}`);
+      const d = await planEngine.getDiagnosis(ORG, started.diagnosis_id);
+      expect(d?.status).toBe("done");
+      const code = (d?.evidence?.gaps ?? []).filter(
+        (g) => g.source === "github",
+      );
+      expect(code).toEqual([
+        {
+          source: "github",
+          error:
+            "código indisponível: o repositório acme/loja-exemplo não está ligado a esta org no Studio",
+          owner: "customer",
+          key: "repository",
+        },
+        // This install keeps no media, so the snapshot is not even attempted.
+        {
+          source: "github",
+          error:
+            "snapshot do repo: armazenamento de imagens indisponível nesta instalação",
+        },
+      ]);
+      expect(d?.evidence?.repo_snapshot_key).toBeUndefined();
+      expect((await planEngine.getSiteProfile(ORG))?.code_tokens).toBeNull();
     }, 60_000);
 
     it("with the browser flag on but no hosted sandboxes, keeps the named gap and finishes", async () => {

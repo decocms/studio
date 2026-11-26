@@ -220,9 +220,9 @@ export interface DesignSystem {
 
 /** Tema lido do repositório da loja (code-tokens.ts). */
 export interface CodeTokens {
-  /** `owner/repo` (via de repositórios do Studio) ou `<volume>@<org>` (espelho do org-fs). */
+  /** `owner/repo`: o repositório do site ligado à org no Studio. */
   repo: string;
-  /** A hora da leitura (nenhum dos dois caminhos expõe o commit). */
+  /** A hora da leitura (a leitura não expõe o commit). */
   commit: string | null;
   read_at: string;
   files: string[];

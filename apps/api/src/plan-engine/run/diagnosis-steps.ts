@@ -22,6 +22,7 @@ import {
   type CaptureTarget,
   captureSitePage,
 } from "../capture.ts";
+import { extractCodeTokens } from "../code-tokens.ts";
 import { type CaptureCandidate, collectEvidence } from "../collect.ts";
 import { costTotal, createCostCollector } from "../costs.ts";
 import { checkDomain } from "../domain-check.ts";
@@ -50,6 +51,7 @@ import type {
   UxDevice,
   UxPageType,
 } from "../types.ts";
+import { codeGapOf } from "../verify/code-source.ts";
 import type { EngineRun } from "./engine-run.ts";
 
 /** An opportunity left with no hypothesis standing (see fallenReason). */
@@ -74,17 +76,56 @@ export async function collectStep(
   ]);
   if (!profile) throw new Error("perfil da loja não configurado");
   const costs = createCostCollector(id);
-  const result = await collectEvidence({
-    profile,
-    pageType: current?.page_type ?? "pdp",
-    orgSlug: ctx.organization?.slug ?? "",
-    heatmap: orgHeatmap(ctx),
-    lake: orgLake(orgId),
-    bigquery: await orgBigQuery(ctx, orgId),
-    vtex: profile.domain ? { publicHost: profile.domain } : null,
-    onScan: costs.scan,
-  });
+  // The theme comes from the site's repository; a stale or other repo's theme is read again.
   const access = codeAccessFor(ctx, orgId, profile);
+  const wantsRepo =
+    access.kind === "ready" &&
+    (isStale(profile.code_tokens?.read_at) ||
+      profile.code_tokens?.repo !== access.repo);
+  const [result, codeGap] = await Promise.all([
+    collectEvidence({
+      profile,
+      pageType: current?.page_type ?? "pdp",
+      orgSlug: ctx.organization?.slug ?? "",
+      heatmap: orgHeatmap(ctx),
+      lake: orgLake(orgId),
+      bigquery: await orgBigQuery(ctx, orgId),
+      vtex: profile.domain ? { publicHost: profile.domain } : null,
+      onScan: costs.scan,
+    }),
+    // Failing becomes a gap; it never stops the analysis.
+    wantsRepo && access.kind === "ready"
+      ? access
+          .open()
+          .then((view) =>
+            extractCodeTokens({
+              code: {
+                list: view.raw.list,
+                read: view.raw.read,
+                repo: view.repo,
+              },
+              llm: run.llm,
+              now: new Date().toISOString(),
+              onUsage: costs.llm,
+            }),
+          )
+          .then(
+            async (tokens): Promise<SourceGap | null> => {
+              await store.saveCodeTokens(orgId, tokens);
+              return null;
+            },
+            (err): SourceGap =>
+              codeGapOf(
+                err,
+                `tema do repo ${access.repo}`,
+                access.repo,
+                access.provider,
+              ),
+          )
+      : Promise.resolve(null),
+  ]);
+  if (codeGap) result.evidence.gaps.push(codeGap);
+  // Without a path to the store's code, the named gap with its owner: not silence.
   if (access.kind === "gap") result.evidence.gaps.push(access.gap);
   // Routes read now serve the next runs too.
   if (result.page_templates) {

@@ -328,6 +328,33 @@ describe("PlanEngineStorage", () => {
       await store.upsertSiteProfile(ORG_B, { domain: "b.example" });
       expect((await store.getSiteProfile(ORG_A))?.domain).toBe("a.example");
     });
+
+    it("the theme read from the repository round-trips and replaces the last one, per org", async () => {
+      await store.upsertSiteProfile(ORG_A, { domain: "a.example" });
+      await store.upsertSiteProfile(ORG_B, { domain: "b.example" });
+      const tokens = (read_at: string) => ({
+        repo: "acme/loja-exemplo",
+        commit: read_at,
+        read_at,
+        files: ["tailwind.config.ts", ".deco/blocks/site.json"],
+        css_variables: { "--rounded-btn": "2rem" },
+        theme: { "colors.primary": "#333333" },
+        colors: [{ name: "primary", value: "#333333", usage: "botão" }],
+        fonts: [],
+        radii: [{ name: "--rounded-btn", value: "2rem" }],
+        conventions: null,
+      });
+      await store.saveCodeTokens(ORG_A, tokens("2026-11-20T00:00:00.000Z"));
+      await store.saveCodeTokens(ORG_A, {
+        ...tokens("2026-11-25T00:00:00.000Z"),
+        model_error: "timeout",
+      });
+      expect((await store.getSiteProfile(ORG_A))?.code_tokens).toEqual({
+        ...tokens("2026-11-25T00:00:00.000Z"),
+        model_error: "timeout",
+      });
+      expect((await store.getSiteProfile(ORG_B))?.code_tokens).toBeNull();
+    });
   });
 
   describe("tenancy", () => {
