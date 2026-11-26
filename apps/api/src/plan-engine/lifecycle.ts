@@ -129,7 +129,8 @@ export function lifecycleOf(
 }
 
 /** Estados em que a hipótese caiu de vez nesta rodada. */
-const isNegative = (s: Lifecycle) => s === "refutada" || s === "sem_relevancia";
+export const isNegative = (s: Lifecycle) =>
+  s === "refutada" || s === "sem_relevancia";
 
 /** A condição já foi vista na página (ou nos dados). */
 const CONFIRMED: Lifecycle[] = [

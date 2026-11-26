@@ -106,7 +106,7 @@ const DEVICES: UxDevice[] = ["mobile", "desktop"];
  * A etapa padrão da página, por dispositivo: quem chega por semana e a taxa
  * de quem passa para a seguinte. Dispositivo sem dado fica de fora.
  */
-function pageFunnel(
+export function pageFunnel(
   evidence: DiagnosisEvidence,
   pageType: UxPageType,
 ): StoreFunnelPoint[] {

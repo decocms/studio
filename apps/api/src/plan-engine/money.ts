@@ -148,7 +148,7 @@ export function capMoneyBase(
  * O canal de venda do site na VTEX: o que se chama "Principal" (ou o id 1, o
  * padrão da VTEX). O app vende por outro canal e não passa por estas páginas.
  */
-function siteChannel(
+export function siteChannel(
   revenue: RevenueBase | null | undefined,
 ): RevenueBase["by_channel"][number] | null {
   const channels = revenue?.by_channel ?? [];

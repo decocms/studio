@@ -7,3 +7,6 @@ export function normalizeDomain(raw: string): string | null {
     .replace(/\/.*$/, "");
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s) ? s : null;
 }
+
+/** Quantas lojas o benchmark compara. */
+export const MAX_COMPETITORS = 5;

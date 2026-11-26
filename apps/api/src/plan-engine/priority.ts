@@ -65,6 +65,24 @@ const combine = (weights: number[]) =>
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
+/** Valor de referência do impacto: 10% da receita mensal medida (todos os canais). */
+export function referenceValue(
+  evidence: DiagnosisEvidence,
+  opportunities: Pick<UxOpportunity, "money">[],
+): number {
+  const r = evidence.revenue;
+  if (r && r.window_days > 0) {
+    const monthly =
+      (r.by_channel.reduce((a, c) => a + c.revenue, 0) * 30) / r.window_days;
+    if (monthly > 0) return monthly * 0.1;
+  }
+  const max = Math.max(
+    0,
+    ...opportunities.map((o) => o.money?.monthly_value ?? 0),
+  );
+  return max > 0 ? max : 1;
+}
+
 export function priorityOf(input: {
   hypothesis: Pick<
     UxHypothesis,

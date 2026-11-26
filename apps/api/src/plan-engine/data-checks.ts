@@ -52,6 +52,10 @@ const BARELY = 0.2;
 const pp = (v: number) =>
   `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} pp`;
 
+/** Hipótese que esta checagem sabe decidir. */
+export const isDataCheckable = (h: Pick<UxHypothesis, "tree">) =>
+  h.tree?.category === "trafego" && h.tree.testavel_na_pagina === false;
+
 export function trafficCheck(
   h: Pick<UxHypothesis, "device" | "confidence" | "verification">,
   opportunity: Pick<UxOpportunity, "drilldown" | "metric" | "measured">,
