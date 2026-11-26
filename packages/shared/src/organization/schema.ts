@@ -389,6 +389,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "The Plan page's store diagnosis uses the engine built into Studio instead of the external diagnosis service. Needs plan_page_enabled. Off by default; with it off, the Studio engine's tools refuse and the Plan page keeps using the external service.",
     ),
+  plan_engine_browser: z
+    .boolean()
+    .optional()
+    .describe(
+      "The built-in store diagnosis opens the store's and competitors' pages in a browser inside a sandbox started for each diagnosis and removed when it ends: captures, competitor benchmark, page probes and live verification. Needs plan_engine_native and hosted sandboxes (STUDIO_AGENT_SANDBOX_ENABLED). Off by default; with it off, a diagnosis records that no browser is available and runs from data alone.",
+    ),
   invite_links_enabled: z
     .boolean()
     .optional()
