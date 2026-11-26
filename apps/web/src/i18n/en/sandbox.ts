@@ -601,7 +601,7 @@ export const sandbox = {
   "sandbox.envVarsField.scopePrivate": "Private — only visible to me",
   "sandbox.envVarsField.envScopeBuild": "Build",
   "sandbox.envVarsField.envScopeHint":
-    "Build variables reach git clone, submodules and dependency install only, and apply the next time those run. Without org Git credentials, submodules are fetched only when a GIT_* variable is set.",
+    "Build variables reach git clone, submodules and dependency install only, and apply the next time those run.",
   "sandbox.envVarsField.envScopeLabel": "Env var {index} scope",
   "sandbox.envVarsField.envScopeRuntime": "Runtime",
   "sandbox.envVarsField.secret": "Secret",
@@ -763,6 +763,11 @@ export const sandbox = {
   "sandbox.generatePost.subtitle":
     "Pick the campaign and the format. The posts land on the board as drafts.",
   "sandbox.generatePost.title": "Generate posts",
+  "sandbox.gitCredentialsField.description":
+    "Tokens this project's sandbox uses for private repos and dependencies its own clone token can't reach, like submodules. They add to the organization's git credentials; for the same host, the project's wins. Applied when a sandbox starts.",
+  "sandbox.gitCredentialsField.hostDuplicateMessage":
+    "This host already has a credential above.",
+  "sandbox.gitCredentialsField.title": "Git credentials",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.discardChanges": "Discard changes",

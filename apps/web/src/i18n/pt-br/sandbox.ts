@@ -612,7 +612,7 @@ export const sandbox = {
   "sandbox.envVarsField.scopePrivate": "Privado — visível apenas para mim",
   "sandbox.envVarsField.envScopeBuild": "Build",
   "sandbox.envVarsField.envScopeHint":
-    "Variáveis de build chegam apenas ao git clone, aos submódulos e à instalação de dependências, e valem na próxima vez que eles rodarem. Sem credenciais Git da organização, os submódulos só são baixados quando há uma variável GIT_*.",
+    "Variáveis de build chegam apenas ao git clone, aos submódulos e à instalação de dependências, e valem na próxima vez que eles rodarem.",
   "sandbox.envVarsField.envScopeLabel":
     "Escopo da variável de ambiente {index}",
   "sandbox.envVarsField.envScopeRuntime": "Runtime",
@@ -779,6 +779,11 @@ export const sandbox = {
   "sandbox.generatePost.subtitle":
     "Escolha a campanha e o formato. Os posts caem no quadro como rascunhos.",
   "sandbox.generatePost.title": "Gerar posts",
+  "sandbox.gitCredentialsField.description":
+    "Tokens que o sandbox deste projeto usa para repositórios e dependências privadas que o token de clone não alcança, como submódulos. Somam-se às credenciais git da organização; para o mesmo host, vale a do projeto. Aplicadas quando um sandbox inicia.",
+  "sandbox.gitCredentialsField.hostDuplicateMessage":
+    "Este host já tem uma credencial acima.",
+  "sandbox.gitCredentialsField.title": "Credenciais git",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.discardChanges": "Descartar alterações",

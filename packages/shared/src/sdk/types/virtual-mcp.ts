@@ -6,6 +6,10 @@
  */
 
 import { z } from "zod";
+import {
+  GIT_CREDENTIALS_MAX,
+  SubmoduleCredentialSchema,
+} from "../../organization/schema";
 import { UrlSlugSchema } from "../../url-slug";
 import { THREAD_RUNTIMES } from "../../thread/session-runtime";
 
@@ -490,6 +494,22 @@ const RuntimeMetadataSchema = z.object({
     .optional()
     .describe(
       "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that Studio resolves via the credential vault before posting /_sandbox/config. Each entry's `scope` picks where it lands: `runtime` (default) or `build` (clone, submodules and install only; needs the organization's `sandbox_build_env` flag).",
+    ),
+  // Not `submoduleCredentials`, the key this lived under before it moved to
+  // the organization: stored projects still carry values under that name, and
+  // reading it again would put them back in effect unannounced.
+  gitCredentials: z
+    .array(SubmoduleCredentialSchema)
+    .max(GIT_CREDENTIALS_MAX)
+    // A second entry for the same host would silently never take effect.
+    .refine(
+      (creds) => new Set(creds.map((c) => c.host)).size === creds.length,
+      "Each git credential host must be unique.",
+    )
+    .nullable()
+    .optional()
+    .describe(
+      "Per-host PATs (as vault secret ids) for git hosts this project's own clone token cannot reach: private submodules and git dependencies. Resolved on every SANDBOX_START and laid over the organization's git credentials, winning for the same host. Read only when the organization's `sandbox_build_env` flag is on.",
     ),
 });
 

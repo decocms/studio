@@ -1,5 +1,10 @@
 import { describe, it, expect } from "bun:test";
-import { readValidatedRuntimeEnv, resolveRuntimeConfig } from "./helpers";
+import {
+  readValidatedGitCredentials,
+  readValidatedRuntimeEnv,
+  resolveRuntimeConfig,
+  withDetectedRuntime,
+} from "./helpers";
 type VmMetadata = Record<string, unknown>;
 
 describe("resolveRuntimeConfig", () => {
@@ -184,5 +189,106 @@ describe("readValidatedRuntimeEnv", () => {
         runtime: { env: [{ key: "bad key", kind: "literal", value: "x" }] },
       }),
     ).toBeNull();
+  });
+});
+
+describe("readValidatedGitCredentials", () => {
+  const read = (gitCredentials: unknown) =>
+    readValidatedGitCredentials({ runtime: { gitCredentials } });
+
+  it("reads nothing when metadata / runtime / the list is absent or not a list", () => {
+    expect(readValidatedGitCredentials(null)).toEqual([]);
+    expect(readValidatedGitCredentials({})).toEqual([]);
+    expect(readValidatedGitCredentials({ runtime: {} })).toEqual([]);
+    expect(read("nope")).toEqual([]);
+    expect(read([])).toEqual([]);
+  });
+
+  // Feeds SANDBOX_START's secret-resolving loop, off an untrusted JSON column:
+  // a malformed row is dropped here rather than sent to the daemon.
+  it("keeps only entries the schema accepts, host lowercased", () => {
+    expect(
+      read([
+        { host: "GitHub.com", secretId: "sec_1" },
+        { host: "", secretId: "sec_2" },
+        { host: "gitlab.com", secretId: "" },
+        { host: "bitbucket.org" },
+        { host: "https://gitea.example.com", secretId: "sec_3" },
+        { host: "gitea.example.com/acme", secretId: "sec_3" },
+        "garbage",
+        null,
+        { host: "gitea.example.com:3000", secretId: "sec_4" },
+      ]),
+    ).toEqual([
+      { host: "github.com", secretId: "sec_1" },
+      { host: "gitea.example.com:3000", secretId: "sec_4" },
+    ]);
+  });
+
+  it("keeps the first entry for a host listed twice", () => {
+    expect(
+      read([
+        { host: "github.com", secretId: "sec_1" },
+        { host: "GITHUB.COM", secretId: "sec_2" },
+      ]),
+    ).toEqual([{ host: "github.com", secretId: "sec_1" }]);
+  });
+
+  // The pre-organization key. Stored projects still carry values under it;
+  // reading it would put credentials back in effect that nobody can see.
+  it("does not read the legacy submoduleCredentials key", () => {
+    expect(
+      readValidatedGitCredentials({
+        runtime: {
+          submoduleCredentials: [{ host: "github.com", secretId: "sec_1" }],
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("stops at the cap", () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      host: `git${i}.example.com`,
+      secretId: "sec_1",
+    }));
+    expect(read(many)).toHaveLength(50);
+  });
+});
+
+describe("withDetectedRuntime", () => {
+  // Written during a sandbox start. Replacing `runtime` wholesale there erased
+  // the env vars and git credentials a user had configured before the first
+  // start detected their package manager.
+  it("pins the package manager and port without dropping the rest of runtime", () => {
+    const metadata = {
+      repository: { owner: "acme", name: "app" },
+      runtime: {
+        path: "apps/site",
+        env: [{ key: "API_URL", kind: "literal", value: "x" }],
+        gitCredentials: [{ host: "github.com", secretId: "sec_1" }],
+      },
+    };
+    expect(withDetectedRuntime(metadata, "bun", "3000")).toEqual({
+      repository: { owner: "acme", name: "app" },
+      runtime: {
+        path: "apps/site",
+        env: [{ key: "API_URL", kind: "literal", value: "x" }],
+        gitCredentials: [{ host: "github.com", secretId: "sec_1" }],
+        selected: "bun",
+        port: "3000",
+      },
+    });
+  });
+
+  it("starts a runtime when there is none, or it is not an object", () => {
+    const pinned = { runtime: { selected: "npm", port: null } };
+    expect(withDetectedRuntime({}, "npm", null)).toEqual(pinned);
+    expect(withDetectedRuntime({ runtime: null }, "npm", null)).toEqual(pinned);
+    expect(withDetectedRuntime({ runtime: "bun" }, "npm", null)).toEqual(
+      pinned,
+    );
+    expect(withDetectedRuntime({ runtime: ["bun"] }, "npm", null)).toEqual(
+      pinned,
+    );
   });
 });

@@ -12,6 +12,11 @@ import {
   type RuntimeEnvEntry,
   type SandboxRecord,
 } from "@decocms/shared/sdk";
+import {
+  GIT_CREDENTIALS_MAX,
+  type SubmoduleCredential,
+  SubmoduleCredentialSchema,
+} from "@decocms/shared/organization/schema";
 
 import {
   requireAuth,
@@ -23,6 +28,54 @@ import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import type { PackageManager } from "@decocms/shared/runtime-defaults";
 import { readSandboxMap, resolveVm } from "./sandbox-map";
 import { resolveSandboxUserId } from "./thread-repo";
+
+/**
+ * Defensive reader for `metadata.runtime.gitCredentials`, the project's own
+ * per-host git credentials. Same rationale as `readValidatedRuntimeEnv`: the
+ * JSON metadata column is untrusted, so each entry goes through the schema and
+ * anything it rejects is dropped. A host listed twice keeps its first entry.
+ */
+export function readValidatedGitCredentials(
+  metadata: Record<string, unknown> | null | undefined,
+): SubmoduleCredential[] {
+  if (!metadata) return [];
+  const runtime = (metadata as { runtime?: unknown }).runtime;
+  if (!runtime || typeof runtime !== "object") return [];
+  const creds = (runtime as { gitCredentials?: unknown }).gitCredentials;
+  if (!Array.isArray(creds)) return [];
+  const byHost = new Map<string, SubmoduleCredential>();
+  for (const item of creds) {
+    const parsed = SubmoduleCredentialSchema.safeParse(item);
+    if (!parsed.success || byHost.has(parsed.data.host)) continue;
+    byHost.set(parsed.data.host, parsed.data);
+    if (byHost.size === GIT_CREDENTIALS_MAX) break;
+  }
+  return [...byHost.values()];
+}
+
+/**
+ * `metadata` with a detected package manager and port pinned. Everything else
+ * under `runtime` (path, apps, env, git credentials) is the user's and is
+ * kept: this is written during a sandbox start, and replacing the whole key
+ * there erased what they had configured.
+ */
+export function withDetectedRuntime(
+  metadata: Record<string, unknown>,
+  packageManager: string,
+  devPort: string | null,
+): Record<string, unknown> {
+  const runtime = metadata.runtime;
+  return {
+    ...metadata,
+    runtime: {
+      ...(runtime && typeof runtime === "object" && !Array.isArray(runtime)
+        ? runtime
+        : {}),
+      selected: packageManager,
+      port: devPort,
+    },
+  };
+}
 
 export type RuntimeConfigMeta = {
   runtime?: {

@@ -4198,6 +4198,10 @@ export interface StudioToolIO {
                     )[]
                   | null
                   | undefined;
+                gitCredentials?:
+                  | { host: string; secretId: string }[]
+                  | null
+                  | undefined;
               }
             | null
             | undefined;
@@ -4532,6 +4536,10 @@ export interface StudioToolIO {
                         )[]
                       | null
                       | undefined;
+                    gitCredentials?:
+                      | { host: string; secretId: string }[]
+                      | null
+                      | undefined;
                   }
                 | null
                 | undefined;
@@ -4770,6 +4778,10 @@ export interface StudioToolIO {
                           scope?: "runtime" | "build" | undefined;
                         }
                     )[]
+                  | null
+                  | undefined;
+                gitCredentials?:
+                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -5051,6 +5063,10 @@ export interface StudioToolIO {
                     )[]
                   | null
                   | undefined;
+                gitCredentials?:
+                  | { host: string; secretId: string }[]
+                  | null
+                  | undefined;
               }
             | null
             | undefined;
@@ -5319,6 +5335,10 @@ export interface StudioToolIO {
                           scope?: "runtime" | "build" | undefined;
                         }
                     )[]
+                  | null
+                  | undefined;
+                gitCredentials?:
+                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -5593,6 +5613,10 @@ export interface StudioToolIO {
                         )[]
                       | null
                       | undefined;
+                    gitCredentials?:
+                      | { host: string; secretId: string }[]
+                      | null
+                      | undefined;
                   }
                 | null
                 | undefined;
@@ -5839,6 +5863,10 @@ export interface StudioToolIO {
                           scope?: "runtime" | "build" | undefined;
                         }
                     )[]
+                  | null
+                  | undefined;
+                gitCredentials?:
+                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -6107,6 +6135,10 @@ export interface StudioToolIO {
                           scope?: "runtime" | "build" | undefined;
                         }
                     )[]
+                  | null
+                  | undefined;
+                gitCredentials?:
+                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -7822,6 +7854,10 @@ export interface StudioToolIO {
                           scope?: "runtime" | "build" | undefined;
                         }
                     )[]
+                  | null
+                  | undefined;
+                gitCredentials?:
+                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }

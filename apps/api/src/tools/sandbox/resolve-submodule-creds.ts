@@ -13,7 +13,7 @@ interface ResolveParams {
 }
 
 /**
- * Resolves the organization's per-host git credentials
+ * Resolves per-host git credentials — the organization's, or a project's own —
  * ({ host, secretId }) into { host, token } by reading each secret from the
  * credential vault. Unlike env (pushed after boot), these must be resolved
  * before `runner.ensure` so the token rides the INITIAL daemon config — the
@@ -54,4 +54,23 @@ export async function resolveSubmoduleCredentials({
     }
   }
   return resolved;
+}
+
+/**
+ * The credentials a sandbox boots with: the organization's, with the project's
+ * own laid over them — for a host both name, the project's is the more
+ * specific. Merged after resolution rather than before, so a project entry
+ * whose secret no longer resolves leaves the organization's for that host in
+ * place instead of removing it.
+ */
+export function mergeGitCredentials(
+  organization: { host: string; token: string }[],
+  project: { host: string; token: string }[],
+): { host: string; token: string }[] {
+  const projectHosts = new Set(project.map((c) => c.host));
+  return [
+    // Organization rows saved before hosts were normalized may be mixed-case.
+    ...organization.filter((c) => !projectHosts.has(c.host.toLowerCase())),
+    ...project,
+  ];
 }

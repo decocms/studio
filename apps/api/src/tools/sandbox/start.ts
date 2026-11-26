@@ -34,12 +34,17 @@ import {
   type StudioContext,
 } from "../../core/studio-context";
 import {
+  readValidatedGitCredentials,
   readValidatedRuntimeEnv,
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
+  withDetectedRuntime,
 } from "./helpers";
 import { pushSandboxEnv, resolveSandboxEnv } from "./resolve-env";
-import { resolveSubmoduleCredentials } from "./resolve-submodule-creds";
+import {
+  mergeGitCredentials,
+  resolveSubmoduleCredentials,
+} from "./resolve-submodule-creds";
 import {
   readSandboxMap,
   removeSandboxMapEntry,
@@ -615,15 +620,28 @@ async function provisionSandbox(params: StartParams): Promise<{
     resolveRuntimeConfig(metadata);
 
   // Submodules and private package deps live in repos a per-repo clone token
-  // can't reach. Read off the ORG, not this agent: a task-board run's sandbox
-  // belongs to Decopilot, which has no metadata to hold them (migration 222).
+  // can't reach. The ORG's list is the base, not this agent's: a task-board
+  // run's sandbox belongs to Decopilot, which has no metadata to hold any
+  // (migration 222). A project adds its own on top, for the sandboxes started
+  // for it.
   const orgSettings = await ctx.storage.organizationSettings.get(orgId);
-  const submoduleCredentials = await resolveSubmoduleCredentials({
-    ctx,
-    orgId,
-    userId,
-    entries: orgSettings?.submodule_credentials,
-  });
+  const buildEnabled = orgFlagEnabled(orgSettings?.flags, "sandbox_build_env");
+  const submoduleCredentials = mergeGitCredentials(
+    await resolveSubmoduleCredentials({
+      ctx,
+      orgId,
+      userId,
+      entries: orgSettings?.submodule_credentials,
+    }),
+    buildEnabled
+      ? await resolveSubmoduleCredentials({
+          ctx,
+          orgId,
+          userId,
+          entries: readValidatedGitCredentials(metadata),
+        })
+      : [],
+  );
 
   // Resolved before the provision, not after: build-scoped vars ride the
   // bootstrap config so they are in place when the daemon starts cloning.
@@ -632,7 +650,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     orgId,
     userId,
     entries: readValidatedRuntimeEnv(metadata),
-    buildEnabled: orgFlagEnabled(orgSettings?.flags, "sandbox_build_env"),
+    buildEnabled,
   });
 
   // Skip clone + lockfile probe entirely when no repo is connected — the
@@ -1072,10 +1090,11 @@ async function persistDetectedRuntime(
   if (!virtualMcp) return;
   const meta = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   await ctx.storage.virtualMcps.update(virtualMcpId, actingUserId, {
-    metadata: {
-      ...meta,
-      runtime: { selected: packageManager, port: devPort },
-    } as VirtualMCPUpdateData["metadata"],
+    metadata: withDetectedRuntime(
+      meta,
+      packageManager,
+      devPort,
+    ) as VirtualMCPUpdateData["metadata"],
   });
 }
 

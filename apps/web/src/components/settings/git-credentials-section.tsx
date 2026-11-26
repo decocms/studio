@@ -214,6 +214,8 @@ function GitCredentialsEditor() {
 interface GitCredentialRowProps {
   index: number;
   row: SubmoduleCredential;
+  /** Shown under a well-formed host the caller still cannot accept. */
+  hostError?: string;
   secrets: SecretInfo[];
   secretById: Map<string, SecretInfo>;
   onEdit: (next: SubmoduleCredential) => void;
@@ -223,9 +225,10 @@ interface GitCredentialRowProps {
   onRemove: () => void;
 }
 
-function GitCredentialRow({
+export function GitCredentialRow({
   index,
   row,
+  hostError,
   secrets,
   secretById,
   onEdit,
@@ -237,6 +240,9 @@ function GitCredentialRow({
   const t = useT();
   const trimmed = row.host.trim();
   const invalid = trimmed.length > 0 && !SUBMODULE_HOST_RE.test(trimmed);
+  const hostMessage = invalid
+    ? t("settings.gitCredentials.hostInvalidMessage")
+    : hostError;
 
   return (
     <div className="flex flex-col gap-2 p-2 sm:flex-row sm:items-center">
@@ -252,15 +258,13 @@ function GitCredentialRow({
             autoCapitalize="off"
             autoCorrect="off"
             className="font-mono"
-            aria-invalid={invalid}
+            aria-invalid={Boolean(hostMessage)}
             aria-label={t("settings.gitCredentials.hostAriaLabel", {
               index: index + 1,
             })}
           />
-          {invalid ? (
-            <p className="text-2xs text-destructive">
-              {t("settings.gitCredentials.hostInvalidMessage")}
-            </p>
+          {hostMessage ? (
+            <p className="text-2xs text-destructive">{hostMessage}</p>
           ) : null}
         </div>
       </div>
@@ -342,7 +346,10 @@ interface CreateSecretDialogProps {
   onSaved: (secretId: string) => void;
 }
 
-function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
+export function CreateSecretDialog({
+  onClose,
+  onSaved,
+}: CreateSecretDialogProps) {
   const t = useT();
   const [name, setName] = useState("");
   const [scope, setScope] = useState<SecretScopeKind>("organization");

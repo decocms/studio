@@ -181,6 +181,7 @@ type Metadata = {
     path?: string | null;
     apps?: { path: string }[];
     env?: RuntimeEnvEntry[];
+    gitCredentials?: { host: string; secretId: string }[];
   };
   sandboxMap?: SandboxMap;
 };
@@ -436,6 +437,46 @@ describe("SANDBOX_START", () => {
 
     const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
     expect(opts.repo?.submoduleCredentials).toEqual([]);
+  });
+
+  it("lays the project's git credentials over the org's, behind sandbox_build_env", async () => {
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      runtime: {
+        ...BASE_METADATA.runtime,
+        gitCredentials: [
+          { host: "github.com", secretId: "sec_project" },
+          { host: "gitlab.example.com", secretId: "sec_gitlab" },
+        ],
+      },
+    };
+    const run = async (flags: Record<string, boolean>) => {
+      mockEnsure.mockClear();
+      await SANDBOX_START.handler(
+        { virtualMcpId: VMCP_ID, branch: BRANCH },
+        makeCtx({
+          virtualMcp: makeVirtualMcp(ORG_ID, metadata),
+          gitCredentials: [
+            { host: "github.com", secretId: "sec_org" },
+            { host: "bitbucket.org", secretId: "sec_bitbucket" },
+          ],
+          flags,
+        }),
+      );
+      const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+      return opts.repo?.submoduleCredentials;
+    };
+    // On: one entry per host, the project's winning the host both name.
+    expect(await run({ sandbox_build_env: true })).toEqual([
+      { host: "bitbucket.org", token: "token-for-sec_bitbucket" },
+      { host: "github.com", token: "token-for-sec_project" },
+      { host: "gitlab.example.com", token: "token-for-sec_gitlab" },
+    ]);
+    // Off: the project's are never resolved.
+    expect(await run({})).toEqual([
+      { host: "github.com", token: "token-for-sec_org" },
+      { host: "bitbucket.org", token: "token-for-sec_bitbucket" },
+    ]);
   });
 
   it("sends build-scoped env in the provision and only the rest as runtime env, behind sandbox_build_env", async () => {

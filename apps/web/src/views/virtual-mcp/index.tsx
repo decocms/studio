@@ -95,6 +95,8 @@ import {
   agentHasConnectedRepository,
 } from "@/lib/agent-capabilities";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
+import { completeGitCredentials } from "@/components/sandbox/runtime-card/complete-git-credentials";
+import { GitCredentialsField } from "@/components/sandbox/runtime-card/git-credentials-field";
 import { omitServerManagedMetadata } from "@/lib/omit-server-managed-metadata";
 import { RepositoryCard } from "./settings/repository-card";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
@@ -272,6 +274,27 @@ function stripIncompleteEnvEntries(
   };
 }
 
+/**
+ * Same as `stripIncompleteEnvEntries`, for the project's git credentials: rows
+ * still being filled in stay in form state and out of the request body.
+ */
+function stripIncompleteGitCredentials(
+  data: VirtualMcpFormData,
+): VirtualMcpFormData {
+  const credentials = data.metadata?.runtime?.gitCredentials;
+  if (!credentials || credentials.length === 0) return data;
+  return {
+    ...data,
+    metadata: {
+      ...data.metadata,
+      runtime: {
+        ...(data.metadata?.runtime ?? {}),
+        gitCredentials: completeGitCredentials(credentials),
+      },
+    },
+  };
+}
+
 async function extractEmailFromTokenInfo(
   tokenInfo: {
     idToken: string | null;
@@ -380,6 +403,7 @@ function VirtualMcpDetailViewWithData({
   // Watch connections for reactive UI
   const connections = form.watch("connections");
   const multiAppPreview = useOrgFlag("multi_app_preview");
+  const buildInputs = useOrgFlag("sandbox_build_env");
 
   // GitHub repo connected (real auth) — instructions become read-only
   const hasRepository = agentHasConnectedRepository(virtualMcp);
@@ -577,10 +601,13 @@ function VirtualMcpDetailViewWithData({
     // current form values; only _defaultValues advances.
     form.reset(formData, { keepValues: true });
 
-    // Strip in-progress env rows (no key, or kind=secret with no secretId).
-    // They stay in form state so the user keeps editing, but the request body
-    // only carries entries the server schema accepts.
-    const payload = stripIncompleteEnvEntries(formData);
+    // Strip in-progress env rows (no key, or kind=secret with no secretId) and
+    // git credential rows (no host, no secret, or a repeated host). They stay
+    // in form state so the user keeps editing, but the request body only
+    // carries entries the server schema accepts.
+    const payload = stripIncompleteGitCredentials(
+      stripIncompleteEnvEntries(formData),
+    );
     const cachedVirtualMcp = readCachedVirtualMcp(
       queryClient,
       org.id,
@@ -1242,6 +1269,14 @@ function VirtualMcpDetailViewWithData({
                         sandboxMap={virtualMcp.metadata.sandboxMap}
                       />
                     </SettingsCardRow>
+                    {buildInputs && (
+                      <SettingsCardRow>
+                        <GitCredentialsField
+                          control={form.control}
+                          form={form}
+                        />
+                      </SettingsCardRow>
+                    )}
                   </SettingsCard>
                 </SettingsSection>
               )}

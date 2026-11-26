@@ -95,7 +95,7 @@ export const GIT_CREDENTIALS_MAX = 50;
 export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
 
 /**
- * One of the organization's git credentials, for repositories the clone's own
+ * A git credential, for repositories the clone's own
  * per-repo GitHub App token cannot reach — a submodule or a private `git:`
  * package dependency in another repository or org. The user supplies a PAT
  * (stored as a vault secret) keyed by the remote's host. Studio resolves
@@ -106,9 +106,12 @@ export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
  * cargo) both authenticate. `host` is the bare hostname (e.g. "github.com");
  * `git@<host>:` SSH URLs are rewritten to HTTPS so the token applies.
  *
- * Org-level, not per-agent: a host's PAT resolves the same dependency for
- * every repo in the org, and a task-board run's sandbox belongs to Decopilot,
- * which has no agent metadata to read one from (see migration 222).
+ * The organization's list is the base, not an agent's: a host's PAT resolves
+ * the same dependency for every repo in the org, and a task-board run's
+ * sandbox belongs to Decopilot, which has no agent metadata to read one from
+ * (see migration 222). A project can hold entries of the same shape under
+ * `metadata.runtime.gitCredentials`; they are laid over the organization's
+ * for the sandboxes started for that project.
  *
  * Kept named `submoduleCredentials` on the wire — that is the daemon's field.
  */
@@ -291,7 +294,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Let a project's sandbox env vars be scoped to the build: a build-scoped var reaches git clone, submodule update and dependency install, and never the dev server. Off by default: build-scoped vars are ignored and the scope selector is hidden.",
+      "Let a project configure what its sandbox builds with. Env vars can be scoped to the build: a build-scoped var reaches git clone, submodule update and dependency install, and never the dev server. The project can also hold its own git credentials, laid over the organization's. Off by default: both are ignored and their editors are hidden.",
     ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()

@@ -543,6 +543,47 @@ test("VirtualMCPUpdateDataSchema keeps a runtime env var's scope and rejects an 
   expect(parse("deploy").success).toBe(false);
 });
 
+test("VirtualMCPUpdateDataSchema takes a project's git credentials, one per host", () => {
+  const parse = (gitCredentials: unknown) =>
+    VirtualMCPUpdateDataSchema.safeParse({
+      metadata: { runtime: { gitCredentials } },
+    });
+
+  const saved = parse([
+    { host: "GitHub.com", secretId: "sec_1" },
+    { host: "gitlab.example.com:8443", secretId: "sec_2" },
+  ]);
+  expect(saved.success).toBe(true);
+  // Lowercased like the organization's: the daemon compares hosts exactly.
+  expect(saved.data?.metadata?.runtime?.gitCredentials).toEqual([
+    { host: "github.com", secretId: "sec_1" },
+    { host: "gitlab.example.com:8443", secretId: "sec_2" },
+  ]);
+  expect(parse([]).success).toBe(true);
+  expect(parse(null).success).toBe(true);
+
+  // A second entry for a host would silently never take effect, and letter
+  // case does not make it a different host.
+  expect(
+    parse([
+      { host: "github.com", secretId: "sec_1" },
+      { host: "GITHUB.com", secretId: "sec_2" },
+    ]).success,
+  ).toBe(false);
+  expect(
+    parse([{ host: "https://github.com", secretId: "sec_1" }]).success,
+  ).toBe(false);
+  expect(parse([{ host: "github.com", secretId: "" }]).success).toBe(false);
+  expect(
+    parse(
+      Array.from({ length: 51 }, (_, i) => ({
+        host: `git${i}.example.com`,
+        secretId: "sec_1",
+      })),
+    ).success,
+  ).toBe(false);
+});
+
 test("VirtualMCPUpdateDataSchema rejects more than 100 runtime env vars", () => {
   const result = VirtualMCPUpdateDataSchema.safeParse({
     metadata: {
