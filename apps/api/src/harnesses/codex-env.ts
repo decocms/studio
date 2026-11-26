@@ -18,18 +18,15 @@ export function codexEnvFromCredential(
   }
   const model =
     (chosenModel && codexModelId(chosenModel)) || CODEX_DEFAULT_MODEL;
+  // The deco gateway provisions OpenRouter keys.
+  const openRouterKey = ["openrouter", "deco"].includes(credential.providerId);
   const baseUrl =
     credential.baseUrl ??
-    (credential.providerId === "openrouter"
-      ? "https://openrouter.ai/api/v1"
-      : null);
+    (openRouterKey ? "https://openrouter.ai/api/v1" : null);
   if (!subscription && !baseUrl)
     throw new Error("The Codex provider needs a Responses API base URL.");
   return {
-    CODEX_MODEL:
-      !subscription && ["openrouter", "deco"].includes(credential.providerId)
-        ? `openai/${model}`
-        : model,
+    CODEX_MODEL: !subscription && openRouterKey ? `openai/${model}` : model,
     STUDIO_CODEX_AUTH_JSON: subscription ? credential.apiKey : null,
     CODEX_API_KEY: subscription ? null : credential.apiKey,
     OPENAI_API_KEY: null,
