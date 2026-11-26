@@ -1,4 +1,4 @@
-import { supportsCodex } from "@decocms/shared/harness/codex-models";
+import { selectsCodexForChats } from "@decocms/shared/harness/codex-models";
 /** With hosted sandboxes, every chat runs claude-code or Codex in its own sandbox. */
 
 import type { StudioContext } from "@/core/studio-context";
@@ -108,7 +108,11 @@ export async function startThreadSandbox(
         method: "POST",
         headers: new Headers({ "content-type": "application/json" }),
         body: JSON.stringify({
-          harness: await sandboxChatHarness(ctx, organizationId),
+          harness: await sandboxChatHarness(
+            ctx,
+            organizationId,
+            ctx.auth.user?.id,
+          ),
           threadId: thread.id,
         }),
       })
@@ -133,13 +137,22 @@ export async function startThreadSandbox(
   return { virtualMcpId: agent.id, branch, ...(await boot()) };
 }
 
-/** The default for new sandbox chats; existing thread pins remain authoritative. */
+/**
+ * The harness a user's new sandbox chat pins: Codex only when the org turned
+ * it on and the user has a Codex credential; Claude Code otherwise. Existing
+ * thread pins remain authoritative.
+ */
 export async function sandboxChatHarness(
   ctx: StudioContext,
   organizationId: string,
+  userId: string | undefined,
 ): Promise<"claude-code" | "codex"> {
+  if (!userId) return "claude-code";
   const settings = await ctx.storage.organizationSettings.get(organizationId);
-  return orgFlagEnabled(settings?.flags, "chat_harness_codex")
+  if (!orgFlagEnabled(settings?.flags, "chat_harness_codex")) {
+    return "claude-code";
+  }
+  return (await hasCodexCredential(ctx, organizationId, userId))
     ? "codex"
     : "claude-code";
 }
@@ -152,5 +165,5 @@ export async function hasCodexCredential(
   if (await userPlanCredentialId(ctx, organizationId, userId, "codex"))
     return true;
   const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
-  return keys.some((key) => supportsCodex(key.providerId));
+  return keys.some((key) => selectsCodexForChats(key.providerId));
 }

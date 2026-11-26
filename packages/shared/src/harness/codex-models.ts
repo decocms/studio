@@ -5,6 +5,14 @@ export function supportsCodex(providerId: string): boolean {
   return ["openai-compatible", "openrouter", "deco"].includes(providerId);
 }
 
+/**
+ * An org key that puts new chats on Codex. Not the deco gateway: its chats
+ * stay on Claude Code, so Codex runs only on a credential chosen for it.
+ */
+export function selectsCodexForChats(providerId: string): boolean {
+  return supportsCodex(providerId) && providerId !== "deco";
+}
+
 export function isCodexModel(providerId: string, modelId: string): boolean {
   return supportsCodex(providerId) && codexModelId(modelId) !== null;
 }

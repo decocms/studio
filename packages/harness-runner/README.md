@@ -130,7 +130,9 @@ by Studio and reaching this process as its spawn environment:
 | `STUDIO_SANDBOX_IMAGE_VERSION` | The sandbox image's release version, baked in at build time and recorded in the run context; empty on a local build |
 
 The default-off `chat_harness_codex` organization flag selects Codex for new
-sandbox chats. Existing chats keep their pinned runtime. Link a ChatGPT login
+sandbox chats of members with a Codex credential; everyone else, including
+chats on the deco AI gateway, stays on Claude Code. Existing chats keep their
+pinned runtime. Link a ChatGPT login
 in Settings → AI Providers using the cache from `codex login`, or configure a
 Responses API provider. The API encrypts the cache per user and accepts token
 refreshes only while the original credential is still current. The runner

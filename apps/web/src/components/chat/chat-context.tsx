@@ -145,6 +145,7 @@ import {
   useSandboxOnlyChats,
 } from "@/hooks/use-organization-settings";
 import { useThreadActions, useThreadManager } from "./store/hooks";
+import { useNewChatHarness } from "./use-new-chat-harness";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -942,8 +943,7 @@ export function ActiveTaskStreamSource({ taskId }: { taskId: string }) {
 function useActiveTaskStream(taskId: string): ChatStreamContextValue {
   const t = useT();
   const voiceEnabled = useOrgFlag("voice_mode");
-  const sandboxOnlyChats = useSandboxOnlyChats();
-  const codexChats = useOrgFlag("chat_harness_codex");
+  const newChatHarness = useNewChatHarness();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime(activeTask?.harness_id);
   const hostedRuntimeBlockedMessage = t("chat.input.codingAgentUnavailable");
@@ -1395,18 +1395,12 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
     // but that write never flows back through `/watch`. Mirror the complete pin
     // into the store now so `findReusableNewChat` stops treating the
     // (now non-empty, often just-failed) thread as an empty "New chat" and
-    // dropping the user back onto it. The hosted server always selects
-    // Decopilot for an unlocked thread (claude-code under sandbox-only chats).
-    // LIST/GET is authoritative; this only keeps the live view correct while
+    // dropping the user back onto it. LIST/GET is authoritative; this only keeps the live view correct while
     // its row refresh is still in flight.
     if (!activeTask?.harness_id) {
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: sandboxOnlyChats
-          ? codexChats
-            ? "codex"
-            : "claude-code"
-          : "decopilot",
+        harness_id: newChatHarness,
         updated_at: new Date().toISOString(),
       });
     }

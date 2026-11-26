@@ -680,10 +680,7 @@ export const settings = {
   "settings.agentTools.chatHarnessCodexTitle":
     "Usar Codex em novos chats no sandbox",
   "settings.agentTools.chatHarnessCodexDescription":
-    "Executa novos chats no sandbox com Codex. Vincule sua assinatura do ChatGPT em Provedores de IA ou conecte um provedor da API Responses. Os chats existentes mantêm seu runtime.",
-  "settings.codexSubscription.setupHeading": "Conecte o Codex",
-  "settings.codexSubscription.setupDescription":
-    "Vincule sua assinatura do ChatGPT em Configurações → Provedores de IA ou conecte um provedor com um endpoint da API Responses da OpenAI.",
+    "Novos chats rodam com Codex para membros que vinculam a assinatura do ChatGPT em Provedores de IA, ou para todos quando um provedor da API Responses está conectado. Os outros chats usam o Claude Code. Os chats existentes mantêm seu runtime.",
   "settings.codexSubscription.connect": "Vincular",
   "settings.codexSubscription.connected": "Assinatura do ChatGPT vinculada",
   "settings.codexSubscription.disconnect": "Desconectar",

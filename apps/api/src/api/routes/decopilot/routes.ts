@@ -386,11 +386,12 @@ export function applyThreadLock(args: {
 async function resolveDefaultHarness(
   ctx: StudioContext,
   organizationId: string,
+  userId: string,
   sandboxOnlyChats: boolean,
 ): Promise<HostedHarnessId> {
   // Without a hosted sandbox, claude-code only fails later, at dispatch.
   if (!sandboxOnlyChats) return "decopilot";
-  return sandboxChatHarness(ctx, organizationId);
+  return sandboxChatHarness(ctx, organizationId, userId);
 }
 
 const DESKTOP_ONLY_THREAD_MESSAGE =
@@ -586,7 +587,12 @@ async function validate(
     sandboxOnlyChats && lockedThread?.harness_id === "decopilot";
   const chatHarness =
     (legacySandboxMigration ? "claude-code" : lockedThread?.harness_id) ??
-    (await resolveDefaultHarness(ctx, organization.id, sandboxOnlyChats));
+    (await resolveDefaultHarness(
+      ctx,
+      organization.id,
+      userId,
+      sandboxOnlyChats,
+    ));
 
   assertHostedDispatchHarness(chatHarness);
   let resolvedModels = await resolvePerRequestModels(
