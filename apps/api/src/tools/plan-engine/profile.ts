@@ -8,9 +8,14 @@ import { defineTool } from "@/core/define-tool";
 import type { StudioContext } from "@/core/studio-context";
 import { normalizeDomain } from "@/plan-engine/benchmark";
 import { checkDomain, sameStore } from "@/plan-engine/domain-check";
+import { orgHeatmap } from "@/plan-engine/adapters/analytics";
+import type { HeatmapReader } from "@/plan-engine/ports";
 import { detectSiteSources } from "@/plan-engine/site-sources";
 import {
+  findAnalyticsSite,
   projectConfirmsStore,
+  type StudioProject,
+  toStudioProject,
   type VirtualMcpItem,
 } from "@/plan-engine/studio-project";
 import type { SiteProfile, SiteSources } from "@/plan-engine/types";
@@ -33,6 +38,25 @@ function parseRepo(s: string): { owner: string; name: string } | null {
   return m?.[1] && m[2] ? { owner: m[1], name: m[2] } : null;
 }
 
+/** The first of the org's site projects Deco Analytics already knows; null when none, or when reading fails. */
+async function analyticsSiteAmong(
+  heatmap: HeatmapReader,
+  org: { slug: string },
+  items: readonly VirtualMcpItem[],
+  opts: { domain: string },
+): Promise<string | null> {
+  const projects = items
+    .map(toStudioProject)
+    .filter((p): p is StudioProject => p !== null);
+  return await findAnalyticsSite(
+    projects,
+    async (slug) =>
+      (await heatmap(slug, { page: "/", device: "mobile", range: "7d" }))
+        .registered,
+    { orgSlug: org.slug, domain: opts.domain },
+  ).catch(() => null);
+}
+
 /**
  * Finds the store among the org's site projects and fills what the profile
  * lacks, never what someone edited by hand. Without a profile or a domain on
@@ -42,18 +66,25 @@ function parseRepo(s: string): { owner: string; name: string } | null {
 export async function syncProfileFromStudio(
   ctx: StudioContext,
   org: { id: string; slug: string },
+  heatmap: HeatmapReader = orgHeatmap(ctx),
 ): Promise<{ profile: SiteProfile | null; sources: SiteSources | null }> {
   const store = ctx.storage.planEngine;
   const current = await store.getSiteProfile(org.id);
-  const detected = await detectSiteSources({
-    projects: async () =>
-      (await ctx.storage.virtualMcps.list(org.id)).map(
+  let items: Promise<VirtualMcpItem[]> | null = null;
+  const listProjects = () => {
+    items ??= ctx.storage.virtualMcps.list(org.id).then((list) =>
+      list.map(
         (v): VirtualMcpItem => ({
           id: v.id,
           title: v.title,
           metadata: v.metadata as VirtualMcpItem["metadata"],
         }),
       ),
+    );
+    return items;
+  };
+  const detected = await detectSiteSources({
+    projects: listProjects,
     orgSlug: org.slug,
     domain: current?.domain ?? null,
     now: nowIso(),
@@ -84,11 +115,18 @@ export async function syncProfileFromStudio(
         ? project.domain
         : undefined;
     // The project's slug only when its domain proves it is this store.
-    const site =
+    let site =
       profile.studio_site === null &&
       projectConfirmsStore(project, canonical ?? profile.domain)
         ? project.site_slug
         : undefined;
+    // Projects without a production domain prove nothing, but the one Analytics already knows is the store.
+    if (profile.studio_site === null && !site) {
+      site =
+        (await analyticsSiteAmong(heatmap, org, await listProjects(), {
+          domain: canonical ?? profile.domain,
+        })) ?? undefined;
+    }
     if (canonical || site) {
       profile = await store.upsertSiteProfile(org.id, {
         domain: canonical,

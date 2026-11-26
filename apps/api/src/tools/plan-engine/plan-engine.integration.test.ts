@@ -23,6 +23,7 @@ import {
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
 import { CURATED_KNOWLEDGE } from "../../plan-engine/knowledge/curated";
+import type { HeatmapReader } from "../../plan-engine/ports";
 import type { OpportunityDraft } from "../../plan-engine/types";
 import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import {
@@ -49,6 +50,7 @@ import {
   PLAN_UX_SITE_SOURCES_DETECT,
   PLAN_UX_STORE_VIEW,
 } from "./index";
+import { syncProfileFromStudio } from "./profile";
 
 const ORG_A = "org_plan_tools_a";
 const ORG_B = "org_plan_tools_b";
@@ -323,6 +325,60 @@ describe("PLAN_UX tools", () => {
           errors: ["nenhum projeto de site nesta org do Studio"],
         },
       });
+    });
+  });
+
+  describe("finding the analytics site", () => {
+    const project = (siteSlug: string) =>
+      virtualMcps.create(ORG_A, USER_ID, {
+        title: siteSlug,
+        description: null,
+        icon: null,
+        status: "active",
+        pinned: false,
+        metadata: { siteSlug },
+        connections: [],
+      } as never);
+    const registeredOnly =
+      (slug: string): HeatmapReader =>
+      async (site) => {
+        if (site !== slug) throw new Error("HTTP 404: Site not found");
+        return { registered: true, siteId: "site_1", data: {} };
+      };
+    const sync = (heatmap: HeatmapReader) =>
+      syncProfileFromStudio(
+        makeCtx("PLAN_UX_SITE_SOURCES_DETECT"),
+        { id: ORG_A, slug: "plan-tools-a" },
+        heatmap,
+      );
+
+    it("adopts the project Analytics knows when no project declares the store's domain", async () => {
+      await planEngine.upsertSiteProfile(ORG_A, { domain: "www.loja.example" });
+      await project("rascunho");
+      await project("loja-storefront");
+      const { profile } = await sync(registeredOnly("loja-storefront"));
+      expect(profile?.studio_site).toBe("loja-storefront");
+      expect((await planEngine.getSiteProfile(ORG_A))?.studio_site).toBe(
+        "loja-storefront",
+      );
+    });
+
+    it("leaves the site empty when Analytics knows none, and never replaces one already set", async () => {
+      await planEngine.upsertSiteProfile(ORG_A, { domain: "www.loja.example" });
+      await project("loja-storefront");
+      const unreachable: HeatmapReader = async () => {
+        throw new Error("HTTP 503");
+      };
+      expect((await sync(unreachable)).profile?.studio_site).toBeNull();
+
+      await planEngine.upsertSiteProfile(ORG_A, { studio_site: "manual" });
+      let probes = 0;
+      const counting: HeatmapReader = async (site, opts) => {
+        probes++;
+        return registeredOnly("loja-storefront")(site, opts);
+      };
+      expect((await sync(counting)).profile?.studio_site).toBe("manual");
+      expect(probes).toBe(0);
     });
   });
 
