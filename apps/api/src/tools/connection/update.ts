@@ -317,6 +317,10 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       configuration_scopes: finalScopes,
       configuration_secret_fields:
         fetchResult?.secretFields ?? existing.configuration_secret_fields,
+      // secretFields is null when MCP_CONFIGURATION did not answer.
+      configuration_secret_delivery: fetchResult?.secretFields
+        ? (fetchResult.secretDelivery ?? null)
+        : existing.configuration_secret_delivery,
       updated_by: userId,
     };
     const connection = await saveConnectionWithConfiguration(ctx, {

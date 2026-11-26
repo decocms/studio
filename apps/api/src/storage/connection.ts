@@ -95,6 +95,7 @@ type RawConnectionRow = {
   configuration_state: string | null; // Encrypted
   configuration_scopes: string | string[] | null;
   configuration_secret_fields: string | string[] | null;
+  configuration_secret_delivery: "fetch" | null;
   metadata: string | Record<string, unknown> | null;
   bindings: string | string[] | null;
   status: "active" | "inactive" | "error";
@@ -126,6 +127,7 @@ const PUBLIC_COLUMNS = [
   "configuration_state",
   "configuration_scopes",
   "configuration_secret_fields",
+  "configuration_secret_delivery",
   "metadata",
   "bindings",
   "status",
@@ -869,6 +871,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       configuration_secret_fields: parseJson<string[]>(
         row.configuration_secret_fields,
       ),
+      configuration_secret_delivery: row.configuration_secret_delivery,
       metadata:
         row.connection_type === "VIRTUAL"
           ? readRepositoryMetadata(

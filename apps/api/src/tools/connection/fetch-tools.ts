@@ -43,6 +43,7 @@ export interface FetchedMCPData {
   scopes: string[] | null;
   /** Null when MCP_CONFIGURATION is missing or failed: callers keep what they stored. */
   secretFields?: string[] | null;
+  secretDelivery?: "fetch" | null;
 }
 
 /**
@@ -157,9 +158,11 @@ function mapListedTools(
 /**
  * Scopes and secret fields from MCP_CONFIGURATION (null when it fails); non-string scopes are dropped because parseScope splits them.
  */
-export async function fetchConfigurationFromMCP(
-  client: Client,
-): Promise<{ scopes: string[] | null; secretFields: string[] | null }> {
+export async function fetchConfigurationFromMCP(client: Client): Promise<{
+  scopes: string[] | null;
+  secretFields: string[] | null;
+  secretDelivery: "fetch" | null;
+}> {
   try {
     const configResult = await withTimeout(
       client.callTool({ name: "MCP_CONFIGURATION", arguments: {} }),
@@ -181,13 +184,14 @@ export async function fetchConfigurationFromMCP(
         return {
           scopes,
           secretFields: secretFieldsFromStateSchema(config?.stateSchema),
+          secretDelivery: config?.secretDelivery === "fetch" ? "fetch" : null,
         };
       }
     }
   } catch {
     // MCP_CONFIGURATION not implemented or failed — not all MCPs support it
   }
-  return { scopes: null, secretFields: null };
+  return { scopes: null, secretFields: null, secretDelivery: null };
 }
 
 /**
@@ -251,9 +255,7 @@ async function fetchToolsFromRemoteMCP(
       relaxOutputSchema: true,
     });
 
-    const { scopes, secretFields } = await fetchConfigurationFromMCP(client);
-
-    return { tools, scopes, secretFields };
+    return { tools, ...(await fetchConfigurationFromMCP(client)) };
   } catch (error) {
     console.error(
       `Failed to fetch tools from ${options.label} connection ${connection.id}:`,
@@ -363,9 +365,7 @@ async function fetchToolsFromStdioMCP(
       relaxOutputSchema: false,
     });
 
-    const { scopes, secretFields } = await fetchConfigurationFromMCP(client);
-
-    return { tools, scopes, secretFields };
+    return { tools, ...(await fetchConfigurationFromMCP(client)) };
   } catch (error) {
     console.error(
       `Failed to fetch tools from STDIO connection ${connection.id}:`,

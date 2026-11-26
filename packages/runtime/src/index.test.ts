@@ -157,3 +157,68 @@ describe("withRuntime Studio headers", () => {
     });
   });
 });
+
+describe("withRuntime with secrets left out of the token", () => {
+  const runtime = withRuntime({
+    fetch: (_request, env) =>
+      Response.json({ state: env.STUDIO_REQUEST_CONTEXT.state }),
+  });
+  const call = (payload: Record<string, unknown>, env = {}) =>
+    runtime.fetch(
+      new Request("https://runtime.example.com/custom", {
+        headers: { "x-studio-token": tokenFor(payload) },
+      }),
+      { IS_LOCAL: false, ...env },
+    );
+  const metadata = {
+    state: { accountName: "store" },
+    stateHash: "hash",
+    stateProof: "proof",
+    connectionId: "conn_1",
+    organizationSlug: "acme",
+    studioUrl: "https://studio.example.com",
+  };
+
+  test("serves the state Studio returns for the token", async () => {
+    const realFetch = globalThis.fetch;
+    const asked: string[] = [];
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      asked.push(`${url} ${new Headers(init.headers).get("authorization")}`);
+      return Response.json({
+        state: { accountName: "store", appToken: "from-studio" },
+        proofKey: "key",
+      });
+    }) as unknown as typeof fetch;
+    try {
+      const token = { metadata, exp: Math.floor(Date.now() / 1000) + 60 };
+      const response = await call(token, {
+        STUDIO_TRUSTED_URLS: "https://studio.example.com",
+      });
+      expect((await response.json()) as unknown).toEqual({
+        state: { accountName: "store", appToken: "from-studio" },
+      });
+      expect(asked).toEqual([
+        `https://studio.example.com/api/acme/vault/connections/conn_1/configuration Bearer ${tokenFor(token)}`,
+      ]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  test("answers 401 without asking a Studio it does not trust", async () => {
+    const response = await call({
+      metadata,
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    expect(response.status).toBe(401);
+  });
+
+  test("keeps using the token's state when nothing was left out", async () => {
+    const response = await call({
+      metadata: { ...metadata, stateHash: undefined, stateProof: undefined },
+    });
+    expect((await response.json()) as unknown).toEqual({
+      state: { accountName: "store" },
+    });
+  });
+});

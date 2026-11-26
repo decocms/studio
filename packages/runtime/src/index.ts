@@ -43,6 +43,7 @@ export {
   type CredentialConfigurationReadScope,
 } from "./tools.ts";
 import type { Binding } from "./wrangler.ts";
+import { resolveSecretState, StateUnavailableError } from "./secret-state.ts";
 export {
   proxyConnectionForId,
   BindingOf,
@@ -474,14 +475,36 @@ export const withRuntime = <
         return handlePreflight(req, options);
       }
 
+      const runtimeEnv = { ...process.env, ...env };
+      const token =
+        req.headers.get("x-studio-token") ??
+        req.headers.get("x-mesh-token") ??
+        undefined;
+      let tokenOrContext: string | RequestContextInput | undefined = token;
+      if (token) {
+        try {
+          const state = await resolveSecretState(
+            token,
+            (runtimeEnv as { STUDIO_TRUSTED_URLS?: string })
+              .STUDIO_TRUSTED_URLS,
+          );
+          if (state) {
+            tokenOrContext = { token, state } as RequestContextInput;
+          }
+        } catch (error) {
+          if (!(error instanceof StateUnavailableError)) throw error;
+          const refused = new Response(error.message, { status: error.status });
+          return corsOptions === false
+            ? refused
+            : withCORS(refused, req, corsOptions ?? {});
+        }
+      }
+
       const bindings = withBindings({
         authToken: req.headers.get("authorization") ?? null,
-        env: { ...process.env, ...env },
+        env: runtimeEnv,
         server,
-        tokenOrContext:
-          req.headers.get("x-studio-token") ??
-          req.headers.get("x-mesh-token") ??
-          undefined,
+        tokenOrContext,
         url: req.url,
       });
 

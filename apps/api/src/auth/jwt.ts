@@ -11,7 +11,7 @@
  */
 
 import { type JWTPayload, jwtVerify, SignJWT } from "jose";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 import { getSettings } from "../settings";
 
 // JWT signing secret - loaded from env or generated
@@ -57,6 +57,13 @@ export interface StudioTokenPayload {
   metadata?: {
     /** Configuration state */
     state?: Record<string, unknown>;
+    /**
+     * Set when `state` leaves out the connection's secret fields: the hash of
+     * the full state the MCP reads back from the vault, and a proof of
+     * `stateHash` and `exp` under the connection's proof key.
+     */
+    stateHash?: string;
+    stateProof?: string;
     /** Studio instance URL */
     studioUrl: string;
     /** @deprecated Legacy runtime alias emitted during the compatibility window. */
@@ -93,7 +100,7 @@ export type StudioJwtPayload = JWTPayload & StudioTokenPayload;
  */
 export async function issueStudioToken(
   payload: StudioTokenPayload,
-  expiresIn: string = "5m",
+  expiresIn: string | number = "5m",
 ): Promise<string> {
   const secret = getSecret();
 
@@ -102,6 +109,26 @@ export async function issueStudioToken(
     .setIssuedAt()
     .setExpirationTime(expiresIn)
     .sign(secret);
+}
+
+/**
+ * Key an MCP gets with its configuration from the vault, to check that a
+ * later token was issued for it without asking Studio again.
+ */
+export function connectionProofKey(connectionId: string): string {
+  return createHmac("sha256", getSecret())
+    .update(`mcp-state-proof:${connectionId}`)
+    .digest("base64url");
+}
+
+export function stateProof(
+  connectionId: string,
+  stateHash: string,
+  exp: number,
+): string {
+  return createHmac("sha256", connectionProofKey(connectionId))
+    .update(`${stateHash}.${exp}`)
+    .digest("base64url");
 }
 
 /**

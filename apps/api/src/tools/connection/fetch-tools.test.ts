@@ -115,7 +115,21 @@ describe("fetchConfigurationFromMCP", () => {
 
   it("returns null for both when the call fails", async () => {
     const result = await fetchConfigurationFromMCP(fakeClient("not json"));
-    expect(result).toEqual({ scopes: null, secretFields: null });
+    expect(result).toEqual({
+      scopes: null,
+      secretFields: null,
+      secretDelivery: null,
+    });
+  });
+
+  it("reads the runtime's secret delivery, ignoring unknown values", async () => {
+    const call = (secretDelivery: unknown) =>
+      fetchConfigurationFromMCP(
+        fakeClient(JSON.stringify({ stateSchema: {}, secretDelivery })),
+      );
+    expect((await call("fetch")).secretDelivery).toBe("fetch");
+    expect((await call("other")).secretDelivery).toBeNull();
+    expect((await call(undefined)).secretDelivery).toBeNull();
   });
 });
 
