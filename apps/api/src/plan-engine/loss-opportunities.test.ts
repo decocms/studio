@@ -45,18 +45,18 @@ const capture = (
   stock,
 });
 
-// PDP de uma loja de moda (16/11): o tamanho cai abaixo da 1ª tela só no celular.
+// A PDP where the size falls below the first screen only on mobile.
 const captures = [
   capture("mobile", 844, { price: 699, size_selector: 1031, buy_button: 660 }),
   capture("desktop", 900, { price: 187, size_selector: 258, buy_button: 491 }),
 ];
 
-describe("opportunitiesFromLosses: a oportunidade é a perda com comparação", () => {
-  // Celular 10% x computador 20% em viu produto → carrinho (GA4).
+describe("opportunitiesFromLosses: the opportunity is the loss with a comparison", () => {
+  // Mobile 10% x desktop 20% in viewed product → cart (GA4).
   const ev = makeEvidence({ revenue, captures });
   const out = opportunitiesFromLosses(ev);
 
-  test("só perda com comparação entra; a absoluta vira limite com o motivo", () => {
+  test("only a loss with a comparison enters; the absolute one becomes a limit with the reason", () => {
     expect(out.opportunities.map((o) => o.metric?.control)).toEqual([
       "dispositivo",
     ]);
@@ -71,7 +71,7 @@ describe("opportunitiesFromLosses: a oportunidade é a perda com comparação", 
     );
   });
 
-  test("resumo, área e confiança vêm do código, não de um modelo", () => {
+  test("summary, area and confidence come from code, not a model", () => {
     const o = out.opportunities[0]!;
     expect(o.summary).toBe(
       "O celular fica 10 pp atrás do computador. Não há recorte de público pra descontar a mistura: parte disso pode ser tráfego.",
@@ -83,7 +83,7 @@ describe("opportunitiesFromLosses: a oportunidade é a perda com comparação", 
     expect(out.summary.headline).toContain("A maior perda medida");
   });
 
-  test("as observações são o que muda entre as telas, com o id dos fatos", () => {
+  test("observations are what changes between screens, with the fact id", () => {
     const o = out.opportunities[0]!;
     const facts = buildFacts(ev);
     expect(o.observations).toHaveLength(1);
@@ -96,10 +96,9 @@ describe("opportunitiesFromLosses: a oportunidade é a perda com comparação", 
     ).toEqual(["mobile", "desktop"]);
   });
 
-  test("o valor é por 1 pp; o teto é a perda inteira", () => {
+  test("the value is per 1 pp; the cap is the whole loss", () => {
     const o = out.opportunities[0]!;
-    // 50.000 em 7 dias → 214.286/mês; R$ 300 × 1.000 compras / 5.000
-    // carrinhos = R$ 60 por carrinho a mais.
+    // 50,000 in 7 days → 214,286/month; R$ 300 × 1,000 purchases / 5,000 carts = R$ 60 per extra cart.
     expect(o.money?.base).toBe(214_286);
     expect(o.money?.value_per_event).toBe(60);
     expect(o.money?.delta_pp).toBe(1);
@@ -108,7 +107,7 @@ describe("opportunitiesFromLosses: a oportunidade é a perda com comparação", 
   });
 });
 
-describe("mistura de público (loja de moda, GA4 de uma semana)", () => {
+describe("audience mix (GA4, one week)", () => {
   const ev: DiagnosisEvidence = makeEvidence({
     revenue,
     platform_funnel: sampleFunnel,
@@ -117,7 +116,7 @@ describe("mistura de público (loja de moda, GA4 de uma semana)", () => {
   });
   const device = findLosses(ev).find((l) => l.control === "dispositivo");
 
-  test("o gap do celular perde a parte que a mistura de canais explica", () => {
+  test("the mobile gap loses the part the channel mix explains", () => {
     if (!device) throw new Error("sem perda de dispositivo");
     const r = lossResidual(device, ev);
     expect(r.mix?.dim).toBeDefined();
@@ -126,13 +125,13 @@ describe("mistura de público (loja de moda, GA4 de uma semana)", () => {
     const o = opportunitiesFromLosses(ev).opportunities.find(
       (x) => x.metric?.control === "dispositivo",
     );
-    // 12,98 pp de gap; a mistura de canais explica 20%.
+    // 12.98 pp of gap; the channel mix explains 20%.
     expect(o?.summary).toBe(
       "O celular fica 13 pp atrás do computador. A mistura de canais explica 20% disso; sobram 10,4 pp pra página explicar.",
     );
   });
 
-  test("segmento: o resumo diz que a causa tem que pesar mais nele", () => {
+  test("segment: the summary says the cause must weigh more on it", () => {
     const out = opportunitiesFromLosses(ev);
     const seg = [...out.opportunities, ...out.reserves].find(
       (o) => o.metric?.control === "segmento",
@@ -142,7 +141,7 @@ describe("mistura de público (loja de moda, GA4 de uma semana)", () => {
     expect(seg?.observations).toEqual([]);
   });
 
-  test("duas da mesma etapa e dispositivo não vão juntas pra tela: a outra é reserva", () => {
+  test("two of the same stage and device do not go to the screen together: the other is a reserve", () => {
     const out = opportunitiesFromLosses(ev);
     const keys = out.opportunities.map((o) => `${o.device}|${o.metric?.key}`);
     expect(new Set(keys).size).toBe(keys.length);
@@ -150,10 +149,9 @@ describe("mistura de público (loja de moda, GA4 de uma semana)", () => {
   });
 });
 
-describe("perda que o tráfego explica não vira oportunidade", () => {
-  test(`resíduo abaixo de ${MIN_RESIDUAL_PP} pp vira limite`, () => {
-    // Celular e computador com a mesma taxa em cada canal; o celular só
-    // tem mais social pago, que converte pouco nas duas telas.
+describe("a loss the traffic explains does not become an opportunity", () => {
+  test(`residual below ${MIN_RESIDUAL_PP} pp becomes a limit`, () => {
+    // Same rate per channel on both devices; mobile only has more paid social, which converts little on both.
     const seg = (key: string, platform: string, n: number, cart: number) => ({
       dim: "canal" as const,
       key,
@@ -200,11 +198,11 @@ describe("perda que o tráfego explica não vira oportunidade", () => {
 });
 
 describe("contrastObservations", () => {
-  test("igual nas duas telas não é observação; print de falta não conta", () => {
+  test("equal on both screens is not an observation; a missing-state screenshot does not count", () => {
     const facts = buildFacts(
       makeEvidence({
         captures: [
-          // O 1º print do celular é de produto esgotado: fica de fora.
+          // Mobile's first screenshot is an out-of-stock product: left out.
           capture("mobile", 844, { price: 2000 }, "sold_out"),
           capture("mobile", 844, { price: 699, size_selector: 300 }),
           capture("desktop", 900, { price: 187, size_selector: 258 }),
@@ -214,7 +212,7 @@ describe("contrastObservations", () => {
     expect(contrastObservations(facts)).toEqual([]);
   });
 
-  test("clique morto do mesmo elemento muito diferente entre as telas", () => {
+  test("the same element's dead click very different between screens", () => {
     const facts = buildFacts(
       makeEvidence({
         pdp_behaviour: [],
@@ -249,10 +247,9 @@ describe("contrastObservations", () => {
   });
 });
 
-describe("diferença pequena demais não é problema de tela", () => {
-  test("o lado que perde converte mais de 90% do outro: vira limite", () => {
-    // Categoria de uma loja de moda (16/11): 49,4% x 51,3% de quem entra abre produto —
-    // fora do ruído com 136 mil visitantes, e nada a ver com a tela.
+describe("a difference too small is not a screen problem", () => {
+  test("the losing side converts more than 90% of the other: becomes a limit", () => {
+    // A category page: 49.4% x 51.3% open a product - outside the noise at 136k visitors, and unrelated to the screen.
     const ev = makeEvidence({
       revenue,
       pdp_behaviour: [],

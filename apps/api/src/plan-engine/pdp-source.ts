@@ -1,15 +1,6 @@
 /**
- * Qual PDP abrir quando os dados da rodada não deram um produto (sem GA4 ou
- * sem VTEX).
- *
- * Antes, isso era "varre a home atrás de um link com cara de PDP" — e há loja
- * cuja home não tem link que case com o padrão, então dava "não achei uma PDP
- * na home da loja". Uma PDP de verdade a gente já tem nos dados:
- *
- *   1. a PDP principal do último diagnóstico concluído DESTE domínio, da
- *      mesma org;
- *   2. a busca do catálogo VTEX;
- *   3. só então a home (pdpCandidates), pra loja que não tem nada disso.
+ * Which PDP to open when the run's data gave no product: the main PDP of this
+ * domain's last finished diagnosis, then the VTEX catalog search, then the home.
  */
 
 import type { PlanEngineStorage } from "@/storage/plan-engine";
@@ -19,7 +10,7 @@ import { isProductPageInPage } from "./page-scripts.ts";
 import type { BrowserPage, BrowserPort } from "./ports.ts";
 import { type VtexAccess, vtexCatalogSearch } from "./vtex.ts";
 
-/** URL de PDP a partir do slug da VTEX — o mesmo formato de collect.ts. */
+/** A PDP URL from a VTEX slug, in collect.ts's format. */
 function pdpUrl(domain: string, linkText: string): string {
   return `https://${domain}/${linkText}/p`;
 }
@@ -33,7 +24,7 @@ const sameHost = (url: string, domain: string) => {
   }
 };
 
-/** As candidatas dos dados, na ordem de confiança, sem repetir. */
+/** The data's candidates, most trusted first, without repeats. */
 export async function candidatePdpUrls(opts: {
   store: Pick<PlanEngineStorage, "listDiagnoses" | "getDiagnosis">;
   orgId: string;
@@ -42,7 +33,7 @@ export async function candidatePdpUrls(opts: {
   fetchImpl?: typeof fetch;
 }): Promise<string[]> {
   const out: string[] = [];
-  // Sempre no host do perfil: uma URL antiga no apex passa por um redirect que derruba o `?html=1`.
+  // Always on the profile's host: an old apex URL redirects and loses `?html=1`.
   const push = (url: string | null | undefined) => {
     if (!url || !sameHost(url, opts.domain)) return;
     const u = new URL(url);
@@ -71,15 +62,15 @@ export async function candidatePdpUrls(opts: {
         if (p.linkText) push(pdpUrl(opts.domain, String(p.linkText)));
       }
     } catch {
-      // VTEX fora: a home ainda resolve
+      // VTEX down: the home still resolves
     }
   }
   return out;
 }
 
 /**
- * A primeira candidata que abre como PDP de verdade (JSON-LD Product ou
- * og:type product); sem nenhuma, as candidatas da home. NULL = não há.
+ * The first candidate that opens as a real PDP (JSON-LD Product or og:type
+ * product); otherwise the home's candidates. Null when there is none.
  */
 export async function resolvePdpUrl(
   browser: BrowserPort,

@@ -16,12 +16,13 @@
 
 import { z } from "zod";
 import { parseJson, text } from "../opportunities.ts";
-import type {
-  FsLister,
-  Llm,
-  LlmUsage,
-  MediaStore,
-  RepoReader,
+import {
+  type FsLister,
+  type Llm,
+  type LlmUsage,
+  type MediaStore,
+  type RepoReader,
+  rethrowNoAiModel,
 } from "../ports.ts";
 import type { DevicePdpBehaviour, UxHypothesis, UxPageType } from "../types.ts";
 import { type PlanContext, VERIFY_MODEL, validateSteps } from "./plan.ts";
@@ -932,12 +933,14 @@ ${filesForPrompt(snapshot)}`;
         r.run.observed = `${r.run.observed} ${notes.join(" ")}`;
       return r;
     } catch (err) {
+      rethrowNoAiModel(err);
       // A primeira resposta já valia: a segunda volta quebrar não apaga ela.
       const r = parseRepoAnswer(first, snapshot, check, opts.ctx);
       r.run.observed = `${r.run.observed} (a segunda volta falhou: ${err instanceof Error ? err.message : err})`;
       return r;
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     return notRun(
       `falhou ao perguntar ao código: ${err instanceof Error ? err.message : err}`,
     );

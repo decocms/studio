@@ -24,13 +24,13 @@ const codes = (r: ReturnType<typeof assess>) =>
   r.checks.map((c) => `${c.code}:${c.severity}`);
 
 describe("assessReliability", () => {
-  test("amostra grande e diferença fora do ruído: alta, só o aviso da janela", () => {
+  test("large sample and difference outside the noise: high, only the window warning", () => {
     const r = assess(evidence());
     expect(r.level).toBe("alta");
     expect(codes(r)).toEqual(["amostra:ok", "ruido:ok", "janela:info"]);
   });
 
-  test("diferença dentro do ruído bloqueia", () => {
+  test("difference within the noise blocks", () => {
     const ev = evidence({
       platform_funnel: [
         {
@@ -54,9 +54,8 @@ describe("assessReliability", () => {
     expect(codes(r)).toContain("ruido:bloqueia");
   });
 
-  // 16/11 (categoria de uma loja de moda): "o celular perde" com o celular em 37,8% e o
-  // computador em 23,2% saiu "média" e valia R$ 387 mil/mês.
-  test("o dispositivo que a oportunidade diz perder está MELHOR: bloqueia", () => {
+  // A "mobile loses" claim with mobile ahead of desktop must block, not rate "medium".
+  test("the device the opportunity says loses is BETTER: blocks", () => {
     const ev = evidence({
       platform_funnel: [
         {
@@ -82,7 +81,7 @@ describe("assessReliability", () => {
     expect(sign?.text).toContain("o celular está MELHOR");
   });
 
-  test("fora da PDP, GA4 'vendo produto' x visitantes da página não é contradição", () => {
+  test("off the PDP, GA4 'viewed product' x page visitors is not a contradiction", () => {
     const ev = evidence({ page_type: "categoria" });
     const big = {
       ...ev,
@@ -104,7 +103,7 @@ describe("assessReliability", () => {
     );
   });
 
-  test("amostra mínima bloqueia; pequena pede atenção", () => {
+  test("minimum sample blocks; small asks for attention", () => {
     const funnel = (n: number) => [
       {
         platform: "web_mobile",
@@ -123,7 +122,7 @@ describe("assessReliability", () => {
     expect(codes(mid)).toContain("amostra:atencao");
   });
 
-  test("sem métrica, ou métrica que não existe nos dados: atenção", () => {
+  test("no metric, or a metric missing from the data: attention", () => {
     expect(codes(assess(evidence(), null))).toContain("metrica:atencao");
     const missing = assess(evidence({ platform_funnel: [] }), {
       key: "checkout_compra",
@@ -133,7 +132,7 @@ describe("assessReliability", () => {
     expect(missing.level).toBe("media");
   });
 
-  test("fonte citada que falhou pede atenção; a que não é citada não", () => {
+  test("a cited source that failed asks for attention; an uncited one does not", () => {
     const r = assess(
       evidence({
         gaps: [
@@ -146,7 +145,7 @@ describe("assessReliability", () => {
     expect(r.level).toBe("media");
   });
 
-  test("tracking: mais carrinho que produto visto, e GA4 x Deco Analytics de tamanhos muito diferentes", () => {
+  test("tracking: more cart than product viewed, and GA4 x Deco Analytics of very different sizes", () => {
     const ev = evidence({
       platform_funnel: [
         {
@@ -165,7 +164,7 @@ describe("assessReliability", () => {
   });
 });
 
-describe("premissa do segmento", () => {
+describe("segment premise", () => {
   const base = {
     dim: "canal" as const,
     key: "midia_paga",
@@ -175,7 +174,7 @@ describe("premissa do segmento", () => {
     comp_device: "desktop" as const,
   };
 
-  test("outra loja: mídia paga pior que o resto, e a diferença de tela é maior nela", () => {
+  test("another store: paid media worse than the rest, and the screen difference is larger there", () => {
     const out = premiseChecks({
       ...base,
       rate: 0.03,
@@ -189,7 +188,7 @@ describe("premissa do segmento", () => {
     );
   });
 
-  test("segmento que não converte menos bloqueia", () => {
+  test("a segment that does not convert less blocks", () => {
     const out = premiseChecks({
       ...base,
       rate: 0.08,
@@ -200,7 +199,7 @@ describe("premissa do segmento", () => {
     expect(out[0]!.severity).toBe("bloqueia");
   });
 
-  test("o celular perde igual fora do segmento: a diferença de tela não é dele", () => {
+  test("mobile loses just as much outside the segment: the screen difference is not the segment's", () => {
     const out = premiseChecks({
       ...base,
       rate: 0.03,

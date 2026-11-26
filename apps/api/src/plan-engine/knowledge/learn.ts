@@ -1,11 +1,8 @@
 /**
- * O que a loja aprende sozinha: cada veredito do verificador e cada decisão
- * da equipe vira uma entrada da base, e a próxima análise lê isso antes de
- * escrever hipótese. Sem isto, uma hipótese desmentida hoje voltava igual na
- * semana que vem.
- *
- * O id é determinístico (`<origem>:<hipótese>`): verificar de novo ou mudar a
- * decisão substitui a entrada, não duplica.
+ * What the store learns on its own: each verifier verdict and team decision
+ * becomes a knowledge entry that the next analysis reads. The id is
+ * deterministic (`<origin>:<hypothesis>`), so re-verifying or changing the
+ * decision replaces the entry.
  */
 
 import type { UxArea, UxHypothesis } from "../types.ts";
@@ -26,7 +23,7 @@ const AREA_CATEGORY: Partial<Record<UxArea, KnowledgeCategory>> = {
 const categoryForArea = (area: UxArea): KnowledgeCategory =>
   AREA_CATEGORY[area] ?? "ux";
 
-/** A parte da página que cada alvo da árvore mira. */
+/** The page part each tree target aims at. */
 const PART_AREA: Record<string, UxArea> = {
   price: "titulo_preco",
   size_selector: "tamanho",
@@ -46,20 +43,14 @@ const PART_AREA: Record<string, UxArea> = {
   results_count: "resultados_busca",
 };
 
-/** O 1º card é da lista na categoria e dos resultados na busca. */
+/** The 1st card is the list on category and the results on search. */
 const FIRST_CARD_AREA: Partial<Record<UxArea, UxArea>> = {
   resultados_busca: "resultados_busca",
   campo_busca: "resultados_busca",
   busca_sem_resultado: "resultados_busca",
 };
 
-/**
- * Em que partes da página o aprendizado vale: a que a hipótese mira, e a da
- * oportunidade. Em 15/11 (numa loja) "não é o caso: o botão de compra fica
- * abaixo da dobra" foi gravado só como "navegacao" (a área da oportunidade de
- * mídia paga) e nunca apareceria quando a análise olhasse o botão de compra.
- * Seção (pop-up, vitrine) vale pra PDP inteira. Exportado pra teste.
- */
+/** Page parts where a learning applies: the hypothesis's target and the opportunity's. Exported for tests. */
 export function areasFor(
   h: Pick<UxHypothesis, "tree">,
   opportunityArea: UxArea,
@@ -85,16 +76,13 @@ export const learnedId = (
 
 const day = (iso: string) => iso.slice(0, 10);
 
-/**
- * Veredito do verificador → entrada. Inconclusiva não ensina nada (null).
- * "Confirmada" é dita como condição, nunca como causa.
- */
+/** Verifier verdict → entry. Inconclusive teaches nothing (null); "confirmed" is stated as a condition, never a cause. */
 export function fromVerification(input: {
   hypothesis: UxHypothesis;
   area: UxArea;
   verification: HypothesisVerification;
   pageUrl: string | null;
-  /** A assinatura da página no dia (validity.ts). NULL = não depende dela. */
+  /** The page signature that day (validity.ts). NULL = not page-dependent. */
   signature?: string | null;
 }): KnowledgeDraft | null {
   const { hypothesis: h, verification: v } = input;
@@ -130,7 +118,7 @@ export function fromVerification(input: {
   };
 }
 
-/** Aprovar ou descartar (com o motivo) → entrada. Voltar pra pendente → null. */
+/** Approve or discard (with the reason) → entry. Back to pending → null. */
 export function fromDecision(input: {
   hypothesis: UxHypothesis;
   area: UxArea;

@@ -5,7 +5,7 @@ import { controlNote, findLosses } from "./losses.ts";
 import { metricMeasuresPage } from "./metrics.ts";
 
 describe("findLosses", () => {
-  test("categoria de uma loja de moda: só o funil da própria rota, nunca a vitrine do site inteiro", () => {
+  test("a fashion store category: only the route's own funnel, never the whole site's showcase", () => {
     const losses = findLosses(categoriaPromo);
     expect(losses.length).toBeGreaterThan(0);
     for (const l of losses) {
@@ -18,7 +18,7 @@ describe("findLosses", () => {
     );
   });
 
-  test("toda perda de dispositivo tem o dispositivo dela pior, fora do ruído", () => {
+  test("every device loss has its worse device, outside the noise", () => {
     for (const ev of [
       categoriaPromo,
       { ...categoriaPromo, page_type: "pdp" as const, page_route: null },
@@ -33,7 +33,7 @@ describe("findLosses", () => {
     }
   });
 
-  test("celular melhor que o computador: a perda de dispositivo é do computador", () => {
+  test("mobile better than desktop: the device loss is desktop's", () => {
     const ev = evidence({
       platform_funnel: [
         {
@@ -58,7 +58,7 @@ describe("findLosses", () => {
     ]);
   });
 
-  test("diferença no ruído não é perda de dispositivo", () => {
+  test("a difference within the noise is not a device loss", () => {
     const ev = evidence({
       platform_funnel: [
         {
@@ -80,7 +80,7 @@ describe("findLosses", () => {
     expect(findLosses(ev).some((l) => l.control === "dispositivo")).toBe(false);
   });
 
-  test("segmento só com distância de verdade, e nunca 'outros' ou 'sem dado'", () => {
+  test("a segment only with real distance, and never 'others' or 'no data'", () => {
     const losses = findLosses(
       evidence({ platform_funnel: sampleFunnel, segments: sampleSegments }),
     );
@@ -93,7 +93,7 @@ describe("findLosses", () => {
         (l.premise?.rest_rate ?? 0) * 0.85,
       );
     }
-    // Social pago no celular: 5,1% x o resto — a perda que a loja conhece.
+    // Paid social on mobile: 5.1% x the rest.
     expect(
       seg.some(
         (l) => l.segment?.key === "social_pago" && l.device === "mobile",
@@ -101,7 +101,7 @@ describe("findLosses", () => {
     ).toBe(true);
   });
 
-  test("amostra pequena não vira perda; sem funil da página, nenhuma perda", () => {
+  test("a small sample is not a loss; without a page funnel, no loss", () => {
     const tiny = evidence({
       page_type: "busca",
       pdp_behaviour: [
@@ -114,7 +114,7 @@ describe("findLosses", () => {
     expect(findLosses(tiny)).toEqual([]);
   });
 
-  test("ids estáveis e a frase de cada tipo de perda", () => {
+  test("stable ids and the sentence for each loss type", () => {
     const losses = findLosses(categoriaPromo);
     expect(losses.map((l) => l.id)).toEqual(losses.map((_, i) => `L${i + 1}`));
     expect(controlNote("absoluta")).toContain("NÃO derruba");

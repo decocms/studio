@@ -37,7 +37,7 @@ const base = {
 };
 
 describe("parseTree", () => {
-  test("monta o Se/então/porque em código e confere alvo, efeito e rótulos", () => {
+  test("builds the If/then/because in code and checks target, effect and labels", () => {
     const t = parseTree(base, targets, 1);
     if (typeof t === "string") throw new Error(t);
     expect(t.statement).toBe(
@@ -50,13 +50,13 @@ describe("parseTree", () => {
     });
     expect(t.metrica.efeito_esperado_pp).toBe(5);
     expect(t.posicao_depois).toBe("primeira_tela");
-    // "fato" sem número vira inferência; experimento nunca vem do modelo.
+    // A "fact" without a number becomes an inference; an experiment never comes from the model
     expect(t.contra.map((c) => c.label)).toEqual(["inferencia", "inferencia"]);
     expect(t.a_favor[0]!.label).toBe("fato_observado");
     expect(t.testavel_na_pagina).toBe(true);
   });
 
-  test("alvo que não existe nesta análise vira null; elemento do heatmap vale", () => {
+  test("a target that does not exist in this analysis becomes null; a heatmap element is valid", () => {
     const bad = parseTree(
       { ...base, alvo: { kind: "part", key: "galeria" } },
       targets,
@@ -71,7 +71,7 @@ describe("parseTree", () => {
     expect(typeof el !== "string" && el.alvo?.label).toBe('button "comprar"');
   });
 
-  test("tráfego pode não ter intervenção (explicação de fora da página); UX não", () => {
+  test("traffic may have no intervention (explanation outside the page); UX may not", () => {
     const traffic = parseTree(
       { ...base, categoria: "trafego", intervencao: null },
       targets,
@@ -89,7 +89,7 @@ describe("parseTree", () => {
     );
   });
 
-  test("categoria desconhecida vira ux; relação consigo mesma cai", () => {
+  test("unknown category becomes ux; a self relation is dropped", () => {
     const t = parseTree(
       {
         ...base,
@@ -109,14 +109,14 @@ describe("parseTree", () => {
 });
 
 describe("clampLabel", () => {
-  test("rótulo inválido vira inferência", () => {
+  test("invalid label becomes inference", () => {
     expect(clampLabel("palpite", "x")).toBe("inferencia");
     expect(clampLabel("evidencia_indireta", "x")).toBe("evidencia_indireta");
   });
 });
 
 describe("parseDiscarded", () => {
-  test("uma linha por categoria válida", () => {
+  test("one line per valid category", () => {
     expect(
       parseDiscarded([
         { categoria: "performance", por_que: "LCP ok" },
@@ -127,8 +127,8 @@ describe("parseDiscarded", () => {
   });
 });
 
-describe("parseDiscarded tolerante", () => {
-  test("texto 'categoria: motivo', com acento e maiúscula", () => {
+describe("lenient parseDiscarded", () => {
+  test("'category: reason' text, with accent and uppercase", () => {
     expect(
       parseDiscarded([
         "Tráfego: o gap aparece em 5 de 7 canais",

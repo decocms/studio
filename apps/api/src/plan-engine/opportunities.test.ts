@@ -65,7 +65,7 @@ describe("parseOpportunityHypotheses", () => {
     updated_at: "",
   };
 
-  test("conhecimento citado vai pra evidência; rótulo fora do bloco cai", () => {
+  test("cited knowledge goes into the evidence; a label outside the block drops", () => {
     const block = selectKnowledge({
       entries: CURATED_KNOWLEDGE,
       areas: ["botao_compra"],
@@ -101,14 +101,14 @@ describe("parseOpportunityHypotheses", () => {
     expect(h.evidence_md).toContain(
       `**Por que explicaria (o que já se sabe):**\n- ${cited?.conhecimento}`,
     );
-    // O trecho literal da fonte vem junto, pra conferir a citação.
+    // The source's literal excerpt comes along so the citation can be checked.
     if (cited?.trecho) {
       expect(h.evidence_md).toContain(`> "${cited.trecho}"`);
     }
     expect(h.evidence_md.match(/o que já se sabe/gi)).toHaveLength(1);
   });
 
-  test("só loja capturada entra no benchmark (www ou não); o resto é de memória e cai", () => {
+  test("only captured stores enter the benchmark (www or not); the rest is from memory and drops", () => {
     const raw = JSON.stringify({
       opportunities: [
         {
@@ -123,7 +123,10 @@ describe("parseOpportunityHypotheses", () => {
               a_favor: [{ texto: "sinal", fatos: ["F3"], tipo: "inferencia" }],
               benchmark: [
                 { domain: "www.rival.example", what_they_do: "barra fixa" },
-                { domain: "reformation.com", what_they_do: "barra fixa" },
+                {
+                  domain: "concorrente-exemplo.com.br",
+                  what_they_do: "barra fixa",
+                },
               ],
             },
           ],
@@ -148,7 +151,7 @@ describe("parseOpportunityHypotheses", () => {
     expect(h.device).toBe("mobile");
   });
 
-  test("no máximo 3 hipóteses, e sem intervenção (fora de tráfego/comercial) não entra", () => {
+  test("at most 3 hypotheses, and one without an intervention (outside traffic/commercial) is left out", () => {
     const hyp = (title: string) => ({
       title,
       idea: "faz",
@@ -185,8 +188,7 @@ describe("parseOpportunityHypotheses", () => {
     ]);
   });
 
-  // 16/11: oportunidade do card, hipótese do filtro, etapas diferentes.
-  describe("a hipótese é causa da perda da oportunidade", () => {
+  describe("the hypothesis is a cause of the opportunity's loss", () => {
     const hyp = (title: string, extra: Record<string, unknown> = {}) => ({
       title,
       idea: "faz",
@@ -214,7 +216,7 @@ describe("parseOpportunityHypotheses", () => {
         evidence,
       );
 
-    test("de outra etapa cai; a mesma etapa com outro nome fica; sem etapa, herda a da oportunidade", () => {
+    test("another step drops; the same step under another name stays; no step inherits the opportunity's", () => {
       const out = run(withMetric("absoluta"), [
         hyp("mexe no carrinho", { metrica: { key: "produto_carrinho" } }),
         hyp("clique na vitrine", { metrica: { key: "lista_produto" } }),
@@ -234,8 +236,8 @@ describe("parseOpportunityHypotheses", () => {
       );
     });
 
-    test("perda de dispositivo: causa igual nas duas telas cai; com o que muda entre elas, fica", () => {
-      // fixtures/evidence.ts: F3 = carrinho no celular (10%), F8 = no computador (20%).
+    test("device loss: a cause equal on both devices drops; one with what differs between them stays", () => {
+      // fixtures/evidence.ts: F3 = mobile add-to-cart (10%), F8 = desktop (20%).
       const out = parseOpportunityHypotheses(
         JSON.stringify({
           opportunities: [
@@ -264,8 +266,7 @@ describe("parseOpportunityHypotheses", () => {
       expect(out.dropped.join(" ")).toContain("vale igual nas duas telas");
     });
 
-    // Até 19/11 bastava a frase existir: qualquer racionalização passava.
-    test("perda de dispositivo: a diferença tem que estar nos fatos, dos dois lados", () => {
+    test("device loss: the difference must be in the facts, on both sides", () => {
       const why = "no celular 10% põem no carrinho; no computador, 20%";
       const out = parseOpportunityHypotheses(
         JSON.stringify({
@@ -306,7 +307,7 @@ describe("parseOpportunityHypotheses", () => {
       expect(dropped).toContain("439px");
     });
 
-    test("perda absoluta: causa que vale pras duas telas é causa", () => {
+    test("absolute loss: a cause that holds on both devices is a cause", () => {
       const out = run(withMetric("absoluta"), [
         hyp("o card não mostra desconto"),
       ]);
@@ -316,8 +317,7 @@ describe("parseOpportunityHypotheses", () => {
     });
   });
 
-  // 12/11: uma hipótese passava só por citar o clique morto da página inteira.
-  test("sem previsão cai; contradita cai; sem dado fica com confiança baixa", () => {
+  test("no prediction drops; contradicted drops; no data stays with low confidence", () => {
     const raw = JSON.stringify({
       opportunities: [
         {
@@ -367,14 +367,14 @@ describe("parseOpportunityHypotheses", () => {
     expect(fallenReason(out, "d:o1")).toBeNull();
   });
 
-  test("zero hipóteses é resposta válida", () => {
+  test("zero hypotheses is a valid answer", () => {
     const raw = JSON.stringify({
       opportunities: [{ rank: 1, hypotheses: [] }],
     });
     const out = parseOpportunityHypotheses(raw, [opportunity], evidence);
     expect(out.byOpportunity.get("d:o1")).toEqual([]);
     expect(out.dropped).toEqual([]);
-    // Válida, mas a oportunidade não vai pra tela sem hipótese.
+    // Valid, but the opportunity does not reach the screen without a hypothesis.
     expect(fallenReason(out, "d:o1")).toBe(
       "nenhuma hipótese que estes dados sustentem",
     );
@@ -408,7 +408,7 @@ describe("applyChallenge", () => {
     { id: "o1-h2", opportunityId: "d:o1", index: 1 },
   ];
 
-  test("as categorias descartadas passam pela revisão; ligações seguem o rank novo", () => {
+  test("discarded categories survive the review; relations follow the new rank", () => {
     const withTree = (title: string, rank: number, rel: number) => ({
       ...draft(title, rank),
       tree: {
@@ -440,7 +440,7 @@ describe("applyChallenge", () => {
     ]);
     const [b, c] = out.byOpportunity.get("d:o1") ?? [];
     if (!b || !c) throw new Error("expected two hypotheses");
-    // b (era H2) → H1, liga a c (era H3, agora H2); c ligava a b (H2 → H1).
+    // b (was H2) → H1, links to c (was H3, now H2); c linked to b (H2 → H1).
     expect([b.rank, b.tree?.relacoes]).toEqual([
       1,
       [{ rank: 2, tipo: "concorrente" }],
@@ -451,7 +451,7 @@ describe("applyChallenge", () => {
     ]);
   });
 
-  test("derrubada sai e vira limite; fraca fica com confiança baixa e o motivo", () => {
+  test("knocked down leaves and becomes a limitation; weak stays with low confidence and the reason", () => {
     const raw = JSON.stringify({
       reviews: [
         {
@@ -477,8 +477,7 @@ describe("applyChallenge", () => {
     expect(fallenReason(out, "d:o1")).toBeNull();
   });
 
-  // 13/11: a 1ª oportunidade ficou com a única hipótese derrubada pelos próprios números.
-  test("todas derrubadas: a oportunidade cai, com o motivo da revisão", () => {
+  test("all knocked down: the opportunity falls, with the review's reason", () => {
     const raw = JSON.stringify({
       reviews: [
         {
@@ -503,16 +502,16 @@ describe("applyChallenge", () => {
     );
   });
 
-  test("resposta ilegível não derruba nada: vira limite", () => {
+  test("an unreadable answer knocks nothing down: it becomes a limitation", () => {
     const out = applyChallenge("nada de json", targets, result);
     expect(out.byOpportunity.get("d:o1")?.length).toBe(2);
     expect(out.dropped[0]).toContain("revisão contraditória");
   });
 });
 
-describe("regras de leitura que derrubaram uma busca (16/11)", () => {
+describe("reading rules that knocked down a search hypothesis", () => {
   for (const pageType of ["pdp", "home", "busca"] as const) {
-    test(`${pageType}: clique morto em quem troca de página e viés de seleção`, () => {
+    test(`${pageType}: dead clicks on page-changing elements and selection bias`, () => {
       const hyp = hypothesesSystem(pageType);
       expect(hyp).toContain("quem usa Y escolheu usar");
       expect(hyp).toContain("página nova demorando");

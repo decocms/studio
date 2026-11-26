@@ -1,11 +1,8 @@
 /**
- * O projeto do site no Studio — de onde o diagnóstico tira domínio, slug do
- * Deco Analytics e repositório sem perguntar nada a ninguém.
- *
- * No Studio, cada site é um Virtual MCP com `metadata.siteSlug`. O
- * `siteSlug` é o `<site>` da rota do heatmap; o `productionUrl` é o domínio
- * público; o `repository` é o repo que a via de repositórios do Studio lê
- * (`url` traz o host; `repositoryId`, quando há, é o id dele no Studio).
+ * The site's project in Studio: where the diagnosis gets the domain, the Deco
+ * Analytics slug and the repository without asking anyone. Each site is a
+ * Virtual MCP with `metadata.siteSlug` (the heatmap route's `<site>`);
+ * `productionUrl` is the public domain; `repository` is the repo Studio reads.
  */
 
 import { normalizeDomain } from "./benchmark.ts";
@@ -15,7 +12,7 @@ export interface StudioProject {
   id: string;
   title: string;
   site_slug: string;
-  /** Domínio público, sem protocolo. NULL quando o projeto não tem produção. */
+  /** Public domain, without protocol. NULL when the project has no production. */
   domain: string | null;
   repository: {
     owner: string;
@@ -25,7 +22,7 @@ export interface StudioProject {
     host?: string;
     repository_id?: string;
   } | null;
-  /** `deno` (fresh), `bun` (tanstack)… */
+  /** `deno` (fresh), `bun` (tanstack)... */
   runtime: string | null;
 }
 
@@ -83,11 +80,7 @@ export function toStudioProject(item: VirtualMcpItem): StudioProject | null {
   };
 }
 
-/**
- * Qual dos projetos é a loja. Uma org pode ter mais de um site (o de
- * produção e uma migração em andamento): vence o que bate com o domínio já
- * conhecido; senão o que está em produção; no empate, o do mesmo slug da org.
- */
+/** Which project is the store: the one matching the known domain, else the one in production, then the one with the org's slug. */
 export function pickStudioProject(
   items: readonly VirtualMcpItem[],
   opts: { orgSlug: string; domain?: string | null },
@@ -107,10 +100,9 @@ export function pickStudioProject(
 }
 
 /**
- * Se o projeto escolhido É a loja do perfil. Só o domínio de produção prova
- * isso: um projeto sem `productionUrl` pode ser qualquer Virtual MCP com
- * `siteSlug` (um servidor MCP da própria loja, por exemplo), e adotar o
- * slug dele manda o Analytics ler o site errado sem nenhum aviso.
+ * Whether the chosen project IS the profile's store. Only the production domain
+ * proves it: adopting the slug of an unrelated Virtual MCP makes Analytics read
+ * the wrong site silently.
  */
 export function projectConfirmsStore(
   project: Pick<StudioProject, "domain">,
@@ -120,12 +112,7 @@ export function projectConfirmsStore(
   return project.domain !== null && bare(project.domain) === bare(domain);
 }
 
-/**
- * O slug do Deco Analytics da loja quando nenhum projeto declara o domínio:
- * tenta o projeto do domínio, depois o de mesmo slug da org, depois os demais,
- * e fica com o primeiro que o Analytics já conhece. Um probe que falha vale
- * como não registrado.
- */
+/** The store's Deco Analytics slug when no project declares the domain: tries candidate projects and keeps the first Analytics knows; a failed probe counts as unregistered. */
 export async function findAnalyticsSite(
   projects: readonly StudioProject[],
   isRegistered: (slug: string) => Promise<boolean>,

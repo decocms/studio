@@ -1,16 +1,7 @@
 /**
- * A volta da verificação pro investigador (o laço do ARTEMIS: o que a triagem
- * reprova volta pro supervisor COM o motivo). Até 19/11, quando todas as
- * hipóteses de uma oportunidade caíam na verificação, a oportunidade saía e a
- * reserva (outra perda) tentava o lugar. A perda continuava ali, sem causa, e
- * o que a verificação viu (o botão abre uma gaveta; não existe seta no
- * celular) se perdia.
- *
- * Agora, antes de trocar de oportunidade, uma rodada nova pra MESMA perda:
- * - o que a verificação viu vira fato (`verificacao`), citável como qualquer
- *   outro — a próxima hipótese pode apoiar ou se desviar dele;
- * - as causas já tentadas entram como "já tentado e caiu", com o motivo, pra
- *   não voltarem reescritas.
+ * Feeds verification back to the investigator: what verification saw becomes a
+ * citable fact (`verificacao`), and causes already tried enter as "tried and
+ * fell" with the reason, so a new round for the SAME loss does not repeat them.
  */
 
 import type { UxFact } from "./facts.ts";
@@ -19,7 +10,7 @@ import type { UxHypothesis } from "./types.ts";
 const GROUP =
   "Verificações desta análise: o que se testou na página e no código das causas que caíram";
 
-/** As desmentidas de uma oportunidade → fatos pra próxima rodada. */
+/** An opportunity's refuted hypotheses → facts for the next round. */
 export function verdictFacts(
   hypotheses: UxHypothesis[],
 ): Array<Omit<UxFact, "id">> {
@@ -32,7 +23,7 @@ export function verdictFacts(
       kind: "verificacao",
       source: "pagina",
       device: h.device === "mobile" || h.device === "desktop" ? h.device : null,
-      // O juiz é um modelo lendo os testes: é leitura, não medida.
+      // The judge is a model reading the tests: a reading, not a measurement.
       measured: false,
       group: GROUP,
       text: `a verificação desmentiu "${h.title}": ${v.summary}${lines.length > 0 ? ` (linhas abertas: ${lines.join("; ")})` : ""}`,
@@ -41,11 +32,7 @@ export function verdictFacts(
   return out;
 }
 
-/**
- * O que já se tentou pra esta oportunidade, uma linha por causa, com o motivo
- * de ter caído. `extra` são motivos de queda que não ficaram gravados numa
- * hipótese (a triagem e a revisão derrubam antes de gravar).
- */
+/** What was already tried for this opportunity, one line per cause with why it fell. `extra` holds fall reasons not stored on a hypothesis. */
 export function triedLines(
   hypotheses: UxHypothesis[],
   extra: string[] = [],

@@ -1,18 +1,15 @@
 /**
- * O que o verificador NÃO pode fazer na loja no ar: mandar evento de rastreio
- * (um teste nosso viraria clique de cliente no heatmap e no GA4) e clicar em
- * algo que mexe na loja (sacola, checkout, login, formulário).
- *
- * Decisões puras, pra testar fora do navegador; os fatos do elemento vêm de
- * `elementFactsInPage` (page-scripts.ts).
+ * What the verifier must not do on the live store: send tracking events or
+ * click something that changes the store. Pure decisions, testable outside the
+ * browser; element facts come from `elementFactsInPage` (page-scripts.ts).
  */
 
 /**
- * A requisição é de rastreio? Bloqueada durante a verificação. Serializada
- * pro navegador como os page scripts: não usa nada de fora do corpo.
+ * Is the request a tracking one? Blocked during verification. Serialized for
+ * the browser like the page scripts, so it uses nothing outside its body.
  */
 export function isTrackingRequest(url: string): boolean {
-  // Host (ou sufixo de subdomínio) → caminho que precisa casar; "" = qualquer.
+  // Host (or subdomain suffix) -> path that must match; "" = any.
   const TRACKING: ReadonlyArray<{ host: string; path: string }> = [
     { host: "analytics.decocdn.com", path: "" },
     { host: "google-analytics.com", path: "" },
@@ -36,80 +33,70 @@ export function isTrackingRequest(url: string): boolean {
   );
 }
 
-/** Os targets que navegam na própria aba (numa página que não é iframe). */
+/** Targets that navigate in the tab itself (on a non-iframe page). */
 const SAME_TAB = new Set(["", "_self", "_top", "_parent"]);
 
 /**
- * O link abre outra aba? `_blank` e também qualquer nome de janela
- * (`target="produto"`): a aba nova nasce sem o bloqueio de rastreio, que é
- * por página.
+ * Does the link open another tab? Any window name counts, not just `_blank`:
+ * a new tab is born without the per-page tracking block.
  */
 export function opensNewTab(target: string | null): boolean {
   return !SAME_TAB.has((target ?? "").trim().toLowerCase());
 }
 
-/** Espelho do retorno de `elementFactsInPage`. */
+/** Mirror of `elementFactsInPage`'s return. */
 export interface ElementFacts {
   found: boolean;
   tag: string;
-  /** Texto INTEIRO do clicável que o contém (ou do próprio); corte só na exibição. */
+  /** FULL text of the containing clickable (or its own); cut only when displaying. */
   text: string;
-  /**
-   * Rótulo do próprio alvo, sem sub-árvore escondida (tooltip): só pra
-   * exibir. A trava de clique lê `text` (revisão, 14/11).
-   */
+  /** The target's own label, for display only; the click lock reads `text`. */
   label?: string;
   role: string | null;
   type: string | null;
   inLink: boolean;
   inButton: boolean;
   href: string | null;
-  /**
-   * `target` efetivo do link: o do próprio `<a>` ou, sem ele, o do
-   * `<base target>` do documento (ver `opensNewTab`).
-   */
+  /** The link's effective `target`: its own or the document's `<base target>`. */
   linkTarget: string | null;
   cursor: string;
   color: string;
   parentColor: string;
   textDecoration: string;
-  /** Heurística: `onclick` presente ou cursor pointer fora de link/botão. */
+  /** Heuristic: `onclick` present or pointer cursor outside a link/button. */
   hasClickHandler: boolean;
   inForm: boolean;
   inputType: string | null;
-  /** Coordenadas do documento (px CSS), não da tela. */
+  /** Document coordinates (CSS px), not the screen's. */
   rect: { x: number; y: number; width: number; height: number } | null;
   /**
-   * O alvo é um invólucro de tamanho zero (largura ou altura < 2) e `rect`,
-   * cor e cursor são do maior filho visível dele. Um pop-up de newsletter
-   * pode medir 390×0 aberto: quem aparece é o filho `position: fixed`.
-   * O texto, o link e a trava de clique continuam sendo do alvo.
+   * Set when the target is a zero-size wrapper: `rect`, color and cursor come
+   * from its largest visible child; text, link and click lock stay the target's.
    */
   wrapper?: { width: number; height: number; child: string } | null;
 }
 
 const BUY =
   /(adicionar|comprar|sacola|carrinho|add to (bag|cart)|buy now|añadir)/i;
-// "Formas de pagamento" abre modal de parcelamento na PDP: só "ir pro pagamento".
+// "Payment methods" opens an installments modal on the PDP: only "go to payment".
 const CHECKOUT =
   /(finalizar (a )?compra|checkout|fechar pedido|ir (para o|pro) pagamento)/i;
 const LOGIN =
   /(\bentrar\b|\blogin\b|\blog in\b|\bsign in\b|minha conta|cadastr|\blogout\b|\bsair\b)/i;
 const CEP = /(\bcep\b|postal|\bzip\b|frete|shipping)/i;
-// Newsletter costuma ser `type=text` com name/placeholder de e-mail.
+// A newsletter field is usually `type=text` with an e-mail name/placeholder.
 const EMAIL = /e-?mail/i;
 const SECRET_INPUTS = new Set(["email", "password"]);
 const RISKY_HREF =
   /\/(checkout|cart|carrinho|login|account|minha-conta|conta|logout|sair)(\/|$|\?|#)/i;
 
 /**
- * Por que clicar aqui mexeria na loja; null = pode clicar. Conservador de
- * propósito: um falso "não pode" custa um teste `nao_testou`, um falso "pode"
- * põe produto na sacola de uma sessão de verdade ou dispara um formulário.
+ * Why clicking here would change the store; null = safe to click. Conservative:
+ * a false "can't" costs one untested check, a false "can" hits a real session.
  */
 export function forbiddenReason(f: ElementFacts): string | null {
   const text = f.text ?? "";
-  // `<input type=image>` também envia o formulário.
+  // `<input type=image>` also submits the form.
   const type = f.type?.toLowerCase() ?? "";
   if (type === "submit" || type === "image")
     return "botão de envio de formulário";
@@ -127,25 +114,22 @@ export function forbiddenReason(f: ElementFacts): string | null {
       const u = new URL(f.href, "https://x.invalid");
       path = u.pathname + u.search + u.hash;
     } catch {
-      /* href relativo esquisito: testa a string crua */
+      /* odd relative href: test the raw string */
     }
     if (RISKY_HREF.test(path)) return "link pra sacola, checkout ou conta";
   }
   return null;
 }
 
-/**
- * Estado da página em volta de um alvo, antes e depois de um clique
- * (`clickSnapshotInPage`). `describeClickChange` (live.ts) compara os dois.
- */
+/** Page state around a target before and after a click (`clickSnapshotInPage`). */
 export interface ClickSnapshot {
   url: string;
-  /** Tag do elemento com foco (`document.activeElement`). */
+  /** Tag of the focused element (`document.activeElement`). */
   activeTag: string | null;
-  /** Texto selecionado na página, até 200 chars. */
+  /** Text selected on the page, up to 200 chars. */
   selection: string;
-  /** Hash do outerHTML do pai do alvo: muda se o clique abriu/trocou algo ali. */
+  /** Hash of the target parent's outerHTML: changes if the click opened/swapped something there. */
   nearHtmlHash: string;
-  /** Diálogos/modais visíveis. */
+  /** Visible dialogs/modals. */
   openDialogs: number;
 }

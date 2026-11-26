@@ -112,8 +112,8 @@ function liveHost(
 
 const noWait = { sleep: async () => {} };
 
-describe("sandboxBrowser: o protocolo com o host", () => {
-  test("abre a página com o dispositivo e o bloqueio serializado", async () => {
+describe("sandboxBrowser: the protocol with the host", () => {
+  test("opens the page with the device and the serialized block", async () => {
     const h = liveHost();
     const d = fakeDaemon(h.host);
     const browser = sandboxBrowser(d.daemon, noWait);
@@ -132,7 +132,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     expect(String(device?.userAgent)).toContain("iPhone");
   });
 
-  test("sem host no ar: instala, sobe em segundo plano e espera ficar pronto", async () => {
+  test("with no host up, installs, starts it in the background and waits until ready", async () => {
     let started = false;
     let pings = 0;
     const d = fakeDaemon((req) => {
@@ -163,7 +163,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     expect(pings).toBe(2);
   });
 
-  test("o Chromium não abriu: o motivo do host vira a falha da sessão", async () => {
+  test("when Chromium fails to open, the host's reason becomes the session failure", async () => {
     const h = liveHost({}, { ready: false, error: "o Chromium não abriu: x" });
     const browser = sandboxBrowser(fakeDaemon(h.host).daemon, noWait);
     await expect(browser.newPage("mobile")).rejects.toThrow(
@@ -171,7 +171,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     );
   });
 
-  test("o host caiu no meio: sobe outro e repete o pedido uma vez", async () => {
+  test("when the host dies midway, starts another and retries the request once", async () => {
     let down = false;
     let restarts = 0;
     const d = fakeDaemon((req) => {
@@ -212,7 +212,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     expect(restarts).toBe(1);
   });
 
-  test("o host morreu respondendo: falha da sessão, sem repetir", async () => {
+  test("a host that dies while answering is a session failure, not retried", async () => {
     let gotos = 0;
     const h = liveHost();
     const d = fakeDaemon((req) => {
@@ -229,7 +229,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     expect(gotos).toBe(1);
   });
 
-  test("o script vai uma vez por host; um host novo pede de novo", async () => {
+  test("sends the script once per host; a new host asks again", async () => {
     const scripts = new Set<string>();
     const h = liveHost({
       evaluate: (req) => {
@@ -259,7 +259,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     ).toEqual(["string", "undefined", "string"]);
   });
 
-  test("erro da página mantém a mensagem do navegador", async () => {
+  test("a page error keeps the browser's message", async () => {
     const h = liveHost();
     const d = fakeDaemon((req) =>
       req.op === "evaluate"
@@ -276,7 +276,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     expect(String(err)).toContain("Execution context was destroyed");
   });
 
-  test("página que o host não tem mais: falha da sessão", async () => {
+  test("a page the host no longer has is a session failure", async () => {
     const h = liveHost();
     const d = fakeDaemon((req) =>
       req.op === "mouseMove"
@@ -289,7 +289,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     );
   });
 
-  test("print grande volta por arquivo, que é apagado depois", async () => {
+  test("a large screenshot comes back through a file that is then deleted", async () => {
     const jpeg = Buffer.alloc(300_000, 7);
     const h = liveHost({
       screenshot: () => ({ base64: jpeg.toString("base64"), ...page }),
@@ -314,7 +314,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     });
   });
 
-  test("pedido maior que um comando vai em pedaços", async () => {
+  test("a request larger than one command goes in chunks", async () => {
     const big = "x".repeat(150_000);
     const h = liveHost({
       evaluate: (req) => ({
@@ -332,7 +332,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     for (const c of d.commands) expect(c.length).toBeLessThan(70_000);
   });
 
-  test("resposta fora do formato: falha da sessão, não um valor inventado", async () => {
+  test("a malformed answer is a session failure, not a made-up value", async () => {
     const h = liveHost({
       goto: () => ({ status: "200", error: null, ...page }),
     });
@@ -344,7 +344,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     ).rejects.toBeInstanceOf(BrowserSessionError);
   });
 
-  test("o clique devolve a navegação pedida; cada resposta atualiza URL e bloqueios", async () => {
+  test("a click returns the requested navigation; every answer refreshes URL and blocks", async () => {
     const h = liveHost({
       click: () => ({
         navigation: "https://loja-exemplo.com.br/outra/p",
@@ -366,7 +366,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     expect(h.seen.filter((r) => r.op === "close")).toHaveLength(1);
   });
 
-  test("fetch que não alcançou o host: TypeError, como o fetch", async () => {
+  test("a fetch that never reached the host throws TypeError, like fetch", async () => {
     const h = liveHost();
     const d = fakeDaemon((req) =>
       req.op === "fetch"
@@ -382,7 +382,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     ).rejects.toBeInstanceOf(TypeError);
   });
 
-  test("host velho e sem página é trocado antes de abrir outra", async () => {
+  test("replaces an old host with no page before opening another", async () => {
     let instance = 0;
     const d = fakeDaemon((req) => {
       if (req.op === "ping") {
@@ -422,7 +422,7 @@ describe("sandboxBrowser: o protocolo com o host", () => {
     expect(d.backgrounds).toHaveLength(1);
   });
 
-  test("o daemon recusou: falha da sessão com o status", async () => {
+  test("a daemon refusal is a session failure with the status", async () => {
     const daemon: DaemonCall = async () =>
       new Response("unauthorized", { status: 401 });
     await expect(

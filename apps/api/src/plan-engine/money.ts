@@ -1,24 +1,17 @@
 /**
- * A conta do dinheiro de cada hipótese.
- *
- * Regra dos relatórios, que vale aqui também: a promessa é um delta PEQUENO e
- * nomeado sobre uma base nomeada, e o gap inteiro só aparece como teto. O
- * modelo propõe os termos; a multiplicação é nossa — LLM erra aritmética com
- * confiança, e um R$ errado na tela é pior que nenhum.
+ * The money calculation for each hypothesis: a small named delta over a named
+ * base, with the whole gap only as a cap. The model proposes the terms; the
+ * arithmetic is ours.
  */
 
 import type { MoneyEstimate, RevenueBase } from "./types.ts";
 
-/**
- * Acima disso o delta deixa de ser "uma hipótese de UX" e vira promessa de
- * milagre. Os melhores resultados publicados de mudança de PDP ficam em 1–3 pp
- * numa etapa do funil.
- */
+/** Above this the delta stops being a UX hypothesis and becomes a miracle promise. */
 export const MAX_DELTA_PP = 5;
 
 export type MoneyTerms = Omit<MoneyEstimate, "monthly_value">;
 
-/** base × delta (pp) × valor por evento × fração do canal, por mês. */
+/** base × delta (pp) × value per event × channel fraction, per month. */
 export function monthlyValue(terms: MoneyTerms): number {
   return (
     Math.round(
@@ -31,7 +24,7 @@ export function monthlyValue(terms: MoneyTerms): number {
   );
 }
 
-/** Problemas que impedem a conta de ir pra tela. Vazio = conta válida. */
+/** Problems that keep the calculation off the screen. Empty = valid calculation. */
 function moneyProblems(terms: Partial<MoneyTerms>): string[] {
   const problems: string[] = [];
   const finite = (v: unknown): v is number =>
@@ -67,11 +60,7 @@ function moneyProblems(terms: Partial<MoneyTerms>): string[] {
   return problems;
 }
 
-/**
- * Termos crus do modelo → estimativa com o valor calculado por nós, ou os
- * problemas. Um teto MENOR que o próprio valor é contradição (o modelo trocou
- * as bolas); o teto é descartado em vez de a hipótese inteira.
- */
+/** Raw model terms → an estimate with the value computed by us, or the problems. */
 export function buildMoneyEstimate(
   raw: unknown,
 ):
@@ -107,12 +96,8 @@ export function buildMoneyEstimate(
 }
 
 /**
- * A base da conta não pode passar de quem existe na etapa. O modelo escrevia a
- * base de cabeça (às vezes o site todo, às vezes com o app junto); a métrica
- * medida diz quantas pessoas chegam na etapa no dispositivo, por mês. Base
- * menor que isso fica (o problema pode ser de um recorte, como produto
- * esgotado); maior é trocada pela medida, e aí a fração do canal vira 1,
- * porque a medida já é só o site.
+ * The base cannot exceed who exists in the stage: a larger one is replaced by
+ * the measure (and the channel fraction becomes 1); a smaller one stays.
  */
 export function capMoneyBase(
   money: MoneyEstimate | null,
@@ -142,12 +127,9 @@ export function capMoneyBase(
   };
 }
 
-// ── A conta da perda medida (losses.ts) ──────────────────────────────────────
+// ── The measured loss calculation (losses.ts) ──────────────────────────────
 
-/**
- * O canal de venda do site na VTEX: o que se chama "Principal" (ou o id 1, o
- * padrão da VTEX). O app vende por outro canal e não passa por estas páginas.
- */
+/** The site's sales channel in VTEX ("Principal" or id 1); the app sells through another. */
 export function siteChannel(
   revenue: RevenueBase | null | undefined,
 ): RevenueBase["by_channel"][number] | null {
@@ -165,25 +147,20 @@ const pctWord = (r: number) =>
   `${(r * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 /**
- * A conta inteira de uma perda medida, sem nenhum termo do modelo além do
- * delta (que fica entre MIN_LOSS_DELTA e o teto da própria perda):
- * - base: quem está na etapa, por mês, medido;
- * - valor por evento: ticket do canal do site × quantas de quem chega ao
- *   numerador da etapa compram (GA4, mesmo dispositivo);
- * - teto: a perda inteira (o gap, ou a distância do segmento pro resto).
- * NULL = falta o ticket do site ou a taxa de compra.
+ * The whole calculation of a measured loss, with only the delta from the model.
+ * NULL = the site ticket or the purchase rate is missing.
  */
 export function lossMoney(input: {
-  /** Quem está na etapa na janela, e a janela em dias. */
+  /** Who is in the stage in the window, and the window in days. */
   n: number;
   window_days: number;
   step: string;
   deviceWord: string;
-  /** O delta pedido (pp); é limitado aqui. */
+  /** The requested delta (pp); it is clamped here. */
   delta_pp: number;
-  /** A perda inteira em pp (gap ou distância pro resto). NULL = absoluta. */
+  /** The whole loss in pp (gap or distance to the rest). NULL = absolute. */
   gap_pp: number | null;
-  /** Quantas de quem passa da etapa compram. */
+  /** How many of those who pass the stage buy. */
   purchase: { rate: number; event: string } | null;
   revenue: RevenueBase | null | undefined;
   assumption: string;
@@ -227,6 +204,6 @@ export function lossMoney(input: {
   };
 }
 
-/** O delta de uma perda medida fica nesta faixa (e nunca passa da própria perda). */
+/** A measured loss's delta stays in this range (and never exceeds the loss itself). */
 const MIN_LOSS_DELTA = 0.3;
 const MAX_LOSS_DELTA = 3;

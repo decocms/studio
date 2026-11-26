@@ -7,7 +7,12 @@
 import { generateText, type ImagePart, type TextPart } from "ai";
 import { resolveTier, TierUnavailableError } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
-import type { Llm, LlmContentPart, LlmTier } from "../ports.ts";
+import {
+  type Llm,
+  type LlmContentPart,
+  type LlmTier,
+  NoAiModelError,
+} from "../ports.ts";
 
 const DEFAULT_TEMPERATURE = 0.3;
 const DEFAULT_MAX_TOKENS = 2048;
@@ -28,9 +33,25 @@ async function tierModel(ctx: StudioContext, tier: LlmTier) {
   try {
     return await resolveTier(ctx, tier);
   } catch (err) {
-    if (tier === "thinking" && err instanceof TierUnavailableError) {
-      return resolveTier(ctx, "smart");
+    if (!(err instanceof TierUnavailableError)) throw err;
+  }
+  if (tier === "thinking") {
+    try {
+      return await resolveTier(ctx, "smart");
+    } catch (err) {
+      if (!(err instanceof TierUnavailableError)) throw err;
     }
+  }
+  throw new NoAiModelError();
+}
+
+/** Whether the org has the `smart` model every run needs; any other failure throws. */
+export async function hasEngineModel(ctx: StudioContext): Promise<boolean> {
+  try {
+    await resolveTier(ctx, "smart");
+    return true;
+  } catch (err) {
+    if (err instanceof TierUnavailableError) return false;
     throw err;
   }
 }

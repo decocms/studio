@@ -26,20 +26,20 @@ beforeAll(() => {
 });
 afterAll(() => restoreWait());
 
-describe("htmlRetryUrl (prints de 05/11 saíram em markdown)", () => {
-  test("o redirect do apex derrubou o ?html=1: pede de novo com ele", () => {
+describe("htmlRetryUrl", () => {
+  test("an apex redirect dropped ?html=1: asks again with it", () => {
     expect(htmlRetryUrl("https://www.loja-exemplo.com.br/vestido-1/p")).toBe(
       "https://www.loja-exemplo.com.br/vestido-1/p?html=1",
     );
   });
 
-  test("caiu na rota de agente: tira o .md", () => {
+  test("landed on the agent route: drops the .md", () => {
     expect(htmlRetryUrl("https://www.loja-exemplo.com.br/vestido-1/p.md")).toBe(
       "https://www.loja-exemplo.com.br/vestido-1/p?html=1",
     );
   });
 
-  test("o parâmetro sobreviveu, ou não é página http: nada a refazer", () => {
+  test("the parameter survived, or the page is not http: nothing to redo", () => {
     expect(
       htmlRetryUrl(forceHtml("https://www.loja-exemplo.com.br/x/p")),
     ).toBeNull();
@@ -48,8 +48,8 @@ describe("htmlRetryUrl (prints de 05/11 saíram em markdown)", () => {
   });
 });
 
-describe("fullPageScale (400 do modelo: imagem acima de 8.000px)", () => {
-  test("celular a 2x com a página inteira cabe no teto", () => {
+describe("fullPageScale", () => {
+  test("a full mobile page at 2x fits under the model's 8,000px cap", () => {
     const dsf = VIEWPORTS.mobile.deviceScaleFactor;
     const scale = fullPageScale(FULL_PAGE_MAX_HEIGHT, dsf);
     expect(FULL_PAGE_MAX_HEIGHT * dsf * scale).toBeLessThanOrEqual(
@@ -58,7 +58,7 @@ describe("fullPageScale (400 do modelo: imagem acima de 8.000px)", () => {
     expect(FULL_PAGE_MAX_HEIGHT * dsf * scale).toBeLessThan(8_000);
   });
 
-  test("página curta ou desktop a 1x não encolhe", () => {
+  test("a short page or desktop at 1x is not shrunk", () => {
     expect(fullPageScale(2_121, 2)).toBe(1);
     expect(
       fullPageScale(FULL_PAGE_MAX_HEIGHT, VIEWPORTS.desktop.deviceScaleFactor),
@@ -66,7 +66,7 @@ describe("fullPageScale (400 do modelo: imagem acima de 8.000px)", () => {
   });
 });
 
-describe("classifyBotWall (benchmark de 09/11: 4 de 5 concorrentes)", () => {
+describe("classifyBotWall", () => {
   const page = (
     html: string,
     extra: Partial<{ status: number; links: number; text: string }> = {},
@@ -78,7 +78,7 @@ describe("classifyBotWall (benchmark de 09/11: 4 de 5 concorrentes)", () => {
     ...extra,
   });
 
-  test("os muros sondados em 10/11", () => {
+  test("recognizes the known anti-bot walls", () => {
     expect(
       classifyBotWall(
         page(
@@ -107,7 +107,7 @@ describe("classifyBotWall (benchmark de 09/11: 4 de 5 concorrentes)", () => {
     expect(classifyBotWall(page("", { status: 429 }))).toBe("HTTP 429");
   });
 
-  test("loja de verdade com script anti-robô carregado não é muro", () => {
+  test("a real store with an anti-bot script loaded is not a wall", () => {
     expect(
       classifyBotWall(
         page(
@@ -122,8 +122,8 @@ describe("classifyBotWall (benchmark de 09/11: 4 de 5 concorrentes)", () => {
   });
 });
 
-describe("openPage com bloqueio de rastreio", () => {
-  test("a página abre com o bloqueio pedido", async () => {
+describe("openPage with tracking blocked", () => {
+  test("opens the page with the requested block", async () => {
     const f = fakeBrowser(() => ({}));
     const block = (u: string) => u.includes("tracker");
     await openPage(f.browser, "https://loja-exemplo.com.br/p", "mobile", {
@@ -132,21 +132,21 @@ describe("openPage com bloqueio de rastreio", () => {
     expect(f.blockers).toEqual([block]);
   });
 
-  test("sem bloqueio, a página abre sem nenhum", async () => {
+  test("without a block, opens the page with none", async () => {
     const f = fakeBrowser(() => ({}));
     await openPage(f.browser, "https://loja-exemplo.com.br/p", "mobile");
     expect(f.blockers).toEqual([undefined]);
   });
 });
 
-describe("openPage: ?html=1 só na loja analisada", () => {
-  test("loja analisada: pede ?html=1", async () => {
+describe("openPage: ?html=1 only on the analysed store", () => {
+  test("asks the analysed store for ?html=1", async () => {
     const f = fakeBrowser(() => ({}));
     await openPage(f.browser, "https://loja-exemplo.com.br/p", "mobile");
     expect(f.visited).toEqual(["https://loja-exemplo.com.br/p?html=1"]);
   });
 
-  test("o redirect derrubou o parâmetro: pede de novo a partir da URL final", async () => {
+  test("when a redirect drops the parameter, asks again from the final URL", async () => {
     const f = fakeBrowser(() => ({
       goto: (url) =>
         url.startsWith("https://loja-exemplo.com.br/")
@@ -160,14 +160,14 @@ describe("openPage: ?html=1 só na loja analisada", () => {
     ]);
   });
 
-  test("concorrente: abre a URL como veio, sem refazer sem o parâmetro", async () => {
+  test("opens a competitor URL as given, without retrying for the parameter", async () => {
     const f = fakeBrowser(() => ({}));
     const url = "https://concorrente-exemplo.com.br/vestido?_q=vestido&map=ft";
     await openPage(f.browser, url, "mobile", { ownStore: false });
     expect(f.visited).toEqual([url]);
   });
 
-  test("onStatus recebe o status da navegação", async () => {
+  test("onStatus receives the navigation status", async () => {
     const f = fakeBrowser(() => ({ goto: () => ({ status: 404 }) }));
     let seen = 0;
     await openPage(
@@ -185,8 +185,8 @@ describe("openPage: ?html=1 só na loja analisada", () => {
   });
 });
 
-describe("openPage: o que não abre", () => {
-  test("DNS: PageOpenError com o código do navegador", async () => {
+describe("openPage: what does not open", () => {
+  test("DNS failure: PageOpenError with the browser's code", async () => {
     const f = fakeBrowser(() => ({
       goto: () => ({
         error:
@@ -204,7 +204,7 @@ describe("openPage: o que não abre", () => {
     expect(String(err)).toContain("net::ERR_NAME_NOT_RESOLVED");
   });
 
-  test("versão pra agente: não é HTML", async () => {
+  test("an agent version is not HTML", async () => {
     const f = fakeBrowser(() => ({
       fallback: (fn) =>
         String(fn).includes("contentType") ? "text/markdown" : undefined,
@@ -214,7 +214,7 @@ describe("openPage: o que não abre", () => {
     ).rejects.toThrow("text/markdown");
   });
 
-  test("muro por status: BotWallError que é de fora", async () => {
+  test("a status wall is an external BotWallError", async () => {
     const f = fakeBrowser(() => ({
       goto: () => ({ status: 403 }),
       scripts: new Map([
@@ -232,7 +232,7 @@ describe("openPage: o que não abre", () => {
   });
 });
 
-describe("navigationFailure (DNS e host fora do ar não são versão pra agente)", () => {
+describe("navigationFailure (DNS and a down host are not an agent version)", () => {
   test("chrome-error page", () => {
     const msg = navigationFailure(
       "chrome-error://chromewebdata/",
@@ -271,7 +271,7 @@ describe("navigationFailure (DNS e host fora do ar não são versão pra agente)
 });
 
 describe("isStatusBotWall", () => {
-  test("só o muro por status 401/403/429 é de fora", () => {
+  test("only a 401/403/429 status wall is external", () => {
     const url = "https://concorrente.example/";
     expect(isStatusBotWall(new BotWallError("HTTP 403", url))).toBe(true);
     expect(isStatusBotWall(new BotWallError("HTTP 429", url))).toBe(true);
@@ -282,7 +282,7 @@ describe("isStatusBotWall", () => {
 });
 
 describe("withBrowser", () => {
-  test("fecha o que ficou aberto e não abre mais nada depois", async () => {
+  test("closes what was left open and opens nothing afterwards", async () => {
     const closed: number[] = [];
     let n = 0;
     const inner = fakeBrowser(() => ({}));
@@ -315,7 +315,7 @@ describe("withBrowser", () => {
 });
 
 describe("browserFetcher", () => {
-  test("a resposta do host vira Response, com a URL final e o user-agent pedido", async () => {
+  test("the host's answer becomes a Response with the final URL and requested user agent", async () => {
     const asked: Array<{ url: string; userAgent: string; maxBytes: number }> =
       [];
     const f = fakeBrowser(
@@ -348,7 +348,7 @@ describe("browserFetcher", () => {
     ]);
   });
 
-  test("204 sem corpo não quebra", async () => {
+  test("a 204 without a body does not break", async () => {
     const f = fakeBrowser(
       () => ({}),
       async (url) => ({ status: 204, url, body: "" }),

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { FsLister, Llm, MediaStore, RepoReader } from "../ports.ts";
+import {
+  type FsLister,
+  type Llm,
+  type MediaStore,
+  NoAiModelError,
+  type RepoReader,
+} from "../ports.ts";
 import type { DevicePdpBehaviour, UxHypothesis } from "../types.ts";
 import {
   compactPageBlock,
@@ -472,6 +478,26 @@ describe("runRepoCheck, tetos e falhas da segunda volta", () => {
     expect(r.run.outcome).toBe("nao_decidiu");
     expect(r.run.observed).toContain("falta o hook");
     expect(r.run.observed).toContain("a segunda volta falhou");
+  });
+
+  test("no model on either round: the error propagates instead of becoming a test outcome", async () => {
+    const noModel: Llm = async () => {
+      throw new NoAiModelError();
+    };
+    await expect(repoCheckWith(noModel)).rejects.toBeInstanceOf(NoAiModelError);
+    let calls = 0;
+    const secondFails: Llm = async () => {
+      calls += 1;
+      if (calls > 1) throw new NoAiModelError();
+      return JSON.stringify({
+        outcome: "nao_decidiu",
+        observed: "falta",
+        need_files: ["hooks/useCart.ts"],
+      });
+    };
+    await expect(
+      repoCheckWith(secondFails, async () => "export {}"),
+    ).rejects.toBeInstanceOf(NoAiModelError);
   });
 });
 

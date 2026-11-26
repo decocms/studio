@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseReviews, REVIEW_SYSTEM } from "./review.ts";
 
 describe("parseReviews", () => {
-  test("só ids pedidos e respostas válidas; acento não atrapalha", () => {
+  test("only requested ids and valid answers; accents do not get in the way", () => {
     const out = parseReviews(
       JSON.stringify({
         reviews: [
@@ -28,11 +28,11 @@ describe("parseReviews", () => {
     });
   });
 
-  test("resposta ilegível não revisa nada", () => {
+  test("an unreadable answer reviews nothing", () => {
     expect(parseReviews("nada de json", ["h1"], "t").size).toBe(0);
   });
 
-  test("o prompt faz a pergunta da causa", () => {
+  test("the prompt asks the cause question", () => {
     expect(REVIEW_SYSTEM).toContain("EXPLICA a perda de conversão");
   });
 });

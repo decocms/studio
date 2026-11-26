@@ -7,7 +7,7 @@ import { drilldown } from "./segments.ts";
 const h = { device: "mobile" as const, confidence: 0.5, verification: null };
 
 describe("trafficCheck", () => {
-  test("loja de moda, uma semana: o mix explica ~20% e o gap se repete → a explicação de tráfego cai", () => {
+  test("fashion store, one week: the mix explains ~20% and the gap repeats -> the traffic explanation drops", () => {
     const ev = evidence({
       platform_funnel: sampleFunnel,
       segments: sampleSegments,
@@ -28,13 +28,13 @@ describe("trafficCheck", () => {
     expect(out.novas_linhas?.[0]).toContain("procurar a causa na página");
   });
 
-  test("sem recorte: nada testado (vira bloqueada no ciclo)", () => {
+  test("no breakdown: nothing tested (becomes blocked in the cycle)", () => {
     const out = trafficCheck(h, { drilldown: null }, "t");
     expect(out.verdict).toBe("inconclusiva");
     expect(out.runs[0]!.outcome).toBe("nao_testou");
   });
 
-  test("mix que explica o gap confirma", () => {
+  test("a mix that explains the gap confirms", () => {
     const d = {
       device: "mobile" as const,
       comp_device: "desktop" as const,
@@ -47,7 +47,7 @@ describe("trafficCheck", () => {
   });
 });
 
-describe("tráfego de um segmento (loja de moda, 16/11)", () => {
+describe("a segment's traffic (fashion store)", () => {
   const seg = (key: string, platform: string, n: number, hits: number) => ({
     dim: "canal" as const,
     key,
@@ -76,7 +76,7 @@ describe("tráfego de um segmento (loja de moda, 16/11)", () => {
     segment: { dim: "canal" as const, key: "social_pago" },
   };
 
-  test("social pago converte menos nas duas telas: é o tráfego (confirma)", () => {
+  test("paid social converts less on both screens: it is the traffic (confirms)", () => {
     const segments = [
       seg("social_pago", "web_mobile", 206_244, 10_442),
       seg("outros", "web_mobile", 200_254, 31_929),
@@ -95,7 +95,7 @@ describe("tráfego de um segmento (loja de moda, 16/11)", () => {
     );
   });
 
-  test("no computador converte como o resto: é a experiência no celular (desmente)", () => {
+  test("on desktop it converts like the rest: it is the mobile experience (disproves)", () => {
     const segments = [
       seg("social_pago", "web_mobile", 206_244, 10_442),
       seg("outros", "web_mobile", 200_254, 31_929),

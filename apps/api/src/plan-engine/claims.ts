@@ -1,13 +1,7 @@
 /**
- * O tipo de cada afirmação do diagnóstico. Uma IA escreve explicação
- * convincente sem evidência nenhuma; o rótulo é o que deixa a tela separar o
- * que foi visto do que foi deduzido.
- *
- * - fato_observado: lido direto num dado ou na página nesta análise.
- * - evidencia_indireta: sugere, não comprova (benchmark, uma carga de laboratório).
- * - inferencia: interpretação montada pelo sistema.
- * - hipotese: explicação ainda não comprovada.
- * - conclusao_experimental: resultado de A/B controlado. O modelo nunca dá esse.
+ * The kind of each diagnosis claim, so the screen can separate what was seen
+ * from what was deduced. `conclusao_experimental` is a controlled A/B result;
+ * the model never gives it.
  */
 
 import type { Grounding } from "./facts.ts";
@@ -20,10 +14,7 @@ export type UxClaimLabel =
   | "hipotese"
   | "conclusao_experimental";
 
-/**
- * O rótulo de um número do "baseado em", pela fonte. O que os concorrentes
- * fazem é sinal de mercado, não fato sobre esta loja.
- */
+/** The label of an "based on" number, by source. Competitor behaviour is a market signal, not a fact about this store. */
 export function sourceLabel(source: UxSourceKind): UxClaimLabel {
   return source === "benchmark" ? "evidencia_indireta" : "fato_observado";
 }
@@ -36,11 +27,7 @@ const LABELS: UxClaimLabel[] = [
   "conclusao_experimental",
 ];
 
-/**
- * O rótulo que o modelo deu, rebaixado quando não se sustenta: "fato" sem
- * número não é fato (vira inferência), e conclusão de experimento nunca vem do
- * modelo — só um A/B dá isso, e nenhum rodou aqui.
- */
+/** The model's label, downgraded when unsupported: a "fact" without a number is an inference, and an experiment conclusion never comes from the model. */
 export function clampLabel(raw: unknown, text: string): UxClaimLabel {
   const label = LABELS.find((l) => l === raw) ?? "inferencia";
   if (label === "conclusao_experimental") return "inferencia";
@@ -49,14 +36,10 @@ export function clampLabel(raw: unknown, text: string): UxClaimLabel {
 }
 
 /**
- * O rótulo conferido contra os fatos citados (facts.ts). O modelo só PEDE o
- * rótulo; quem dá é o código:
- * - "fato_observado" só com fato MEDIDO citado, nenhum id inventado e todo
- *   número da frase nos fatos citados;
- * - citando só leitura de print (concorrente), no máximo "evidencia_indireta";
- * - o resto vira "inferencia".
- * Até 19/11 o "fato" era o que o modelo dizia que era, desde que tivesse um
- * dígito (clampLabel).
+ * The label checked against the cited facts (facts.ts). The model only
+ * REQUESTS a label; code grants it: "fato_observado" needs a MEASURED fact, no
+ * invented id and every number in the sentence in the cited facts; screenshot
+ * reads alone give at most "evidencia_indireta"; the rest is "inferencia".
  */
 export function groundedLabel(raw: unknown, g: Grounding): UxClaimLabel {
   const asked = LABELS.find((l) => l === raw) ?? "inferencia";

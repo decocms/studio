@@ -40,6 +40,7 @@ import {
   type BrowserPort,
   BrowserSessionError,
   type MediaStore,
+  rethrowNoAiModel,
 } from "../ports.ts";
 import { type ProbeResult, runProbes } from "../probes.ts";
 import type {
@@ -114,13 +115,15 @@ export async function collectStep(
               await store.saveCodeTokens(orgId, tokens);
               return null;
             },
-            (err): SourceGap =>
-              codeGapOf(
+            (err): SourceGap => {
+              rethrowNoAiModel(err);
+              return codeGapOf(
                 err,
                 `tema do repo ${access.repo}`,
                 access.repo,
                 access.provider,
-              ),
+              );
+            },
           )
       : Promise.resolve(null),
   ]);
@@ -148,7 +151,7 @@ export async function collectStep(
   return { targets: result.capture_targets, cost: costTotal(costs) };
 }
 
-/** Design system (do render) com menos de uma semana é reaproveitado. */
+/** A rendered design system younger than a week is reused. */
 const DESIGN_SYSTEM_MAX_AGE_DAYS = 7;
 
 const isStale = (at: string | null | undefined) =>
@@ -165,17 +168,15 @@ const hostOf = (url: string | null | undefined): string | null => {
 const errorText = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
 
-/** Os elementos do heatmap de cada dispositivo: a captura diz o que cada um é. */
+/** Each device's heatmap elements, for the capture to label. */
 const elementKeysFor = (evidence: DiagnosisEvidence, device: UxDevice) =>
   (evidence.pdp_behaviour.find((b) => b.device === device)?.elements ?? []).map(
     (e) => `${e.root}|${e.el}`,
   );
 
 /**
- * Captura de home, categoria ou busca: a página que a coleta escolheu (a rota
- * do heatmap), nos dois dispositivos, com os elementos do heatmap rotulados.
- * Sem design system: ele é lido da PDP (botão de compra, chip de tamanho), e
- * a análise da PDP cuida disso.
+ * Captures a home, listing or search page the collect chose, on both devices,
+ * with heatmap elements labelled. The design system is read only from a PDP.
  */
 async function captureOtherPage(opts: {
   browser: BrowserPort;
@@ -266,7 +267,7 @@ export async function captureStep(
         });
         continue;
       }
-      // Sem produto da rodada: uma PDP dos dados que já temos; a home é o último recurso.
+      // No product from the run: a PDP from data we have, the home as last resort.
       if (!profile) continue;
       const url = await resolvePdpUrl(
         browser,
@@ -325,7 +326,7 @@ export async function captureStep(
         });
       }
     }
-    // Velho, ou lido noutro host (o domínio mudou, ex.: apex → www).
+    // Stale, or read on another host (the domain changed, e.g. apex to www).
     const dsHost = hostOf(profile?.design_system?.source_url);
     if (
       isStale(profile?.design_system_at) ||
@@ -354,15 +355,15 @@ export async function captureStep(
 }
 
 /**
- * Até quando o benchmark começa uma loja nova. Folga dentro dos 15 min do
- * WORK_STEP pra a loja em andamento terminar e o passo gravar.
+ * How long the benchmark keeps starting new stores, leaving room within
+ * WORK_STEP for the current store to finish and the step to save.
  */
 const BENCHMARK_BUDGET_MS = 10 * 60_000;
 
-/** Teto de uma loja do benchmark (home, vitrines, PDP, print e leitura). */
+/** Cap on one benchmark store (home, listings, PDP, screenshot and reading). */
 const COMPETITOR_TIMEOUT_MS = 150_000;
 
-/** `p`, ou erro com `message` se não resolver em `ms`. */
+/** `p`, or an error with `message` if it does not settle within `ms`. */
 async function withTimeout<T>(
   p: Promise<T>,
   ms: number,
@@ -381,7 +382,7 @@ async function withTimeout<T>(
   }
 }
 
-/** Erro de sessão do navegador (vale tentar de novo), não do site. */
+/** A browser session failure (worth retrying), not the site's. */
 function isBrowserCrash(err: unknown): boolean {
   if (err instanceof BrowserSessionError) return true;
   return /Target closed|Connection closed|Protocol error|Session closed|WebSocket/i.test(
@@ -413,7 +414,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
     .map(normalizeDomain)
     .filter((d): d is string => d !== null);
   const benchmark: BenchmarkPdp[] = [];
-  // Prazo pra começar uma loja nova: uma loja lenta leva vários minutos.
+  // Deadline to start a new store: a slow store takes several minutes.
   const deadline = Date.now() + BENCHMARK_BUDGET_MS;
   let session: { port: BrowserPort; media: MediaStore } | null | undefined;
   const opened = async () => {
@@ -439,7 +440,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
       });
       return;
     }
-    // Uma sessão POR LOJA, com uma segunda tentativa: a loja que derruba o navegador não leva as outras.
+    // One session per store, retried once: a store that crashes the browser spares the rest.
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
@@ -454,7 +455,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
           budgetMs: COMPETITOR_TIMEOUT_MS,
           onUsage: costs.llm,
         };
-        // Teto por loja: fechar a sessão (withBrowser) derruba o que estiver pendurado.
+        // Per-store cap: closing the session (withBrowser) drops whatever hangs.
         const b = await withBrowser(s.port, (browser) =>
           withTimeout(
             pageType === "pdp"
@@ -473,8 +474,9 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
         benchmark.push(b);
         return;
       } catch (err) {
+        rethrowNoAiModel(err);
         lastError = err;
-        // Só a queda do navegador merece outra tentativa: muro, "sem produto" ou "não é HTML" é o site.
+        // Only a browser crash is retried: a wall, no product or non-HTML is the site.
         console.warn(
           `[plan-engine] [${id}] benchmark ${domain} tentativa ${attempt}: ${errorText(err)}`,
         );
@@ -493,7 +495,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
     await tryDomain(domain);
   }
 
-  // Lista confirmada pelo cliente é escolha dele: não se completa com sugestão.
+  // A list the customer confirmed is theirs: no suggestions fill it.
   const confirmed = profile.competitors_confirmed_at !== null;
   const s =
     !confirmed && benchmark.length < MAX_COMPETITORS ? await opened() : null;
@@ -507,7 +509,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
         exclude: saved,
         onUsage: costs.llm,
       });
-      // Só entra sugestão cujo domínio abre e deixa robô passar.
+      // Keep only suggestions whose domain opens and lets bots through.
       const fetcher = browserFetcher(s.port, DOMAIN_CHECK_FETCH);
       const checks = await Promise.all(
         suggested.map((d) => checkDomain(d, fetcher)),
@@ -516,6 +518,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
         c.ok && !c.blocks_bots ? [c.host] : [],
       );
     } catch (err) {
+      rethrowNoAiModel(err);
       gaps.push({
         source: "benchmark",
         error: `sugestão de concorrentes: ${errorText(err)}`,
@@ -527,7 +530,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
     }
   }
 
-  // Só a PDP reescreve a lista guardada, pras lojas que abriram: busca e vitrine falham mais.
+  // Only a PDP run rewrites the saved list with the stores that opened.
   const captured = benchmark.map((b) => b.domain);
   if (
     pageType === "pdp" &&
@@ -547,7 +550,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
 /** The domain check only reads the status: no body. */
 const DOMAIN_CHECK_FETCH = { maxBytes: 0, timeoutMs: 8_000 };
 
-/** Até quando uma sonda pode começar. */
+/** How long probes may keep starting. */
 const PROBES_BUDGET_MS = 6 * 60_000;
 
 /** What the page does (pop-ups, dead clicks), measured before any hypothesis. */
@@ -555,7 +558,7 @@ export async function probesStep(run: EngineRun): Promise<void> {
   const { store, orgId, id } = run;
   const diagnosis = await store.getDiagnosis(orgId, id);
   const evidence = diagnosis?.evidence;
-  // Já rodou (replay) ou o livro de fatos já foi gravado: não mexe.
+  // Already ran (replay) or the fact book is saved: leave it.
   if (!evidence || evidence.probes || evidence.facts?.length) return;
   if (evidence.captures.length === 0) return;
   const browser = await run.browser();
@@ -683,6 +686,7 @@ export async function hypothesesStep(
       await store.updateDiagnosis(orgId, id, { summary });
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     // A failed batch leaves its opportunities without hypotheses, and says why.
     const message = err instanceof Error ? err.message : String(err);
     if (summary) {

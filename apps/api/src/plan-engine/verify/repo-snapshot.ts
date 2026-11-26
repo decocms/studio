@@ -16,7 +16,7 @@ import {
 import { storeRepoSnapshot } from "./repo.ts";
 
 /** The evidence with the gap, without repeating one collect already wrote. */
-function withGap(
+export function withGap(
   evidence: DiagnosisEvidence,
   gap: SourceGap,
 ): DiagnosisEvidence {

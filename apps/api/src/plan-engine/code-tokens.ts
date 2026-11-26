@@ -25,12 +25,13 @@
 
 import { z } from "zod";
 import { extractJsonObject } from "./json.ts";
-import type {
-  FsLister,
-  Llm,
-  LlmUsage,
-  RepoEntry,
-  RepoReader,
+import {
+  type FsLister,
+  type Llm,
+  type LlmUsage,
+  type RepoEntry,
+  type RepoReader,
+  rethrowNoAiModel,
 } from "./ports.ts";
 import type { CodeTokens } from "./types.ts";
 
@@ -441,6 +442,7 @@ No máximo 20 cores, 6 fontes, 8 raios. Não invente o que não está nos arquiv
       tokens.conventions = parsed.conventions;
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     tokens.model_error = err instanceof Error ? err.message : String(err);
   }
   return tokens;

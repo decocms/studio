@@ -1,37 +1,25 @@
 /**
- * "O gap se repete?" — a métrica de uma oportunidade dentro de cada recorte
- * do funil (canal de aquisição, usuária nova × recorrente, dia).
- *
- * Duas perguntas que um gap de dispositivo precisa responder antes de virar
- * problema de página:
- *
- * 1. Se repete? Se o celular perde do computador só em um canal, o problema é
- *    o canal, não a página.
- * 2. A comparação é justa? Se o celular recebe muito mais tráfego de campanha
- *    (que converte menos em qualquer tela), parte do gap é o mix. O gap
- *    ajustado aplica as taxas do celular por canal na MISTURA de canais do
- *    computador: o que sobra é o que o mix não explica.
- *
- * Tudo conta, nada de modelo. Só vale pra etapas do GA4 com comparação entre
- * dispositivos (os recortes vêm do GA4).
+ * "Does the gap repeat?" - a metric inside each funnel cut (channel, new x
+ * returning, day), plus the gap adjusted for the other device's channel mix.
+ * GA4 stages with a device comparison only; no model.
  */
 
 import { type MeasuredMetric, UX_METRICS } from "./metrics.ts";
 import type { FunnelSegment, SegmentDim, UxDevice } from "./types.ts";
 
-/** Abaixo disso, o recorte não entra na conta de "se repete". */
+/** Below this, the cut does not enter the "does it repeat" calculation. */
 const MIN_CUT_SAMPLE = 300;
 
 export interface SegmentCut {
   dim: SegmentDim;
   key: string;
-  /** Denominador e taxa no dispositivo da oportunidade. */
+  /** Denominator and rate on the opportunity's device. */
   n: number;
   rate: number;
-  /** Denominador e taxa no dispositivo de comparação. */
+  /** Denominator and rate on the comparison device. */
   comp_n: number;
   comp_rate: number;
-  /** Fatia do denominador do dispositivo neste recorte (0–1). */
+  /** This cut's share of the device denominator (0-1). */
   share: number;
   comp_share: number;
 }
@@ -41,13 +29,13 @@ export interface Drilldown {
   comp_device: UxDevice;
   cuts: SegmentCut[];
   /**
-   * Por dimensão: em quantos recortes com amostra o gap aponta pro mesmo
-   * lado do gap total, e de quantos.
+   * Per dimension: in how many cuts with a sample the gap points to the same
+   * side as the total gap, and out of how many.
    */
   consistency: Partial<Record<SegmentDim, { same: number; total: number }>>;
   /**
-   * Gap total e gap com o dispositivo na mistura de canais (e de nova ×
-   * recorrente) da comparação, em pp. NULL = sem recorte pra ajustar.
+   * Total gap and gap with the device on the comparison's channel mix (and new
+   * x returning), in pp. NULL = no cut to adjust.
    */
   gap_pp: number;
   mix_adjusted_gap_pp: Partial<Record<"canal" | "visitante", number>>;
@@ -145,10 +133,7 @@ export function drilldown(
   };
 }
 
-/**
- * Quanto do gap o mix de tráfego explica, de 0 a 1, pela dimensão que mais
- * explica. NULL = sem ajuste possível. Mix que AUMENTA o gap conta como 0.
- */
+/** Share of the gap the traffic mix explains (0-1), by the best dimension; NULL = no adjustment. */
 export function mixExplainedShare(
   d: Drilldown,
 ): { dim: "canal" | "visitante"; share: number } | null {
@@ -165,11 +150,7 @@ export function mixExplainedShare(
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-/**
- * Os recortes em texto curto pro prompt: viu produto → carrinho no celular x
- * computador, por canal e por nova × recorrente, com a fatia de cada recorte.
- * Sem isto o modelo culpava a página por um gap que era o tráfego.
- */
+/** The cuts as short text for the prompt, with each cut's share. */
 export function segmentsForPrompt(
   segments: FunnelSegment[] | undefined,
   windowDays: number,
@@ -220,33 +201,27 @@ export function segmentsForPrompt(
   return lines;
 }
 
-// ── O segmento que a oportunidade culpa ──────────────────────────────────────
+// ── The segment the opportunity blames ──────────────────────────────────
 
-/**
- * O segmento que a oportunidade culpa, contra o resto do mesmo recorte. Em
- * 15/11 (numa loja) a oportunidade "a mídia paga traz gente que não chega
- * ao carrinho" ganhou a hipótese "o pop-up de newsletter rouba a atenção" — um
- * pop-up que abre pra todo mundo, que não explica por que um canal converte
- * menos. Estes números vão pra confiabilidade e pro prompt das hipóteses.
- */
+/** The segment the opportunity blames, against the rest of the same cut. */
 export type FunnelSegmentList = FunnelSegment[] | undefined;
 
 export interface SegmentPremise {
   dim: "canal" | "visitante";
   key: string;
   device: UxDevice;
-  /** A etapa no segmento e no resto do recorte, no dispositivo. */
+  /** The stage on the segment and on the rest of the cut, on the device. */
   rate: number;
   n: number;
   rest_rate: number;
   rest_n: number;
-  /** O mesmo no dispositivo de comparação. NULL = sem comparação. */
+  /** The same on the comparison device. NULL = no comparison. */
   comp_device: UxDevice | null;
   comp_rate: number | null;
   comp_rest_rate: number | null;
 }
 
-/** Resposta do modelo → segmento que existe nos recortes, ou null. */
+/** Model answer → a segment that exists in the cuts, or null. */
 export function parseSegmentRef(
   raw: unknown,
   segments: FunnelSegment[] | undefined,
@@ -265,7 +240,7 @@ export function segmentPremise(
   measured: MeasuredMetric | null | undefined,
   segments: FunnelSegment[] | undefined,
   seg: { dim: "canal" | "visitante"; key: string } | null | undefined,
-  /** Comparar com este dispositivo quando a métrica não tem comparação. */
+  /** Compare with this device when the metric has no comparison. */
   compDevice?: UxDevice,
 ): SegmentPremise | null {
   if (!measured || !seg || !segments?.length) return null;

@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { evidence } from "../fixtures/evidence.ts";
+import { NO_AI_MODEL, noAiModelGap } from "../ports.ts";
 import type {
   DiagnosisSummary,
   UxHypothesis,
   UxOpportunity,
 } from "../types.ts";
 import {
+  failPatch,
   fallenAfterVerify,
   hypothesisDeadline,
   rerunFailedPatch,
@@ -47,7 +50,7 @@ function hyp(
 }
 
 describe("fallenAfterVerify", () => {
-  test("oportunidade sem proposta e sem nota sai, com o motivo da verificação", () => {
+  test("an opportunity with no proposal and no note falls, with the verification's reason", () => {
     const fallen = fallenAfterVerify(
       [opp(1, "Preço escondido"), opp(2)],
       [hyp(2, 1)],
@@ -66,14 +69,14 @@ describe("fallenAfterVerify", () => {
     ]);
   });
 
-  test("oportunidade com nota de erro nas hipóteses não sai", () => {
+  test("an opportunity with a hypothesis error note does not fall", () => {
     const fallen = fallenAfterVerify([opp(1)], [], new Map(), {
       [`${D}:o1`]: "a chamada de hipóteses falhou",
     });
     expect(fallen).toEqual([]);
   });
 
-  test("oportunidade com uma proposta de pé não sai", () => {
+  test("an opportunity with a standing proposal does not fall", () => {
     const fallen = fallenAfterVerify(
       [opp(1)],
       [hyp(1, 2)],
@@ -83,7 +86,7 @@ describe("fallenAfterVerify", () => {
     expect(fallen).toEqual([]);
   });
 
-  test("'não faria' não segura a oportunidade", () => {
+  test("'nao_faria' does not hold the opportunity up", () => {
     const fallen = fallenAfterVerify(
       [opp(1)],
       [hyp(null, 1, "nao_faria")],
@@ -93,25 +96,25 @@ describe("fallenAfterVerify", () => {
     expect(fallen.map((f) => f.id)).toEqual([`${D}:o1`]);
   });
 
-  test("sem motivo gravado, ainda sai com um motivo legível", () => {
+  test("with no stored reason, still falls with a readable reason", () => {
     const [f] = fallenAfterVerify([opp(1)], [], new Map(), {});
     expect(f?.reason.length).toBeGreaterThan(0);
   });
 });
 
 describe("hypothesisDeadline", () => {
-  test("divide o que sobra do step entre as hipóteses que faltam", () => {
-    // Step até 12_000; agora 2_000; 2 hipóteses: a primeira tem até 7_000.
+  test("splits what is left of the step among the remaining hypotheses", () => {
+    // Step until 12_000; now 2_000; 2 hypotheses: the first gets until 7_000.
     expect(hypothesisDeadline(12_000, 2_000, 2)).toBe(7_000);
-    // A primeira terminou cedo (4_000): a segunda herda a sobra.
+    // The first finished early (4_000): the second inherits the rest.
     expect(hypothesisDeadline(12_000, 4_000, 1)).toBe(12_000);
   });
 
-  test("prazo do step já passou: o prazo é agora (nenhum teste começa)", () => {
+  test("step deadline already passed: the deadline is now (no test starts)", () => {
     expect(hypothesisDeadline(10_000, 11_000, 2)).toBe(11_000);
   });
 
-  test("zero hipóteses não divide por zero", () => {
+  test("zero hypotheses does not divide by zero", () => {
     expect(hypothesisDeadline(10_000, 4_000, 0)).toBe(10_000);
   });
 });
@@ -122,7 +125,7 @@ describe("rerunFailedPatch", () => {
     limits: ["antes"],
   });
 
-  test("volta pra pronto e diz no limite que a verificação falhou", () => {
+  test("goes back to done and says in the limits that verification failed", () => {
     const s = summary();
     const patch = rerunFailedPatch(s, "boom");
     expect(patch.status).toBe("done");
@@ -134,11 +137,11 @@ describe("rerunFailedPatch", () => {
       "antes",
       "A verificação de novo falhou: boom",
     ]);
-    // Não muta o summary lido.
+    // Does not mutate the summary it read.
     expect(s.limits).toEqual(["antes"]);
   });
 
-  test("sem summary, não inventa um", () => {
+  test("without a summary, does not invent one", () => {
     expect(rerunFailedPatch(null, "boom").summary).toBeUndefined();
   });
 });
@@ -153,7 +156,7 @@ describe("toInvestigate", () => {
       tree: { testavel_na_pagina: testable },
     }) as never;
 
-  test("até 2 por oportunidade, as mais confiantes, sem as de fora da página, na ordem da tela", () => {
+  test("up to 2 per opportunity, most confident first, skipping off-page ones, in screen order", () => {
     const list = [
       h("o1:h1", "o1", 0.5),
       h("o1:h2", "o1", 0.8),
@@ -169,8 +172,8 @@ describe("toInvestigate", () => {
   });
 });
 
-describe("fallenAfterVerify com o ciclo", () => {
-  test("hipótese refutada não segura a oportunidade; aposentada não cai de novo", () => {
+describe("fallenAfterVerify with the lifecycle", () => {
+  test("a refuted hypothesis does not hold the opportunity up; a retired one does not fall again", () => {
     const refuted = { ...hyp(1, 1), lifecycle: "refutada" as const };
     const retired = {
       ...opp(2),
@@ -187,8 +190,48 @@ describe("fallenAfterVerify com o ciclo", () => {
 });
 
 describe("verifyKeyPrefix", () => {
-  test("a rodada encadeada fica onde sempre; o verificar de novo, sob a marca dele", () => {
+  test("the chained round keeps the usual prefix; verify again goes under its tag", () => {
     expect(verifyKeyPrefix("d1", undefined, "h1")).toBe("ux/d1/verify/h1");
     expect(verifyKeyPrefix("d1", "r2", "h1")).toBe("ux/d1/r2/verify/h1");
+  });
+});
+
+describe("failPatch", () => {
+  test("a lost model ends the run with its message and the customer's gap", () => {
+    const patch = failPatch(
+      { evidence: evidence(), summary: null },
+      false,
+      NO_AI_MODEL,
+    );
+    expect(patch).toMatchObject({
+      status: "error",
+      error: NO_AI_MODEL,
+      finished: true,
+    });
+    expect(patch.evidence?.gaps).toContainEqual(noAiModelGap());
+  });
+
+  test("a lost model on verify again keeps the result and adds the gap once", () => {
+    const patch = failPatch(
+      {
+        evidence: evidence({ gaps: [noAiModelGap()] }),
+        summary: { headline: "h", limits: [] },
+      },
+      true,
+      NO_AI_MODEL,
+    );
+    expect(patch.status).toBe("done");
+    expect(patch.summary?.limits).toEqual([
+      `A verificação de novo falhou: ${NO_AI_MODEL}`,
+    ]);
+    expect(
+      patch.evidence?.gaps.filter((g) => g.key === "ai_provider"),
+    ).toHaveLength(1);
+  });
+
+  test("any other failure leaves the evidence alone", () => {
+    expect(
+      failPatch({ evidence: evidence(), summary: null }, false, "boom"),
+    ).toEqual({ status: "error", error: "boom", finished: true });
   });
 });

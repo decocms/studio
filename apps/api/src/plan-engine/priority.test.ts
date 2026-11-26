@@ -49,7 +49,7 @@ const base = (over: Record<string, unknown> = {}) =>
   });
 
 describe("priorityOf", () => {
-  test("fato medido pesa mais que benchmark; contra derruba; teto de 0,9", () => {
+  test("measured fact weighs more than benchmark; counter-evidence drops it; ceiling of 0.9", () => {
     const fact = base({
       hypothesis: {
         tree: tree({ a_favor: [{ text: "x 1", label: "fato_observado" }] }),
@@ -96,7 +96,7 @@ describe("priorityOf", () => {
     expect(max.confianca).toBe(CONFIDENCE_CEILING);
   });
 
-  test("A/B desta loja que perdeu na mesma parte: risco e conhecimento contra", () => {
+  test("this store's A/B that lost on the same part: risk and knowledge against", () => {
     const lost: KnowledgeEntry = {
       ...CURATED_KNOWLEDGE[0]!,
       id: "ab1",
@@ -116,7 +116,7 @@ describe("priorityOf", () => {
     expect(p.confianca).toBeLessThan(0.2);
   });
 
-  test("a meta da rodada entra só nas notas; os números não mudam", () => {
+  test("the round's goal only enters the notes; the numbers do not change", () => {
     const without = base();
     const withGoal = base({ objective: "Vender mais vestidos" });
     const { notas: a, ...numbersA } = without;
@@ -125,18 +125,18 @@ describe("priorityOf", () => {
     expect(b).toEqual(["meta da rodada: Vender mais vestidos", ...a]);
   });
 
-  test("investigação sobe com a incerteza; teste só pra pronta", () => {
+  test("investigation rises with uncertainty; test only for ready ones", () => {
     const unsure = base();
     expect(unsure.investigacao).toBeGreaterThan(0);
     expect(base({ ready: false }).teste).toBeNull();
-    // Mais de 8 semanas: mensurabilidade zero.
+    // More than 8 weeks: zero measurability
     expect(base({ experiment: experiment(12) }).teste).toBe(0);
   });
 });
 
 describe("isReady", () => {
   const o = { reliability: { level: "alta" as const, checks: [] } };
-  test("relevante, mensurável e com dados confiáveis", () => {
+  test("relevant, measurable and with reliable data", () => {
     expect(
       isReady({
         relevance: relevance("media"),
@@ -169,7 +169,7 @@ describe("isReady", () => {
 });
 
 describe("queueOrder", () => {
-  test("pela prioridade de teste, e o valor da oportunidade só na primeira", () => {
+  test("by test priority, and the opportunity value only on the first", () => {
     const money = { monthly_value: 500 } as never;
     const out = queueOrder([
       {

@@ -35,7 +35,7 @@ const rewrite = {
 const raw = (o: unknown) => JSON.stringify(o);
 
 describe("parseJudgment", () => {
-  test("todos nao_testou vira inconclusiva", () => {
+  test("all nao_testou becomes inconclusiva", () => {
     const r = parseJudgment(
       raw({
         verdict: "confirmada",
@@ -49,8 +49,7 @@ describe("parseJudgment", () => {
     expect(r.runs[0]?.outcome).toBe("nao_testou");
   });
 
-  // 14/11: conflito (c1 confirma, c2 desmente uma versão mais forte) não derruba nem confirma.
-  test("confirma + desmente é conflito: inconclusiva, cita os dois, sem reescrita", () => {
+  test("confirma + desmente is a conflict: inconclusiva, cites both, no rewrite", () => {
     const r = parseJudgment(
       raw({
         verdict: "confirmada",
@@ -69,7 +68,7 @@ describe("parseJudgment", () => {
     expect(r.rewrite).toBeNull();
   });
 
-  test("conflito com o modelo pedindo reescrita também fica inconclusiva", () => {
+  test("a conflict with the model asking for a rewrite is still inconclusiva", () => {
     const r = parseJudgment(
       raw({
         verdict: "reescrita",
@@ -87,7 +86,7 @@ describe("parseJudgment", () => {
     expect(r.rewrite).toBeNull();
   });
 
-  test("desmente com rewrite completo vira reescrita", () => {
+  test("desmente with a complete rewrite becomes reescrita", () => {
     const r = parseJudgment(
       raw({
         verdict: "reescrita",
@@ -102,7 +101,7 @@ describe("parseJudgment", () => {
     expect(r.rewrite).toEqual(rewrite);
   });
 
-  test("rewrite com campo vazio vira desmentida", () => {
+  test("a rewrite with an empty field becomes desmentida", () => {
     const r = parseJudgment(
       raw({
         verdict: "reescrita",
@@ -117,7 +116,7 @@ describe("parseJudgment", () => {
     expect(r.rewrite).toBeNull();
   });
 
-  test("allowRewrite false vira desmentida", () => {
+  test("allowRewrite false becomes desmentida", () => {
     const r = parseJudgment(
       raw({
         verdict: "reescrita",
@@ -132,7 +131,7 @@ describe("parseJudgment", () => {
     expect(r.rewrite).toBeNull();
   });
 
-  test("modelo não muda nao_testou nem run de repo já decidido", () => {
+  test("the model changes neither nao_testou nor an already decided repo run", () => {
     const r = parseJudgment(
       raw({
         verdict: "confirmada",
@@ -150,7 +149,7 @@ describe("parseJudgment", () => {
     expect(r.verdict).toBe("confirmada");
   });
 
-  test("saída ilegível vira inconclusiva sem lançar", () => {
+  test("unreadable output becomes inconclusiva without throwing", () => {
     const runs = [run("c1", "nao_decidiu")];
     const r = parseJudgment("blá", runs, true);
     expect(r.verdict).toBe("inconclusiva");
@@ -158,7 +157,7 @@ describe("parseJudgment", () => {
     expect(r.runs).toEqual(runs);
   });
 
-  test("resumo do modelo que contradiz o veredito do código é descartado", () => {
+  test("a model summary contradicting the code's verdict is discarded", () => {
     const r = parseJudgment(
       raw({
         verdict: "confirmada",
@@ -173,7 +172,7 @@ describe("parseJudgment", () => {
     expect(r.summary).toContain("c1");
   });
 
-  test("objeto que não é objeto não lança", () => {
+  test("a non-object JSON value does not throw", () => {
     for (const bad of ["null", "[]", "[1]"]) {
       const r = parseJudgment(bad, [run("c1", "nao_decidiu")], true);
       expect(r.verdict).toBe("inconclusiva");
@@ -181,7 +180,7 @@ describe("parseJudgment", () => {
     }
   });
 
-  test("modelo diz confirmada mas nenhum run decidido vira inconclusiva", () => {
+  test("model says confirmada but no decided run becomes inconclusiva", () => {
     const r = parseJudgment(
       raw({
         verdict: "confirmada",
@@ -195,7 +194,7 @@ describe("parseJudgment", () => {
     expect(r.summary).not.toBe("Confirmada");
   });
 
-  test("só confirma e modelo diz reescrita vira confirmada sem rewrite", () => {
+  test("only confirma with the model saying reescrita becomes confirmada without rewrite", () => {
     const r = parseJudgment(
       raw({
         verdict: "reescrita",
@@ -212,9 +211,9 @@ describe("parseJudgment", () => {
   });
 });
 
-// 14/11: o juiz recebe a rolagem medida e a altura da página, não um px solto.
+// The judge gets measured scroll and page height, not a bare pixel value.
 describe("scrollForPrompt", () => {
-  test("junta alcance por dispositivo com a altura da página capturada", () => {
+  test("joins per-device reach with the captured page height", () => {
     const text = scrollForPrompt({
       pdp_behaviour: [
         {
@@ -230,7 +229,7 @@ describe("scrollForPrompt", () => {
     expect(text).toContain("altura da página capturada: 4721px");
   });
 
-  test("sem captura do dispositivo, não inventa altura", () => {
+  test("without a capture for the device, does not invent a height", () => {
     const text = scrollForPrompt({
       pdp_behaviour: [
         {
@@ -246,9 +245,8 @@ describe("scrollForPrompt", () => {
   });
 });
 
-// 14/11: dobra se decide com a altura da tela, fundo com o alcance.
-describe("régua de posição do juiz", () => {
-  test("o juiz recebe a altura da tela como dobra", () => {
+describe("judge position yardstick: fold by screen height, bottom by reach", () => {
+  test("the judge gets the screen height as the fold", () => {
     const text = scrollForPrompt({
       pdp_behaviour: [
         {
@@ -269,7 +267,7 @@ describe("régua de posição do juiz", () => {
     expect(text).toContain("altura da tela (a dobra): 844px");
   });
 
-  test("captura sem rolagem do aparelho ainda dá a altura da tela", () => {
+  test("a capture without device scroll still gives the screen height", () => {
     const text = scrollForPrompt({
       pdp_behaviour: [],
       captures: [
@@ -284,7 +282,7 @@ describe("régua de posição do juiz", () => {
     expect(text).toContain("altura da tela (a dobra): 768px");
   });
 
-  test("a regra separa dobra de alcance", () => {
+  test("the rule separates fold from reach", () => {
     expect(JUDGE_SYSTEM).toContain("ALTURA DA TELA");
     expect(JUDGE_SYSTEM).toContain(
       "Um teste de alcance não decide uma hipótese de dobra",
@@ -292,9 +290,8 @@ describe("régua de posição do juiz", () => {
   });
 });
 
-// 14/11: o código desmentiu a causa e um teste do sintoma "confirmou".
-describe("teste que não mede a causa", () => {
-  test("sai dos dois lados: o que mede a causa decide", () => {
+describe("check that does not measure the cause", () => {
+  test("leaves both sides: the check measuring the cause decides", () => {
     const r = parseJudgment(
       raw({
         verdict: "desmentida",
@@ -310,11 +307,11 @@ describe("teste que não mede a causa", () => {
     expect(r.verdict).toBe("desmentida");
     expect(r.summary).toContain("não contam");
     expect(r.summary).toContain("c2");
-    // O run continua visível com o que o juiz decidiu.
+    // The run stays visible with what the judge decided.
     expect(r.runs.map((x) => x.outcome)).toEqual(["desmente", "confirma"]);
   });
 
-  test("vale pro outro lado também: confirmação fica de pé sem o desmente fora da causa", () => {
+  test("works the other way too: a confirmation stands without the off-cause refutation", () => {
     const r = parseJudgment(
       raw({
         verdict: "confirmada",
@@ -330,7 +327,7 @@ describe("teste que não mede a causa", () => {
     expect(r.verdict).toBe("confirmada");
   });
 
-  test("se só sobram testes fora da causa, fica inconclusiva", () => {
+  test("if only off-cause checks remain, it is inconclusiva", () => {
     const r = parseJudgment(
       raw({
         verdict: "confirmada",
@@ -344,7 +341,7 @@ describe("teste que não mede a causa", () => {
     expect(r.summary).toContain("c1");
   });
 
-  test("sem measures_cause, o conflito continua conflito", () => {
+  test("without measures_cause, a conflict stays a conflict", () => {
     const r = parseJudgment(
       raw({
         verdict: "desmentida",
@@ -361,8 +358,8 @@ describe("teste que não mede a causa", () => {
   });
 });
 
-describe("measures_cause e novas linhas", () => {
-  test("o juiz marca o teste fora da causa e ele fica gravado; desmentida traz novas linhas", () => {
+describe("measures_cause and novas_linhas", () => {
+  test("the judge flags the off-cause check and it is stored; desmentida carries novas_linhas", () => {
     const runs = [
       {
         check: { id: "c1", stage: "live", claim: "x" },
@@ -397,7 +394,7 @@ describe("measures_cause e novas linhas", () => {
     expect(out.novas_linhas).toEqual(["olhar depois do clique"]);
   });
 
-  test("confirmada não leva novas linhas", () => {
+  test("confirmada carries no novas_linhas", () => {
     const runs = [
       {
         check: { id: "c1", stage: "live", claim: "x" },

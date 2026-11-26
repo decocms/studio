@@ -25,7 +25,7 @@ import {
 } from "./page-templates.ts";
 import { PAGE_TYPE_ORDER, PAGE_TYPES, partWord } from "./page-types.ts";
 
-/** O `hmPages` de uma loja de moda em 16/11 (mobile e desktop, recortado). */
+/** A store's `hmPages` (mobile and desktop, trimmed). */
 const SAMPLE_PAGES = [
   {
     page_key: "/:product/p",
@@ -93,20 +93,20 @@ const SAMPLE_PAGES = [
   { page_key: "/", device: "", views: 14475, clicks: 1, avg_depth: 2.6 },
 ];
 
-describe("rotas do site (hmPages)", () => {
-  test("soma os dispositivos e ordena por views", () => {
+describe("site routes (hmPages)", () => {
+  test("sums devices and sorts by views", () => {
     const routes = routesFromPages(SAMPLE_PAGES);
     expect(routes[0]!.page).toBe("/:product/p");
     const busca = routes.find((r) => r.page === "/buscar");
     expect(busca?.views).toBe(263841 + 70450);
-    // Rolagem ponderada por views, não média simples.
+    // Scroll weighted by views, not a simple average.
     expect(busca?.avg_depth).toBeCloseTo(
       (263841 * 72.2 + 70450 * 90.9) / (263841 + 70450),
       1,
     );
   });
 
-  test("loja de moda: home /, busca /buscar, categorias sem PDP, conta nem busca", () => {
+  test("fashion store: home /, search /buscar, categories without PDP, account or search", () => {
     const t = detectPageTemplates(
       routesFromPages(SAMPLE_PAGES),
       "/:product/p",
@@ -121,7 +121,7 @@ describe("rotas do site (hmPages)", () => {
     ]);
   });
 
-  test("outra loja: a busca é /s", () => {
+  test("another store: search is /s", () => {
     const t = detectPageTemplates(
       routesFromPages([
         {
@@ -146,7 +146,7 @@ describe("rotas do site (hmPages)", () => {
     expect(t.categoria).toEqual(["/black-friday"]);
   });
 
-  test("rota do heatmap por tipo; checkout não tem", () => {
+  test("heatmap route per type; checkout has none", () => {
     const t = {
       home: "/",
       busca: "/buscar",
@@ -161,7 +161,7 @@ describe("rotas do site (hmPages)", () => {
     expect(heatmapRouteFor("carrinho_checkout", "/:product/p", t)).toBeNull();
   });
 
-  test("rotas de mais de uma semana são lidas de novo", () => {
+  test("routes older than a week are re-read", () => {
     const now = Date.parse("2026-11-16T00:00:00Z");
     expect(templatesAreStale(null, now)).toBe(true);
     expect(
@@ -189,8 +189,8 @@ describe("rotas do site (hmPages)", () => {
   });
 });
 
-describe("tipos de página", () => {
-  test("toda área de um tipo existe; partes têm nome", () => {
+describe("page types", () => {
+  test("every area of a type exists; parts have a name", () => {
     for (const t of PAGE_TYPE_ORDER) {
       for (const a of PAGE_TYPES[t].areas) expect(a in UX_AREAS).toBe(true);
       for (const part of Object.keys(PAGE_TYPES[t].parts)) {
@@ -203,7 +203,7 @@ describe("tipos de página", () => {
     );
   });
 
-  test("a PDP fica com as áreas de antes (as dela + navegação + checkout)", () => {
+  test("the PDP keeps its previous areas (its own + navigation + checkout)", () => {
     expect(areasOfDiagnosis("pdp")).toEqual([
       ...PAGE_TYPES.pdp.areas,
       "navegacao",
@@ -213,7 +213,7 @@ describe("tipos de página", () => {
     expect(areasForPrompt({ pageType: "home" })).not.toContain("- galeria:");
   });
 
-  test("área de outra página vira a página inteira", () => {
+  test("another page's area becomes the whole page", () => {
     expect(asAreaOf("galeria", "home")).toBe("pagina_geral");
     expect(asAreaOf("filtros_ordenacao", "categoria")).toBe(
       "filtros_ordenacao",
@@ -222,7 +222,7 @@ describe("tipos de página", () => {
     expect(isAreaOfPage("pagina_geral", "busca")).toBe(true);
   });
 
-  test("métricas: funil da página só onde há heatmap", () => {
+  test("metrics: page funnel only where there is a heatmap", () => {
     expect(metricFitsPage("pdp_carrinho", "pdp")).toBe(true);
     expect(metricFitsPage("pdp_carrinho", "home")).toBe(false);
     expect(metricFitsPage("pagina_produto", "categoria")).toBe(true);
@@ -230,7 +230,7 @@ describe("tipos de página", () => {
     expect(metricFitsPage("pagina_carrinho", "carrinho_checkout")).toBe(false);
     expect(metricFitsPage("checkout_frete", "carrinho_checkout")).toBe(true);
     expect(metricsForPrompt("carrinho_checkout")).not.toContain("pagina_");
-    // A métrica padrão de cada tipo existe e vale nele.
+    // Each type's default metric exists and applies to it.
     for (const t of PAGE_TYPE_ORDER) {
       const key: UxMetricKey = PAGE_TYPES[t].defaultMetric;
       expect(key in UX_METRICS).toBe(true);
@@ -239,7 +239,7 @@ describe("tipos de página", () => {
   });
 });
 
-describe("1ª rodada do site inteiro (outra loja, 16/11)", () => {
+describe("1st whole-site round", () => {
   const site = (over: Parameters<typeof evidence>[0] = {}) =>
     evidence({
       platform_funnel: [
@@ -258,7 +258,7 @@ describe("1ª rodada do site inteiro (outra loja, 16/11)", () => {
       ...over,
     });
 
-  test("funil aberto invertido (145%) não vira taxa", () => {
+  test("an inverted open funnel (145%) does not become a rate", () => {
     const ref = {
       key: "vercarrinho_checkout" as const,
       device: "mobile" as const,
@@ -267,7 +267,7 @@ describe("1ª rodada do site inteiro (outra loja, 16/11)", () => {
     expect(measureMetric(site(), ref, "carrinho_checkout")).toBeNull();
   });
 
-  test("Deco Analytics sem 'viu produto' nem 'carrinho' é falta de dado, não 0%", () => {
+  test("Deco Analytics without 'viewed product' or 'cart' is missing data, not 0%", () => {
     const ev = site({
       page_type: "home",
       pdp_behaviour: [
@@ -285,7 +285,7 @@ describe("1ª rodada do site inteiro (outra loja, 16/11)", () => {
     expect(measureMetric(ev, ref, "home")).toBeNull();
   });
 
-  test("cada página fica com as etapas dela: a da PDP não mede a busca", () => {
+  test("each page keeps its own steps: the PDP's does not measure search", () => {
     expect(metricFitsPage("produto_carrinho", "busca")).toBe(false);
     expect(metricFitsPage("produto_carrinho", "carrinho_checkout")).toBe(false);
     expect(metricFitsPage("lista_produto", "categoria")).toBe(true);
@@ -298,7 +298,7 @@ describe("1ª rodada do site inteiro (outra loja, 16/11)", () => {
     ).toBeCloseTo(28_479 / 121_330, 4);
   });
 
-  test("a etapa de outra página (ou do site inteiro) nunca vira perda desta", () => {
+  test("another page's (or the whole site's) step never becomes this page's loss", () => {
     const ev = site({ page_type: "busca" });
     const keys = findLosses(ev).map((l) => l.key);
     expect(keys).not.toContain("produto_carrinho");
@@ -308,8 +308,8 @@ describe("1ª rodada do site inteiro (outra loja, 16/11)", () => {
   });
 });
 
-describe("2ª rodada do site inteiro (outra loja, 16/11)", () => {
-  test("página sem funil: nenhuma perda medida, nenhuma oportunidade (era R$ 4,7 mi sem base conferida)", () => {
+describe("2nd whole-site round", () => {
+  test("page without a funnel: no measured loss, no opportunity (used to be R$ 4.7M with no verified basis)", () => {
     const out = opportunitiesFromLosses(
       evidence({
         page_type: "busca",

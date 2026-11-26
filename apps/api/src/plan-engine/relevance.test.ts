@@ -68,7 +68,7 @@ const tree = (over: Partial<HypothesisTree>): HypothesisTree =>
 const ev = makeEvidence({ pdp_behaviour: [behaviour()], captures: [capture] });
 
 describe("reachAtDepth", () => {
-  test("interpola a curva; sem curva, usa as três marcas", () => {
+  test("interpolates the curve; without a curve, uses the three marks", () => {
     const b = behaviour();
     expect(reachAtDepth(b, 25)).toBe(80);
     expect(reachAtDepth(b, 27.5)).toBe(78);
@@ -79,20 +79,20 @@ describe("reachAtDepth", () => {
 });
 
 describe("computeRelevance", () => {
-  test("abaixo da dobra e a mudança traz pra primeira tela: atinge todo mundo → alta", () => {
+  test("below the fold and the change moves it to the first screen: reaches everyone → high", () => {
     const r = computeRelevance(
       { device: "mobile", tree: tree({ posicao_depois: "primeira_tela" }) },
       ev,
       "t",
     );
-    // y=1250 numa página de 5000 = 25% → 80% chegam lá.
+    // y=1250 on a 5000 page = 25% → 80% reach it
     expect(r?.reach_pct).toBe(80);
     expect(r?.affected_pct).toBe(100);
     expect(r?.views_week).toBe(100_000);
     expect(r?.level).toBe("alta");
   });
 
-  test("mudança no lugar só atinge quem chega; sem sinal forte → média", () => {
+  test("in-place change only reaches those who get there; no strong signal → medium", () => {
     const r = computeRelevance(
       {
         device: "mobile",
@@ -103,12 +103,12 @@ describe("computeRelevance", () => {
       ev,
       "t",
     );
-    // y=2500 = 50% → 60%.
+    // y=2500 = 50% → 60%
     expect(r?.affected_pct).toBe(60);
     expect(r?.level).toBe("media");
   });
 
-  test("seção que quase ninguém alcança: baixa", () => {
+  test("section almost nobody reaches: low", () => {
     const r = computeRelevance(
       {
         device: "mobile",
@@ -123,7 +123,7 @@ describe("computeRelevance", () => {
     expect(r?.level).toBe("baixa");
   });
 
-  test("na primeira tela = 100%; sinais do elemento comparam com a página", () => {
+  test("in the first screen = 100%; element signals compare against the page", () => {
     const r = computeRelevance(
       {
         device: "mobile",
@@ -143,14 +143,14 @@ describe("computeRelevance", () => {
       "t",
     );
     expect(r?.reach_pct).toBe(100);
-    // O clique de raiva saiu dos sinais (16/11): não é confiável.
+    // Rage click is no longer among the signals: not reliable
     expect(r?.signals.find((s) => s.label === "Raiva")).toBeUndefined();
     const cart = r?.signals.find((s) => s.label === "Carrinho");
     expect(cart?.ratio).toBe(4);
     expect(r?.level).toBe("alta");
   });
 
-  test("pouca gente por semana: sem relevância; sem Deco Analytics: null", () => {
+  test("few people per week: no relevance; without Deco Analytics: null", () => {
     const few = makeEvidence({
       pdp_behaviour: [behaviour({ views: 300 })],
       captures: [capture],
@@ -167,7 +167,7 @@ describe("computeRelevance", () => {
     ).toBeNull();
   });
 
-  test("hipótese sem alvo é da página inteira", () => {
+  test("hypothesis without a target applies to the whole page", () => {
     const r = computeRelevance(
       { device: "mobile", tree: tree({ alvo: null }) },
       ev,
@@ -178,8 +178,8 @@ describe("computeRelevance", () => {
   });
 });
 
-describe("seção por cima da página (uma loja, 15/11)", () => {
-  test("pop-up com alcance 1,6% e CTR 957%: o piso é cliques ÷ visualizações, com os sinais da seção", () => {
+describe("section over the page", () => {
+  test("popup with 1.6% reach and 957% CTR: the floor is clicks ÷ views, with the section signals", () => {
     const b = behaviour({
       views: 424_518,
       clicks: 416_910,
@@ -219,7 +219,7 @@ describe("seção por cima da página (uma loja, 15/11)", () => {
       makeEvidence({ pdp_behaviour: [b], captures: [capture] }),
       "t",
     );
-    // 141.129 ÷ 424.518 = 33%.
+    // 141,129 ÷ 424,518 = 33%
     expect(r?.reach_pct).toBeCloseTo(33.2, 1);
     expect(r?.basis).toContain("fica por cima da página");
     expect(r?.signals.find((s) => s.label === "Clique")).toBeDefined();
@@ -227,10 +227,8 @@ describe("seção por cima da página (uma loja, 15/11)", () => {
   });
 });
 
-describe("clique morto em elemento que troca de página (busca de uma loja de moda, 16/11)", () => {
-  // Os números da home mobile da loja: a lupa do cabeçalho abre o painel
-  // (0,08% mortos); o "Search term" é o ENVIO da busca, 56% "mortos" porque
-  // a /buscar leva mais de 1 s pra chegar, com 23% indo ao carrinho.
+describe("dead click on an element that changes page (search on a fashion store)", () => {
+  // The search submit is a "dead click" only because the results page takes over 1 s to load
   const homeMobile = behaviour({
     views: 246_306,
     clicks: 534_394,
@@ -280,27 +278,27 @@ describe("clique morto em elemento que troca de página (busca de uma loja de mo
       "t",
     );
 
-  test("o envio da busca não ganha sinal de clique morto", () => {
+  test("search submit does not get a dead-click signal", () => {
     const r = on("h|submit");
     expect(r?.signals.map((s) => s.label)).not.toContain("Clique morto");
-    // E o carrinho diz que mede quem escolheu clicar.
+    // And the cart says it measures those who chose to click
     expect(r?.signals.find((s) => s.label === "Carrinho")?.value).toContain(
       "escolheu clicar",
     );
   });
 
-  test("escondido na carga: o y=0 não vira 'na primeira tela'", () => {
+  test("hidden on load: y=0 does not become 'in the first screen'", () => {
     const r = on("h|submit");
     expect(r?.reach_pct).toBeNull();
     expect(r?.basis).toContain("não deu pra achar");
   });
 
-  test("a lupa, que muda a própria página, segue com o sinal", () => {
+  test("the magnifier, which changes its own page, keeps the signal", () => {
     const r = on("h|open");
     expect(r?.signals.map((s) => s.label)).toContain("Clique morto");
   });
 
-  test("seção: os mortos do envio não entram na soma", () => {
+  test("section: the submit's dead clicks do not enter the sum", () => {
     const r = computeRelevance(
       {
         device: "mobile",

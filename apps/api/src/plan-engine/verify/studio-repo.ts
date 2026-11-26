@@ -1,16 +1,16 @@
-/** Identificação de um repositório pela URL que o projeto do site guarda. */
+/** Identifies a repository from the URL the site project stores. */
 import type { SiteProfile } from "../types.ts";
 
 export type RepoProvider = "github" | "gitlab" | "bitbucket";
 
-/** Provedor pelo host; o que não é GitLab nem Bitbucket fica GitHub. */
+/** Provider by host; anything that is not GitLab or Bitbucket is GitHub. */
 export function providerOfHost(host: string): RepoProvider {
   if (/(^|\.)gitlab\./i.test(host)) return "gitlab";
   if (/(^|\.)bitbucket\./i.test(host)) return "bitbucket";
   return "github";
 }
 
-/** `https://host/owner/nome(.git)` → host e caminho. */
+/** `https://host/owner/name(.git)` → host and path. */
 export function parseRepoUrl(
   url: string,
 ): { host: string; path: string } | null {
@@ -28,13 +28,13 @@ export function parseRepoUrl(
 export interface RepoIdentity {
   provider: RepoProvider;
   host: string;
-  /** `owner/nome` (no GitLab, `grupo/sub/projeto`). */
+  /** `owner/name` (on GitLab, `group/sub/project`). */
   path: string;
-  /** O id do repositório no Studio (`metadata.repository.repositoryId`). */
+  /** The repository's id in Studio (`metadata.repository.repositoryId`). */
   repository_id?: string;
 }
 
-/** `owner/nome` ou uma URL do repositório; sem host, GitHub. */
+/** `owner/name` or a repository URL; without a host, GitHub. */
 function parseCodeRepo(raw: string): { host: string; path: string } | null {
   const t = raw.trim();
   if (t.includes("://")) return parseRepoUrl(t);
@@ -45,8 +45,8 @@ function parseCodeRepo(raw: string): { host: string; path: string } | null {
 }
 
 /**
- * O repositório da loja: o `code_repo` do perfil (o override) ou o do projeto
- * do site no Studio (`sources.repository`). Sem provedor/host, GitHub.
+ * The store's repository: the profile's `code_repo` (the override) or the site project's in Studio
+ * (`sources.repository`). Without provider/host, GitHub.
  */
 export function repoIdentityOf(
   profile: Pick<SiteProfile, "code_repo" | "sources"> | null,

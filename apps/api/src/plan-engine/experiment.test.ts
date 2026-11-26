@@ -9,16 +9,16 @@ import type { HypothesisRelevance } from "./relevance.ts";
 import type { HypothesisTree } from "./tree.ts";
 
 describe("sampleSizePerGroup", () => {
-  test("10% → 11%, α 5% bicaudal, poder 80%: 14.751 por grupo", () => {
+  test("10% -> 11%, two-tailed α 5%, power 80%: 14,751 per group", () => {
     expect(sampleSizePerGroup(0.1, 0.11)).toBe(14_751);
   });
 
-  test("sem diferença ou taxa fora de (0,1): infinito", () => {
+  test("no difference or rate outside (0,1): infinite", () => {
     expect(sampleSizePerGroup(0.1, 0.1)).toBe(Number.POSITIVE_INFINITY);
     expect(sampleSizePerGroup(0, 0.1)).toBe(Number.POSITIVE_INFINITY);
   });
 
-  test("o efeito detectável é o inverso da amostra", () => {
+  test("the detectable effect is the inverse of the sample", () => {
     expect(detectableEffect(0.1, 14_751)).toBeCloseTo(0.01, 4);
     expect(detectableEffect(0.1, 0)).toBeNull();
   });
@@ -40,7 +40,7 @@ const sample = evidence({ platform_funnel: sampleFunnel });
 const relevance = (affected_pct: number) =>
   ({ affected_pct, level: "alta" }) as HypothesisRelevance;
 
-describe("designExperiment (loja de moda, viu → carrinho no celular 10,4%)", () => {
+describe("designExperiment (fashion store, viewed -> cart on mobile 10.4%)", () => {
   const h = {
     title: "t",
     idea: "Barra fixa com tamanho",
@@ -50,7 +50,7 @@ describe("designExperiment (loja de moda, viu → carrinho no celular 10,4%)", (
   };
   const o = { area: "tamanho" as const, metric: null };
 
-  test("1 pp de efeito com toda visualização: cabe no mínimo de 2 semanas", () => {
+  test("1 pp effect with every view: fits the 2-week minimum", () => {
     const e = designExperiment({
       hypothesis: h,
       opportunity: o,
@@ -67,18 +67,18 @@ describe("designExperiment (loja de moda, viu → carrinho no celular 10,4%)", (
     expect(e?.metodo).not.toContain("exposição");
   });
 
-  test("efeito pequeno demais vira o piso de 3% relativo", () => {
+  test("an effect too small becomes the 3% relative floor", () => {
     const e = designExperiment({
       hypothesis: { ...h, tree: tree({ efeito_esperado_pp: 0.01 }) },
       opportunity: o,
       evidence: sample,
       relevance: relevance(100),
     });
-    // 3% de 10,4% = 0,31 pp.
+    // 3% of 10.4% = 0.31 pp.
     expect(e?.mde_pp).toBeCloseTo(0.31, 1);
   });
 
-  test("quase ninguém exposto: não fecha em 8 semanas → não mensurável", () => {
+  test("almost nobody exposed: does not close in 8 weeks -> not measurable", () => {
     const e = designExperiment({
       hypothesis: { ...h, tree: tree({ efeito_esperado_pp: 0.3 }) },
       opportunity: o,
@@ -90,7 +90,7 @@ describe("designExperiment (loja de moda, viu → carrinho no celular 10,4%)", (
     expect(e?.limitacoes.join(" ")).toContain("não é mensurável agora");
   });
 
-  test("sem linha de base: null", () => {
+  test("no baseline: null", () => {
     expect(
       designExperiment({
         hypothesis: { ...h, tree: tree({ key: "checkout_compra" }) },

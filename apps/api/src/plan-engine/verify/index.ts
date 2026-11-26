@@ -1,16 +1,16 @@
 /**
- * Orquestração da verificação de UMA hipótese: plano → testes de repo (os
- * `followup` entram na fila do navegador) → testes live → veredito. Tudo entra
- * por `VerifyDeps`, então a ordem e as regras de desfecho testam sem rede nem
- * Chrome. O chamador compõe `planJudgeDeps`, `liveDeps` e `repoDeps`.
+ * Verifies ONE hypothesis: plan → repo tests (their `followup` joins the browser queue) → live tests → verdict.
+ * Everything comes through `VerifyDeps`, so ordering and outcome rules test without network or Chrome.
+ * The caller composes `planJudgeDeps`, `liveDeps` and `repoDeps`.
  */
 
-import type {
-  BrowserPort,
-  Llm,
-  LlmUsage,
-  MediaStore,
-  RepoReader,
+import {
+  type BrowserPort,
+  type Llm,
+  type LlmUsage,
+  type MediaStore,
+  type RepoReader,
+  rethrowNoAiModel,
 } from "../ports.ts";
 import type {
   DiagnosisEvidence,
@@ -45,17 +45,13 @@ export interface VerifyDeps {
   ) => Promise<JudgeResult>;
   now: () => string;
   /**
-   * Quanto falta (ms) pro prazo desta hipótese. Teste que começaria depois
-   * dele sai `nao_testou` e a segunda volta da reescrita não roda: o step tem
-   * 15 min (WORK_STEP), e um ciclo inteiro com navegador passa disso.
+   * Time left (ms) for this hypothesis. Tests past it become `nao_testou` and the rewrite's second round is
+   * skipped: the step has 15 min (WORK_STEP), and a full browser cycle can exceed that.
    */
   timeLeft: () => number;
   /**
-   * O juiz pode trocar a causa por outra ("reescrita")? Na rodada encadeada,
-   * não (19/11): a causa nova saía do juiz sem passar pela triagem nem pela
-   * revisão. O que ele viu volta como fato pra uma nova rodada de hipóteses
-   * (ux-verify-phase.ts, `reinvestigate`). Ausente = pode (o "verificar de
-   * novo" de uma hipótese avulsa).
+   * May the judge swap the cause ("reescrita")? Not in the chained round, where a new cause would skip triage and
+   * review; its findings feed a new hypothesis round instead (`reinvestigate`). Absent = may (single "verify again").
    */
   allowRewrite?: boolean;
 }
@@ -89,7 +85,7 @@ const notRun = (check: VerifyCheck, why: unknown): CheckRun => ({
   source_ref: null,
 });
 
-/** Um ciclo plano → testes → juiz. Exceção de plan/judge sobe pro chamador. */
+/** One plan → tests → judge cycle. Plan/judge exceptions propagate to the caller. */
 async function cycle(
   h: UxHypothesis,
   deps: VerifyDeps,
@@ -100,7 +96,7 @@ async function cycle(
 
   const runs: CheckRun[] = [];
   const liveQueue = plan.checks.filter((c) => c.stage === "live");
-  // Repo primeiro: o que ele achar no código pode pedir um teste no navegador.
+  // Repo first: what it finds in the code may request a browser test.
   for (const check of plan.checks.filter((c) => c.stage === "repo")) {
     if (deps.timeLeft() <= 0) {
       runs.push(outOfTime(check));
@@ -111,6 +107,7 @@ async function cycle(
       runs.push(r.run);
       if (r.followup) liveQueue.push(r.followup);
     } catch (e) {
+      rethrowNoAiModel(e);
       runs.push(notRun(check, e));
     }
   }
@@ -131,7 +128,7 @@ async function cycle(
 const confirmedConfidence = (c: number) =>
   Math.min(CONFIRM_CEILING, c + CONFIRM_BOOST);
 
-/** Hipótese temporária da reescrita: mesma identidade, texto do rascunho. */
+/** Temporary hypothesis for the rewrite: same identity, the draft's text. */
 function draftHypothesis(h: UxHypothesis, d: RewriteDraft): UxHypothesis {
   return {
     ...h,
@@ -144,9 +141,8 @@ function draftHypothesis(h: UxHypothesis, d: RewriteDraft): UxHypothesis {
 }
 
 /**
- * "Verificar de novo" parte do que a hipótese era antes da primeira
- * verificação: a confiança (senão cada confirmação soma o bônus outra vez) e,
- * se ela já foi reescrita, a hipótese original que a tela mostra riscada.
+ * "Verify again" starts from the hypothesis before its first verification: the confidence (else each confirmation
+ * adds the bonus again) and, if already rewritten, the original hypothesis the UI shows struck through.
  */
 export function verificationBase(h: UxHypothesis): {
   confidence: number;
@@ -159,9 +155,8 @@ export function verificationBase(h: UxHypothesis): {
 }
 
 /**
- * Por que o "verificar de novo" não pega esta hipótese; null = pode. Só
- * pendente e sem "ver no código": a verificação pode reescrever ou apagar, e
- * levaria junto uma aprovação ou um Depois do repo feitos sobre a hipótese.
+ * Why "verify again" cannot take this hypothesis; null = it can. Only pending ones without "ver no código": the
+ * verification may rewrite or delete it, taking along an approval or a repo After built on it.
  */
 export function reverifyBlock(h: UxHypothesis): string | null {
   if (h.status === "approved" || h.code_status) {
@@ -191,14 +186,14 @@ export async function verifyHypothesis(
     verified_at: deps.now(),
     base_confidence: base.confidence,
   });
-  // Inconclusiva não mexe na hipótese: fica a confiança que ela tem hoje.
+  // Inconclusive leaves the hypothesis alone: it keeps its current confidence.
   const inconclusive = (summary: string): VerifyOutcome => ({
     kind: "keep",
     verification: verification("inconclusiva", summary, []),
     confidence: h.confidence,
   });
 
-  // Uma reescrita por hipótese, também entre um "verificar de novo" e outro.
+  // One rewrite per hypothesis, also across "verify again" runs.
   const mayRewrite = base.rewrittenFrom === null && deps.allowRewrite !== false;
   try {
     const first = await cycle(h, deps, mayRewrite);
@@ -214,12 +209,12 @@ export async function verifyHypothesis(
         confidence: confirmedConfidence(base.confidence),
       };
     }
-    // O juiz não podia reescrever e reescreveu: vale desmentida.
+    // The judge rewrote when it could not: counts as refuted.
     if (
       j.verdict === "desmentida" ||
       (j.verdict === "reescrita" && !mayRewrite)
     ) {
-      // A causa que o juiz proporia vira linha de investigação, com triagem.
+      // The judge's proposed cause becomes an investigation line, with triage.
       const suggested = j.rewrite ? [`outra causa: ${j.rewrite.title}`] : [];
       return {
         kind: "drop",
@@ -238,7 +233,7 @@ export async function verifyHypothesis(
       };
     }
 
-    // Reescrita: uma segunda verificação; sem tempo, a reescrita não verificada não vale.
+    // Rewrite: a second verification; without time, the unverified rewrite does not count.
     if (deps.timeLeft() <= 0) {
       return {
         kind: "keep",
@@ -253,9 +248,9 @@ export async function verifyHypothesis(
     const draft = j.rewrite;
     const second = await cycle(draftHypothesis(h, draft), deps, false);
     const s = second.judged;
-    // Reescrever uma reescrita: a tela continua mostrando a original.
+    // Rewriting a rewrite: the UI keeps showing the original.
     const from = base.rewrittenFrom ?? { title: h.title, why: h.why };
-    // Segundo plano vazio: nada a refutar, vale como inconclusiva (rewrite fica).
+    // Empty second plan: nothing to refute, counts as inconclusive (the rewrite stays).
     if (!s) {
       return {
         kind: "rewrite",
@@ -269,7 +264,7 @@ export async function verifyHypothesis(
         confidence: base.confidence,
       };
     }
-    // "reescrita" de novo vale desmentida: não há terceira rodada.
+    // "reescrita" again counts as refuted: there is no third round.
     if (s.verdict === "desmentida" || s.verdict === "reescrita") {
       return {
         kind: "drop",
@@ -290,6 +285,7 @@ export async function verifyHypothesis(
           : base.confidence,
     };
   } catch (e) {
+    rethrowNoAiModel(e);
     return inconclusive(
       `a verificação falhou: ${e instanceof Error ? e.message : String(e)}`,
     );

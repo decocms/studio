@@ -6,7 +6,12 @@ import {
   pickThemePaths,
   themePropsOf,
 } from "./code-tokens.ts";
-import type { Llm, LlmRequest, RepoEntry } from "./ports.ts";
+import {
+  type Llm,
+  type LlmRequest,
+  NoAiModelError,
+  type RepoEntry,
+} from "./ports.ts";
 
 const entry = (path: string, size = 1000, type = "file"): RepoEntry => ({
   name: path.split("/").pop() ?? path,
@@ -262,6 +267,20 @@ describe("extractCodeTokens", () => {
     expect(JSON.stringify(tokens)).not.toContain("#ffeaaf");
     // O modelo fora do ar: a parte sem modelo sai mesmo assim.
     expect(tokens.model_error).toBe("modelo fora do ar");
+  });
+
+  test("no model: the error propagates instead of becoming model_error", async () => {
+    const noModel: Llm = async () => {
+      throw new NoAiModelError();
+    };
+    await expect(
+      extractCodeTokens({
+        code: code(),
+        llm: noModel,
+        now: "2026-11-20T12:00:00.000Z",
+        onUsage: () => {},
+      }),
+    ).rejects.toBeInstanceOf(NoAiModelError);
   });
 
   test("o modelo nomeia: tetos, itens sem nome fora, valores em texto", async () => {
