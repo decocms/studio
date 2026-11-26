@@ -270,27 +270,6 @@ export function storeStatus(store: OrderMonitorStore): MonitorStatus {
     : worstStatus(store.rules.map((r) => r.status));
 }
 
-/** A board narrowed to one project; the org board as is. */
-export function scopeBoard(
-  board: MonitorBoard,
-  scopeId: string | null,
-): MonitorBoard {
-  if (!scopeId) return board;
-  return {
-    ...board,
-    stores: board.stores.filter((s) => s.store.agentIds.includes(scopeId)),
-    deploys: board.deploys?.filter((d) => d.projectId === scopeId) ?? null,
-    deployHistory:
-      board.deployHistory?.filter((d) => d.projectId === scopeId) ?? null,
-    signals: board.signals.filter(
-      (s) => s.projectId === null || s.projectId === scopeId,
-    ),
-    projects: board.projects.filter((p) => p.id === scopeId),
-    experiments:
-      board.experiments?.filter((e) => e.projectId === scopeId) ?? null,
-  };
-}
-
 /** The store's timezone, from its rules' last verdict; the browser's until it has one. */
 export const storeTimezone = (store: OrderMonitorStore) =>
   store.rules[0]?.verdict.timezone ??
