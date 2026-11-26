@@ -2594,6 +2594,26 @@ export function rawBlockSchema(
     : trimmed;
 }
 
+/**
+ * The values a block's schema limits a prop to, or none when it names none. A
+ * union of literals reaches the meta as an `enum` on a TanStack site and as an
+ * `anyOf` of `const`s on a Deno one.
+ */
+export function blockPropChoices(
+  resolveType: string,
+  prop: string,
+  meta: LiveMeta,
+): string[] {
+  const properties = asRecord(rawBlockSchema(resolveType, meta).properties);
+  const { enum: values, anyOf } = asRecord(properties?.[prop]) ?? {};
+  const choices = Array.isArray(values)
+    ? values
+    : Array.isArray(anyOf)
+      ? anyOf.map((option) => asRecord(option)?.const)
+      : [];
+  return choices.filter((value): value is string => typeof value === "string");
+}
+
 /** `__resolveType` is the caller's to stamp, so it never reaches the writer. */
 function withoutPlumbing(
   schema: Record<string, unknown>,

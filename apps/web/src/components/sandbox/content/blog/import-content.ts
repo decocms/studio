@@ -22,7 +22,14 @@ export type ImportedSection =
   | { kind: "quote"; text: string }
   | { kind: "divider" }
   | { kind: "image"; url: string; alt: string; caption: string }
-  | { kind: "table"; headers: string[]; rows: string[][] };
+  | { kind: "table"; headers: string[]; rows: string[][] }
+  | {
+      kind: "callout";
+      title: string;
+      body: string;
+      /** Its other class names. The one the site's block accepts is its variant. */
+      variants: string[];
+    };
 
 export interface ParsedImport {
   /** The first H1 (HTML) or first `#` (Markdown), used as the post title. */
@@ -221,20 +228,17 @@ function attr(tag: string, name: string): string {
  * ("bem mastigadinho" — h1/h2/p/ul/img), so matching block elements in document
  * order is enough and stays dependency-free. Deeply nested same-tag structures
  * (a list inside a list, a table inside a table) are the known limitation; they
- * degrade, never crash.
+ * degrade, never crash. A div is matched only to find a callout.
  */
 const BLOCK_RE =
-  /<(h[1-6]|p|ul|ol|blockquote|figure|table)\b[^>]*>([\s\S]*?)<\/\1\s*>|<hr\b[^>]*\/?>|<img\b[^>]*>/gi;
+  /<(h[1-6]|p|ul|ol|blockquote|figure|table)\b[^>]*>([\s\S]*?)<\/\1\s*>|<hr\b[^>]*\/?>|<img\b[^>]*>|<div\b[^>]*>/gi;
 
-/** Where one block ends inside a table cell, which can only hold inline HTML. */
-const CELL_BREAK = /<\/(?:p|li|div|h[1-6])\s*>|<br\b[^>]*>/gi;
+/** Where one block ends inside a prop that can only hold inline HTML. */
+const BLOCK_END = /<\/(?:p|li|div|h[1-6])\s*>|<br\b[^>]*>/gi;
 
-/**
- * A cell's content as the Table block stores it: inline HTML, sanitized like a
- * paragraph. The blocks a cell held are kept apart by line breaks.
- */
-function cellHtml(inner: string): string {
-  const html = sanitizeInlineHtml(inner.replace(CELL_BREAK, "<br>"))
+/** Sanitized inline HTML for a table cell or a callout body, its blocks kept apart by `<br>`. */
+function inlineHtml(inner: string): string {
+  const html = sanitizeInlineHtml(inner.replace(BLOCK_END, "<br>"))
     .replace(/\s+/g, " ")
     .replace(/(?:<br> ?)+/g, "<br>")
     .replace(/^(?:<br>| )+|(?:<br>| )+$/g, "");
@@ -283,7 +287,7 @@ function tableToSection(inner: string): ImportedSection | null {
   for (const row of inner.matchAll(TABLE_ROW_RE)) {
     const cells = [...(row[1] ?? "").matchAll(TABLE_CELL_RE)];
     if (cells.length === 0) continue;
-    const values = cells.map((cell) => cellHtml(cell[2] ?? ""));
+    const values = cells.map((cell) => inlineHtml(cell[2] ?? ""));
     const inHead = row.index >= headStart && row.index < headEnd;
     const allHeaderCells = cells.every((c) => c[1]?.toLowerCase() === "th");
     const isHeader =
@@ -297,6 +301,98 @@ function tableToSection(inner: string): ImportedSection | null {
     (table.headers.length > 0 || table.rows.length > 0)
     ? table
     : null;
+}
+
+/**
+ * The `</div>` closing the div whose opening tag ends at `from`, or null when
+ * it never closes. Divs nest, so the first `</div>` after it may be an inner
+ * one's.
+ */
+function closingDiv(
+  html: string,
+  from: number,
+): { start: number; end: number } | null {
+  const tags = /<(\/?)div\b[^>]*>/gi;
+  tags.lastIndex = from;
+  let depth = 1;
+  for (let tag = tags.exec(html); tag; tag = tags.exec(html)) {
+    depth += tag[1] ? -1 : 1;
+    if (depth === 0) return { start: tag.index, end: tags.lastIndex };
+  }
+  return null;
+}
+
+/** A tag that starts or ends a line of a callout, kept beside the text it bounds. */
+const CALLOUT_LINE_TAG = /(<\/?(?:p|div|li|ul|ol|h[1-6])\b[^>]*>|<br\b[^>]*>)/i;
+
+/** A leading bold, and what follows it on the same line. */
+const LEADING_BOLD = /^\s*<(strong|b)\b[^>]*>([\s\S]*?)<\/\1\s*>([\s\S]*)$/i;
+
+/** `title`, `callout-title`, `callout__title`: a class that marks the title. */
+const TITLE_CLASS = /(?:^|[-_])title$/i;
+
+function opensTitle(tag: string): boolean {
+  return (
+    /^<h[1-6]\b/i.test(tag) ||
+    (!tag.startsWith("</") &&
+      attr(tag, "class")
+        .split(/\s+/)
+        .some((name) => TITLE_CLASS.test(name)))
+  );
+}
+
+/**
+ * A `<div class="callout">` as the Callout block stores it: a plain title, and
+ * a body of inline HTML the site renders as HTML.
+ *
+ * The title is the callout's first line when a heading or a `…-title` element
+ * holds it, when it is bold and nothing else, or when it opens with a bold
+ * label ending in a colon. A callout of one line has no title: that line is its
+ * body. An image or a table inside a callout is not carried over, because the
+ * block has nowhere to put it.
+ */
+function calloutToSection(
+  classes: string[],
+  inner: string,
+): ImportedSection | null {
+  const parts = inner.split(CALLOUT_LINE_TAG);
+  const lines: Array<{ html: string; titled: boolean }> = [];
+  for (let index = 0; index < parts.length; index += 2) {
+    const html = parts[index] ?? "";
+    if (stripTags(html)) {
+      lines.push({ html, titled: opensTitle(parts[index - 1] ?? "") });
+    }
+  }
+
+  let title = "";
+  let body = lines.map((line) => line.html);
+  const first = lines[0];
+  if (first && lines.length > 1 && first.titled) {
+    title = stripTags(first.html);
+    body = body.slice(1);
+  } else if (first) {
+    const bold = LEADING_BOLD.exec(first.html);
+    const label = stripTags(bold?.[2] ?? "");
+    const rest = bold?.[3] ?? "";
+    if (label && !stripTags(rest) && lines.length > 1) {
+      title = label.replace(/\s*:$/, "");
+      body = body.slice(1);
+    } else if (label.endsWith(":") && stripTags(rest)) {
+      title = label.replace(/\s*:$/, "");
+      body = [rest, ...body.slice(1)];
+    }
+  }
+
+  const html = inlineHtml(body.join("<br>"));
+  if (!html) return null;
+  return {
+    kind: "callout",
+    title,
+    body: html,
+    variants: classes
+      .filter((name) => name !== "callout")
+      .map((name) => name.replace(/^callout[-_]+/, "")),
+  };
 }
 
 function htmlToSections(html: string): ParsedImport {
@@ -321,6 +417,23 @@ function htmlToSections(html: string): ParsedImport {
             alt: attr(whole, "alt"),
             caption: "",
           });
+        }
+      } else if (/^<div/i.test(whole)) {
+        const classes = attr(whole, "class")
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+        // An unclosed callout stays a wrapper, or it would swallow the rest of the post.
+        const close = classes.includes("callout")
+          ? closingDiv(clean, blocks.lastIndex)
+          : null;
+        if (close) {
+          const callout = calloutToSection(
+            classes,
+            clean.slice(blocks.lastIndex, close.start),
+          );
+          if (callout) sections.push(callout);
+          blocks.lastIndex = close.end;
         }
       } else {
         sections.push({ kind: "divider" });
@@ -542,6 +655,7 @@ const COMPONENT_FOR_KIND: Record<ImportedSection["kind"], string> = {
   divider: "Divider",
   image: "BlockImage",
   table: "Table",
+  callout: "Callout",
 };
 
 /**
@@ -553,6 +667,8 @@ const COMPONENT_FOR_KIND: Record<ImportedSection["kind"], string> = {
 export function sectionsToBlocks(
   sections: ImportedSection[],
   resolveTypes: Record<string, string>,
+  /** The variants the site's Callout declares: one it does not know can break its render. */
+  calloutVariants: readonly string[] = [],
 ): Array<Record<string, unknown>> {
   const blocks: Array<Record<string, unknown>> = [];
   for (const section of sections) {
@@ -598,6 +714,20 @@ export function sectionsToBlocks(
           rows: JSON.stringify(section.rows),
         });
         break;
+      case "callout": {
+        const variant = section.variants
+          .map((name) =>
+            calloutVariants.find((known) => known.toLowerCase() === name),
+          )
+          .find((known) => known !== undefined);
+        blocks.push({
+          __resolveType,
+          title: section.title,
+          body: section.body,
+          ...(variant ? { variant } : {}),
+        });
+        break;
+      }
     }
   }
   return blocks;

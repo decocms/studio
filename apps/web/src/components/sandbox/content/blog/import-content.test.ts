@@ -432,6 +432,185 @@ describe("parseImportedContent — tables", () => {
   });
 });
 
+describe("parseImportedContent — callouts", () => {
+  const sectionsOf = (html: string) => parseImportedContent(html).sections;
+
+  test("a bold line over the text is the title, and the class names the variant", () => {
+    expect(
+      sectionsOf(
+        '<p>antes</p><div class="callout callout-warning"><strong>Atenção</strong><p>Prazo de 7 dias.</p></div><p>depois</p>',
+      ),
+    ).toEqual([
+      { kind: "paragraph", html: "antes" },
+      {
+        kind: "callout",
+        title: "Atenção",
+        body: "Prazo de 7 dias.",
+        variants: ["warning"],
+      },
+      { kind: "paragraph", html: "depois" },
+    ]);
+  });
+
+  test("text loose in the div is kept, as a body with no title", () => {
+    expect(
+      sectionsOf(
+        '<div class="callout">Dica: texto solto, sem parágrafo.</div>',
+      ),
+    ).toEqual([
+      {
+        kind: "callout",
+        title: "",
+        body: "Dica: texto solto, sem parágrafo.",
+        variants: [],
+      },
+    ]);
+  });
+
+  test("a heading is the title, and the paragraphs under it share the body", () => {
+    expect(
+      sectionsOf(
+        '<div class="callout tip"><h4>Dica</h4><p>Use com moderação.</p><p>Sempre.</p></div>',
+      ),
+    ).toEqual([
+      {
+        kind: "callout",
+        title: "Dica",
+        body: "Use com moderação.<br>Sempre.",
+        variants: ["tip"],
+      },
+    ]);
+  });
+
+  test("divs nested for the title and the body do not end the callout early", () => {
+    expect(
+      sectionsOf(
+        '<div class="callout callout--info mb-4"><div class="callout-title">Você sabia?</div><div class="callout-body"><p>Um.</p><ul><li>a</li><li>b</li></ul></div></div><p>fim</p>',
+      ),
+    ).toEqual([
+      {
+        kind: "callout",
+        title: "Você sabia?",
+        body: "Um.<br>a<br>b",
+        variants: ["info", "mb-4"],
+      },
+      { kind: "paragraph", html: "fim" },
+    ]);
+  });
+
+  test("a bold label ending in a colon is the title of its own line", () => {
+    expect(
+      sectionsOf(
+        '<div class="callout"><p><strong>Dica:</strong> beba <em>água</em>.</p></div>',
+      ),
+    ).toEqual([
+      {
+        kind: "callout",
+        title: "Dica",
+        body: "beba <em>água</em>.",
+        variants: [],
+      },
+    ]);
+  });
+
+  test("bold that only opens a sentence stays in the body", () => {
+    expect(
+      sectionsOf(
+        '<div class="callout"><p><strong>Não</strong> lave à máquina.</p></div>',
+      ),
+    ).toEqual([
+      {
+        kind: "callout",
+        title: "",
+        body: "<strong>Não</strong> lave à máquina.",
+        variants: [],
+      },
+    ]);
+  });
+
+  test("a callout of one line has no title, whatever marks that line", () => {
+    expect(
+      sectionsOf('<div class="callout"><h3>Só uma linha</h3></div>'),
+    ).toEqual([
+      { kind: "callout", title: "", body: "Só uma linha", variants: [] },
+    ]);
+    expect(
+      sectionsOf('<div class="callout"><p><b>Em negrito.</b></p></div>'),
+    ).toEqual([
+      { kind: "callout", title: "", body: "<b>Em negrito.</b>", variants: [] },
+    ]);
+  });
+
+  test("the body is sanitized like a paragraph, because the site renders it as HTML", () => {
+    const [callout] = sectionsOf(
+      '<div class="callout"><p>ok<img src=x onerror=alert(1)> &lt;script&gt;alert(1)&lt;/script&gt; <a href="javascript:alert(1)" onclick="x()">link</a></p></div>',
+    );
+    expect(callout).toEqual({
+      kind: "callout",
+      title: "",
+      body: "ok &lt;script&gt;alert(1)&lt;/script&gt; <a>link</a>",
+      variants: [],
+    });
+  });
+
+  test("the class is matched whole and without regard to case", () => {
+    expect(
+      sectionsOf('<div class="Callout Callout_Product"><p>x</p></div>'),
+    ).toEqual([
+      { kind: "callout", title: "", body: "x", variants: ["product"] },
+    ]);
+    expect(
+      sectionsOf(
+        '<div class="callout-list"><p>a</p></div><div class="callouts"><p>b</p></div>',
+      ),
+    ).toEqual([
+      { kind: "paragraph", html: "a" },
+      { kind: "paragraph", html: "b" },
+    ]);
+  });
+
+  test("a callout inside a wrapper div is found, and the wrapper stays transparent", () => {
+    expect(
+      sectionsOf(
+        '<div class="post"><p>a</p><div class="callout product"><b>Produto</b><br>Leve já.</div><p>b</p></div>',
+      ),
+    ).toEqual([
+      { kind: "paragraph", html: "a" },
+      {
+        kind: "callout",
+        title: "Produto",
+        body: "Leve já.",
+        variants: ["product"],
+      },
+      { kind: "paragraph", html: "b" },
+    ]);
+  });
+
+  test("an empty callout is skipped", () => {
+    expect(
+      sectionsOf('<div class="callout"> <p></p><br> </div><p>x</p>'),
+    ).toEqual([{ kind: "paragraph", html: "x" }]);
+  });
+
+  test("a callout that never closes does not swallow the rest of the post", () => {
+    expect(
+      sectionsOf('<div class="callout"><p>a</p><h2>B</h2><p>c</p>'),
+    ).toEqual([
+      { kind: "paragraph", html: "a" },
+      { kind: "heading", text: "B", level: "2" },
+      { kind: "paragraph", html: "c" },
+    ]);
+  });
+
+  test("a callout in a table cell stays in the cell", () => {
+    expect(
+      sectionsOf(
+        '<table><tr><td><div class="callout"><p>nota</p></div></td></tr></table>',
+      ),
+    ).toEqual([{ kind: "table", headers: [], rows: [["nota"]] }]);
+  });
+});
+
 describe("sectionsToBlocks", () => {
   const resolveTypes = {
     Heading: "blog/sections/blocks/Heading.tsx",
@@ -485,6 +664,52 @@ describe("sectionsToBlocks", () => {
       { __resolveType: "rt/Table", headers: '["A"]', rows: '[["1"],["2"]]' },
     ]);
     expect(sectionsToBlocks(sections, resolveTypes)).toEqual([]);
+  });
+
+  describe("callouts", () => {
+    const callout: ImportedSection = {
+      kind: "callout",
+      title: "Dica",
+      body: "Leve <strong>menos</strong>.",
+      variants: ["mb-4", "warning"],
+    };
+    const rt = { Callout: "rt/Callout" };
+    const base = {
+      __resolveType: "rt/Callout",
+      title: "Dica",
+      body: "Leve <strong>menos</strong>.",
+    };
+
+    test("takes the variant its classes name, among those the block declares", () => {
+      expect(
+        sectionsToBlocks([callout], rt, ["info", "tip", "warning", "product"]),
+      ).toEqual([{ ...base, variant: "warning" }]);
+    });
+
+    test("writes the variant as the block spells it", () => {
+      expect(sectionsToBlocks([callout], rt, ["Info", "Warning"])).toEqual([
+        { ...base, variant: "Warning" },
+      ]);
+    });
+
+    test("writes no variant the block does not declare", () => {
+      expect(sectionsToBlocks([callout], rt, ["info", "success"])).toEqual([
+        base,
+      ]);
+      expect(sectionsToBlocks([callout], rt)).toEqual([base]);
+    });
+
+    test("writes no variant when its classes name none", () => {
+      expect(
+        sectionsToBlocks([{ ...callout, variants: [] }], rt, ["info", "tip"]),
+      ).toEqual([base]);
+    });
+
+    test("is dropped on a site with no Callout block", () => {
+      expect(sectionsToBlocks([callout], resolveTypes, ["warning"])).toEqual(
+        [],
+      );
+    });
   });
 });
 
