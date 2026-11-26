@@ -510,7 +510,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
       // Só entra sugestão cujo domínio abre e deixa robô passar.
       const fetcher = browserFetcher(s.port, DOMAIN_CHECK_FETCH);
       const checks = await Promise.all(
-        suggested.map((d) => checkDomain(d, fetcher)),
+        suggested.map((d) => checkDomain(d, { fetcher })),
       );
       suggested = checks.flatMap((c) =>
         c.ok && !c.blocks_bots ? [c.host] : [],
