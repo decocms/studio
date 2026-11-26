@@ -96,6 +96,11 @@ export function contentBackendScopeKey(
   ]);
 }
 
+/** The protocol over this session's sandbox working tree. */
+export function isSandboxProtocol(backend: ContentBackend): boolean {
+  return backend.kind === "protocol" && backend.source === "sandbox";
+}
+
 /**
  * A content-protocol project, usable right now or not. The protocol never
  * runs site code: no in-place or gallery renders, no invoke-backed pickers,

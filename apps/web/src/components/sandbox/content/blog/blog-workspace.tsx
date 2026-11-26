@@ -16,6 +16,7 @@ import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useContentBackend } from "@/cms/use-content-backend";
 import {
   isProtocolProject,
+  isSandboxProtocol,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
 import { BlocksSiteEditorProvider } from "@/components/sections-editor/blocks-site-editor";
@@ -96,6 +97,7 @@ export function BlogWorkspace({
   const gate = resolveContentSandboxGate({
     // Neither a content-protocol backend nor Fast Preview has a pod to boot.
     fastPreviewActive: protocolActive || runtime === "cms",
+    sandboxProtocol: isSandboxProtocol(contentBackend),
     previewState: lifecycle.previewState,
     lifecyclePhase: vmEvents.lifecycle.phase,
   });

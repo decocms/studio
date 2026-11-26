@@ -42,6 +42,9 @@ export interface BlocksTabStateInput {
    *  not a sandbox — the lifecycle phase stays "idle" forever and must not
    *  gate the panel. Data readiness alone decides. */
   fastPreviewActive?: boolean;
+  /** Fast Preview's reads come from a sandbox that is still coming up (a
+   *  Blocks v8 project in a sandbox session): a failed read is loading. */
+  sandboxWarming?: boolean;
 }
 
 export type BlocksTabState =
@@ -99,12 +102,17 @@ export function resolveBlocksTabState(
   input: BlocksTabStateInput,
 ): BlocksTabState {
   if (input.fastPreviewActive) {
-    // No sandbox: a failed decofile/meta read is immediately real (there is
-    // no lifecycle transition coming to re-invalidate it).
+    // No sandbox: a failed decofile/meta read is real (no lifecycle
+    // transition is coming to re-invalidate it). The protocol over a
+    // sandbox's working tree reads through that sandbox, which may be booting.
     const failed =
       (input.decofile.status === "error" && !input.decofile.hasData) ||
       (input.meta.status === "error" && !input.meta.hasData);
-    if (failed) return { kind: "error", source: "data" };
+    if (failed) {
+      return input.sandboxWarming
+        ? { kind: "loading" }
+        : { kind: "error", source: "data" };
+    }
     if (!input.decofile.hasData || !input.meta.hasData) {
       return { kind: "loading" };
     }
