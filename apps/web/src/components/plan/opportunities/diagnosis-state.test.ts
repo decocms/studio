@@ -75,7 +75,7 @@ describe("diagnosisStatusState", () => {
     });
   });
 
-  it("with plan_engine_native on, a configured status needs no connection and calls Studio", () => {
+  it("with plan_engine_native on, the server's configured status names no connection and the page calls Studio", () => {
     const state = diagnosisStatusState(
       {
         data: { configured: true, connection_id: null },
@@ -83,22 +83,37 @@ describe("diagnosisStatusState", () => {
         isPending: false,
       },
       noRetry,
-      true,
     );
     expect(state).toEqual({ state: "configured", target: { kind: "native" } });
+  });
+
+  it("with plan_engine_native off, an answer the external engine gives keeps today's connection path", () => {
+    // What PLAN_DIAGNOSIS_STATUS answers with the flag off: a connection id
+    // whenever configured, so the page never reads org settings to choose.
+    const configured = diagnosisStatusState(
+      {
+        data: { configured: true, connection_id: "org_1_plan-diagnosis" },
+        error: null,
+        isPending: false,
+      },
+      noRetry,
+    );
+    expect(engineTargetOf(configured)).toEqual({
+      kind: "connection",
+      connectionId: "org_1_plan-diagnosis",
+    });
     expect(
       diagnosisStatusState(
         {
           data: {
             configured: false,
-            connection_id: null,
+            connection_id: "org_1_plan-diagnosis",
             reason: "not_connected",
           },
           error: null,
           isPending: false,
         },
         noRetry,
-        true,
       ),
     ).toEqual({ state: "unconfigured", reason: "not_connected" });
   });
@@ -115,13 +130,17 @@ describe("diagnosisStatusState", () => {
     expect(state.state).toBe("configured");
   });
 
-  it("an unconfigured answer without a reason or a configured one without an id is not connected", () => {
-    for (const data of [
-      { configured: false, connection_id: null },
-      { configured: true, connection_id: null },
-    ]) {
+  it("an unconfigured answer without a reason is not connected", () => {
+    for (const connection_id of [null, "org_1_plan-diagnosis"]) {
       expect(
-        diagnosisStatusState({ data, error: null, isPending: false }, noRetry),
+        diagnosisStatusState(
+          {
+            data: { configured: false, connection_id },
+            error: null,
+            isPending: false,
+          },
+          noRetry,
+        ),
       ).toEqual({ state: "unconfigured", reason: "not_connected" });
     }
   });
@@ -131,11 +150,17 @@ describe("engineScope", () => {
   it("keeps the two engines' cache entries apart, and each connection's", () => {
     const scopes = [
       engineScope({ kind: "native" }),
-      engineScope({ kind: "connection", connectionId: "native" }),
       engineScope({ kind: "connection", connectionId: "org_1_plan-diagnosis" }),
+      engineScope({ kind: "connection", connectionId: "org_2_plan-diagnosis" }),
     ];
     expect(new Set(scopes).size).toBe(3);
     expect(engineScope(null)).toBe("");
+  });
+
+  it("a connection's scope is its id, so the external engine's keys stay as they were", () => {
+    expect(
+      engineScope({ kind: "connection", connectionId: "org_1_plan-diagnosis" }),
+    ).toBe("org_1_plan-diagnosis");
   });
 });
 

@@ -54,25 +54,23 @@ function errorMessage(error: unknown): string {
 }
 
 /** A failed refetch keeps the last good answer, as React Query keeps `data`.
- *  `native` is the org's `plan_engine_native`; the external engine needs
- *  its connection id. */
+ *  The status reads `plan_engine_native` on the server: a configured answer
+ *  names the external engine's connection, or none when Studio runs it. */
 export function diagnosisStatusState(
   query: { data: StatusOutput | undefined; error: unknown; isPending: boolean },
   retry: () => void,
-  native = false,
 ): DiagnosisStatusState {
   const { data, error } = query;
   if (data) {
-    if (data.configured && native) {
-      return { state: "configured", target: { kind: "native" } };
+    if (!data.configured) {
+      return { state: "unconfigured", reason: data.reason ?? "not_connected" };
     }
-    if (data.configured && data.connection_id) {
-      return {
-        state: "configured",
-        target: { kind: "connection", connectionId: data.connection_id },
-      };
-    }
-    return { state: "unconfigured", reason: data.reason ?? "not_connected" };
+    return {
+      state: "configured",
+      target: data.connection_id
+        ? { kind: "connection", connectionId: data.connection_id }
+        : { kind: "native" },
+    };
   }
   if (error) return { state: "error", error: errorMessage(error), retry };
   return { state: "loading" };
@@ -85,12 +83,12 @@ export function engineTargetOf(
   return status.state === "configured" ? status.target : null;
 }
 
-/** The part of an engine read's cache key that keeps one engine's answers apart from the other's. */
+/** The part of an engine read's cache key that keeps one engine's answers
+ *  apart from the other's. A connection's is its id, as before Studio ran
+ *  the engine; ids are org-prefixed, so none is "native". */
 export function engineScope(target: EngineTarget | null): string {
   if (!target) return "";
-  return target.kind === "native"
-    ? "native"
-    : `connection:${target.connectionId}`;
+  return target.kind === "native" ? "native" : target.connectionId;
 }
 
 /** Read before the goals load, the view would be every run's instead of

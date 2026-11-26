@@ -510,15 +510,8 @@ export const KEYS = {
     ["plan-goals", organizationId, "cases", goalId] as const,
   planDiagnosisAll: (organizationId: string) =>
     ["plan-diagnosis", organizationId] as const,
-  planDiagnosisStatuses: (organizationId: string) =>
+  planDiagnosisStatus: (organizationId: string) =>
     ["plan-diagnosis", organizationId, "status"] as const,
-  planDiagnosisStatus: (organizationId: string, native: boolean) =>
-    [
-      "plan-diagnosis",
-      organizationId,
-      "status",
-      native ? "native" : "connection",
-    ] as const,
   // Engine reads carry the engine they came from: Studio's own, or the org's engine connection.
   planStoreViews: (organizationId: string) =>
     ["plan-diagnosis", organizationId, "store-view"] as const,

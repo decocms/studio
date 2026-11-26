@@ -15,7 +15,6 @@ import {
 } from "@tanstack/react-query";
 import type { z } from "zod";
 import type { StudioToolInput } from "@decocms/shared/tools/tool-io";
-import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { mcpClientQueryOptions, useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -44,22 +43,17 @@ import {
   unwrapEngineResult,
 } from "./diagnosis-state.ts";
 
-/** Loading until the org's settings say which engine answers, so reads never start on the wrong one. */
+/** The status names the engine, so the page never reads the org's flags
+ *  itself and engine reads start only on the one the server chose. */
 export function usePlanDiagnosisStatus(): DiagnosisStatusState {
   const { org } = useProjectContext();
   const studio = useStudioTools();
-  const native = useOrgFlagState("plan_engine_native");
   const query = useQuery({
-    queryKey: KEYS.planDiagnosisStatus(org.id, native === true),
-    enabled: native !== undefined,
+    queryKey: KEYS.planDiagnosisStatus(org.id),
     staleTime: 60_000,
     queryFn: () => studio.call("PLAN_DIAGNOSIS_STATUS", {}),
   });
-  return diagnosisStatusState(
-    query,
-    () => void query.refetch(),
-    native === true,
-  );
+  return diagnosisStatusState(query, () => void query.refetch());
 }
 
 /** Binds the engine to a BigQuery connection and GA4 dataset, then rereads
@@ -73,7 +67,7 @@ export function useDiagnosisSetup() {
       studio.call("PLAN_DIAGNOSIS_SETUP", input),
     onSettled: () =>
       queryClient.invalidateQueries({
-        queryKey: KEYS.planDiagnosisStatuses(org.id),
+        queryKey: KEYS.planDiagnosisStatus(org.id),
       }),
   });
 }
