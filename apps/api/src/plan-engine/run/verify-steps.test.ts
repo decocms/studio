@@ -190,7 +190,7 @@ describe("fallenAfterVerify with the lifecycle", () => {
 });
 
 describe("verifyKeyPrefix", () => {
-  test("a rodada encadeada fica onde sempre; o verificar de novo, sob a marca dele", () => {
+  test("the chained round keeps the usual prefix; verify again goes under its tag", () => {
     expect(verifyKeyPrefix("d1", undefined, "h1")).toBe("ux/d1/verify/h1");
     expect(verifyKeyPrefix("d1", "r2", "h1")).toBe("ux/d1/r2/verify/h1");
   });

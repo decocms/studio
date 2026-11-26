@@ -211,7 +211,7 @@ describe("runProbes", () => {
   };
   const noWait = async () => {};
 
-  test("camadas: abre com rastreio bloqueado, sem fechar pop-up, mede e guarda o print", async () => {
+  test("layers: opens with tracking blocked, leaves the pop-up open, measures and stores the screenshot", async () => {
     const f = fakeBrowser(() => ({
       scripts: new Map([[overlaysInPage, () => reading]]),
     }));
@@ -238,7 +238,7 @@ describe("runProbes", () => {
     );
   });
 
-  test("a página que não abre vira resultado com o motivo, nunca erro", async () => {
+  test("a page that does not open becomes a result with the reason, never an error", async () => {
     const f = fakeBrowser(() => ({
       goto: () => ({
         error: "net::ERR_CONNECTION_REFUSED",
@@ -260,7 +260,7 @@ describe("runProbes", () => {
     );
   });
 
-  test("prazo vencido: nenhuma sonda começa", async () => {
+  test("past the deadline, no probe starts", async () => {
     const f = fakeBrowser(() => ({}));
     const out = await runProbes({
       browser: f.browser,

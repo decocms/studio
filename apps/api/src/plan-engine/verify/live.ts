@@ -1,12 +1,7 @@
 /**
- * Etapa "loja no ar" do verificador: roda os passos de um teste na PDP de
- * verdade e conta o que viu. Não decide nada — o veredito por teste
- * (confirma/desmente) é do juiz, que compara `observed` com
- * `confirms_if`/`refutes_if`. Daqui só sai `nao_decidiu` (rodou) ou
- * `nao_testou` (não deu pra rodar: alvo sumido, alvo proibido, passo quebrou).
- *
- * O rastreio da loja fica bloqueado durante o teste (o clique nosso não pode
- * virar clique de cliente no heatmap), e nada que mexa na loja é clicado.
+ * The verifier's live stage: runs a check's steps on the real page and reports
+ * what it saw (`nao_decidiu`) or why it could not (`nao_testou`); the judge
+ * decides. Tracking is blocked and nothing that changes the store is clicked.
  */
 
 import { sleep } from "@decocms/shared/std";
@@ -39,7 +34,7 @@ import {
   type VerifyTarget,
 } from "./types.ts";
 
-/** Teto do relato: vai inteiro pro prompt do juiz. */
+/** Cap on the report, which goes whole into the judge's prompt. */
 const MAX_OBSERVED_CHARS = 1200;
 
 type PartKey = UxPart;
@@ -49,16 +44,15 @@ const PART_NAMES: Record<PartKey, string> = {
   first_recommendation: "primeira recomendação",
 };
 
-/** O alvo não tem área visível nesta tela (escondido, ou invólucro sem filho visível). */
+/** The target has no visible area on this screen (hidden, or a wrapper with no visible child). */
 export function isHiddenTarget(facts: ElementFacts): boolean {
   const r = facts.rect;
   return !r || r.width < 2 || r.height < 2;
 }
 
 /**
- * Seletor do alvo na página aberta. Elemento da Deco Analytics → a marca que
- * `elementLabelsInPage` grava; parte → o seletor medido na captura (null se a
- * captura não achou aquela parte).
+ * The target's selector on the open page: an analytics element's anchor from
+ * `elementLabelsInPage`, or the part's selector from the capture (null if none).
  */
 export function selectorFor(
   target: VerifyTarget,
@@ -70,13 +64,12 @@ export function selectorFor(
   return capture.selectors?.[target.part] ?? null;
 }
 
-/** Seletores medidos na página do teste (`measurePdpInPage`), por parte. */
+/** Selectors measured on the check's page (`measurePdpInPage`), by part. */
 type FreshSelectors = Partial<Record<PartKey, string | null>>;
 
 /**
- * Seletores a tentar pra um alvo, em ordem. Parte: o medido na página do teste
- * primeiro, o da captura depois. A captura pode ser de uma versão anterior da
- * página ou ter vindo nula por bug.
+ * Selectors to try for a target, in order. For a part, the one measured on the
+ * check's page first: the capture may be stale or missing it.
  */
 export function selectorCandidates(
   target: VerifyTarget,
@@ -88,7 +81,7 @@ export function selectorCandidates(
   return [...new Set([fromPage, fromCapture].filter((s): s is string => !!s))];
 }
 
-/** As partes que os passos do teste miram (sem repetir). */
+/** The distinct parts the check's steps target. */
 export function partsOf(check: VerifyCheck): PartKey[] {
   const out = new Set<PartKey>();
   for (const step of check.steps) {
@@ -99,7 +92,7 @@ export function partsOf(check: VerifyCheck): PartKey[] {
   return [...out];
 }
 
-/** Nome do alvo pro relato: o rótulo da captura, ou o nome da parte. */
+/** The target's name for the report: the capture's label, or the part's name. */
 function targetName(target: VerifyTarget, capture: PageCapture): string {
   if (target.kind === "part") return PART_NAMES[target.part];
   return (
@@ -113,8 +106,8 @@ function withoutHash(url: string): string {
 }
 
 /**
- * O que um clique mudou. URL diferente (fora o #) é navegação: o teste para
- * ali, porque os passos seguintes rodariam numa página estranha.
+ * What a click changed. A different URL (ignoring #) is a navigation: the check
+ * stops there, since later steps would run on another page.
  */
 export function describeClickChange(
   before: ClickSnapshot,
@@ -162,17 +155,14 @@ export function describeClickChange(
   return { changed: true, navigated: false, text: changes.join("; ") };
 }
 
-/**
- * "o alvo é um invólucro 390×0; medi o filho visível div.fixed… 390×844" quando
- * a medida veio do filho (ver `ElementFacts.wrapper`); "" se não.
- */
+/** A note when the measurement came from a visible child (`ElementFacts.wrapper`); "" otherwise. */
 function wrapperNote(f: ElementFacts): string {
   if (!f.wrapper) return "";
   const size = f.rect ? ` ${f.rect.width}×${f.rect.height}` : "";
   return `o alvo é um invólucro ${f.wrapper.width}×${f.wrapper.height}; medi o filho visível ${f.wrapper.child}${size}`;
 }
 
-/** "h1 "Relógio...": cursor pointer, cor #1a0dab vs pai #222222, ..." */
+/** One line of the element's facts: tag, text, cursor, colors, link, size. */
 export function describeFacts(f: ElementFacts): string {
   const parts = [
     `cursor ${f.cursor}`,
@@ -192,15 +182,15 @@ export function describeFacts(f: ElementFacts): string {
   }
   const note = wrapperNote(f);
   if (note) parts.push(note);
-  // Rótulo visível quando há (tooltip escondido fora).
+  // The visible label when there is one (a hidden tooltip stays out).
   const shown = f.label || f.text;
   const text = shown ? ` "${shown.slice(0, 40)}"` : "";
   return `<${f.tag}>${text}: ${parts.join(", ")}`;
 }
 
 /**
- * Recorte do print em volta do elemento: largura da tela, pelo menos 40% da
- * altura dela de contexto, nunca mais que uma tela (coordenadas do documento).
+ * Screenshot clip around the element, in document coordinates: full width, at
+ * least 40% of the viewport height of context, never more than one screen.
  */
 export function clipAround(
   rect: { x: number; y: number; width: number; height: number },
@@ -226,8 +216,8 @@ export function clipAround(
 }
 
 /**
- * Junta o relato dos passos, cortado no teto. Corta o MEIO: a última linha é o
- * motivo de o teste ter parado, e o juiz precisa dela.
+ * Joins the step report, capped. Cuts the middle: the last line says why the
+ * check stopped, and the judge needs it.
  */
 export function capObserved(lines: string[], max = MAX_OBSERVED_CHARS): string {
   const all = lines.join("\n");
@@ -243,8 +233,8 @@ export function capObserved(lines: string[], max = MAX_OBSERVED_CHARS): string {
 }
 
 /**
- * O caminho do gesto, em fração da tela: o miolo, longe do cabeçalho (menu que
- * abre no hover) e da barra de compra fixa embaixo.
+ * The gesture's path, as viewport fractions: the middle, away from the header
+ * (hover menus) and the sticky buy bar at the bottom.
  */
 export const GESTURE_PATH: ReadonlyArray<readonly [number, number]> = [
   [0.5, 0.4],
@@ -253,18 +243,14 @@ export const GESTURE_PATH: ReadonlyArray<readonly [number, number]> = [
   [0.5, 0.6],
 ];
 
-/**
- * O pedaço da página que o gesto usa: só mover o mouse. Nada de clique nem
- * toque aqui, nunca.
- */
+/** What the gesture uses of the page: mouse moves only, never a click or touch. */
 interface GesturePage {
   mouseMove(x: number, y: number, steps: number): Promise<void>;
 }
 
 /**
- * Mexe o mouse por alguns pontos do miolo da tela. Há pop-up de newsletter que
- * só abre no primeiro mousemove/touchmove. Só o mouse: um toque sem início e
- * fim vira dedo pressionado que nunca solta (arrasta galeria, dispara handler).
+ * Moves the mouse through the middle of the screen, since some pop-ups open on
+ * the first mousemove. Mouse only: an unfinished touch stays pressed forever.
  */
 export async function performGesture(
   p: GesturePage,
@@ -279,13 +265,13 @@ export async function performGesture(
   }
 }
 
-/** Espera curta depois de um clique: navegação ou reação da página. */
+/** Short wait after a click, for a navigation or the page's reaction. */
 const CLICK_SETTLE_MS = 1500;
 const RELOAD_TIMEOUT_MS = 45_000;
 const HIT_SELECTOR = "[data-ux-hit]";
 const CHOICE_SELECTOR = "[data-ux-choice]";
 
-/** O teste não pode seguir; o motivo vai pro relato. */
+/** The check cannot go on; the reason goes into the report. */
 class StopCheck extends Error {
   constructor(
     readonly outcome: "nao_testou" | "nao_decidiu",
@@ -299,7 +285,7 @@ type ClickResult =
   | { kind: "new_tab"; href: string | null; target: string | null }
   | { kind: "clicked"; to: string | null; before: ClickSnapshot | null };
 
-/** O que `runLiveCheck` usa de fora; os testes trocam por uma página falsa. */
+/** What `runLiveCheck` uses from outside; tests swap in a fake page. */
 interface LiveIo {
   openPage: (
     browser: BrowserPort,
@@ -318,9 +304,8 @@ interface LiveIo {
 const REAL_IO: LiveIo = { openPage, screenshotClip, storeImage, sleep };
 
 /**
- * Roda um teste "live" na PDP da captura. Sempre devolve um CheckRun (nunca
- * lança): qualquer falha vira `nao_testou` com o motivo, sem derrubar os
- * outros testes da hipótese.
+ * Runs a live check on the capture's page. Never throws: any failure becomes
+ * `nao_testou` with the reason, leaving the hypothesis' other checks alone.
  */
 export async function runLiveCheck(opts: {
   browser: BrowserPort;
@@ -336,7 +321,7 @@ export async function runLiveCheck(opts: {
   const log: string[] = [];
   let shot: string | null = null;
   let page: BrowserPage | null = null;
-  // Rastreio abortado nas páginas já fechadas; null = nenhuma página abriu.
+  // Tracking blocked on pages already closed; null = no page opened.
   let blockedBefore: number | null = null;
   const blocked = () =>
     blockedBefore === null
@@ -348,20 +333,20 @@ export async function runLiveCheck(opts: {
     try {
       await p.evaluate(elementLabelsInPage, elementKeys);
     } catch (err) {
-      // Sem âncora, todo alvo de elemento vira "não achei"; o relato diz por quê.
+      // Without anchors every element target is "not found"; the report says why.
       log.push(
         `não consegui marcar os elementos da Deco Analytics: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   };
-  // As partes que o teste mira são medidas de novo a cada open e reload; o seletor da captura vira reserva.
+  // Targeted parts are remeasured on every open and reload; the capture's selector is the fallback.
   const parts = partsOf(check);
   let fresh: FreshSelectors = {};
   const noted = new Set<PartKey>();
   const remeasure = async (p: BrowserPage) => {
     if (parts.length === 0) return;
     try {
-      // Sem rolar: rolar dispara pop-up de scroll e lazy-load, mudando o que o teste observa.
+      // No scrolling: it triggers scroll pop-ups and lazy loading, changing what the check sees.
       const kind = capture.page_type;
       const m: {
         positions: Partial<Record<UxPart, number | null>>;
@@ -424,16 +409,8 @@ export async function runLiveCheck(opts: {
     }
   };
   /**
-   * O único caminho de clique. O mouse clica num PONTO, e no ponto pode estar
-   * outra coisa (barra de compra fixa): então o que vale é quem está por cima
-   * ali, e esse também passa pela trava de proibido. A ordem importa:
-   * rola e espera a página reagir (outro evaluate), testa o ponto, tira o
-   * "antes" (observe_click) e clica na hora — nada mexe na página entre o
-   * "antes" e o clique.
-   *
-   * Link que abre outra aba (`_blank`, um nome de janela, ou o `<base
-   * target>` do documento) não é clicado: a aba nova nasce sem o bloqueio de
-   * rastreio (a interceptação é por página) e a atual não muda.
+   * The only click path: whatever sits on top at the click point must also pass
+   * the forbidden check, and links opening another tab (no tracking block) are not clicked.
    */
   const clickSafely = async (
     p: BrowserPage,
@@ -443,7 +420,7 @@ export async function runLiveCheck(opts: {
     snapshot: boolean,
   ): Promise<ClickResult> => {
     assertClickable(facts);
-    // Alvo escondido (0×0): o centro de um retângulo vazio é (0,0), e ali fica outra coisa.
+    // A 0×0 target's center is (0,0), where something else sits.
     if (isHiddenTarget(facts)) {
       throw new StopCheck(
         "nao_testou",
@@ -480,7 +457,7 @@ export async function runLiveCheck(opts: {
       ? await p.evaluate(clickSnapshotInPage, selector)
       : null;
     const beforeUrl = p.url();
-    // Navegação pedida na janela do clique conta, mesmo se a URL ainda não trocou.
+    // A navigation requested during the click counts even before the URL changes.
     const { navigation } = await p.click(point.x, point.y, CLICK_SETTLE_MS);
     const to =
       navigation ??
@@ -505,7 +482,7 @@ export async function runLiveCheck(opts: {
         );
         continue;
       }
-      // O plano sempre começa com open (validateSteps); por via das dúvidas.
+      // Plans always start with open (validateSteps); this is a safeguard.
       const p: BrowserPage = page ?? (await open());
       switch (step.op) {
         case "reload": {
@@ -520,7 +497,7 @@ export async function runLiveCheck(opts: {
           break;
         }
         case "gesture": {
-          // Sem clique e sem toque: só o mouse.
+          // No click and no touch: mouse only.
           await performGesture(p, p.viewport);
           log.push("gesture: mexi o mouse na página");
           break;
@@ -566,7 +543,7 @@ export async function runLiveCheck(opts: {
         }
         case "scroll_to": {
           const { selector, name } = await resolve(p, step.target);
-          // Rolagem instantânea + espera da página: a lisa ainda andava quando o teste lia a página.
+          // Instant scroll plus a settle wait: smooth scrolling was still moving when the check read the page.
           const moved = await p.evaluate(scrollToCenterInPage, selector);
           if (!moved) {
             throw new StopCheck(
@@ -598,7 +575,7 @@ export async function runLiveCheck(opts: {
         }
         case "observe_click": {
           const { selector, facts, name } = await resolve(p, step.target);
-          // Só o relato: o clique segue no alvo, com a trava de sempre.
+          // Report only: the click still goes to the target, with the usual guard.
           const note = wrapperNote(facts);
           const label = `observe_click ${name}${facts.href ? ` (href=${facts.href})` : ""}${note ? ` (${note})` : ""}`;
           const res = await clickSafely(p, selector, facts, name, true);
@@ -608,7 +585,7 @@ export async function runLiveCheck(opts: {
           }
           const before =
             res.before ?? (await p.evaluate(clickSnapshotInPage, selector));
-          // A navegação vai na mensagem de parada: a última linha, que capObserved nunca corta.
+          // The navigation goes in the stop message, the last line, which capObserved never cuts.
           if (res.to) {
             throw new StopCheck(
               "nao_decidiu",
@@ -667,10 +644,7 @@ export async function runLiveCheck(opts: {
   }
 }
 
-/**
- * O bloqueio de rastreio no relato: na PRIMEIRA linha, o começo que
- * `capObserved` guarda (o meio é que é cortado).
- */
+/** Puts the tracking-block count on the first line, which `capObserved` keeps. */
 function withBlocked(log: string[], blocked: number | null): string[] {
   return blocked === null
     ? log
@@ -693,9 +667,8 @@ function run(
 }
 
 /**
- * Snapshot depois do clique. Se a página navegou no meio, o evaluate morre com
- * "Execution context was destroyed": tenta de novo e, se ainda falhar, fica só
- * com a URL (que é o que importa pra saber se navegou).
+ * Snapshot after the click. If the page navigated, evaluate fails with "Execution
+ * context was destroyed": retry once, then keep only the URL.
  */
 async function snapshotAfterClick(
   p: BrowserPage,

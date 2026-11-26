@@ -53,7 +53,7 @@ const MAX_TOUCH_PROBES = 2;
 /** From this much dead click on a clickable element, it is worth touching. */
 const DEAD_SHARE = 0.3;
 const MIN_CLICKS = 200;
-/** O pop-up que abre com atraso (uma loja, 14/11: >3 s). */
+/** Wait for a pop-up that opens late (seen at over 3 s). */
 const OVERLAY_WAIT_MS = 5_000;
 
 /** Each screen's capture of the usual page (not the missing state). */
@@ -95,7 +95,7 @@ export function touchTargets(
     .map(({ key, l }) => ({ key, label: l ? describeElementLabel(l) : key }));
 }
 
-/** Seletores das partes medidas na captura, pra sonda de camadas. */
+/** Selectors of the parts measured in the capture, for the layers probe. */
 function partSelectors(capture: PageCapture): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [part, selector] of Object.entries(capture.selectors ?? {})) {
@@ -107,7 +107,7 @@ function partSelectors(capture: PageCapture): Record<string, string> {
 const message = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
 
-/** Abre sem fechar nada, mexe o mouse, espera o pop-up e mede. */
+/** Opens without closing anything, moves the mouse, waits for the pop-up and measures. */
 async function probeOverlays(opts: {
   browser: BrowserPort;
   capture: PageCapture;
@@ -155,7 +155,7 @@ async function probeOverlays(opts: {
   }
 }
 
-/** Toca num elemento pelo caminho do verificador e diz o que mudou. */
+/** Touches an element the way the verifier does and reports what changed. */
 async function probeTouch(opts: {
   browser: BrowserPort;
   capture: PageCapture;
@@ -208,16 +208,15 @@ async function probeTouch(opts: {
 }
 
 /**
- * Roda as sondas nas capturas de cada tela, uma de cada vez (o navegador é
- * dividido com as outras páginas). Passou do prazo, para e diz quais ficaram
- * de fora.
+ * Runs the probes on each screen's capture, one at a time (the browser is
+ * shared). Past the deadline it stops and says which were left out.
  */
 export async function runProbes(opts: {
   browser: BrowserPort;
   evidence: DiagnosisEvidence;
   media: MediaStore | null;
   keyPrefix: string;
-  /** Até quando uma sonda pode começar (ms epoch). */
+  /** Until when a probe may start (ms epoch). */
   deadline: number;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<ProbeResult[]> {

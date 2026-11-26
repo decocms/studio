@@ -1,13 +1,7 @@
 /**
- * Benchmark: como as PDPs de outras lojas resolvem o que a nossa não resolve.
- *
- * O app olha sozinho: começa pela lista guardada no perfil e, se faltar loja
- * (lista vazia ou loja que não abre — muro anti-robô, sem PDP), o modelo sugere
- * outras até completar; o navegador acha uma PDP de cada uma a partir da home
- * e tira o print do celular (primeira tela e página inteira), e uma passada de
- * visão lê a anatomia (barra fixa? tamanho na dobra?) e o que a loja faz em
- * cada parte da página — é isso que a hipótese cita em "quem já faz". O
- * resultado fica 30 dias em cache — concorrente não muda de PDP toda hora.
+ * Benchmark: how other stores' pages handle what ours does not. Starts from the
+ * profile's list, asks the model for more when short, captures each on mobile and
+ * reads what it does per area. Results are cached for 30 days.
  */
 
 import { areasForPrompt, asArea, isAreaOfPage } from "./areas.ts";
@@ -56,16 +50,15 @@ import {
 } from "./store-discovery.ts";
 import type { BenchmarkPdp, UxArea, UxPageType } from "./types.ts";
 
-/** Tarefa de leitura, não de julgamento. */
+/** A reading task, not a judgement. */
 const BENCHMARK_MODEL: LlmTier = "smart";
 
 /** How many stores the benchmark compares. */
 export const MAX_COMPETITORS = 5;
 
 /**
- * Quantas lojas pedir ao modelo. Mais que MAX_COMPETITORS porque parte não
- * abre: em 09/11 quatro de cinco sugestões voltaram sem PDP (muro anti-robô,
- * e um domínio parecido que vendia outra coisa).
+ * How many stores to ask the model for: more than MAX_COMPETITORS, since some
+ * suggestions do not open (anti-bot wall, no PDP, a look-alike domain).
  */
 const MAX_CANDIDATES = 8;
 
@@ -80,17 +73,15 @@ export function normalizeDomain(raw: string): string | null {
 }
 
 /**
- * Concorrentes sugeridos pelo modelo a partir da loja: mesmo segmento, PDP boa
- * no celular, e que um navegador automático consiga abrir — as gigantes
- * internacionais barram robô (sondado em 10/11), então o prompt puxa pras do
- * mesmo país. Cada item vem com marca e o que vende: obriga o modelo a se
- * comprometer com a loja certa em vez de chutar um domínio parecido.
+ * Competitors the model suggests: same segment, a good mobile PDP, and open to an
+ * automated browser. Each item names brand and products so the model commits to
+ * the right store instead of guessing a look-alike domain.
  */
 export async function suggestCompetitors(opts: {
   llm: Llm;
   domain: string;
   storeDescription: string;
-  /** Lojas que já estão na lista ou já falharam nesta rodada. */
+  /** Stores already listed or already failed in this run. */
   exclude?: string[];
   onUsage: (u: LlmUsage) => void;
 }): Promise<string[]> {
@@ -143,8 +134,8 @@ Formato: {"stores": [{"domain": "exemplo.com.br", "brand": "Exemplo", "sells": "
 }
 
 /**
- * Título e descrição da home da loja — o que o modelo precisa pra sugerir
- * concorrentes do mesmo segmento sem a gente dizer qual é.
+ * The home's title and description, so the model can suggest same-segment
+ * competitors without us naming the segment.
  */
 export async function storeDescription(
   browser: BrowserPort,
@@ -168,7 +159,9 @@ export async function storeDescription(
   }
 }
 
-/** Concorrente abre sem o `?html=1`, que é só da loja analisada (forceHtml). */
+/**
+ * Competitors open without `?html=1`, which is only for the analysed store (forceHtml).
+ */
 function openCompetitor(
   browser: BrowserPort,
   url: string,
@@ -178,13 +171,13 @@ function openCompetitor(
 }
 
 /**
- * Tempo do teto por loja guardado pros prints e a leitura da página achada:
- * a procura para antes, com uma lacuna que diz até onde chegou.
+ * Part of the per-store cap kept for screenshots and reading the page found: the
+ * search stops earlier, with a gap saying how far it got.
  */
 const CAPTURE_RESERVE_MS = 40_000;
-/** Vitrines da home abertas atrás de produto. */
+/** Home listings opened looking for products. */
 const MAX_LISTINGS = 3;
-/** Candidatas a PDP abertas até uma se confirmar. */
+/** PDP candidates opened until one confirms. */
 const MAX_PDP_TRIES = 4;
 
 const hasTime = (deadline: number | undefined) =>
@@ -194,7 +187,7 @@ const hasTime = (deadline: number | undefined) =>
 const sitemapFetcher = (browser: BrowserPort, fetcher: Fetcher | undefined) =>
   fetcher ?? browserFetcher(browser, SITEMAP_FETCH);
 
-/** Os links da página, classificados fora dela (store-discovery.ts). */
+/** The page's links, classified outside it (store-discovery.ts). */
 async function readLinks(page: BrowserPage): Promise<{
   origin: string;
   raw: RawLink[];
@@ -213,8 +206,8 @@ async function readLinks(page: BrowserPage): Promise<{
 }
 
 /**
- * Abre uma URL que pode não existir (vitrine, candidata do sitemap, rota de
- * busca): a que não abriu é pulada; muro anti-robô e queda do navegador sobem.
+ * Opens a URL that may not exist (listing, sitemap candidate, search route):
+ * one that fails is skipped; an anti-bot wall or a browser crash propagates.
  */
 async function openOrSkip(
   open: (url: string) => Promise<BrowserPage>,
@@ -230,8 +223,8 @@ async function openOrSkip(
 }
 
 /**
- * Desafio anti-robô que recarrega sem parar derruba a leitura no meio com essa
- * frase do navegador, que na tela dos limites não diz nada a ninguém.
+ * An anti-bot challenge that keeps reloading breaks reading with a browser
+ * message that means nothing on the limits screen.
  */
 function asBotWall(err: unknown, url: string): unknown {
   const msg = err instanceof Error ? err.message : String(err);
@@ -241,11 +234,9 @@ function asBotWall(err: unknown, url: string): unknown {
 }
 
 /**
- * Candidatas a PDP a partir de uma home, da mais provável à menos, abrindo
- * vitrine só quando quem consome pede mais: links com padrão de PDP da home;
- * os das vitrines da home (menu antes de rodapé); o sitemap. "Talvez PDP"
- * (card com foto, `.html`) entra junto quando a página tem cara de grade de
- * produtos, senão no fim. Quem abre confirma pelos dados estruturados.
+ * PDP candidates from a home, most likely first, opening listings only when the
+ * consumer asks for more: home PDP links, then listings' links, then the sitemap.
+ * Callers confirm each one by its structured data.
  */
 export async function* pdpCandidates(
   browser: BrowserPort,
@@ -305,26 +296,27 @@ export async function* pdpCandidates(
   yield* fresh(later);
 }
 
-/** O que a captura de um concorrente usa de fora. */
+/** What a competitor capture needs from outside. */
 interface CompetitorOpts {
   browser: BrowserPort;
   media: MediaStore;
   llm: Llm;
-  /** Um link que o modelo consegue baixar, a partir do caminho na mídia. */
+  /** A URL the model can download, from a media path. */
   mediaUrl: (path: string) => Promise<string>;
   domain: string;
   keyPrefix: string;
   now: string;
-  /** O teto por loja: a procura para antes, guardando tempo pro print. */
+  /**
+   * The per-store cap: the search stops early to keep time for the screenshot.
+   */
   budgetMs: number;
   onUsage: (u: LlmUsage) => void;
   fetcher?: Fetcher;
 }
 
 /**
- * Abre a home do concorrente, segue as candidatas a PDP até uma que se declare
- * Product (JSON-LD, microdata ou og:type), tira o print do celular e lê a
- * anatomia.
+ * Opens the competitor's home, follows PDP candidates until one declares Product
+ * (JSON-LD, microdata or og:type), takes the mobile screenshot and reads the anatomy.
  */
 export async function captureCompetitorPdp(
   opts: CompetitorOpts,
@@ -399,7 +391,7 @@ async function capturePdp(opts: CompetitorOpts): Promise<BenchmarkPdp> {
 
 async function readAnatomy(opts: {
   llm: Llm;
-  /** Primeira tela e página inteira, nessa ordem. */
+  /** First screen and full page, in that order. */
   images: [string, string];
   outline: string;
   onUsage: (u: LlmUsage) => void;
@@ -480,11 +472,11 @@ function parseByArea(
   return out;
 }
 
-// ── Benchmark de home, categoria e busca ─────────────────────────────────────
+// ── Benchmark of home, listing and search ────────────────────────────────────
 
 type Found = { page: BrowserPage; url: string };
 
-/** A primeira das URLs que lista produto; as outras são fechadas. */
+/** The first URL that lists products; the others are closed. */
 async function firstListing(
   browser: BrowserPort,
   urls: readonly string[],
@@ -510,8 +502,7 @@ async function firstListing(
 }
 
 /**
- * Uma vitrine do concorrente: as da home (menu antes de rodapé) e, sem
- * nenhuma que liste produto, as categorias do sitemap.
+ * A competitor listing: the home's (menu before footer), else the sitemap's categories.
  */
 export async function findListingPage(
   browser: BrowserPort,
@@ -550,16 +541,15 @@ export async function findListingPage(
   );
 }
 
-/** Rotas de busca testadas por loja: a do formulário, a da plataforma, as comuns. */
+/**
+ * Search routes tried per store: the form's, the platform's, the common ones.
+ */
 const MAX_SEARCH_ROUTES = 5;
 
 /**
- * A busca do concorrente: a rota do formulário da home, a da plataforma
- * reconhecida e as comuns, nessa ordem, até uma listar produto. A primeira
- * rota que responde (mesmo com "nenhum resultado") é a busca da loja; se o
- * termo da loja analisada não acha nada ali, tenta uma vez com um termo do
- * menu do concorrente, que pode nem vender aquilo. Rota que não abre não
- * encerra as outras; muro anti-robô encerra a loja.
+ * The competitor's search: form, platform and common routes until one lists
+ * products. If our term finds nothing, retries once with a term from its menu.
+ * A route that fails does not end the others; an anti-bot wall ends the store.
  */
 export async function findSearchPage(
   browser: BrowserPort,
@@ -640,9 +630,8 @@ export async function findSearchPage(
 }
 
 /**
- * A página do concorrente do mesmo tipo da nossa: a home, uma vitrine que
- * lista produto, ou a busca. Print do celular e leitura do que ela faz em cada
- * parte (as áreas daquele tipo de página).
+ * The competitor's page of our page's type (home, a listing that lists products,
+ * or search): a mobile screenshot and what it does in each area.
  */
 export async function captureCompetitorPage(
   opts: CompetitorOpts & {
@@ -682,7 +671,7 @@ export async function captureCompetitorPage(
   }
 }
 
-/** Print e leitura da página achada. */
+/** Screenshot and reading of the page found. */
 async function readCompetitorPage(
   { page, url }: Found,
   opts: Parameters<typeof captureCompetitorPage>[0],
@@ -737,7 +726,7 @@ Em by_area, só as partes que aparecem nas imagens ou no texto.`,
       notes = typeof p.notes === "string" ? p.notes : "";
       byArea = parseByArea(p.by_area, opts.pageType);
     } catch {
-      // Leitura inválida: fica o print sem anatomia.
+      // Invalid reading: the screenshot stays without anatomy.
     }
   }
   return {

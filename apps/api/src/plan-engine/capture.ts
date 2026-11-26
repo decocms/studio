@@ -1,9 +1,6 @@
 /**
- * Captura da loja no ar: prints e medidas de PDPs reais, e o design system.
- *
- * Roda dentro de UMA sessão de navegador (o chamador abre com withBrowser):
- * abrir o Chrome é a parte cara, e a mesma sessão serve pras duas PDPs nos dois
- * dispositivos e pro design system.
+ * Captures of the live store: screenshots and measurements of real pages, and
+ * the design system. All run in one browser session the caller opens.
  */
 
 import {
@@ -33,14 +30,13 @@ import type {
 export interface CaptureTarget {
   url: string;
   product_id: string | null;
-  /** Estoque do produto, quando se sabe: vai junto do print pro modelo. */
+  /** The product's stock, when known: sent to the model with the screenshot. */
   stock?: PageCapture["stock"];
 }
 
 /**
- * Abre a PDP, mede, tira os prints (primeira tela e página inteira) e guarda
- * na mídia da org sob `keyPrefix`. `elementKeys` são os `root|el` do heatmap
- * deste dispositivo: a página diz o que cada um é.
+ * Opens the PDP, measures it and stores the fold and full-page screenshots under
+ * `keyPrefix`. `elementKeys` are this device's heatmap `root|el`, labelled by the page.
  */
 export async function capturePdp(
   browser: BrowserPort,
@@ -53,7 +49,7 @@ export async function capturePdp(
   const page = await openPage(browser, target.url, device);
   try {
     const measured = await page.evaluate(measurePdpInPage);
-    // Sem rótulo, o elemento ainda entra no prompt pelo nome da seção.
+    // Unlabelled elements still reach the prompt by their section name.
     const elementLabels =
       elementKeys.length > 0
         ? await page
@@ -93,9 +89,8 @@ export async function capturePdp(
 }
 
 /**
- * Abre home, categoria ou busca, mede (measureSitePageInPage), tira os prints
- * e guarda na mídia da org. O mesmo contrato da PDP (PageCapture), com as
- * partes da página no lugar de preço/tamanho/botão e os fatos dela em `facts`.
+ * Opens a home, listing or search page, measures it and stores its screenshots.
+ * Same `PageCapture` as the PDP, with the page's areas and its `facts`.
  */
 export async function captureSitePage(
   browser: BrowserPort,
@@ -153,9 +148,8 @@ export async function captureSitePage(
 }
 
 /**
- * Lê o design system da loja numa PDP (é onde estão botão de compra, chip de
- * tamanho e preço — os componentes que um mockup de PDP reusa) e guarda o
- * print do bloco de compra.
+ * Reads the store's design system from a PDP (buy button, size chip, price) and
+ * stores a screenshot of the buy block.
  */
 export async function captureDesignSystem(
   browser: BrowserPort,
