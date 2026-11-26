@@ -49,21 +49,12 @@ const isRetriable = (err: unknown) =>
         (err.name === "AbortError" || err.name === "TimeoutError")) ||
       err instanceof TypeError;
 
-/**
- * Full search payloads for known product ids, in one call: `fq=productId:`
- * repeats as an OR.
- */
-export async function vtexSearchByProductIds(
+/** GET a public catalog route; a transient failure is tried again. */
+async function vtexGet(
   access: VtexAccess,
-  productIds: string[],
-  fetchImpl: typeof fetch = fetch,
+  path: string,
+  fetchImpl: typeof fetch,
 ): Promise<VtexCatalogSearchProduct[]> {
-  const ids = [...new Set(productIds.filter(Boolean))];
-  if (ids.length === 0) return [];
-  const fq = ids
-    .map((id) => `fq=productId:${encodeURIComponent(id)}`)
-    .join("&");
-  const path = `/api/catalog_system/pub/products/search?${fq}&_from=0&_to=${Math.max(0, ids.length - 1)}`;
   const url = `https://${access.publicHost}${path}`;
   try {
     return await retry(
@@ -88,6 +79,41 @@ export async function vtexSearchByProductIds(
   } catch (err) {
     throw err instanceof RetryError ? err.cause : err;
   }
+}
+
+/**
+ * Full search payloads for known product ids, in one call: `fq=productId:`
+ * repeats as an OR.
+ */
+export async function vtexSearchByProductIds(
+  access: VtexAccess,
+  productIds: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<VtexCatalogSearchProduct[]> {
+  const ids = [...new Set(productIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+  const fq = ids
+    .map((id) => `fq=productId:${encodeURIComponent(id)}`)
+    .join("&");
+  return vtexGet(
+    access,
+    `/api/catalog_system/pub/products/search?${fq}&_from=0&_to=${Math.max(0, ids.length - 1)}`,
+    fetchImpl,
+  );
+}
+
+/** Catalog search by term (empty = any product); `linkText` builds the PDP link. */
+export async function vtexCatalogSearch(
+  access: VtexAccess,
+  term: string,
+  opts: { from?: number; to?: number } = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<VtexCatalogSearchProduct[]> {
+  return vtexGet(
+    access,
+    `/api/catalog_system/pub/products/search/${encodeURIComponent(term)}?_from=${opts.from ?? 0}&_to=${opts.to ?? 9}`,
+    fetchImpl,
+  );
 }
 
 /** `unknown` is a payload that never carried stock, not a sold-out one. */

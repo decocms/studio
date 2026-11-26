@@ -154,7 +154,7 @@ export function productCount(links: StoreLinks): number {
 }
 
 /** Uma página com 4+ produtos é vitrine ou resultado de busca. */
-const MIN_LISTED_PRODUCTS = 4;
+export const MIN_LISTED_PRODUCTS = 4;
 
 /** Item de menu que não é tipo de produto. */
 const NOT_A_TERM =

@@ -1,8 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { __setPageWaitForTesting } from "./browser.ts";
 import { buildFacts } from "./facts.ts";
 import { evidence as makeEvidence } from "./fixtures/evidence.ts";
 import { contrastObservations } from "./loss-opportunities.ts";
-import { type ProbeResult, primaryCaptures, touchTargets } from "./probes.ts";
+import { fakeBrowser } from "./fixtures/fake-browser.ts";
+import { overlaysInPage } from "./page-scripts.ts";
+import type { MediaStore } from "./ports.ts";
+import {
+  type ProbeResult,
+  primaryCaptures,
+  runProbes,
+  touchTargets,
+} from "./probes.ts";
 import type { DevicePdpBehaviour, PageCapture } from "./types.ts";
 
 const capture = (
@@ -182,5 +191,88 @@ describe("o que tocar", () => {
       }),
     );
     expect(out.map((c) => c.url)).toEqual(["normal", "https://loja/desktop/p"]);
+  });
+});
+
+describe("runProbes", () => {
+  let restoreWait: () => void;
+  beforeAll(() => {
+    restoreWait = __setPageWaitForTesting(async () => {});
+  });
+  afterAll(() => restoreWait());
+
+  const media: MediaStore = {
+    put: async (path) => path,
+    get: async () => null,
+    url: async (path) => path,
+  };
+  const reading = {
+    viewport: { width: 390, height: 844 },
+    overlays: [],
+    covered: { price: false, buy_button: false },
+  };
+  const noWait = async () => {};
+
+  test("camadas: abre com rastreio bloqueado, sem fechar pop-up, mede e guarda o print", async () => {
+    const f = fakeBrowser(() => ({
+      scripts: new Map([[overlaysInPage, () => reading]]),
+    }));
+    const out = await runProbes({
+      browser: f.browser,
+      evidence: makeEvidence({ captures: [capture("mobile")] }),
+      media,
+      keyPrefix: "ux/d1/sondas",
+      deadline: Date.now() + 60_000,
+      sleep: noWait,
+    });
+    expect(out).toEqual([
+      {
+        kind: "camadas",
+        device: "mobile",
+        url: "https://loja/mobile/p",
+        ok: true,
+        reading,
+        screenshot_url: "ux/d1/sondas/camadas-mobile.jpg",
+      },
+    ]);
+    expect(f.blockers[0]?.("https://www.google-analytics.com/g/collect")).toBe(
+      true,
+    );
+  });
+
+  test("a página que não abre vira resultado com o motivo, nunca erro", async () => {
+    const f = fakeBrowser(() => ({
+      goto: () => ({
+        error: "net::ERR_CONNECTION_REFUSED",
+        landsOn: "chrome-error://chromewebdata/",
+      }),
+    }));
+    const out = await runProbes({
+      browser: f.browser,
+      evidence: makeEvidence({ captures: [capture("desktop")] }),
+      media,
+      keyPrefix: "ux/d1/sondas",
+      deadline: Date.now() + 60_000,
+      sleep: noWait,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]?.ok).toBe(false);
+    expect(out[0]?.ok === false && out[0].error).toContain(
+      "net::ERR_CONNECTION_REFUSED",
+    );
+  });
+
+  test("prazo vencido: nenhuma sonda começa", async () => {
+    const f = fakeBrowser(() => ({}));
+    const out = await runProbes({
+      browser: f.browser,
+      evidence: makeEvidence({ captures: [capture("mobile")] }),
+      media,
+      keyPrefix: "ux/d1/sondas",
+      deadline: Date.now() - 1,
+      sleep: noWait,
+    });
+    expect(out).toEqual([]);
+    expect(f.visited).toEqual([]);
   });
 });

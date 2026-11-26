@@ -202,7 +202,7 @@ export function parsePlan(raw: string, ctx: PlanContext): ParsedPlan {
   };
 }
 
-function elementKeysOf(evidence: DiagnosisEvidence): Set<string> {
+export function elementKeysOf(evidence: DiagnosisEvidence): Set<string> {
   const keys = new Set<string>();
   for (const c of evidence.captures) {
     for (const k of Object.keys(c.element_labels ?? {})) keys.add(k);

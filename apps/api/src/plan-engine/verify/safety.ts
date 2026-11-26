@@ -7,18 +7,20 @@
  * `elementFactsInPage` (page-scripts.ts).
  */
 
-/** Host (ou sufixo de subdomínio) → caminho que precisa casar; "" = qualquer. */
-const TRACKING: ReadonlyArray<{ host: string; path: string }> = [
-  { host: "analytics.decocdn.com", path: "" },
-  { host: "google-analytics.com", path: "" },
-  { host: "googletagmanager.com", path: "" },
-  { host: "d.lilstts.com", path: "" },
-  { host: "facebook.com", path: "/tr" },
-  { host: "connect.facebook.net", path: "" },
-];
-
-/** A requisição é de rastreio? Bloqueada durante a verificação. */
+/**
+ * A requisição é de rastreio? Bloqueada durante a verificação. Serializada
+ * pro navegador como os page scripts: não usa nada de fora do corpo.
+ */
 export function isTrackingRequest(url: string): boolean {
+  // Host (ou sufixo de subdomínio) → caminho que precisa casar; "" = qualquer.
+  const TRACKING: ReadonlyArray<{ host: string; path: string }> = [
+    { host: "analytics.decocdn.com", path: "" },
+    { host: "google-analytics.com", path: "" },
+    { host: "googletagmanager.com", path: "" },
+    { host: "d.lilstts.com", path: "" },
+    { host: "facebook.com", path: "/tr" },
+    { host: "connect.facebook.net", path: "" },
+  ];
   let u: URL;
   try {
     u = new URL(url);

@@ -5,12 +5,14 @@
  * Chrome. O chamador compõe `planJudgeDeps` com o navegador e o repositório.
  */
 
-import type { Llm, LlmUsage } from "../ports.ts";
+import type { BrowserPort, Llm, LlmUsage, MediaStore } from "../ports.ts";
 import type {
   DiagnosisEvidence,
+  PageCapture,
   UxHypothesis,
   UxOpportunity,
 } from "../types.ts";
+import { runLiveCheck } from "./live.ts";
 import { type ParsedPlan, planVerification } from "./plan.ts";
 import type { CheckRun, HypothesisVerification, VerifyCheck } from "./types.ts";
 import {
@@ -311,5 +313,39 @@ export function planJudgeDeps(opts: {
         scroll: scrollForPrompt(opts.evidence),
         onUsage: opts.onUsage,
       }),
+  };
+}
+
+/** The live tests, on the capture of the check's device (or the first one). */
+export function liveDeps(opts: {
+  browser: BrowserPort;
+  captures: PageCapture[];
+  elementKeys: string[];
+  media: MediaStore;
+  keyPrefix: string;
+}): Pick<VerifyDeps, "live"> {
+  return {
+    live: async (check) => {
+      const capture =
+        opts.captures.find((c) => c.device === check.device) ??
+        opts.captures[0];
+      if (!capture) {
+        return {
+          check,
+          outcome: "nao_testou",
+          observed: "sem captura da página nesta rodada",
+          screenshot_url: null,
+          source_ref: null,
+        };
+      }
+      return runLiveCheck({
+        browser: opts.browser,
+        capture,
+        check,
+        elementKeys: opts.elementKeys,
+        media: opts.media,
+        keyPrefix: opts.keyPrefix,
+      });
+    },
   };
 }
