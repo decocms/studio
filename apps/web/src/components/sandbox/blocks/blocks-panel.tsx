@@ -29,7 +29,11 @@ import {
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
 import { useContentBackend } from "@/cms/use-content-backend";
-import { isProtocolProject } from "@/components/sections-editor/content-backend";
+import {
+  isProtocolProject,
+  isSandboxProtocol,
+} from "@/components/sections-editor/content-backend";
+import { isSandboxWarming } from "@/components/sandbox/content/content-sandbox-gate";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { isNoSchemaMeta } from "@/components/sections-editor/schemaless";
 import { SchemalessEditor } from "@/components/sandbox/content/schemaless-editor";
@@ -93,6 +97,9 @@ export function BlocksPanel({
     fastPreviewActive:
       useSessionRuntime(virtualMcpId).runtime === "cms" ||
       isProtocolProject(contentBackend),
+    sandboxWarming:
+      isSandboxProtocol(contentBackend) &&
+      isSandboxWarming(sandboxEvents.lifecycle.phase),
   });
 
   // Which editor this site gets (v8: the new one) waits on the same

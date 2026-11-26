@@ -277,6 +277,19 @@ describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
     ).toEqual({ kind: "error", source: "data" });
   });
 
+  test("a failed read over a sandbox that is still booting is loading", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "cloning",
+          meta: { status: "error", hasData: false, errorStatus: 502 },
+          fastPreviewActive: true,
+          sandboxWarming: true,
+        }),
+      ),
+    ).toEqual({ kind: "loading" });
+  });
+
   test("loading until both queries have data, then content/empty by data alone", () => {
     expect(
       resolveBlocksTabState(

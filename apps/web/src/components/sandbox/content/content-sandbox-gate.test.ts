@@ -88,4 +88,36 @@ describe("resolveContentSandboxGate", () => {
       }),
     ).toEqual({ kind: "ready", devServerReady: false, sandboxWarming: false });
   });
+
+  test.each(["idle", "cloning", "installing", "starting"] as const)(
+    "the protocol over a sandbox waits for it while %s",
+    (lifecyclePhase) => {
+      expect(
+        resolveContentSandboxGate({
+          fastPreviewActive: true,
+          sandboxProtocol: true,
+          previewState: { kind: "starting" },
+          lifecyclePhase,
+        }),
+      ).toEqual({ kind: "ready", devServerReady: false, sandboxWarming: true });
+    },
+  );
+
+  test.each(["running", "crashed", "install-failed"] as const)(
+    "the protocol over a sandbox stops waiting once it is %s",
+    (lifecyclePhase) => {
+      expect(
+        resolveContentSandboxGate({
+          fastPreviewActive: true,
+          sandboxProtocol: true,
+          previewState: { kind: "iframe", previewUrl: PREVIEW_URL },
+          lifecyclePhase,
+        }),
+      ).toEqual({
+        kind: "ready",
+        devServerReady: false,
+        sandboxWarming: false,
+      });
+    },
+  );
 });

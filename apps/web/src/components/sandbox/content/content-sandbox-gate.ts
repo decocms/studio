@@ -24,6 +24,14 @@ const TERMINAL_PHASES: ReadonlySet<LifecycleState["phase"]> = new Set([
 ]);
 
 /**
+ * The sandbox is still coming up: a read that failed now is expected to
+ * succeed once it settles (running, or a phase no progress follows).
+ */
+export function isSandboxWarming(phase: LifecycleState["phase"]): boolean {
+  return phase !== "running" && !TERMINAL_PHASES.has(phase);
+}
+
+/**
  * Which surface the Content tab shows, given the session's runtime.
  *
  * Sandbox-less Fast Preview is the whole reason this is a function: content
@@ -34,21 +42,34 @@ const TERMINAL_PHASES: ReadonlySet<LifecycleState["phase"]> = new Set([
  * spun rather than surfacing. Fast Preview therefore ignores both inputs: data
  * readiness alone decides, exactly as it does for the Blocks panel
  * (`resolveBlocksTabState`).
+ *
+ * A Blocks v8 project in a sandbox session is the exception: the protocol
+ * reads the sandbox's working tree, so it skips the sandbox card like Fast
+ * Preview, but its reads fail until that sandbox is up.
  */
 export function resolveContentSandboxGate(input: {
   fastPreviewActive: boolean;
+  /** Content comes from this session's sandbox over the Blocks protocol. */
+  sandboxProtocol?: boolean;
   previewState: PreviewState;
   lifecyclePhase: LifecycleState["phase"];
 }): ContentSandboxGate {
   if (input.fastPreviewActive) {
-    return { kind: "ready", devServerReady: false, sandboxWarming: false };
+    return {
+      kind: "ready",
+      devServerReady: false,
+      sandboxWarming:
+        !!input.sandboxProtocol && isSandboxWarming(input.lifecyclePhase),
+    };
   }
   if (input.previewState.kind !== "iframe") {
     return { kind: "sandbox-card", state: input.previewState };
   }
 
   const devServerReady = input.lifecyclePhase === "running";
-  const sandboxWarming =
-    !devServerReady && !TERMINAL_PHASES.has(input.lifecyclePhase);
-  return { kind: "ready", devServerReady, sandboxWarming };
+  return {
+    kind: "ready",
+    devServerReady,
+    sandboxWarming: isSandboxWarming(input.lifecyclePhase),
+  };
 }

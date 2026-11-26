@@ -177,6 +177,7 @@ import { deleteConfirmKey } from "./delete-copy";
 import { useContentBackend } from "@/cms/use-content-backend";
 import {
   isProtocolProject,
+  isSandboxProtocol,
   contentBackendScopeKey,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
@@ -418,6 +419,7 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   const protocolActive = isProtocolProject(contentBackend);
   const gate = resolveContentSandboxGate({
     fastPreviewActive: fastPreviewActive || protocolActive,
+    sandboxProtocol: isSandboxProtocol(contentBackend),
     previewState: lifecycle.previewState,
     lifecyclePhase: vmEvents.lifecycle.phase,
   });
