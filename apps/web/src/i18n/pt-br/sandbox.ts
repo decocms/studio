@@ -616,6 +616,7 @@ export const sandbox = {
   "sandbox.envVarsField.title": "Variáveis de ambiente",
   "sandbox.envVarsField.valueLabel": "Valor",
   "sandbox.envVarsField.valuePlaceholder": "valor",
+  "sandbox.faqBlock.addAnswerBlock": "Adicionar bloco de resposta",
   "sandbox.faqBlock.addQuestion": "Adicionar pergunta",
   "sandbox.faqBlock.anchorIdLabel": "Id da âncora",
   "sandbox.faqBlock.anchorIdPlaceholder": "opcional",

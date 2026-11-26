@@ -83,6 +83,7 @@ export function BlockDocument({
   emptyMessage = "No content yet. Add your first block below.",
   allowBlocks,
   dense = false,
+  addLabel,
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
@@ -103,6 +104,8 @@ export function BlockDocument({
   allowBlocks?: readonly string[];
   /** A document nested in another block: narrow rows and a quiet add button. */
   dense?: boolean;
+  /** What the add button says, when "Add block" would not tell documents apart. */
+  addLabel?: string;
 }) {
   const t = useT();
   const hideDefaults = useHideDefaultBlogBlocks();
@@ -236,7 +239,7 @@ export function BlockDocument({
           )}
         >
           <Plus size={dense ? 13 : 16} />
-          {t("sandbox.blockDocument.addBlock")}
+          {addLabel ?? t("sandbox.blockDocument.addBlock")}
         </button>
       </BlockPicker>
     </div>

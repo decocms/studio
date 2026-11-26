@@ -150,7 +150,7 @@ test("an answer's pickers offer only the blocks an answer is made of", async ({
     />,
   );
 
-  await component.getByRole("button", { name: "Add block" }).first().click();
+  await component.getByRole("button", { name: "Add answer block" }).click();
   const options = page.getByRole("option");
   await expect(options).toHaveText([
     /^Divider/,
@@ -175,7 +175,9 @@ test("the post's own picker still offers every block", async ({
     <BlogFaqHarness meta={blogMeta()} initial={[{ __resolveType: FAQ }]} />,
   );
 
-  await component.getByRole("button", { name: "Add block" }).last().click();
+  await component
+    .getByRole("button", { name: "Add block", exact: true })
+    .click();
   await expect(page.getByRole("option")).toHaveCount(8);
 });
 

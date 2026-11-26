@@ -120,8 +120,8 @@ export function FaqBlock({
               <li key={id}>
                 <div
                   className={cn(
-                    "group/item flex items-start gap-2 px-3 pt-2.5",
-                    open ? "pb-1" : "pb-2.5",
+                    "group/item flex items-start gap-2 px-3 pt-3",
+                    open ? "pb-0.5" : "pb-2.5",
                   )}
                 >
                   <button
@@ -166,6 +166,7 @@ export function FaqBlock({
                       onSaveReferencedBlock={onSaveReferencedBlock}
                       allowBlocks={ANSWER_BLOCKS}
                       emptyMessage=""
+                      addLabel={t("sandbox.faqBlock.addAnswerBlock")}
                       dense
                     />
                   </div>

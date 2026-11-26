@@ -65,7 +65,7 @@ export function BlockRow({
       className={cn(
         "relative rounded-md [&:hover>[data-row-control]]:opacity-100",
         dense
-          ? "py-1 pl-6 pr-1"
+          ? "py-0.5 pl-6 pr-1"
           : "py-1.5 pl-12 pr-2 transition-colors hover:bg-accent",
         isDragging && "opacity-50",
       )}
@@ -76,7 +76,7 @@ export function BlockRow({
         data-row-control
         className={cn(
           "absolute flex cursor-grab items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing",
-          dense ? "left-0 top-1 h-5 w-5" : "left-1 top-1.5 h-6 w-6",
+          dense ? "left-0 top-0.5 h-5 w-5" : "left-1 top-1.5 h-6 w-6",
         )}
         {...attributes}
         {...listeners}
