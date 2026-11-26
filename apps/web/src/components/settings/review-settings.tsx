@@ -5,6 +5,12 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@decocms/ui/components/select.tsx";
+import {
   BookOpen01,
   Coins01,
   Columns02,
@@ -37,6 +43,7 @@ import {
   useReviewerEnabled,
   useSetCodingAgentExcludedMcps,
   useSetNewBlocksEditor,
+  useSandboxOnlyChats,
   useSetOrgFlag,
 } from "@/hooks/use-organization-settings";
 import { track } from "@/lib/posthog-client";
@@ -380,18 +387,87 @@ function McpAvatar({ icon, title }: { icon: string | null; title: string }) {
   );
 }
 
+type ChatHarness = "claude-code" | "codex";
+
+const CHAT_HARNESS_OPTIONS: ReadonlyArray<{
+  value: ChatHarness;
+  labelKey: TranslationKey;
+}> = [
+  {
+    value: "claude-code",
+    labelKey: "settings.agentTools.chatHarnessClaudeCode",
+  },
+  { value: "codex", labelKey: "settings.agentTools.chatHarnessCodex" },
+];
+
+/**
+ * Which harness new sandbox chats run on, named explicitly. Claude Code being
+ * the default is a deco premise, not something every member knows, so the
+ * choice is shown as a choice rather than as an opt-in toggle for Codex.
+ *
+ * Stored in `chat_harness_codex`, the flag `sandboxChatHarness` already reads:
+ * no new setting, no migration. Without hosted sandboxes chats run on
+ * Decopilot whatever this says, so the select is disabled there.
+ */
+function ChatHarnessSelect() {
+  const t = useT();
+  const codex = useOrgFlag("chat_harness_codex");
+  const sandboxChats = useSandboxOnlyChats();
+  const setFlag = useSetOrgFlag();
+  const value: ChatHarness = codex ? "codex" : "claude-code";
+  const selected = CHAT_HARNESS_OPTIONS.find((o) => o.value === value);
+  return (
+    <SettingsCardItem
+      icon={<Terminal size={16} />}
+      title={t("settings.agentTools.chatHarnessTitle")}
+      description={t(
+        sandboxChats
+          ? value === "codex"
+            ? "settings.agentTools.chatHarnessCodexDescription"
+            : "settings.agentTools.chatHarnessClaudeCodeDescription"
+          : "settings.agentTools.chatHarnessNoSandboxDescription",
+      )}
+      action={
+        <Select
+          value={value}
+          disabled={!sandboxChats || setFlag.isPending}
+          onValueChange={(next) => {
+            if (next === value) return;
+            setFlag.mutate("chat_harness_codex", next === "codex", {
+              onError: () => toast.error(t("settings.review.updateError")),
+            });
+          }}
+        >
+          <SelectTrigger
+            className="w-44"
+            aria-label={t("settings.agentTools.chatHarnessTitle")}
+          >
+            <span>{selected ? t(selected.labelKey) : null}</span>
+          </SelectTrigger>
+          <SelectContent>
+            {CHAT_HARNESS_OPTIONS.map((option) => (
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                textValue={t(option.labelKey)}
+              >
+                {t(option.labelKey)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      }
+    />
+  );
+}
+
 /** Where chats run and how members talk to agents in them. */
 export function ChatSettings() {
   const t = useT();
   return (
     <SettingsSection title={t("settings.agentTools.chatRuntimeSection")}>
       <SettingsCard>
-        <FlagToggle
-          flag="chat_harness_codex"
-          icon={<Terminal size={16} />}
-          titleKey="settings.agentTools.chatHarnessCodexTitle"
-          descriptionKey="settings.agentTools.chatHarnessCodexDescription"
-        />
+        <ChatHarnessSelect />
         <FlagToggle
           flag="voice_mode"
           icon={<Microphone01 size={16} />}
