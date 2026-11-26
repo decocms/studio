@@ -50,16 +50,91 @@ export type Llm = (
   onUsage?: (usage: LlmUsage) => void,
 ) => Promise<string>;
 
-/** A page opened at a device's viewport. */
+/** The browser itself failed (crashed, went away), not the page it was showing. */
+export class BrowserSessionError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "BrowserSessionError";
+  }
+}
+
+export interface Viewport {
+  width: number;
+  height: number;
+  deviceScaleFactor: number;
+}
+
+/** CSS px in document coordinates; `scale` shrinks the image. */
+export interface ScreenshotClip {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale?: number;
+}
+
+/**
+ * A tab emulating one device. Every call that reaches the page also refreshes
+ * `url()` and `blockedRequests()`.
+ */
 export interface BrowserPage {
+  readonly viewport: Viewport;
+  /** The page's URL as of the last call. */
   url(): string;
-  evaluate<T>(fn: () => T): Promise<T>;
-  screenshot(opts?: { fullPage?: boolean }): Promise<Uint8Array>;
+  /**
+   * Navigates and waits until at most two requests stay in flight for 500 ms.
+   * A navigation that fails or never settles resolves with `error`; only the
+   * browser failing rejects.
+   */
+  goto(
+    url: string,
+    timeoutMs: number,
+  ): Promise<{ status: number | null; error: string | null }>;
+  reload(timeoutMs: number): Promise<void>;
+  /** `fn` is serialized and run in the page: it may use nothing from outside its body. */
+  evaluate<A extends unknown[], R>(
+    fn: (...args: A) => R,
+    ...args: A
+  ): Promise<Awaited<R>>;
+  /** JPEG. Without `clip`, what the viewport shows. */
+  screenshot(opts: {
+    quality: number;
+    clip?: ScreenshotClip;
+    captureBeyondViewport?: boolean;
+  }): Promise<Uint8Array>;
+  /** The only pointer movement there is: no touch, no button press. */
+  mouseMove(x: number, y: number, steps: number): Promise<void>;
+  /**
+   * Clicks the point and waits up to `settleMs` for a navigation; returns the
+   * URL of a main-frame navigation requested meanwhile, finished or not.
+   */
+  click(
+    x: number,
+    y: number,
+    settleMs: number,
+  ): Promise<{ navigation: string | null }>;
+  /** Requests `blockRequest` aborted on this page so far. */
+  blockedRequests(): number;
   close(): Promise<void>;
 }
 
 export interface BrowserPort {
-  openPage(url: string, device: UxDevice): Promise<BrowserPage>;
+  /**
+   * `blockRequest` decides, per request, which ones are aborted (with service
+   * workers bypassed); it is serialized like a page script.
+   */
+  newPage(
+    device: UxDevice,
+    opts?: { blockRequest?: (url: string) => boolean },
+  ): Promise<BrowserPage>;
+  /**
+   * A plain GET from where the browser runs, never from Studio: the hosts
+   * are the store's and its competitors'. Rejects when nothing answered.
+   */
+  fetch(
+    url: string,
+    opts: { maxBytes: number; timeoutMs: number; userAgent: string },
+  ): Promise<{ status: number; url: string; body: string }>;
 }
 
 /** null = the file does not exist; any other failure throws. */

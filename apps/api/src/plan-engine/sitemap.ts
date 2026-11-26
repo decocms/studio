@@ -1,17 +1,22 @@
 /**
  * Sitemap como último recurso do benchmark: loja cuja home e vitrines não
  * mostram link de produto reconhecível quase sempre publica as PDPs e as
- * categorias no sitemap. `fetch` simples (sem navegador), com teto de tamanho
- * e de pedidos: cada pedido conta no orçamento de subrequests da instância.
+ * categorias no sitemap. `fetch` simples (sem navegador, mas de onde ele
+ * roda), com teto de tamanho e de pedidos.
  */
 
-import { USER_AGENTS } from "./browser.ts";
+import { type Fetcher, USER_AGENTS } from "./browser.ts";
 import { sameStore } from "./domain-check.ts";
 import { classifyPath } from "./store-discovery.ts";
 
 const FETCH_TIMEOUT_MS = 6_000;
 /** Sitemap de loja grande passa de 10 MB; as primeiras URLs bastam. */
 const MAX_BYTES = 1_500_000;
+/** The limits a fetcher built for `sitemapCandidates` should read with. */
+export const SITEMAP_FETCH = {
+  maxBytes: MAX_BYTES,
+  timeoutMs: FETCH_TIMEOUT_MS,
+};
 /** robots + até 2 sitemaps do topo + até 2 filhos de um índice. */
 const MAX_FETCHES = 5;
 const MAX_CANDIDATES = 6;
@@ -134,7 +139,7 @@ async function readCapped(res: Response, max: number): Promise<string> {
 export async function sitemapCandidates(
   origin: string,
   want: SitemapWant,
-  fetcher: typeof fetch = fetch,
+  fetcher: Fetcher = fetch,
 ): Promise<string[]> {
   let fetches = 0;
   const get = async (url: string): Promise<string | null> => {

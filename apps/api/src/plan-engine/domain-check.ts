@@ -1,4 +1,4 @@
-import { USER_AGENTS } from "./browser.ts";
+import { type Fetcher, USER_AGENTS } from "./browser.ts";
 
 export type DomainCheck =
   | { ok: true; host: string; blocks_bots: boolean }
@@ -19,7 +19,7 @@ export function sameStore(a: string, b: string): boolean {
  */
 export async function checkDomain(
   domain: string,
-  fetcher: typeof fetch = fetch,
+  fetcher: Fetcher = fetch,
 ): Promise<DomainCheck> {
   const hosts = domain.startsWith("www.")
     ? [domain]
