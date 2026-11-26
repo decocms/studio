@@ -677,13 +677,13 @@ export const settings = {
     "Falha na verifica\u00e7\u00e3o de seguran\u00e7a: Token de estado n\u00e3o corresponde",
   "settings.connectProviderDialog.startOAuthFailedMessage":
     "Falha ao iniciar OAuth: {error}",
-  "settings.agentTools.chatHarnessTitle": "Runtime dos novos chats",
+  "settings.agentTools.chatHarnessTitle": "Harness dos novos chats",
   "settings.agentTools.chatHarnessClaudeCode": "Claude Code",
   "settings.agentTools.chatHarnessCodex": "Codex",
   "settings.agentTools.chatHarnessClaudeCodeDescription":
-    "Novos chats no sandbox rodam com Claude Code. Precisa de uma chave Anthropic, OpenRouter ou do gateway de IA da deco, ou de um plano Claude ou GitHub Copilot vinculado. Os chats existentes mantêm seu runtime.",
+    "Novos chats no sandbox rodam com Claude Code. Precisa de uma chave Anthropic, OpenRouter ou do gateway de IA da deco, ou de um plano Claude ou GitHub Copilot vinculado. Os chats existentes mantêm seu harness.",
   "settings.agentTools.chatHarnessCodexDescription":
-    "Novos chats no sandbox rodam com Codex. Vincule sua assinatura do ChatGPT em Provedores de IA ou conecte um provedor da API Responses. Os chats existentes mantêm seu runtime.",
+    "Novos chats no sandbox rodam com Codex. Vincule sua assinatura do ChatGPT em Provedores de IA ou conecte um provedor da API Responses. Os chats existentes mantêm seu harness.",
   "settings.agentTools.chatHarnessNoSandboxDescription":
     "Este deployment não tem sandboxes hospedados, então os chats rodam no Decopilot.",
   "settings.codexSubscription.setupHeading": "Conecte o Codex",

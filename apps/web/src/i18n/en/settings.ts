@@ -661,13 +661,13 @@ export const settings = {
     "Security check failed: State token mismatch",
   "settings.connectProviderDialog.startOAuthFailedMessage":
     "Failed to start OAuth: {error}",
-  "settings.agentTools.chatHarnessTitle": "Runtime for new chats",
+  "settings.agentTools.chatHarnessTitle": "Harness for new chats",
   "settings.agentTools.chatHarnessClaudeCode": "Claude Code",
   "settings.agentTools.chatHarnessCodex": "Codex",
   "settings.agentTools.chatHarnessClaudeCodeDescription":
-    "New sandbox chats run with Claude Code. Needs an Anthropic, OpenRouter or deco AI gateway key, or a linked Claude or GitHub Copilot plan. Existing chats keep their runtime.",
+    "New sandbox chats run with Claude Code. Needs an Anthropic, OpenRouter or deco AI gateway key, or a linked Claude or GitHub Copilot plan. Existing chats keep their harness.",
   "settings.agentTools.chatHarnessCodexDescription":
-    "New sandbox chats run with Codex. Link your ChatGPT subscription in AI Providers or connect a Responses API provider. Existing chats keep their runtime.",
+    "New sandbox chats run with Codex. Link your ChatGPT subscription in AI Providers or connect a Responses API provider. Existing chats keep their harness.",
   "settings.agentTools.chatHarnessNoSandboxDescription":
     "This deployment has no hosted sandboxes, so chats run on Decopilot.",
   "settings.codexSubscription.setupHeading": "Connect Codex",
