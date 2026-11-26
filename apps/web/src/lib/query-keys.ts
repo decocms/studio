@@ -884,6 +884,10 @@ export const KEYS = {
   // so each panel caches independently and refetches on range change.
   cdnData: (base: string, view: string, range: string) =>
     ["monitor", base, "cdn-data", view, range] as const,
+  // Which of the org's candidate site slugs it owns (`org_sites`), from
+  // /api/:org/monitor/sites — the Monitor lists only those as site projects.
+  monitorOwnedSites: (org: string, slugs: string) =>
+    ["monitor", org, "owned-sites", slugs] as const,
   siteMonitorData: (base: string, view: string, range: string) =>
     ["monitor", base, "site-data", view, range] as const,
   /** Monitor Audience: one normalized view of a site's audience for a range. */

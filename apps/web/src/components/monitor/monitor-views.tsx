@@ -1,9 +1,12 @@
 /** The Monitor's tabs: Overview, Alerts, Performance, Logs, Analytics and Heatmap. */
 
 import type { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { BarChart10 } from "@untitledui/icons";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import {
+  isValidSiteSlug,
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
@@ -12,6 +15,8 @@ import { Panel } from "@/components/panel";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
+import { fetchJson } from "@/layouts/main-panel-tabs/cdn-tab";
+import { KEYS } from "@/lib/query-keys";
 import {
   isStudioPackAgent,
   useProjectContext,
@@ -94,28 +99,67 @@ export function MonitorTabs({
   );
 }
 
-/** The org's own projects with a site, not Studio's built-in managers. */
+/**
+ * The org's own projects with a site, not Studio's built-in managers. A site is
+ * one the org owns in `org_sites`, or one deco doesn't host that the project
+ * registered for analytics. The slug falls back to the project's title, so
+ * without the ownership check every project (a VTEX app, a dashboard agent)
+ * read as a site whose every read is a 404.
+ */
 export function useSiteProjects(): SiteProject[] {
-  return useVirtualMCPsNonBlocking().flatMap((p) => {
+  const { org } = useProjectContext();
+  const candidates = useVirtualMCPsNonBlocking().flatMap((p) => {
     // The Deco Score Agent is built in, not a site, even when it's bound to the
     // store's repository.
     const builtIn =
       isStudioPackAgent(p.id) || p.metadata?.type === "commerce-discovery";
     const site = builtIn ? null : resolveAgentSiteSlug(p);
     const analyticsSite = resolveAnalyticsSiteSlug(p);
-    return site && analyticsSite
+    return site &&
+      analyticsSite &&
+      isValidSiteSlug(site) &&
+      isValidSiteSlug(analyticsSite)
       ? [
           {
-            id: p.id,
-            title: p.title,
-            icon: p.icon,
-            site,
-            analyticsSite,
-            repository: p.metadata?.repository ?? null,
+            project: {
+              id: p.id,
+              title: p.title,
+              icon: p.icon,
+              site,
+              analyticsSite,
+              repository: p.metadata?.repository ?? null,
+            },
+            external: storedExternalRegistration(p.metadata) !== null,
           },
         ]
       : [];
   });
+  const slugs = [
+    ...new Set(
+      candidates.flatMap(({ project }) => [
+        project.site,
+        project.analyticsSite,
+      ]),
+    ),
+  ]
+    .sort()
+    .join(",");
+  const { data: owned } = useQuery({
+    queryKey: KEYS.monitorOwnedSites(org.slug, slugs),
+    queryFn: async () => {
+      const body = (await fetchJson(
+        `/api/${org.slug}/monitor/sites?slugs=${encodeURIComponent(slugs)}`,
+      )) as { owned?: string[] };
+      return new Set(body.owned ?? []);
+    },
+    enabled: slugs.length > 0,
+    staleTime: 5 * 60_000,
+  });
+  return candidates.flatMap(({ project, external }) =>
+    external || (owned?.has(project.site) && owned.has(project.analyticsSite))
+      ? [project]
+      : [],
+  );
 }
 
 /** One project's screen, or every site project's across the org; the connect card when none. */
