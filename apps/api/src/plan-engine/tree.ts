@@ -1,17 +1,9 @@
 /**
- * A árvore de hipóteses: pra cada oportunidade, explicações CONCORRENTES em
- * seis categorias (UX, performance, confiança, comercial, tráfego,
- * tecnologia), no formato "Se [intervenção], então [resultado], porque
- * [mecanismo]", cada uma com o que a apoia, o que a contradiz, como verificar
- * e como refutar.
- *
- * Por que árvore: uma explicação só prende a análise nela. Com "o tráfego do
- * celular tem menos intenção" ao lado de "o tamanho fica abaixo da dobra", a
- * tela mostra que existe outra explicação — e que ela não se resolve mexendo
- * na página.
- *
- * O modelo escreve as partes; a frase "Se…, então…, porque…" e os rótulos são
- * montados e conferidos aqui.
+ * The hypothesis tree: for each opportunity, COMPETING explanations in six
+ * categories (UX, performance, trust, commercial, traffic, technology), each
+ * with support, contradiction, how to verify and how to refute. The model
+ * writes the parts; the "If..., then..., because..." sentence and labels are
+ * built and checked here.
  */
 
 import {
@@ -52,24 +44,20 @@ export const CATEGORY_WORD: Record<HypothesisCategory, string> = {
   tecnologia: "Tecnologia",
 };
 
-/**
- * Categorias cuja causa pode não estar na página: "o tráfego do celular tem
- * menos intenção" é uma explicação válida sem nenhuma mudança de UI pra
- * propor. Nas outras, hipótese sem intervenção não entra.
- */
+/** Categories whose cause may not be on the page; in the others a hypothesis without an intervention is dropped. */
 const MAY_HAVE_NO_INTERVENTION: HypothesisCategory[] = ["trafego", "comercial"];
 
 export interface UxClaim {
   text: string;
   label: UxClaimLabel;
-  /** Os fatos citados que existem (F12…). Ausente = antes de 19/11. */
+  /** The cited facts that exist (F12...). Absent = older data. */
   facts?: string[];
 }
 
 export interface HypothesisTarget {
   kind: "part" | "element" | "section";
   key: string;
-  /** O que é, em palavras ("botão de compra", `button "comprar"`). */
+  /** What it is, in words ("buy button", `button "comprar"`). */
   label: string;
 }
 
@@ -77,47 +65,44 @@ export type RelationKind = "causa_comum" | "concorrente" | "complementar";
 
 export interface HypothesisTree {
   category: HypothesisCategory;
-  /** "Se …, então …, porque …". NULL = explicação sem mudança na página. */
+  /** "If ..., then ..., because ...". NULL = explanation with no page change. */
   statement: string | null;
   intervencao: string | null;
   resultado: string;
   mecanismo: string;
-  /** A causa suspeita, numa frase (vira o título). */
+  /** The suspected cause, in one sentence (becomes the title). */
   causa: string;
   a_favor: UxClaim[];
   contra: UxClaim[];
-  /** Ids das entradas da base de conhecimento citadas. */
+  /** Ids of the cited knowledge-base entries. */
   fontes_conhecimento: string[];
   segmento: string;
   metrica: {
     key: UxMetricKey | null;
     direcao: "sobe" | "desce";
-    /** Efeito esperado em pp, no teto do money.ts. NULL = não disse. */
+    /** Expected effect in pp, capped by money.ts. NULL = not stated. */
     efeito_esperado_pp: number | null;
   };
   como_verificar: string;
   como_refutar: string;
-  /** Onde na página. NULL = não aponta uma parte (ou não validou). */
+  /** Where on the page. NULL = does not point to a part (or was not validated). */
   alvo: HypothesisTarget | null;
-  /** Depois da mudança, o alvo fica na primeira tela? (relevância, PR F). */
+  /** After the change, does the target end up on the first screen? (relevance, PR F) */
   posicao_depois: "mesma" | "primeira_tela";
-  /** Ligações com outras hipóteses da MESMA oportunidade, por rank. */
+  /** Links to other hypotheses of the SAME opportunity, by rank. */
   relacoes: Array<{ rank: number; tipo: RelationKind }>;
   esforco: 1 | 2 | 3;
-  /** Tem algo a mudar/conferir na página (vai pro verificador e pro mockup). */
+  /** Has something to change/check on the page (goes to the verifier and the mockup). */
   testavel_na_pagina: boolean;
-  /** Oportunidade de um segmento: por que a causa pesa mais nele. */
+  /** Segment opportunity: why the cause weighs more on it. */
   por_que_no_segmento?: string;
-  /** Perda de dispositivo: o que a causa tem de diferente entre as telas. */
+  /** Device loss: what the cause has that differs between screens. */
   por_que_no_dispositivo?: string;
-  /**
-   * Perda de dispositivo: os fatos que mostram a diferença, ao menos um de
-   * cada tela (facts.ts). Ausente = antes de 19/11.
-   */
+  /** Device loss: the facts showing the difference, at least one per screen (facts.ts). Absent = older data. */
   fatos_contraste?: string[];
 }
 
-/** Uma categoria que não virou hipótese, e por quê (a árvore inteira na tela). */
+/** A category that did not become a hypothesis, and why (the whole tree on screen). */
 export interface DiscardedCategory {
   category: HypothesisCategory;
   why: string;
@@ -138,7 +123,7 @@ const asCategory = (v: unknown): HypothesisCategory | null => {
   return CATEGORIES.find((c) => c === t) ?? null;
 };
 
-/** As partes, elementos e seções que existem nesta análise. */
+/** The parts, elements and sections that exist in this analysis. */
 export function targetsOf(evidence: DiagnosisEvidence): {
   parts: Set<string>;
   elements: Map<string, string>;
@@ -151,7 +136,7 @@ export function targetsOf(evidence: DiagnosisEvidence): {
     }
   }
   return {
-    // As partes que a captura mede NESTE tipo de página.
+    // The parts the capture measures on THIS page type.
     parts: new Set(Object.keys(pageSpec(evidence.page_type).parts)),
     elements,
     sections: new Set(
@@ -183,11 +168,7 @@ function parseTarget(
   return null;
 }
 
-/**
- * A favor / contra do modelo → afirmações rotuladas. Com o livro de fatos, o
- * rótulo é conferido contra os fatos citados (groundedLabel); sem ele (teste,
- * evidência antiga), vale a regra antiga do dígito.
- */
+/** The model's for / against -> labeled claims, with labels checked against the cited facts (digit rule without a ledger). */
 export function parseClaims(
   raw: unknown,
   book?: Map<string, UxFact>,
@@ -219,7 +200,7 @@ const RELATIONS: RelationKind[] = [
   "complementar",
 ];
 
-/** Uma hipótese crua do modelo → árvore, ou o motivo de não entrar. */
+/** A raw model hypothesis -> tree, or the reason it does not get in. */
 export function parseTree(
   raw: Record<string, unknown>,
   targets: ReturnType<typeof targetsOf>,
@@ -285,8 +266,7 @@ export function parseDiscarded(raw: unknown): DiscardedCategory[] {
   if (!Array.isArray(raw)) return [];
   const out: DiscardedCategory[] = [];
   for (const item of raw) {
-    // Aceita objeto ({categoria, por_que}) e texto ("performance: LCP ok"):
-    // em 15/11 a primeira rodada real voltou sem nenhuma descartada.
+    // Accepts an object ({categoria, por_que}) and text ("performance: LCP ok"); the model returns both shapes.
     const str = typeof item === "string" ? item : null;
     const r = (str ? {} : (item ?? {})) as Record<string, unknown>;
     const category = str
@@ -302,11 +282,7 @@ export function parseDiscarded(raw: unknown): DiscardedCategory[] {
   return out;
 }
 
-/**
- * A favor / contra em markdown curto, com o rótulo de cada um. Com o livro de
- * fatos, cada afirmação traz embaixo os dados que ela cita (fonte, tela e a
- * frase medida): quem lê confere sem abrir nada.
- */
+/** For / against as short markdown with each label and, under each claim, the cited data. */
 export function claimsMarkdown(
   tree: HypothesisTree,
   book?: Map<string, UxFact>,

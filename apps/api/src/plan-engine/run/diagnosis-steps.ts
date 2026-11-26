@@ -39,6 +39,7 @@ import {
   type BrowserPort,
   BrowserSessionError,
   type MediaStore,
+  rethrowNoAiModel,
 } from "../ports.ts";
 import { type ProbeResult, runProbes } from "../probes.ts";
 import type {
@@ -431,6 +432,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
         benchmark.push(b);
         return;
       } catch (err) {
+        rethrowNoAiModel(err);
         lastError = err;
         // Só a queda do navegador merece outra tentativa: muro, "sem produto" ou "não é HTML" é o site.
         console.warn(
@@ -474,6 +476,7 @@ export async function benchmarkStep(run: EngineRun): Promise<number> {
         c.ok && !c.blocks_bots ? [c.host] : [],
       );
     } catch (err) {
+      rethrowNoAiModel(err);
       gaps.push({
         source: "benchmark",
         error: `sugestão de concorrentes: ${errorText(err)}`,
@@ -641,6 +644,7 @@ export async function hypothesesStep(
       await store.updateDiagnosis(orgId, id, { summary });
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     // A failed batch leaves its opportunities without hypotheses, and says why.
     const message = err instanceof Error ? err.message : String(err);
     if (summary) {

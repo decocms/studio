@@ -16,7 +16,7 @@ import type { SiteProfile } from "./types.ts";
 
 const NOW = new Date("2026-11-25T12:00:00Z");
 
-/** Linhas como a consulta devolve (inteiros do BigQuery chegam como texto). */
+/** Rows as the query returns them (BigQuery integers arrive as strings). */
 const ROWS = [
   {
     device: "mobile",
@@ -77,7 +77,7 @@ const ROWS = [
 ];
 
 describe("buildPageFunnelQuery", () => {
-  test("lê só web, os três eventos do funil e a janela pedida", () => {
+  test("reads only web, the three funnel events and the requested window", () => {
     const sql = buildPageFunnelQuery("projeto", "analytics_1", 7, NOW);
     expect(sql).toContain("`projeto.analytics_1.events_*`");
     expect(sql).toContain("BETWEEN '20261118' AND '20261124'");
@@ -85,19 +85,19 @@ describe("buildPageFunnelQuery", () => {
     expect(sql).toContain(
       "event_name IN ('page_view', 'view_item', 'add_to_cart')",
     );
-    // Viu produto / carrinho contam só DEPOIS da visita, na mesma sessão.
+    // Product view / add-to-cart count only AFTER the visit, in the same session.
     expect(sql).toContain("sess.last_view >= pv.t");
     expect(sql).toContain("JOIN sess USING (u, s)");
   });
 
-  test("recusa projeto ou dataset que não é identificador", () => {
+  test("rejects a project or dataset that is not an identifier", () => {
     expect(() => buildPageFunnelQuery("p`; DROP", "d", 7, NOW)).toThrow();
     expect(() => buildPageFunnelQuery("p", "d.x", 7, NOW)).toThrow();
   });
 });
 
 describe("toGa4PageRows", () => {
-  test("converte os números e tira linha malformada", () => {
+  test("converts the numbers and removes malformed rows", () => {
     const rows = toGa4PageRows([
       ...ROWS.slice(0, 1),
       { device: "tablet", path: "/", visitors: "5", viewed: "1", carted: "0" },
@@ -129,11 +129,11 @@ describe("toGa4PageRows", () => {
   });
 });
 
-describe("rotas do GA4 quando o Deco Analytics não tem", () => {
-  test("tira as PDPs pelo template e acha home, busca e categorias", () => {
+describe("GA4 routes when Deco Analytics has none", () => {
+  test("removes PDPs by template and finds home, search and categories", () => {
     const routes = ga4ListingRoutes(toGa4PageRows(ROWS), "/:product/p");
     expect(routes.map((r) => r.page)).not.toContain("/anel-exemplo-123/p");
-    // Soma os dispositivos.
+    // Sums the devices.
     expect(routes.find((r) => r.page === "/")?.views).toBe(4222);
     const t = detectPageTemplates(routes, "/:product/p", NOW.toISOString());
     expect(t.home).toBe("/");
@@ -143,7 +143,7 @@ describe("rotas do GA4 quando o Deco Analytics não tem", () => {
 });
 
 describe("ga4FunnelFor", () => {
-  test("acha a rota com ou sem barra final, por dispositivo", () => {
+  test("finds the route with or without a trailing slash, per device", () => {
     const rows = toGa4PageRows(ROWS);
     expect(ga4FunnelFor(rows, "/s/")).toEqual({
       route: "/s",
@@ -156,7 +156,7 @@ describe("ga4FunnelFor", () => {
   });
 });
 
-describe("measureMetric com o funil da página no GA4", () => {
+describe("measureMetric with the page funnel in GA4", () => {
   const noDeco = evidence({
     pdp_behaviour: [
       {
@@ -181,7 +181,7 @@ describe("measureMetric com o funil da página no GA4", () => {
     },
   });
 
-  test("sem funil do Deco Analytics, mede pelo GA4 e diz a fonte", () => {
+  test("without a Deco Analytics funnel, measures from GA4 and names the source", () => {
     const m = measureMetric(
       noDeco,
       { key: "pagina_produto", device: "mobile", compare_to: "desktop" },
@@ -194,7 +194,7 @@ describe("measureMetric com o funil da página no GA4", () => {
     expect(pageFunnel(noDeco, "busca")).toHaveLength(2);
   });
 
-  test("com funil do Deco Analytics, ele vence", () => {
+  test("with a Deco Analytics funnel, it wins", () => {
     const withDeco = evidence({ ga4_page_funnel: noDeco.ga4_page_funnel });
     const m = measureMetric(
       withDeco,
@@ -205,14 +205,14 @@ describe("measureMetric com o funil da página no GA4", () => {
     expect(m?.n).toBe(40_000);
   });
 
-  test("sem nenhum dos dois, não mede", () => {
+  test("with neither, it does not measure", () => {
     const none = evidence({ pdp_behaviour: noDeco.pdp_behaviour });
     expect(pageFunnel(none, "busca")).toEqual([]);
   });
 });
 
 describe("failedPanels", () => {
-  test("junta os painéis que falharam nos dispositivos", () => {
+  test("merges the panels that failed across devices", () => {
     const p = (failed?: string[]): HeatmapPayload => ({
       registered: true,
       siteId: "s",
@@ -224,7 +224,7 @@ describe("failedPanels", () => {
   });
 });
 
-/** Heatmap registrado, com tráfego e sem linha de funil (loja que não manda os eventos). */
+/** Registered heatmap with traffic but no funnel rows (a store that does not send the events). */
 const heatmapNoFunnel = {
   registered: true,
   siteId: "s",
@@ -301,8 +301,8 @@ async function collectBusca(rows: Record<string, unknown>[]) {
   };
 }
 
-describe("collectEvidence numa busca sem funil no Deco Analytics", () => {
-  test("lê o funil da rota no GA4, uma consulta só, e não deixa lacuna de funil", async () => {
+describe("collectEvidence on a search page without a Deco Analytics funnel", () => {
+  test("reads the route funnel from GA4 in a single query and leaves no funnel gap", async () => {
     const { out, pageQueries } = await collectBusca(ROWS);
     expect(pageQueries).toBe(1);
     expect(out.evidence.ga4_page_funnel?.route).toBe("/s");
@@ -312,7 +312,7 @@ describe("collectEvidence numa busca sem funil no Deco Analytics", () => {
     expect(pageFunnel(out.evidence as never, "busca")).toHaveLength(2);
   }, 30_000);
 
-  test("o GA4 também sem a rota: lacuna nomeada", async () => {
+  test("GA4 also missing the route: a named gap", async () => {
     const { out } = await collectBusca(ROWS.filter((r) => r.path !== "/s"));
     expect(out.evidence.ga4_page_funnel).toBeUndefined();
     expect(

@@ -20,7 +20,7 @@ const index = (children: string[]) =>
     .map((c) => `<sitemap><loc>${ORIGIN}${c}</loc></sitemap>`)
     .join("")}</sitemapindex>`;
 
-/** fetch falso que conta os pedidos. */
+/** Fake fetch that counts requests. */
 function fakeFetch(files: Record<string, string>) {
   const asked: string[] = [];
   const fetcher = (async (input: RequestInfo | URL) => {
@@ -35,7 +35,7 @@ function fakeFetch(files: Record<string, string>) {
 }
 
 describe("sitemapsFromRobots", () => {
-  test("as linhas Sitemap:, sem repetir, qualquer caixa", () => {
+  test("the Sitemap: lines, without repeats, any case", () => {
     expect(
       sitemapsFromRobots(
         `User-agent: *\nDisallow: /checkout\nSitemap: ${ORIGIN}/sitemap.xml\r\nsitemap:${ORIGIN}/sitemap-2.xml\nSitemap: ${ORIGIN}/sitemap.xml\n`,
@@ -46,7 +46,7 @@ describe("sitemapsFromRobots", () => {
 });
 
 describe("parseSitemap", () => {
-  test("urlset com CDATA e &amp;", () => {
+  test("urlset with CDATA and &amp;", () => {
     const xml = `<urlset><url><loc><![CDATA[ ${ORIGIN}/a/p ]]></loc></url><url><loc>${ORIGIN}/b?x=1&amp;y=2</loc></url></urlset>`;
     expect(parseSitemap(xml)).toEqual({
       index: false,
@@ -54,14 +54,14 @@ describe("parseSitemap", () => {
     });
   });
 
-  test("índice", () => {
+  test("index", () => {
     expect(parseSitemap(index(["/sitemap/product-0.xml"]))).toEqual({
       index: true,
       locs: [`${ORIGIN}/sitemap/product-0.xml`],
     });
   });
 
-  test("arquivo cortado no meio: fica com as <loc> inteiras", () => {
+  test("file cut in the middle: keeps the complete <loc>s", () => {
     const xml = urlset(["/a/p", "/b/p"]).slice(0, -40);
     expect(parseSitemap(xml).locs).toEqual([`${ORIGIN}/a/p`]);
   });
@@ -76,14 +76,14 @@ describe("pickChildSitemaps", () => {
     `${ORIGIN}/sitemap/pages.xml`,
   ];
 
-  test("produto: o filho de produto primeiro, sem .gz e sem o de categoria", () => {
+  test("product: the product child first, without .gz and without the category one", () => {
     expect(pickChildSitemaps(children, "pdp", 2)).toEqual([
       { url: `${ORIGIN}/sitemap/product-1.xml`, hinted: true },
       { url: `${ORIGIN}/sitemap/pages.xml`, hinted: false },
     ]);
   });
 
-  test("vitrine: categoria e marca", () => {
+  test("listing: category and brand", () => {
     expect(pickChildSitemaps(children, "listing", 2)).toEqual([
       { url: `${ORIGIN}/sitemap/brand-0.xml`, hinted: true },
       { url: `${ORIGIN}/sitemap/category-0.xml`, hinted: true },
@@ -101,13 +101,13 @@ describe("pickPageUrls", () => {
     `${ORIGIN}/camisa-linho`,
   ];
 
-  test("produto: só URLs da loja com cara de PDP", () => {
+  test("product: only store URLs that look like a PDP", () => {
     expect(pickPageUrls(locs, HOST, "pdp", false)).toEqual([
       `${ORIGIN}/vestido-midi/p`,
     ]);
   });
 
-  test("filho que se diz de produto: o slug solto também vale", () => {
+  test("a child that says it is product: a loose slug also counts", () => {
     expect(pickPageUrls(locs, HOST, "pdp", true)).toEqual([
       `${ORIGIN}/vestidos`,
       `${ORIGIN}/vestido-midi/p`,
@@ -115,21 +115,21 @@ describe("pickPageUrls", () => {
     ]);
   });
 
-  test("vitrine", () => {
+  test("listing", () => {
     expect(pickPageUrls(locs, HOST, "listing", true)).toEqual([
       `${ORIGIN}/vestidos`,
       `${ORIGIN}/camisa-linho`,
     ]);
   });
 
-  test("teto de 6", () => {
+  test("cap of 6", () => {
     const many = Array.from({ length: 50 }, (_, i) => `${ORIGIN}/item-${i}/p`);
     expect(pickPageUrls(many, HOST, "pdp", false).length).toBe(6);
   });
 });
 
 describe("sitemapCandidates", () => {
-  test("robots → índice → filho de produto", async () => {
+  test("robots -> index -> product child", async () => {
     const { fetcher, asked } = fakeFetch({
       [`${ORIGIN}/robots.txt`]: `Sitemap: ${ORIGIN}/sitemap.xml`,
       [`${ORIGIN}/sitemap.xml`]: index([
@@ -145,7 +145,7 @@ describe("sitemapCandidates", () => {
       `${ORIGIN}/camisa-linho`,
       `${ORIGIN}/saia-midi`,
     ]);
-    // O de categoria não serve pra PDP: nem é pedido.
+    // The category one is no use for a PDP: it is not even requested.
     expect(asked).toEqual([
       `${ORIGIN}/robots.txt`,
       `${ORIGIN}/sitemap.xml`,
@@ -153,7 +153,7 @@ describe("sitemapCandidates", () => {
     ]);
   });
 
-  test("robots aponta pra outro host: usa o /sitemap.xml da loja", async () => {
+  test("robots points to another host: uses the store's /sitemap.xml", async () => {
     const { fetcher, asked } = fakeFetch({
       [`${ORIGIN}/robots.txt`]:
         "Sitemap: https://clube.outro-exemplo.com.br/sitemap.xml",
@@ -167,7 +167,7 @@ describe("sitemapCandidates", () => {
     );
   });
 
-  test("sem robots: /sitemap.xml", async () => {
+  test("no robots: /sitemap.xml", async () => {
     const { fetcher } = fakeFetch({
       [`${ORIGIN}/sitemap.xml`]: urlset(["/vestidos", "/vestido-midi/p"]),
     });
@@ -176,7 +176,7 @@ describe("sitemapCandidates", () => {
     ]);
   });
 
-  test("índice grande: no máximo 5 pedidos", async () => {
+  test("large index: at most 5 requests", async () => {
     const files: Record<string, string> = {
       [`${ORIGIN}/robots.txt`]: [1, 2, 3]
         .map((i) => `Sitemap: ${ORIGIN}/s${i}.xml`)
@@ -193,14 +193,14 @@ describe("sitemapCandidates", () => {
     expect(asked.length).toBe(5);
   });
 
-  test("rede fora: lista vazia, sem lançar", async () => {
+  test("network down: empty list, no throw", async () => {
     const fetcher = (async () => {
       throw new Error("network down");
     }) as unknown as typeof fetch;
     expect(await sitemapCandidates(ORIGIN, "pdp", fetcher)).toEqual([]);
   });
 
-  test("corta o corpo no teto, sem ler o resto", async () => {
+  test("cuts the body at the cap, without reading the rest", async () => {
     let pulled = 0;
     const chunk = new TextEncoder().encode(
       `<url><loc>${ORIGIN}/vestido-midi/p</loc></url>`.padEnd(100_000, " "),

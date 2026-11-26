@@ -1,10 +1,7 @@
 /**
- * Evidência sintética da categoria /colecao/promo de uma loja de moda,
- * aparada: só o site (sem app), sem recorte por dia, sem prints. É o caso em
- * que a oportunidade saiu como causa ("o card não mostra desconto"), medida
- * com o sinal trocado ("viu vitrine → clicou", do site inteiro: celular 37,8%
- * x computador 23,2%) e com uma hipótese de outro problema (o filtro que não
- * fica fixo).
+ * Synthetic evidence for a fashion store's promo category, trimmed: site only
+ * (no app), no per-day cut, no screenshots. It reproduces an opportunity that
+ * came out as a cause, measured with a flipped sign and tied to an unrelated hypothesis.
  */
 import type { DiagnosisEvidence } from "../types.ts";
 

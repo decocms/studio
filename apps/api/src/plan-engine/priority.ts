@@ -1,16 +1,8 @@
 /**
- * Quais hipóteses merecem atenção — duas decisões diferentes:
- *
- * - prioridade de INVESTIGAÇÃO: vale a pena olhar isto agora? Sobe com o
- *   impacto e a abrangência, e com a INCERTEZA (o que já está provado não
- *   precisa de mais investigação).
- * - prioridade de TESTE: vale um A/B? Sobe com impacto, confiança,
- *   abrangência e mensurabilidade; cai com esforço e risco. Só pra pronta.
- *
- * A confiança não é a do modelo: é a qualidade da evidência. Um fato medido
- * aqui pesa mais que um benchmark; um A/B desta loja pesa mais que um estudo;
- * cada nível de validação confirmado soma. Teto de 0,9: causa nunca está
- * provada antes do A/B.
+ * Which hypotheses deserve attention: INVESTIGATION priority (impact, reach and
+ * uncertainty) and TEST priority (impact, confidence, reach, measurability,
+ * minus effort and risk; ready hypotheses only). Confidence is evidence
+ * quality, not the model's, capped at 0.9: a cause is never proven before the A/B.
  */
 
 import type { UxClaimLabel } from "./claims.ts";
@@ -51,21 +43,21 @@ export interface HypothesisPriority {
   esforco: number;
   risco: number;
   mensurabilidade: number;
-  /** 0–1. Quanto vale investigar agora. */
+  /** 0-1. How much it is worth investigating now. */
   investigacao: number;
-  /** 0–1, só pra pronta pro teste. NULL = ainda não dá pra testar. */
+  /** 0-1, only for test-ready. NULL = cannot be tested yet. */
   teste: number | null;
-  /** Como cada fator saiu, em palavras. */
+  /** How each factor came out, in words. */
   notas: string[];
 }
 
-/** 1 − Π(1 − wᵢ): somar evidências independentes sem passar de 1. */
+/** 1 − Π(1 − wᵢ): adds independent evidence without exceeding 1. */
 const combine = (weights: number[]) =>
   1 - weights.reduce((acc, w) => acc * (1 - w), 1);
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-/** Valor de referência do impacto: 10% da receita mensal medida (todos os canais). */
+/** Impact reference value: 10% of measured monthly revenue (all channels). */
 export function referenceValue(
   evidence: DiagnosisEvidence,
   opportunities: Pick<UxOpportunity, "money">[],
@@ -95,7 +87,7 @@ export function priorityOf(input: {
   knowledge: Map<string, KnowledgeEntry>;
   referenceValue: number;
   ready: boolean;
-  /** A meta da rodada: entra nas notas como contexto, nunca na conta. */
+  /** The round's goal: context for the notes, never part of the calculation. */
   objective?: string | null;
 }): HypothesisPriority {
   const { hypothesis: h, opportunity: o } = input;
@@ -104,7 +96,7 @@ export function priorityOf(input: {
   if (goal) notas.push(`meta da rodada: ${goal}`);
   const tree = h.tree ?? null;
 
-  // Impacto: o valor da OPORTUNIDADE (contado uma vez), em escala log.
+  // Impact: the OPPORTUNITY's value (counted once), on a log scale.
   const v = o.money?.monthly_value ?? 0;
   const impacto =
     v > 0
@@ -116,7 +108,7 @@ export function priorityOf(input: {
       : "oportunidade sem conta de dinheiro: impacto mínimo",
   );
 
-  // Confiança pela qualidade da evidência.
+  // Confidence from evidence quality.
   const favor = (tree?.a_favor ?? []).map((c) => CLAIM_WEIGHT[c.label]);
   const against = (tree?.contra ?? []).map((c) => CLAIM_WEIGHT[c.label]);
   const cited = (tree?.fontes_conhecimento ?? [])
@@ -138,7 +130,7 @@ export function priorityOf(input: {
     `confiança: ${favor.length} a favor, ${against.length} contra, níveis confirmados somam`,
   );
 
-  // Abrangência: quem a mudança atinge × a fatia do dispositivo.
+  // Reach: who the change affects × the device share.
   const devices = input.evidence.pdp_behaviour;
   const total = devices.reduce((a, b) => a + b.views, 0);
   const mine = devices.find(
@@ -149,8 +141,7 @@ export function priorityOf(input: {
   const abrangencia = Math.min(1, affected * deviceShare);
 
   const esforco = EFFORT_FACTOR[tree?.esforco ?? 2];
-  // Risco: mexer no botão de compra ou no checkout pode derrubar a venda; um
-  // A/B desta loja que perdeu na mesma parte também.
+  // Risk: touching the buy button or checkout can hurt sales; so can an A/B here that lost on the same part.
   const lostHere = [...input.knowledge.values()].some(
     (e) =>
       e.tipo_fonte === "ab_desta_loja" &&
@@ -190,10 +181,7 @@ export function priorityOf(input: {
   };
 }
 
-/**
- * Pronta pro teste: relevância pelo menos média, teste mensurável com o
- * tráfego de hoje, e os dados da oportunidade sem nada que bloqueie.
- */
+/** Test-ready: at least medium relevance, a test measurable with today's traffic, and no blocker in the opportunity data. */
 export function isReady(input: {
   relevance: HypothesisRelevance | null | undefined;
   experiment: ExperimentDesign | null;
@@ -224,10 +212,9 @@ export function isReady(input: {
 }
 
 /**
- * A ordem da fila: prioridade de teste (as aprovadas antes da trava, sem
- * prioridade, vão por valor), e o dinheiro de uma oportunidade só na primeira
- * hipótese dela — duas aprovadas da mesma oportunidade mostravam o valor
- * inteiro cada uma. Usado por list_ux_queue.
+ * Queue order: test priority (approved ones before the lock, without
+ * priority, go by value); an opportunity's money only counts on its first
+ * hypothesis. Used by list_ux_queue.
  */
 export function queueOrder<
   T extends Pick<UxHypothesis, "opportunity_id" | "money" | "priority">,

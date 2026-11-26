@@ -118,6 +118,43 @@ describe("buildSetup", () => {
   });
 });
 
+describe("buildSetup without an AI model", () => {
+  const lostModel: SourceGap = {
+    source: "studio",
+    error: "nenhum modelo de IA conectado",
+    owner: "customer",
+    key: "ai_provider",
+  };
+
+  test("asks for a provider first, and it blocks", () => {
+    const needs = buildSetup(
+      profile({ competitors_confirmed_at: null }),
+      [analytics],
+      false,
+    ).needs;
+    expect(needs.map((n) => n.key)).toEqual([
+      "ai_provider",
+      "competitors",
+      "analytics_install",
+    ]);
+    expect(needs[0]).toEqual({ key: "ai_provider", blocking: true });
+  });
+
+  test("no profile asks for the domain, then the provider", () => {
+    expect(buildSetup(null, [], false).needs).toEqual([
+      { key: "domain", blocking: true, suggested: null },
+      { key: "ai_provider", blocking: true },
+    ]);
+  });
+
+  test("a run's lost-model gap asks nothing once the org has a model again", () => {
+    expect(buildSetup(profile(), [lostModel]).needs).toEqual([]);
+    expect(buildSetup(profile(), [lostModel, lostModel], false).needs).toEqual([
+      { key: "ai_provider", blocking: true },
+    ]);
+  });
+});
+
 describe("gapDetail", () => {
   test("an untagged gap is ours", () => {
     expect(gapDetail({ source: "heatmap", error: "sem coleta" })).toEqual({

@@ -1,21 +1,7 @@
 /**
- * "Importa pro problema?" — o terceiro nível de validação.
- *
- * A condição existe (o seletor está abaixo da dobra); agora: quantas pessoas
- * a mudança proposta atinge, e o comportamento ali difere do resto da página?
- * Tudo conta sobre o que o diagnóstico já mediu, sem modelo:
- *
- * - onde está o alvo: a posição medida da parte, o y do elemento do heatmap,
- *   ou o alcance da seção;
- * - quantas chegam lá: a curva de rolagem do Deco Analytics (21 pontos; nas
- *   análises antigas, as três marcas 25/50/75%). Na primeira tela = todas;
- * - quantas a mudança atinge: se ela traz o alvo pra primeira tela, todas que
- *   abrem a PDP; se mexe no lugar, só as que chegam até ele;
- * - sinais do heatmap no elemento: clique, clique morto, e quem clicou
- *   ali vai mais ao carrinho que a média?
- *
- * Isto não prova causa: diz se vale testar. Uma condição real que quase
- * ninguém vê não merece um A/B.
+ * "Does it matter for the problem?" - the third validation level: how many
+ * people the change reaches and whether behavior there differs from the page.
+ * Computed from the diagnosis, no model; it says whether a test is worth it.
  */
 
 import type { HypothesisTree } from "./tree.ts";
@@ -31,41 +17,41 @@ export type RelevanceLevel = "alta" | "media" | "baixa" | "sem_relevancia";
 
 export interface RelevanceSignal {
   label: string;
-  /** Em palavras, com número. */
+  /** In words, with a number. */
   value: string;
-  /** O sinal do alvo ÷ o da página. NULL = sem comparação. */
+  /** The target's signal ÷ the page's. NULL = no comparison. */
   ratio: number | null;
 }
 
 export interface HypothesisRelevance {
   level: RelevanceLevel;
   device: UxDevice;
-  /** Visualizações da PDP por semana no dispositivo. */
+  /** PDP views per week on the device. */
   views_week: number;
-  /** % de quem chega ao alvo hoje. NULL = a hipótese é da página inteira. */
+  /** % of those who reach the target today. NULL = the hypothesis covers the whole page. */
   reach_pct: number | null;
-  /** % das visualizações que a mudança atinge. */
+  /** % of the views the change reaches. */
   affected_pct: number;
   affected_week: number;
-  /** Como a conta foi feita, em palavras. */
+  /** How the calculation was made, in words. */
   basis: string;
   signals: RelevanceSignal[];
   computed_at: string;
 }
 
-/** Abaixo disso a mudança atinge gente demais pouca pra um teste. */
+/** Below this the change reaches too few people for a test. */
 const MIN_AFFECTED_WEEK = 500;
 const MIN_AFFECTED_PCT = 5;
 const LOW_PCT = 20;
 const HIGH_PCT = 50;
-/** Sinal do alvo a partir de 1,2× o da página conta como "diferente". */
+/** A target signal from 1.2× the page's counts as "different". */
 const STRONG_RATIO = 1.2;
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
 const fmt = (v: number) =>
   v.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
-/** % de quem chega a `depth`% da página, pela curva (ou pelas três marcas). */
+/** % of those who reach `depth`% of the page, from the curve (or the three marks). */
 export function reachAtDepth(b: DevicePdpBehaviour, depth: number): number {
   const d = Math.min(100, Math.max(0, depth));
   const points =
@@ -102,14 +88,9 @@ function captureFor(
 }
 
 /**
- * Onde está o alvo: `{ y }` em px, `{ reach }` em % (seção), ou null.
- *
- * Seção que fica POR CIMA da página (pop-up, gaveta, barra fixa) não tem
- * alcance de rolagem: o Deco Analytics mede quanto da seção entra na tela ao
- * rolar, e um pop-up em y=0 sai com 1–2%. Em 15/11 (numa loja) o pop-up de
- * newsletter cobria a tela inteira, tinha 176 mil cliques em 530 mil
- * visualizações (CTR 957%) e saiu "sem relevância" com alcance de 1,6%. Quando
- * o clique passa do alcance, o piso é cliques ÷ visualizações.
+ * Where the target is: `{ y }` in px, `{ reach }` in % (section), or null.
+ * Overlay sections (pop-up, drawer) have no scroll reach, so when clicks
+ * exceed it the floor is clicks ÷ views.
  */
 function targetPosition(
   alvo: NonNullable<HypothesisTree["alvo"]>,
@@ -141,7 +122,7 @@ function targetPosition(
     return y == null ? null : { y };
   }
   const label = capture.element_labels?.[alvo.key];
-  // Escondido na carga (num painel que outro clique abre): o y não é posição.
+  // Hidden on load (in a panel that another click opens): y is not a position.
   return label && !label.hidden ? { y: label.y } : null;
 }
 
@@ -150,7 +131,7 @@ function elementSignals(
   b: DevicePdpBehaviour,
   labels: PageCapture["element_labels"] | undefined,
 ): RelevanceSignal[] {
-  // Seção: soma os elementos dela (o heatmap não dá clique morto por seção).
+  // Section: sum its elements (the heatmap has no dead click per section).
   const pick =
     alvo.kind === "element"
       ? (b.elements ?? []).filter((x) => `${x.root}|${x.el}` === alvo.key)
@@ -181,9 +162,7 @@ function elementSignals(
     value: `${fmt(share(e.clicks, b.views) * 100)}% das visualizações clicam aqui`,
     ratio: null,
   });
-  // Clique morto em link ou envio de formulário é, em geral, a página nova
-  // demorando mais de 1 s: não conta como "sem resposta" (busca de uma loja
-  // de moda, 16/11). Só os elementos que mudam a própria página entram.
+  // A dead click on a link or form submit is usually a slow page load, so only in-place elements count.
   const inPlace = pick.filter((x) => !labels?.[`${x.root}|${x.el}`]?.navigates);
   const inPlaceClicks = inPlace.reduce((a, x) => a + x.clicks, 0);
   const pageDead = share(b.dead_clicks, b.clicks);
@@ -204,7 +183,7 @@ function elementSignals(
     if (page > 0) {
       out.push({
         label: "Carrinho",
-        // Mede quem ESCOLHEU clicar (intenção), não o efeito do elemento.
+        // Measures who CHOSE to click (intent), not the effect of the element.
         value: `${fmt(here * 100)}% de quem escolheu clicar aqui põe no carrinho (página: ${fmt(page * 100)}%)`,
         ratio: round1(here / page),
       });
@@ -213,10 +192,7 @@ function elementSignals(
   return out;
 }
 
-/**
- * A relevância de uma hipótese, ou null se não há comportamento medido no
- * dispositivo (sem Deco Analytics não dá pra contar).
- */
+/** A hypothesis's relevance, or null without measured behavior on the device. */
 export function computeRelevance(
   h: Pick<UxHypothesis, "device" | "tree">,
   evidence: DiagnosisEvidence,
@@ -252,8 +228,7 @@ export function computeRelevance(
       where = `não deu pra achar ${tree.alvo.label} nesta captura: contamos a página inteira`;
     }
   }
-  // Trazer pra primeira tela muda a página de todo mundo; mexer no lugar só
-  // muda pra quem chega até ali.
+  // Moving it to the first screen affects everyone; changing it in place only affects those who get there.
   const affected = toFirstScreen || reach === null ? 100 : reach;
   const affectedWeek = Math.round((viewsWeek * affected) / 100);
   const signals = tree?.alvo

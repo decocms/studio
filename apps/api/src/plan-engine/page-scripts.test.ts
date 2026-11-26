@@ -8,7 +8,7 @@ import {
 } from "./page-scripts.ts";
 import { type ElementFacts, forbiddenReason } from "./verify/safety.ts";
 
-/** Árvore mínima: string = nó de texto; [tag, ...filhos] = elemento. */
+/** Minimal tree: string = text node; [tag, ...children] = element. */
 type Spec = string | [string, ...Spec[]];
 
 function tree(spec: Spec): TextTreeNode {
@@ -34,7 +34,7 @@ function tree(spec: Spec): TextTreeNode {
   };
 }
 
-// O botão de compra de uma loja em 14/11: o JSON do evento vem dentro dele.
+// A store's buy button: the event JSON sits inside it.
 const BUY_BUTTON: Spec = [
   "button",
   [
@@ -45,11 +45,11 @@ const BUY_BUTTON: Spec = [
 ];
 
 describe("visibleTextOf", () => {
-  test("pula o JSON de <script> dentro do botão", () => {
+  test("skips the <script> JSON inside the button", () => {
     expect(visibleTextOf(tree(BUY_BUTTON))).toBe("Adicionar à sacola");
   });
 
-  test("pula style, noscript e template, em qualquer profundidade", () => {
+  test("skips style, noscript and template at any depth", () => {
     const t = tree([
       "section",
       ["style", ".a{color:red}"],
@@ -63,18 +63,18 @@ describe("visibleTextOf", () => {
     expect(visibleTextOf(t)).toBe("Complete seu look");
   });
 
-  test("raiz que é script não tem texto visível", () => {
+  test("a script root has no visible text", () => {
     expect(visibleTextOf(tree(["SCRIPT", "x"]))).toBe("");
   });
 
-  test("junta espaços e quebras de linha", () => {
+  test("collapses spaces and line breaks", () => {
     expect(
       visibleTextOf(tree(["p", "  Frete\n\n", ["span", " grátis "]])),
     ).toBe("Frete grátis");
   });
 });
 
-describe("o texto limpo e a trava de clique", () => {
+describe("the clean text and the click lock", () => {
   const facts = (text: string): ElementFacts => ({
     found: true,
     tag: "button",
@@ -95,8 +95,8 @@ describe("o texto limpo e a trava de clique", () => {
     rect: { x: 0, y: 923, width: 358, height: 48 },
   });
 
-  test("botão só de ícone: o <title> do SVG não esconde o aria-label", () => {
-    // <button aria-label="Adicionar à sacola"><svg><title>icon-bag</title></svg></button>
+  test("icon-only button: the SVG <title> does not hide the aria-label", () => {
+    // <button aria-label="..."><svg><title>icon-bag</title></svg></button>
     const title = tree(["title", "icon-bag"]);
     const svg = { ...tree(["svg"]), firstChild: title };
     const attrs: Record<string, string> = {
@@ -136,14 +136,14 @@ describe("o texto limpo e a trava de clique", () => {
     }
   });
 
-  test("o botão de compra continua proibido sem o JSON", () => {
+  test("the buy button stays forbidden without the JSON", () => {
     expect(forbiddenReason(facts(visibleTextOf(tree(BUY_BUTTON))))).toBe(
       "botão de compra",
     );
   });
 });
 
-/** Corpo de `const visibleText = (node) => {...}` no código serializado. */
+/** Body of `const visibleText = (node) => {...}` in the serialized code. */
 function helperBody(source: string): string | null {
   const start = source.indexOf("visibleText = (node) => {");
   if (start < 0) return null;
@@ -158,9 +158,8 @@ function helperBody(source: string): string | null {
   return null;
 }
 
-describe("as funções da página usam o texto visível", () => {
-  // As que leem texto de elementos. Cada uma declara a própria cópia do
-  // helper (regra de serialização); a cópia tem que ser igual à testada.
+describe("the page functions use the visible text", () => {
+  // The functions that read element text each declare their own helper copy (serialization rule); it must equal the tested one.
   const readers = {
     measurePdpInPage: scripts.measurePdpInPage,
     measureSitePageInPage: scripts.measureSitePageInPage,
@@ -173,14 +172,13 @@ describe("as funções da página usam o texto visível", () => {
   const pureBody = pure.slice(pure.indexOf("{")).replace(/\s+/g, "");
 
   for (const [name, fn] of Object.entries(readers)) {
-    test(`${name}: cópia do helper igual à testada`, () => {
+    test(`${name}: helper copy equals the tested one`, () => {
       expect(helperBody(fn.toString())).toBe(pureBody);
     });
   }
 
-  test("ninguém mais lê textContent (fora as exceções com motivo)", () => {
-    // isProductPageInPage lê o JSON-LD de propósito; domExcerptInPage só lê
-    // folha (sem filho, então sem <script> dentro); applyPatchInPage escreve.
+  test("nobody else reads textContent (except the justified exceptions)", () => {
+    // Exceptions: isProductPageInPage reads JSON-LD, domExcerptInPage only reads leaves, applyPatchInPage writes.
     const allowed = new Set([
       "isProductPageInPage",
       "domExcerptInPage",
@@ -194,15 +192,14 @@ describe("as funções da página usam o texto visível", () => {
   });
 });
 
-/** Corpo de uma função exportada, sem espaços. */
+/** Body of an exported function, without whitespace. */
 function fnBody(fn: (...args: never[]) => unknown): string {
   const src = fn.toString();
   return src.slice(src.indexOf("{")).replace(/\s+/g, "");
 }
 
-describe("quem rola a página: uma cópia só do critério", () => {
-  // Cada função que rola ou mede posição no documento declara a própria
-  // cópia de `pageScrollerInPage` (regra de serialização, 14/11).
+describe("who scrolls the page: a single copy of the criterion", () => {
+  // Each scrolling function declares its own copy of `pageScrollerInPage` (serialization rule).
   const users = {
     scrollPageToInPage: scripts.scrollPageToInPage,
     elementDocTopInPage: scripts.elementDocTopInPage,
@@ -215,14 +212,13 @@ describe("quem rola a página: uma cópia só do critério", () => {
   };
   const canonical = fnBody(scripts.pageScrollerInPage);
   for (const [name, fn] of Object.entries(users)) {
-    test(`${name}: cópia igual a pageScrollerInPage`, () => {
-      // O transpilador pode embutir a arrow usada uma vez só como IIFE;
-      // o corpo, sem espaços, tem que estar lá do mesmo jeito.
+    test(`${name}: copy equals pageScrollerInPage`, () => {
+      // The transpiler may inline a single-use arrow as an IIFE; the body must still match.
       expect(fn.toString().replace(/\s+/g, "")).toContain(canonical);
     });
   }
 
-  test("ninguém mais rola com window.scrollTo(0, y)", () => {
+  test("nobody else scrolls with window.scrollTo(0, y)", () => {
     const offenders = Object.entries(scripts)
       .filter(([, v]) => typeof v === "function")
       .filter(([, v]) => /window\.scrollTo\(\s*0\s*,/.test(String(v)))
@@ -231,11 +227,7 @@ describe("quem rola a página: uma cópia só do critério", () => {
   });
 });
 
-/**
- * Página falsa: janela que só rola com `behavior: "instant"` (uma loja tem
- * scroll-behavior smooth) ou que nem rola (o <html> em overflow auto), e um
- * <body> que rola ou não.
- */
+/** Fake page: a window that only scrolls with `behavior: "instant"` or not at all, and a <body> that may scroll. */
 function fakeScrollPage(o: {
   windowScrolls: boolean;
   bodyScrolls: boolean;
@@ -255,7 +247,7 @@ function fakeScrollPage(o: {
     innerHeight: vh,
     scrollY: 0,
     scrollTo(arg: number | ScrollToOptions, y?: number) {
-      // Com smooth, a rolagem só termina depois: logo após, ainda 0.
+      // With smooth, scrolling only finishes later: right after, it is still 0.
       if (typeof arg === "number" || arg.behavior !== "instant") return;
       if (o.windowScrolls) this.scrollY = clamp(arg.top ?? 0);
       void y;
@@ -289,7 +281,7 @@ function fakeScrollPage(o: {
 }
 
 describe("scrollPageToInPage", () => {
-  test("janela com scroll-behavior smooth: rola na hora (instant)", () => {
+  test("window with scroll-behavior smooth: scrolls immediately (instant)", () => {
     const f = fakeScrollPage({ windowScrolls: true, bodyScrolls: false });
     try {
       expect(scripts.scrollPageToInPage(1000)).toBe(1000);
@@ -299,7 +291,7 @@ describe("scrollPageToInPage", () => {
     }
   });
 
-  test("loja de moda: a janela não mexe, quem rola é o body", () => {
+  test("fashion store: the window does not move, the body scrolls", () => {
     const f = fakeScrollPage({ windowScrolls: false, bodyScrolls: true });
     try {
       expect(scripts.scrollPageToInPage(1000)).toBe(1000);
@@ -311,7 +303,7 @@ describe("scrollPageToInPage", () => {
     }
   });
 
-  test("além do fim: devolve onde parou, não o pedido", () => {
+  test("past the end: returns where it stopped, not what was requested", () => {
     const f = fakeScrollPage({ windowScrolls: false, bodyScrolls: true });
     try {
       expect(scripts.scrollPageToInPage(9000)).toBe(5556 - 844);
@@ -324,7 +316,7 @@ describe("scrollPageToInPage", () => {
 describe("productPriceValues", () => {
   const ld = (o: unknown) => JSON.stringify(o);
 
-  test("JSON-LD Product com offers.price", () => {
+  test("JSON-LD Product with offers.price", () => {
     const r = scripts.productPriceValues(
       [ld({ "@type": "Product", offers: { "@type": "Offer", price: 244.3 } })],
       [],
@@ -333,7 +325,7 @@ describe("productPriceValues", () => {
     expect(r).toEqual({ values: [244.3], list: [], from: "json-ld" });
   });
 
-  test("AggregateOffer: lowPrice e a lista de dentro, sem repetir", () => {
+  test("AggregateOffer: lowPrice and the inner list, without repeating", () => {
     const r = scripts.productPriceValues(
       [
         ld({
@@ -353,7 +345,7 @@ describe("productPriceValues", () => {
     expect(r.values).toEqual([244.3]);
   });
 
-  test("offers em lista e preço de lista na priceSpecification", () => {
+  test("offers as a list and list price in priceSpecification", () => {
     const r = scripts.productPriceValues(
       [
         ld({
@@ -375,7 +367,7 @@ describe("productPriceValues", () => {
     expect(r.list).toEqual([899]);
   });
 
-  test("@graph com breadcrumb antes; JSON quebrado não derruba", () => {
+  test("@graph with breadcrumb first; broken JSON does not blow up", () => {
     const r = scripts.productPriceValues(
       [
         "{quebrado",
@@ -392,7 +384,7 @@ describe("productPriceValues", () => {
     expect(r).toEqual({ values: [1299.9], list: [], from: "json-ld" });
   });
 
-  test("lista de outros produtos não é o preço desta peça", () => {
+  test("a list of other products is not this item's price", () => {
     const r = scripts.productPriceValues(
       [
         ld({
@@ -406,7 +398,7 @@ describe("productPriceValues", () => {
     expect(r.from).toBeNull();
   });
 
-  test("sem JSON-LD: meta/itemprop", () => {
+  test("no JSON-LD: meta/itemprop", () => {
     expect(scripts.productPriceValues([], ["244.30"], [])).toEqual({
       values: [244.3],
       list: [],
@@ -414,7 +406,7 @@ describe("productPriceValues", () => {
     });
   });
 
-  test("loja de moda (14/11): só o view_item do dataLayer tem o valor", () => {
+  test("only the dataLayer view_item has the value", () => {
     const layer = [
       { event: "gtm.js" },
       {
@@ -439,7 +431,7 @@ describe("productPriceValues", () => {
     });
   });
 
-  test('"1.998" é milhar, não 1,998 (revisão, 14/11)', () => {
+  test('"1.998" is a thousands separator, not 1,998', () => {
     expect(scripts.productPriceValues([], ["1.998"], []).values).toEqual([
       1998,
     ]);
@@ -461,7 +453,7 @@ describe("productPriceValues", () => {
     expect(scripts.productPriceValues([], [], layer).values).toEqual([780]);
   });
 
-  test("nada declarado: vazio", () => {
+  test("nothing declared: empty", () => {
     expect(scripts.productPriceValues([], [], undefined)).toEqual({
       values: [],
       list: [],
@@ -471,23 +463,23 @@ describe("productPriceValues", () => {
 });
 
 describe("moneyHasValue", () => {
-  test("o formato da página: 244.3 → 244,30", () => {
+  test("the page format: 244.3 → 244,30", () => {
     expect(scripts.moneyHasValue("R$ 244,30", [244.3])).toBe(true);
     expect(scripts.moneyHasValue("R$ 349,00R$ 244,30", [244.3])).toBe(true);
     expect(scripts.moneyHasValue("$244.30", [244.3])).toBe(true);
   });
 
-  test("milhar com ponto ou vírgula", () => {
+  test("thousands with dot or comma", () => {
     expect(scripts.moneyHasValue("R$ 1.299,90", [1299.9])).toBe(true);
     expect(scripts.moneyHasValue("$1,299.90", [1299.9])).toBe(true);
   });
 
-  test("valor redondo sem centavos (outra loja: R$ 780)", () => {
+  test("round value without cents (R$ 780)", () => {
     expect(scripts.moneyHasValue("R$ 780", [780])).toBe(true);
     expect(scripts.moneyHasValue("R$ 780,00", [780])).toBe(true);
   });
 
-  test("não casa pedaço de outro número", () => {
+  test("does not match part of another number", () => {
     expect(scripts.moneyHasValue("R$ 1.244,30", [244.3])).toBe(false);
     expect(scripts.moneyHasValue("10x de R$ 24,43", [244.3])).toBe(false);
     expect(scripts.moneyHasValue("R$ 780,50", [780])).toBe(false);
@@ -496,7 +488,7 @@ describe("moneyHasValue", () => {
 });
 
 describe("pickTopCandidate", () => {
-  test("o mais alto vence o maior (loja de moda: o da foto, não o da folha)", () => {
+  test("the topmost wins over the largest (the one on the photo, not the one on the sheet)", () => {
     expect(
       scripts.pickTopCandidate(
         [
@@ -508,7 +500,7 @@ describe("pickTopCandidate", () => {
     ).toBe(1);
   });
 
-  test("barra fixa não conta", () => {
+  test("a fixed bar does not count", () => {
     expect(
       scripts.pickTopCandidate(
         [
@@ -523,7 +515,7 @@ describe("pickTopCandidate", () => {
     ).toBe(-1);
   });
 
-  test("empate de altura: o menor pro preço, o maior pro botão", () => {
+  test("height tie: the smallest for the price, the largest for the button", () => {
     const tie = [
       { y: 699, area: 200 * 20, pinned: false },
       { y: 700, area: 80 * 20, pinned: false },
@@ -533,21 +525,21 @@ describe("pickTopCandidate", () => {
   });
 });
 
-describe("measurePdpInPage: cópias dos helpers de preço e botão", () => {
+describe("measurePdpInPage: copies of the price and button helpers", () => {
   const src = scripts.measurePdpInPage.toString().replace(/\s+/g, "");
   for (const fn of [
     scripts.productPriceValues,
     scripts.moneyHasValue,
     scripts.pickTopCandidate,
   ]) {
-    test(`${fn.name}: cópia igual`, () => {
+    test(`${fn.name}: identical copy`, () => {
       expect(src).toContain(fnBody(fn as (...a: never[]) => unknown));
     });
   }
 });
 
-describe("revisão do ciclo 6 (14/11)", () => {
-  test("labelTextOf: tooltip escondido fora do rótulo do tamanho", () => {
+describe("cycle 6 review", () => {
+  test("labelTextOf: hidden tooltip stays out of the size label", () => {
     const t = tree([
       "ul",
       ["li", "PP"],
@@ -556,11 +548,11 @@ describe("revisão do ciclo 6 (14/11)", () => {
     ]);
     const hidden = (n: TextTreeNode) => n.localName === "div";
     expect(scripts.labelTextOf(t, hidden)).toBe("PPP");
-    // A trava de clique segue lendo tudo.
+    // The click lock still reads everything.
     expect(visibleTextOf(t)).toContain("vendido por parceiro");
   });
 
-  test("labelText: as cópias são iguais à testada", () => {
+  test("labelText: the copies equal the tested one", () => {
     const canonical = fnBody(scripts.labelTextOf);
     for (const fn of [
       scripts.measurePdpInPage,
@@ -571,7 +563,7 @@ describe("revisão do ciclo 6 (14/11)", () => {
     }
   });
 
-  test("isBuyText: favorito e lista de desejos não são compra", () => {
+  test("isBuyText: favorites and wishlist are not a purchase", () => {
     expect(scripts.isBuyText("comprar")).toBe(true);
     expect(scripts.isBuyText("Adicionar à Sacola")).toBe(true);
     expect(scripts.isBuyText("Adicionar aos favoritos")).toBe(false);
@@ -580,14 +572,14 @@ describe("revisão do ciclo 6 (14/11)", () => {
     expect(scripts.isBuyText("x".repeat(30) + " comprar agora")).toBe(false);
   });
 
-  test("priceMatches: o de venda ganha do riscado, o de lista só sem venda", () => {
+  test("priceMatches: the sale price beats the struck-through one; the list price only counts without a sale", () => {
     const has = scripts.moneyHasValue;
     const cands = [
       { text: "R$ 349,00", struck: true },
       { text: "R$ 244,30", struck: false },
     ];
     expect(scripts.priceMatches(cands, [244.3], [349], has)).toEqual([1]);
-    // O valor de venda riscado (promo que a loja risca errado) não conta.
+    // The struck-through sale value (a promo the store strikes by mistake) does not count.
     expect(
       scripts.priceMatches(
         [{ text: "R$ 244,30", struck: true }],
@@ -596,17 +588,17 @@ describe("revisão do ciclo 6 (14/11)", () => {
         has,
       ),
     ).toEqual([]);
-    // Sem o de venda na página: o de lista, mesmo riscado.
+    // Without the sale price on the page: the list price, even if struck through.
     expect(scripts.priceMatches([cands[0]!], [244.3], [349], has)).toEqual([0]);
   });
 
-  test("measurePdpInPage: cópias de isBuyText e priceMatches", () => {
+  test("measurePdpInPage: copies of isBuyText and priceMatches", () => {
     const src = scripts.measurePdpInPage.toString().replace(/\s+/g, "");
     expect(src).toContain(fnBody(scripts.isBuyText));
     expect(src).toContain(fnBody(scripts.priceMatches));
   });
 
-  test("rolador: gaveta fora da tela não é a página", () => {
+  test("scroller: an off-screen drawer is not the page", () => {
     const g = globalThis as Record<string, unknown>;
     const saved = {
       window: g.window,
@@ -658,8 +650,8 @@ describe("revisão do ciclo 6 (14/11)", () => {
   });
 });
 
-describe("navigationOf: pra onde o clique leva", () => {
-  /** Árvore mínima: cada nó sabe o pai, a tag e os atributos. */
+describe("navigationOf: where the click leads", () => {
+  /** Minimal tree: each node knows its parent, tag and attributes. */
   type Fake = {
     localName: string;
     attrs: Record<string, string>;
@@ -693,16 +685,16 @@ describe("navigationOf: pra onde o clique leva", () => {
   });
   const here = "https://www.loja.example/";
 
-  test("envio da busca da loja leva pra /buscar", () => {
+  test("the store search submit leads to /buscar", () => {
     const form = node("form", { action: "/buscar" });
     const submit = node("button", { type: "submit" }, form);
     const svg = node("svg", {}, submit);
     expect(navigationOf(wrap(submit), here)).toBe("/buscar");
-    // Clique no ícone dentro do botão ancora no ícone.
+    // A click on the icon inside the button anchors on the icon.
     expect(navigationOf(wrap(svg), here)).toBe("/buscar");
   });
 
-  test("botão sem type dentro de form envia; type=button não", () => {
+  test("button without type inside a form submits; type=button does not", () => {
     const form = node("form", {});
     expect(navigationOf(wrap(node("button", {}, form)), here)).toBe("/");
     expect(
@@ -710,14 +702,14 @@ describe("navigationOf: pra onde o clique leva", () => {
     ).toBe("");
   });
 
-  test("botão fora de form e label não trocam de página", () => {
+  test("button outside a form and label do not change page", () => {
     expect(navigationOf(wrap(node("button", { type: "submit" })), here)).toBe(
       "",
     );
     expect(navigationOf(wrap(node("label", { for: "x" })), here)).toBe("");
   });
 
-  test("link: caminho; âncora e javascript não contam; outro site leva o host", () => {
+  test("link: path; anchor and javascript do not count; another site yields the host", () => {
     const a = (href: string) => wrap(node("img", {}, node("a", { href })));
     expect(navigationOf(a("/colecao/vestidos?x=1"), here)).toBe(
       "/colecao/vestidos",
@@ -727,7 +719,7 @@ describe("navigationOf: pra onde o clique leva", () => {
     expect(navigationOf(a("https://wa.me/55"), here)).toBe("wa.me/55");
   });
 
-  test("cópia dentro de elementLabelsInPage igual à testada", () => {
+  test("copy inside elementLabelsInPage equals the tested one", () => {
     const canonical = fnBody(navigationOf);
     expect(
       scripts.elementLabelsInPage.toString().replace(/\s+/g, ""),

@@ -1,26 +1,15 @@
 /**
- * Triagem: o portão em código que a hipótese passa ANTES de gastar
- * verificação (a "relevância" do ARTEMIS). Até 19/11 quem filtrava era a
- * revisão contraditória (um modelo) e, depois, o verificador (navegador +
- * modelo). Aqui ficam as regras que não precisam de modelo nenhum, porque
- * leem os fatos (facts.ts) que a hipótese cita:
- *
- * 1. Tem fato a favor. Sem nenhum fato citado, a hipótese é opinião.
- * 2. A causa não é só número de funil. Taxa e recorte são o sintoma; a causa
- *    é algo da página (posição, conteúdo, elemento, sonda) — salvo nas
- *    categorias em que a causa mora fora dela (tráfego, comercial).
- * 3. Na perda de dispositivo, o que a hipótese cita como diferença tem que
- *    ser diferente de verdade: o mesmo rótulo com o mesmo valor nas duas
- *    telas não é contraste.
- * 4. Não repete outra hipótese da mesma oportunidade (os mesmos fatos a favor).
- * 5. Não contradiz uma sonda: "o elemento não responde" cai se a sonda tocou
- *    nele e a página reagiu (probes.ts).
+ * Triage: model-free rules a hypothesis passes before verification effort is
+ * spent. They read the facts (facts.ts) the hypothesis cites: it needs a
+ * supporting fact, its cause cannot be only a funnel number, a device
+ * difference must really differ, it cannot repeat another hypothesis, and it
+ * cannot contradict a probe (probes.ts).
  */
 
 import type { UxFact } from "./facts.ts";
 import type { HypothesisTree } from "./tree.ts";
 
-/** Fatos que descrevem a página (não o funil). */
+/** Facts that describe the page (not the funnel). */
 const PAGE_KINDS = new Set<UxFact["kind"]>([
   "posicao",
   "pagina",
@@ -31,7 +20,7 @@ const PAGE_KINDS = new Set<UxFact["kind"]>([
   "verificacao",
 ]);
 
-/** Categorias cuja causa pode morar fora da página. */
+/** Categories whose cause may live outside the page. */
 const OFF_PAGE = new Set(["trafego", "comercial"]);
 
 const NOT_RESPONDING =
@@ -47,23 +36,17 @@ const labelValue = (f: UxFact) => {
 export interface TriageInput {
   title: string;
   tree: HypothesisTree;
-  /** "dispositivo" | "segmento" | "absoluta" — o tipo da perda. */
+  /** "dispositivo" | "segmento" | "absoluta" — the loss type. */
   control: string | null;
-  /**
-   * O rótulo do alvo quando é um elemento da Deco Analytics (`button
-   * "Next item"`), como a captura achou. NULL = o alvo não é um elemento.
-   */
+  /** The target's label when it is a Deco Analytics element. NULL = not an element. */
   elementLabel: string | null;
 }
 
-/**
- * O motivo de a hipótese cair, ou null se passa. `kept` são os conjuntos de
- * fatos a favor das hipóteses já aceitas na mesma oportunidade.
- */
+/** The reason the hypothesis is dropped, or null if it passes. */
 export function triage(
   h: TriageInput,
   book: Map<string, UxFact>,
-  /** As chaves (`triageKey`) das hipóteses já aceitas na mesma oportunidade. */
+  /** Keys (`triageKey`) of hypotheses already accepted for the same opportunity. */
   kept: string[] = [],
 ): string | null {
   const favor = h.tree.a_favor.flatMap((c) => c.facts ?? []);
@@ -73,8 +56,7 @@ export function triage(
   const cited = [...favor, ...(h.tree.fatos_contraste ?? [])]
     .map((id) => book.get(id))
     .filter((f): f is UxFact => !!f);
-  // Sem nenhum fato de página no livro (carrinho/checkout: não há print nem
-  // heatmap), a causa só pode se apoiar no funil.
+  // Without page facts (cart/checkout) the cause can only rest on the funnel
   const hasPageFacts = [...book.values()].some((f) => PAGE_KINDS.has(f.kind));
   if (
     hasPageFacts &&
@@ -96,9 +78,7 @@ export function triage(
       return `o que cita como diferença é igual nas duas telas (${pairs[0]![0].label}: ${pairs[0]![0].value})`;
     }
   }
-  // A mesma parte da página com os mesmos fatos a favor é a mesma causa
-  // escrita duas vezes. Sem alvo não dá pra dizer: duas causas diferentes
-  // podem citar o mesmo fato.
+  // Same target and supporting facts is the same cause written twice
   if (h.tree.alvo) {
     const key = triageKey(h.tree);
     if (key && kept.includes(key)) {
@@ -114,10 +94,7 @@ export function triage(
   return null;
 }
 
-/**
- * A sonda que tocou neste elemento e viu a página reagir (o texto dela não diz
- * "nada mudou"). Usada pela regra 5. Exportado pra teste.
- */
+/** The probe that tapped this element and saw the page react. Exported for tests. */
 export function reactedProbe(
   label: string,
   book: Map<string, UxFact>,
@@ -131,7 +108,7 @@ export function reactedProbe(
   return null;
 }
 
-/** A chave da regra 4: alvo + fatos a favor. NULL = sem alvo. */
+/** The rule 4 key: target + supporting facts. NULL = no target. */
 export function triageKey(tree: HypothesisTree): string | null {
   if (!tree.alvo) return null;
   const favor = tree.a_favor.flatMap((c) => c.facts ?? []);

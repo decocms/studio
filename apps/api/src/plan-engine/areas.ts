@@ -1,20 +1,13 @@
 /**
- * Onde uma oportunidade pode morar. A mesma lista guia o prompt das
- * oportunidades, a leitura do benchmark (o que cada loja faz em cada parte da
- * página) e a validação do que o modelo devolve.
- *
- * Cada tipo de página tem as suas partes (page-types.ts). `pagina_geral` é a
- * página analisada inteira, seja qual for. `navegacao` e `carrinho_checkout`
- * são as páginas fora da analisada: o funil mostra perda antes (a peça que
- * converte e ninguém acha) e depois (carrinho → checkout), e o modelo listava
- * essas também — sem isso caíam em `pagina_geral` e a tela dizia "Página toda"
- * sem dizer de qual página.
+ * Where an opportunity can live. One list guides the opportunities prompt, the
+ * benchmark reading and validation of the model output. `pagina_geral` is the
+ * whole analyzed page; `navegacao` and `carrinho_checkout` are pages outside it.
  */
 
 import { PAGE_TYPES } from "./page-types.ts";
 import type { UxArea, UxPageType } from "./types.ts";
 
-/** Parte → o que ela cobre, do jeito que o prompt descreve. */
+/** Part → what it covers, as the prompt describes it. */
 export const UX_AREAS: Record<UxArea, string> = {
   home_destaque:
     "destaque da primeira tela da home: banner, carrossel, chamada principal",
@@ -46,7 +39,7 @@ export const UX_AREAS: Record<UxArea, string> = {
     "FORA da página analisada: carrinho e checkout, o que acontece depois de adicionar",
 };
 
-/** A área é da página analisada (ou da página inteira)? */
+/** Does the area belong to the analyzed page (or the whole page)? */
 export function isAreaOfPage(area: UxArea, pageType: UxPageType): boolean {
   return area === "pagina_geral" || PAGE_TYPES[pageType].areas.includes(area);
 }
@@ -57,11 +50,7 @@ export function asArea(v: unknown): UxArea {
     : "pagina_geral";
 }
 
-/**
- * As áreas que valem num diagnóstico deste tipo de página: as partes dela,
- * `pagina_geral` e as páginas de fora (menos a própria: no diagnóstico de
- * carrinho, "carrinho_checkout" já são as partes).
- */
+/** Areas valid for this page type: its parts, `pagina_geral` and the outside pages (not its own). */
 export function areasOfDiagnosis(pageType: UxPageType): UxArea[] {
   const own = PAGE_TYPES[pageType].areas;
   const outside: UxArea[] = [];
@@ -71,10 +60,7 @@ export function areasOfDiagnosis(pageType: UxPageType): UxArea[] {
   return [...own, ...outside];
 }
 
-/**
- * As partes em texto, uma por linha, pra colar no prompt. `pageOnly` é pra
- * leitura da página de um concorrente, onde as páginas de fora não aparecem.
- */
+/** The parts as text, one per line, for the prompt; `pageOnly` drops the outside pages. */
 export function areasForPrompt(
   opts: { pageType?: UxPageType; pageOnly?: boolean; pdpOnly?: boolean } = {},
 ): string {
@@ -86,7 +72,7 @@ export function areasForPrompt(
   return keys.map((key) => `- ${key}: ${UX_AREAS[key]}`).join("\n");
 }
 
-/** Área do modelo → uma que vale neste diagnóstico (senão a página inteira). */
+/** Model area → one that applies in this diagnosis (otherwise the whole page). */
 export function asAreaOf(v: unknown, pageType: UxPageType): UxArea {
   const area = asArea(v);
   return areasOfDiagnosis(pageType).includes(area) ? area : "pagina_geral";

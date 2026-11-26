@@ -59,7 +59,7 @@ import type { BenchmarkPdp, UxArea, UxPageType } from "./types.ts";
 /** Tarefa de leitura, não de julgamento. */
 const BENCHMARK_MODEL: LlmTier = "smart";
 
-/** Quantas lojas o benchmark compara. */
+/** How many stores the benchmark compares. */
 export const MAX_COMPETITORS = 5;
 
 /**
@@ -69,7 +69,7 @@ export const MAX_COMPETITORS = 5;
  */
 const MAX_CANDIDATES = 8;
 
-/** Normaliza o que o usuário ou o modelo escreveu num domínio limpo. */
+/** Normalizes what the user or the model wrote into a clean domain. */
 export function normalizeDomain(raw: string): string | null {
   const s = raw
     .trim()

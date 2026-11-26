@@ -25,24 +25,24 @@ const offline = (async () => {
   throw new Error("offline");
 }) as unknown as typeof fetch;
 
-describe("toDeviceBehaviour (payload de uma PDP no celular)", () => {
+describe("toDeviceBehaviour (a mobile PDP payload)", () => {
   const b = toDeviceBehaviour("mobile", heatmap);
 
-  test("lê o resumo: rolagem, dobra, cliques mortos", () => {
+  test("reads the summary: scroll, fold, dead clicks", () => {
     expect(b?.views).toBe(120_000);
     expect(b?.avg_depth_pct).toBe(47.4);
     expect(b?.avg_fold_pct).toBe(17.1);
     expect(b?.dead_clicks).toBe(25_000);
   });
 
-  test("lê a curva de rolagem nos pontos 25/50/75", () => {
+  test("reads the scroll curve at 25/50/75", () => {
     expect(b?.reach.p25).toBe(70.2);
     expect(b?.reach.p50).toBe(39.7);
     expect(b?.reach.p75).toBeGreaterThan(0);
     expect(b?.reach.p75).toBeLessThan(b?.reach.p50 ?? 0);
   });
 
-  test("o funil da página é a linha de root vazio e el 0", () => {
+  test("the page funnel is the row with empty root and el 0", () => {
     expect(b?.funnel).toEqual({
       visitors: 56_000,
       viewed: 21_000,
@@ -50,7 +50,7 @@ describe("toDeviceBehaviour (payload de uma PDP no celular)", () => {
     });
   });
 
-  test("tira as seções que não são conteúdo (tema, pixel, VWO)", () => {
+  test("drops non-content sections (theme, pixel, VWO)", () => {
     const names = b?.sections.map((s) => s.section) ?? [];
     expect(names).toContain("Product/ProductDetails");
     expect(
@@ -59,7 +59,7 @@ describe("toDeviceBehaviour (payload de uma PDP no celular)", () => {
     expect(b?.sections.every((s) => s.clicks > 0)).toBe(true);
   });
 
-  test("sem resumo (site sem dado) volta null", () => {
+  test("no summary (site without data) returns null", () => {
     expect(
       toDeviceBehaviour("desktop", {
         registered: true,
@@ -71,7 +71,7 @@ describe("toDeviceBehaviour (payload de uma PDP no celular)", () => {
 });
 
 describe("toPlatformFunnels", () => {
-  test("agrupa por plataforma, ordena web primeiro e zera evento ausente", () => {
+  test("groups by platform, sorts web first and zeroes missing events", () => {
     const funnels = toPlatformFunnels([
       { platform: "app_ios", event_name: "view_item", users: 10 },
       { platform: "web_mobile", event_name: "view_item", users: 100 },
@@ -85,11 +85,11 @@ describe("toPlatformFunnels", () => {
 });
 
 describe("buildPlatformFunnelQuery", () => {
-  test("recusa projeto com caractere estranho (vai pro SQL)", () => {
+  test("rejects a project with odd characters (it goes into the SQL)", () => {
     expect(() => buildPlatformFunnelQuery("p; DROP", "d", 7)).toThrow();
   });
 
-  test("lê só dias completos e só as colunas estreitas", () => {
+  test("reads only complete days and only narrow columns", () => {
     const sql = buildPlatformFunnelQuery(
       "example-project",
       "analytics_123456",
@@ -127,7 +127,7 @@ describe("pickElements", () => {
     },
   } as unknown as HeatmapPayload;
 
-  test("mais clicados + morto em clicável, sem seção que não é conteúdo", () => {
+  test("most clicked + dead on interactive, without non-content sections", () => {
     const els = pickElements(payload) ?? [];
     expect(els.map((e) => e.el)).toEqual(["1", "2", "4", "3"]);
     expect(els[0]?.section).toBe("Product/ProductInfo");
@@ -157,8 +157,7 @@ describe("pickCaptureTargets", () => {
     total_skus: 5,
   });
 
-  // 12/11: a "mais vista à venda" tinha 1 de 5 tamanhos.
-  test("o print principal é o mais visto com a grade inteira; o de falta vem marcado", () => {
+  test("the main screenshot is the most viewed with a full grid; the short one is flagged", () => {
     const out = pickCaptureTargets(
       [
         row("quebrada", 19000, "broken_grid", 1),
@@ -173,7 +172,7 @@ describe("pickCaptureTargets", () => {
     ]);
   });
 
-  test("sem grade inteira, a mais vista à venda", () => {
+  test("no full grid: the most viewed on sale", () => {
     const out = pickCaptureTargets(
       [row("esgotado", 9, "sold_out", 0), row("quase", 5, "alive", 3)],
       "loja.com",
@@ -185,7 +184,7 @@ describe("pickCaptureTargets", () => {
 describe("buildFunnelSegmentsQuery", () => {
   const now = new Date("2026-11-15T12:00:00Z");
 
-  test("uma leitura com os quatro recortes, só colunas estreitas", () => {
+  test("one read with all four segments, narrow columns only", () => {
     const sql = buildFunnelSegmentsQuery(
       "example-project",
       "analytics_1",
@@ -198,11 +197,11 @@ describe("buildFunnelSegmentsQuery", () => {
     expect(sql).toContain("(platform, event_date, event_name)");
     expect(sql).not.toContain("event_params");
     expect(sql).toContain("BETWEEN '20261108' AND '20261114'");
-    // "nova" = primeiro toque a partir do início da janela.
+    // "nova" = first touch at or after the window start.
     expect(sql).toContain("TIMESTAMP('2026-11-08')");
   });
 
-  test("recusa identificador com SQL", () => {
+  test("rejects an identifier containing SQL", () => {
     expect(() => buildFunnelSegmentsQuery("p; DROP", "d", 7)).toThrow();
   });
 });
@@ -218,14 +217,14 @@ describe("toFunnelSegments", () => {
     ...over,
   });
 
-  test("a linha sem recorte é o funil; as outras viram recortes", () => {
+  test("the unsegmented row is the funnel; the others become segments", () => {
     const out = toFunnelSegments([
       row({ users: 100 }, [1, 1, 1]),
       row({ event_name: "add_to_cart", users: 10 }, [1, 1, 1]),
       row({ channel: "social_pago", users: 60 }, [0, 1, 1]),
       row({ visitor: "nova", users: 70 }, [1, 0, 1]),
       row({ event_date: "20261110", users: 15 }, [1, 1, 0]),
-      // String "1" (é como o BigQuery devolve INT64).
+      // String "1" (how BigQuery returns INT64).
       row(
         { channel: "direto", users: 5, g_visitor: "1", g_day: "1" },
         [0, 1, 1],
@@ -244,8 +243,8 @@ describe("toFunnelSegments", () => {
   });
 });
 
-describe("curva de rolagem", () => {
-  test("21 pontos de 5 em 5%", () => {
+describe("scroll curve", () => {
+  test("21 points in 5% steps", () => {
     const b = toDeviceBehaviour("mobile", heatmap);
     expect(b?.scroll_curve).toHaveLength(21);
     expect(b?.scroll_curve?.[0]).toEqual({ depth: 0, reach_pct: 100 });
@@ -253,8 +252,8 @@ describe("curva de rolagem", () => {
   });
 });
 
-describe("funil zerado do Deco Analytics (16/11)", () => {
-  test("sem 'viu produto' nem 'carrinho' em ninguém: sem funil, também nos elementos", () => {
+describe("zeroed Deco Analytics funnel", () => {
+  test("nobody with 'viewed product' or 'cart': no funnel, in the elements too", () => {
     const raw = heatmap;
     const zeroed: HeatmapPayload = {
       ...raw,
@@ -270,12 +269,12 @@ describe("funil zerado do Deco Analytics (16/11)", () => {
     const b = toDeviceBehaviour("mobile", zeroed);
     expect(b?.funnel).toBeNull();
     expect((b?.elements ?? []).every((e) => e.funnel === null)).toBe(true);
-    // O payload de verdade continua com funil.
+    // The real payload still has a funnel.
     expect(toDeviceBehaviour("mobile", raw)?.funnel).not.toBeNull();
   });
 });
 
-describe("collectEvidence sem domínio nem credenciais VTEX", () => {
+describe("collectEvidence without a domain or VTEX credentials", () => {
   test("no VTEX access → run starts and no credentials gap is raised", async () => {
     const out = await collectEvidence({
       profile: { domain: "a.example" } as SiteProfile,
@@ -293,11 +292,11 @@ describe("collectEvidence sem domínio nem credenciais VTEX", () => {
   });
 });
 
-describe("collectEvidence marca de quem é cada lacuna", () => {
-  test("Analytics, GA4 e pedidos são do cliente; o catálogo público é de fora", async () => {
+describe("collectEvidence marks who owns each gap", () => {
+  test("Analytics, GA4 and orders are the customer's; the public catalog is external", async () => {
     const notFound = (async () =>
       new Response("não achei", { status: 404 })) as unknown as typeof fetch;
-    // O funil esbarra em permissão; os produtos vistos vêm.
+    // The funnel hits a permission error; viewed products come through.
     const bigquery = {
       run: async (args: Record<string, unknown>) => {
         if (String(args.query ?? "").includes("AS product_id")) {
@@ -354,7 +353,7 @@ describe("collectEvidence marca de quem é cada lacuna", () => {
 });
 
 describe("isBigQuerySetupError", () => {
-  test("dataset que não existe ou acesso negado é do cliente", () => {
+  test("a missing dataset or denied access is the customer's", () => {
     expect(
       isBigQuerySetupError(
         "Not found: Dataset projeto:analytics_1 was not found in location US",
@@ -370,7 +369,7 @@ describe("isBigQuerySetupError", () => {
     );
   });
 
-  test("queda passageira é nossa", () => {
+  test("a transient failure is ours", () => {
     expect(isBigQuerySetupError("The operation timed out.")).toBe(false);
     expect(
       isBigQuerySetupError("bigquery_query: HTTP 500 Internal Server Error"),
@@ -381,8 +380,8 @@ describe("isBigQuerySetupError", () => {
   });
 });
 
-describe("collectEvidence com o lake fora do ar", () => {
-  test("timeout no lake é lacuna nossa, não pede pedidos ao cliente", async () => {
+describe("collectEvidence with the lake down", () => {
+  test("a lake timeout is our gap and does not ask the customer for orders", async () => {
     const out = await collectEvidence({
       profile: { domain: "a.example" } as SiteProfile,
       pageType: "carrinho_checkout",

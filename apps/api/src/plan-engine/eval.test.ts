@@ -19,7 +19,7 @@ const evidence = makeEvidence({
   },
 });
 const facts = buildFacts(evidence);
-// F3 = "add_to_cart: 5000 (10.0% de view_item)" no celular.
+// F3 = "add_to_cart: 5000 (10.0% de view_item)" on mobile.
 const cart = facts.find((f) => f.text.startsWith("add_to_cart: 5000"));
 
 const opp = (
@@ -43,7 +43,7 @@ const hyp = (over: Partial<UxHypothesis>): UxHypothesis =>
     ...over,
   }) as UxHypothesis;
 
-describe("a régua de um diagnóstico gravado", () => {
+describe("the yardstick of a stored diagnosis", () => {
   const report = evaluateDiagnosis(
     {
       diagnosis: {
@@ -105,22 +105,21 @@ describe("a régua de um diagnóstico gravado", () => {
     ],
   );
 
-  test("oportunidade: comparação e título que parece causa", () => {
+  test("opportunity: comparison and a title that looks like a cause", () => {
     expect(report.opportunities.total).toBe(3);
     expect(report.opportunities.with_comparison).toBe(1);
-    // As duas que a pessoa leria como causa: o card (categoria de uma
-    // loja de moda) e o pop-up (o exemplo da revisão, 19/11).
+    // The two a person would read as a cause: the card and the pop-up.
     expect(report.opportunities.cause_like_titles).toEqual([
       "Numa página 100% de promoção, o card não mostra desconto",
       "O pop-up de newsletter aparece na PDP",
     ]);
-    // O que o código de hoje montaria com a mesma evidência.
+    // What today's code would build from the same evidence.
     expect(report.opportunities.today.titles).toEqual([
       "No celular, 10% de quem vê um produto põe no carrinho; no computador, 20%",
     ]);
   });
 
-  test("hipótese: fato citado, 'fato' sustentado, estados", () => {
+  test("hypothesis: cited fact, supported 'fato', states", () => {
     expect(report.hypotheses).toEqual({
       total: 3,
       with_cited_facts: 1,
@@ -134,7 +133,7 @@ describe("a régua de um diagnóstico gravado", () => {
     expect(report.minutes).toBe(7);
   });
 
-  test("vereditos humanos: derrubada que ficou de pé discorda; aceita de pé concorda", () => {
+  test("human verdicts: a rejection that stood disagrees; an acceptance that stood agrees", () => {
     expect(report.labels.disagree).toEqual([
       "filtro e ordenação (derrubada: sem relação com a oportunidade)",
     ]);
@@ -144,7 +143,7 @@ describe("a régua de um diagnóstico gravado", () => {
 });
 
 describe("isLossTitle", () => {
-  test("perda medida tem número e a tela (ou o público)", () => {
+  test("a measured loss has a number and the screen (or the audience)", () => {
     expect(
       isLossTitle(
         "Social pago no celular: 4,1% de quem vê um produto põe no carrinho, contra 17,5%",

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { LanguageModelV4CallOptions } from "@ai-sdk/provider";
 import { MockLanguageModelV4 } from "ai/test";
+import type { StudioContext } from "@/core/studio-context";
 import { chatToolContext } from "@/tools/chat/test-helpers";
-import type { LlmUsage } from "../ports.ts";
-import { LlmTruncatedError, orgLlm } from "./llm.ts";
+import { type LlmUsage, NO_AI_MODEL, NoAiModelError } from "../ports.ts";
+import { hasEngineModel, LlmTruncatedError, orgLlm } from "./llm.ts";
 
 function contextWith(answer: {
   text: string;
@@ -115,5 +116,55 @@ describe("orgLlm", () => {
     await expect(
       orgLlm(ctx)({ tier: "smart", systemPrompt: "s", userPrompt: "u" }),
     ).rejects.toThrow("resposta vazia");
+  });
+});
+
+/** An org with no provider key, so no tier resolves. */
+function noProviderContext(): StudioContext {
+  const base = chatToolContext();
+  return chatToolContext({
+    storage: { ...base.storage, aiProviderKeys: { list: async () => [] } },
+  });
+}
+
+describe("an org without an AI model", () => {
+  it("a call fails with the engine's message, not the tier error", async () => {
+    const call = orgLlm(noProviderContext())({
+      tier: "smart",
+      systemPrompt: "s",
+      userPrompt: "u",
+    });
+    await expect(call).rejects.toBeInstanceOf(NoAiModelError);
+    await expect(call).rejects.toThrow(NO_AI_MODEL);
+  });
+
+  it("a thinking call with no smart to fall back on fails the same way", async () => {
+    await expect(
+      orgLlm(noProviderContext())({
+        tier: "thinking",
+        systemPrompt: "s",
+        userPrompt: "u",
+      }),
+    ).rejects.toBeInstanceOf(NoAiModelError);
+  });
+
+  it("hasEngineModel says whether the smart tier resolves", async () => {
+    expect(await hasEngineModel(chatToolContext())).toBe(true);
+    expect(await hasEngineModel(noProviderContext())).toBe(false);
+  });
+
+  it("hasEngineModel lets a failure other than a missing model through", async () => {
+    const base = chatToolContext();
+    const broken = chatToolContext({
+      storage: {
+        ...base.storage,
+        organizationSettings: {
+          get: async () => {
+            throw new Error("db down");
+          },
+        },
+      },
+    });
+    await expect(hasEngineModel(broken)).rejects.toThrow("db down");
   });
 });
