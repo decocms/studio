@@ -83,7 +83,7 @@ const reconnectGap = (provider: RepoProvider, repo: string): SourceGap =>
     "customer",
   );
 
-/** Why the linked repository cannot be read (git-providers' `repositoryUsability`). */
+/** Why the linked repository cannot be read (`repositoryUsability` in adapters/repo-usability.ts). */
 export function unusableGap(
   reason: string,
   provider: RepoProvider,

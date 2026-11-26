@@ -1,39 +1,35 @@
 /**
- * Whether a repository an organization linked can be read right now, in terms
- * of what a human has to do about it.
- *
- * The distinction a consumer needs is DURABLE versus TRANSIENT: only a durable
- * answer may tell a reader to reconnect. `auth_failed` is durable (the grant is
- * dead until someone reconnects); a provider 5xx or rate limit never becomes a
- * reason, because it is raised rather than reported.
+ * Whether a repository the organization linked can be read right now, for the
+ * engine's code gaps. Only a durable answer (`auth_failed`, a dead grant) may
+ * tell the customer to reconnect; a provider 5xx or rate limit is raised.
  */
 
 import type { RepoRef } from "@decocms/shared/git-providers";
 import type { StudioContext } from "@/core/studio-context";
 import {
+  accountIsServable,
+  clientForAccount,
+  GitProviderError,
+  providerCapabilities,
+} from "@/git-providers";
+import {
   type RepositoryRecord,
   type RepositoryStorage,
   repoRefOf,
 } from "@/storage/repositories";
-import { providerCapabilities } from "./capabilities";
-import { accountIsServable, clientForAccount } from "./credentials";
-import { GitProviderError } from "./types";
 
-export type RepositoryUnusableReason =
+type RepositoryUnusableReason =
   | "no_account"
   | "account_revoked"
   | "provider_unconfigured"
   | "auth_failed"
   | "not_found";
 
-export type RepositoryUsability =
+type RepositoryUsability =
   | { usable: true; reason: "ok" }
   | { usable: false; reason: RepositoryUnusableReason };
 
-/**
- * The live call is the point: a stored account row says nothing about whether
- * its grant was revoked on the provider's side this morning.
- */
+/** Asks the provider live: a stored account row cannot tell whether its grant was revoked. */
 export async function repositoryUsability(
   ctx: Pick<StudioContext, "storage" | "db" | "vault">,
   repository: RepositoryRecord,

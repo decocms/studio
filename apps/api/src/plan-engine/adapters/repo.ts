@@ -5,11 +5,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import {
-  findLinkedRepository,
-  insightsClientForRepository,
-  repositoryUsability,
-} from "@/git-providers";
+import { insightsClientForRepository } from "@/git-providers";
 import type { RepositoryRecord } from "@/storage/repositories";
 import type { SiteProfile } from "../types.ts";
 import {
@@ -23,6 +19,7 @@ import {
   unusableGap,
 } from "../verify/code-source.ts";
 import { type RepoIdentity, repoIdentityOf } from "../verify/studio-repo.ts";
+import { findLinkedRepository, repositoryUsability } from "./repo-usability.ts";
 
 type RepoContext = Pick<StudioContext, "storage" | "db" | "vault">;
 
