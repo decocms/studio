@@ -34,6 +34,7 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,
   isDecopilot,
+  redactSecretConfiguration,
 } from "@decocms/shared/sdk";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { urlSlugBase } from "@decocms/shared/url-slug";
@@ -59,6 +60,7 @@ import type { Database } from "./types";
 const JSON_FIELDS = [
   "connection_headers",
   "configuration_scopes",
+  "configuration_secret_fields",
   "metadata",
   "bindings",
 ] as const;
@@ -92,6 +94,7 @@ type RawConnectionRow = {
   oauth_config: string | OAuthConfig | null;
   configuration_state: string | null; // Encrypted
   configuration_scopes: string | string[] | null;
+  configuration_secret_fields: string | string[] | null;
   metadata: string | Record<string, unknown> | null;
   bindings: string | string[] | null;
   status: "active" | "inactive" | "error";
@@ -122,6 +125,7 @@ const PUBLIC_COLUMNS = [
   "oauth_config",
   "configuration_state",
   "configuration_scopes",
+  "configuration_secret_fields",
   "metadata",
   "bindings",
   "status",
@@ -724,7 +728,14 @@ export class ConnectionStorage implements ConnectionStoragePort {
   ): Promise<PublicConnectionEntity> {
     const { connection_token: _skipped, ...rest } =
       await this.deserializeConnection(row);
-    return { ...rest, has_connection_token: row.has_connection_token };
+    return {
+      ...rest,
+      configuration_state: redactSecretConfiguration(
+        rest.configuration_state,
+        rest.configuration_secret_fields,
+      ),
+      has_connection_token: row.has_connection_token,
+    };
   }
 
   /**
@@ -855,6 +866,9 @@ export class ConnectionStorage implements ConnectionStoragePort {
       oauth_config: decryptedOAuthConfig,
       configuration_state: decryptedConfigState,
       configuration_scopes: parseJson<string[]>(row.configuration_scopes),
+      configuration_secret_fields: parseJson<string[]>(
+        row.configuration_secret_fields,
+      ),
       metadata:
         row.connection_type === "VIRTUAL"
           ? readRepositoryMetadata(

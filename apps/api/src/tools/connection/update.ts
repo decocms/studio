@@ -7,6 +7,7 @@
 
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { restoreSecretConfiguration } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -214,7 +215,10 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     if (configChanged) {
       // Merge state: use provided state, or keep existing
       if (data.configuration_state !== undefined) {
-        finalState = data.configuration_state ?? {};
+        finalState = restoreSecretConfiguration(
+          data.configuration_state ?? {},
+          existing.configuration_state,
+        );
       } else if (finalState === null || finalState === undefined) {
         finalState = {};
       }
@@ -311,6 +315,8 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       tools: null,
       configuration_state: finalState as Record<string, unknown>,
       configuration_scopes: finalScopes,
+      configuration_secret_fields:
+        fetchResult?.secretFields ?? existing.configuration_secret_fields,
       updated_by: userId,
     };
     const connection = await saveConnectionWithConfiguration(ctx, {

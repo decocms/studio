@@ -251,7 +251,10 @@ the application's durable store.
 
 `configuration.state` accepts a Zod schema for persisted MCP configuration.
 `BindingOf()` fields in that schema resolve configured connection references into
-typed clients on `STUDIO_REQUEST_CONTEXT.state`. Declare required permissions in
+typed clients on `STUDIO_REQUEST_CONTEXT.state`. Declare credential fields (API
+keys, tokens, passwords) with `Secret()`: Studio masks them in the configuration
+form and returns a placeholder instead of their value, while the MCP still
+receives the value in its state. Declare required permissions in
 `configuration.scopes`; Studio evaluates those scopes when it configures the
 connection.
 

@@ -3372,6 +3372,7 @@ export interface StudioToolIO {
         connection_token?: string | null | undefined;
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
+        configuration_secret_fields?: string[] | null | undefined;
       };
     };
   };
@@ -3485,6 +3486,7 @@ export interface StudioToolIO {
         connection_token?: string | null | undefined;
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
+        configuration_secret_fields?: string[] | null | undefined;
       }[];
       totalCount?: number | undefined;
       hasMore?: boolean | undefined;
@@ -3582,6 +3584,7 @@ export interface StudioToolIO {
         connection_token?: string | null | undefined;
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
+        configuration_secret_fields?: string[] | null | undefined;
       } | null;
     };
   };
@@ -3779,6 +3782,7 @@ export interface StudioToolIO {
         connection_token?: string | null | undefined;
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
+        configuration_secret_fields?: string[] | null | undefined;
       };
     };
   };
@@ -3874,6 +3878,7 @@ export interface StudioToolIO {
         connection_token?: string | null | undefined;
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
+        configuration_secret_fields?: string[] | null | undefined;
       };
     };
   };
@@ -4010,6 +4015,7 @@ export interface StudioToolIO {
         connection_token?: string | null | undefined;
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
+        configuration_secret_fields?: string[] | null | undefined;
       };
       virtualMcp: {
         id: string;

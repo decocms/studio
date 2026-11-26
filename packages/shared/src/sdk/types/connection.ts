@@ -187,6 +187,13 @@ export const ConnectionEntitySchema = z.object({
     .nullable()
     .optional()
     .describe("Configuration scopes"),
+  configuration_secret_fields: z
+    .array(z.string())
+    .nullable()
+    .optional()
+    .describe(
+      "configuration_state keys the MCP declares secret. Write-only: tool responses replace their values with SECRET_CONFIGURATION_PLACEHOLDER, and sending the placeholder back keeps the stored value.",
+    ),
 
   metadata: boundedJsonRecord("metadata").describe(
     "Additional metadata (includes repository info)",
@@ -218,6 +225,7 @@ export const ConnectionCreateDataSchema = ConnectionEntitySchema.omit({
   bindings: true,
   status: true,
   has_connection_token: true,
+  configuration_secret_fields: true,
 })
   .partial({
     id: true,
@@ -245,6 +253,7 @@ export type ConnectionCreateData = z.infer<typeof ConnectionCreateDataSchema>;
  */
 export const ConnectionUpdateDataSchema = ConnectionEntitySchema.omit({
   has_connection_token: true,
+  configuration_secret_fields: true,
 })
   .partial()
   .extend({
@@ -254,6 +263,70 @@ export const ConnectionUpdateDataSchema = ConnectionEntitySchema.omit({
   });
 
 export type ConnectionUpdateData = z.infer<typeof ConnectionUpdateDataSchema>;
+
+/**
+ * Stands in for a secret configuration value in tool responses. A write that
+ * carries it back keeps the stored value, so a form can round-trip a
+ * connection without ever holding the secret.
+ */
+export const SECRET_CONFIGURATION_PLACEHOLDER = "__deco_secret__";
+
+/** `state` with every set `secretFields` value replaced by the placeholder. */
+export function redactSecretConfiguration(
+  state: Record<string, unknown> | null,
+  secretFields: readonly string[] | null | undefined,
+): Record<string, unknown> | null {
+  if (!state || !secretFields?.length) return state;
+  const redacted = { ...state };
+  for (const key of secretFields) {
+    if (redacted[key] != null && redacted[key] !== "") {
+      redacted[key] = SECRET_CONFIGURATION_PLACEHOLDER;
+    }
+  }
+  return redacted;
+}
+
+/**
+ * `next` with each placeholder swapped back for the value in `stored`, or
+ * dropped when nothing is stored. Matches the placeholder on any key, so a
+ * field that stopped being secret still never stores it.
+ */
+export function restoreSecretConfiguration(
+  next: Record<string, unknown>,
+  stored: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const restored = { ...next };
+  for (const [key, value] of Object.entries(next)) {
+    if (value !== SECRET_CONFIGURATION_PLACEHOLDER) continue;
+    if (stored && key in stored) restored[key] = stored[key];
+    else delete restored[key];
+  }
+  return restored;
+}
+
+/**
+ * Top-level `stateSchema` properties marked `format: "password"` (the
+ * runtime's `Secret()`). The schema comes from the downstream MCP, so anything
+ * malformed yields no fields.
+ */
+export function secretFieldsFromStateSchema(stateSchema: unknown): string[] {
+  if (!stateSchema || typeof stateSchema !== "object") return [];
+  const properties = (stateSchema as { properties?: unknown }).properties;
+  if (!properties || typeof properties !== "object") return [];
+  return Object.entries(properties)
+    .filter(([, property]) => isSecretProperty(property))
+    .map(([key]) => key);
+}
+
+function isSecretProperty(property: unknown): boolean {
+  if (!property || typeof property !== "object") return false;
+  if ((property as { format?: unknown }).format === "password") return true;
+  // `Secret().nullable()` and friends wrap the string in anyOf/oneOf.
+  const variants =
+    (property as { anyOf?: unknown }).anyOf ??
+    (property as { oneOf?: unknown }).oneOf;
+  return Array.isArray(variants) && variants.some(isSecretProperty);
+}
 
 /**
  * Type guard to check if parameters are STDIO type

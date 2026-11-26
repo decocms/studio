@@ -3,6 +3,10 @@ import {
   ConnectionCreateDataSchema,
   ConnectionEntitySchema,
   ConnectionUpdateDataSchema,
+  SECRET_CONFIGURATION_PLACEHOLDER,
+  redactSecretConfiguration,
+  restoreSecretConfiguration,
+  secretFieldsFromStateSchema,
 } from "./connection";
 
 function baseEntity(overrides: Record<string, unknown> = {}) {
@@ -94,5 +98,67 @@ describe("ConnectionEntitySchema JSON field caps", () => {
     expect(
       ConnectionUpdateDataSchema.safeParse({ connection_token: token }).success,
     ).toBe(true);
+  });
+});
+
+describe("secret configuration", () => {
+  it("finds format password fields, including nullable unions", () => {
+    expect(
+      secretFieldsFromStateSchema({
+        type: "object",
+        properties: {
+          accountName: { type: "string" },
+          appKey: { type: "string", format: "password" },
+          appToken: {
+            anyOf: [{ type: "string", format: "password" }, { type: "null" }],
+          },
+        },
+      }),
+    ).toEqual(["appKey", "appToken"]);
+  });
+
+  it("yields no fields for malformed schemas", () => {
+    for (const schema of [null, "x", 1, {}, { properties: null }, []]) {
+      expect(secretFieldsFromStateSchema(schema)).toEqual([]);
+    }
+  });
+
+  it("redacts only set secret values and leaves the input alone", () => {
+    const state = { accountName: "store", appKey: "k", appToken: "" };
+    expect(redactSecretConfiguration(state, ["appKey", "appToken"])).toEqual({
+      accountName: "store",
+      appKey: SECRET_CONFIGURATION_PLACEHOLDER,
+      appToken: "",
+    });
+    expect(state.appKey).toBe("k");
+    expect(redactSecretConfiguration(state, null)).toBe(state);
+    expect(redactSecretConfiguration(null, ["appKey"])).toBeNull();
+  });
+
+  it("restores placeholders from the stored state", () => {
+    const stored = { appKey: "old-key", appToken: "old-token" };
+    expect(
+      restoreSecretConfiguration(
+        {
+          appKey: SECRET_CONFIGURATION_PLACEHOLDER,
+          appToken: "new-token",
+          missing: SECRET_CONFIGURATION_PLACEHOLDER,
+        },
+        stored,
+      ),
+    ).toEqual({ appKey: "old-key", appToken: "new-token" });
+    expect(
+      restoreSecretConfiguration(
+        { appKey: SECRET_CONFIGURATION_PLACEHOLDER },
+        null,
+      ),
+    ).toEqual({});
+  });
+
+  it("keeps the secret field list out of create and update input", () => {
+    const update = ConnectionUpdateDataSchema.parse({
+      configuration_secret_fields: [],
+    });
+    expect("configuration_secret_fields" in update).toBe(false);
   });
 });

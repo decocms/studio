@@ -108,6 +108,21 @@ export const BindingOf = <
   return schema;
 };
 
+/**
+ * A credential field of the state schema (API key, token, password). Studio
+ * masks it in the configuration form and never returns its value to clients;
+ * the MCP still receives it in its state.
+ *
+ * @example
+ * ```ts
+ * const StateSchema = z.object({
+ *   accountName: z.string(),
+ *   appToken: Secret().optional().describe("VTEX App Token"),
+ * });
+ * ```
+ */
+export const Secret = () => z.string().meta({ format: "password" });
+
 // ============================================================================
 // Agent Bindings
 // ============================================================================
