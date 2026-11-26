@@ -124,6 +124,23 @@ const ALL_TOOL_NAMES = [
   "REPORTS_SET_REPOSITORY",
   "PLAN_DIAGNOSIS_SETUP",
   "PLAN_DIAGNOSIS_STATUS",
+  "PLAN_UX_SITE_PROFILE_GET",
+  "PLAN_UX_SITE_PROFILE_UPDATE",
+  "PLAN_UX_SITE_SOURCES_DETECT",
+  "PLAN_UX_STORE_VIEW",
+  "PLAN_UX_SITE_RUN_LIST",
+  "PLAN_UX_SITE_RUN_GET",
+  "PLAN_UX_DIAGNOSIS_LIST",
+  "PLAN_UX_DIAGNOSIS_GET",
+  "PLAN_UX_OPPORTUNITY_GET",
+  "PLAN_UX_DOSSIER_GET",
+  "PLAN_UX_HYPOTHESIS_STATUS_UPDATE",
+  "PLAN_UX_QUEUE_LIST",
+  "PLAN_UX_KNOWLEDGE_LIST",
+  "PLAN_UX_KNOWLEDGE_UPSERT",
+  "PLAN_UX_KNOWLEDGE_ACTIVE_SET",
+  "PLAN_UX_DIAGNOSIS_START",
+  "PLAN_UX_HYPOTHESES_VERIFY",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -777,6 +794,92 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "PLAN_DIAGNOSIS_STATUS",
     description: "Read whether the Plan page's store diagnosis is set up",
     category: "Connections",
+  },
+  {
+    name: "PLAN_UX_SITE_PROFILE_GET",
+    description: "Read the store profile of the Plan page's diagnosis",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_SITE_PROFILE_UPDATE",
+    description:
+      "Set the store's domain and competitors for the Plan page's diagnosis",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_SITE_SOURCES_DETECT",
+    description: "Find the store among the organization's site projects",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_STORE_VIEW",
+    description: "Read the store at a glance on the Plan page",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_SITE_RUN_LIST",
+    description: "List the store diagnosis runs",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_SITE_RUN_GET",
+    description: "Read one store diagnosis run",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_DIAGNOSIS_LIST",
+    description: "List the store diagnoses",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_DIAGNOSIS_GET",
+    description: "Read one store diagnosis",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_OPPORTUNITY_GET",
+    description: "Read one opportunity of the store diagnosis",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_DOSSIER_GET",
+    description: "Read a hypothesis dossier",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_HYPOTHESIS_STATUS_UPDATE",
+    description: "Approve or dismiss a store diagnosis hypothesis",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_QUEUE_LIST",
+    description: "List the hypotheses approved for testing",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_KNOWLEDGE_LIST",
+    description: "List the store diagnosis knowledge base",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_KNOWLEDGE_UPSERT",
+    description: "Add or edit the store's knowledge",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_KNOWLEDGE_ACTIVE_SET",
+    description: "Turn an entry of the store's knowledge on or off",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_DIAGNOSIS_START",
+    description: "Start a store diagnosis run on the Plan page",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_HYPOTHESES_VERIFY",
+    description: "Verify a store diagnosis's hypotheses again",
+    category: "Organizations",
   },
   // Virtual MCP tools
   {
@@ -2095,6 +2198,25 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "PLAN_GOAL_SUGGEST",
       // Any member on the Plan page sees whether its diagnosis is set up.
       "PLAN_DIAGNOSIS_STATUS",
+      // Any member on the Plan page reads the built-in diagnosis, sets the
+      // store, decides hypotheses and keeps the store's knowledge.
+      "PLAN_UX_SITE_PROFILE_GET",
+      "PLAN_UX_SITE_PROFILE_UPDATE",
+      "PLAN_UX_SITE_SOURCES_DETECT",
+      "PLAN_UX_STORE_VIEW",
+      "PLAN_UX_SITE_RUN_LIST",
+      "PLAN_UX_SITE_RUN_GET",
+      "PLAN_UX_DIAGNOSIS_LIST",
+      "PLAN_UX_DIAGNOSIS_GET",
+      "PLAN_UX_OPPORTUNITY_GET",
+      "PLAN_UX_DOSSIER_GET",
+      "PLAN_UX_HYPOTHESIS_STATUS_UPDATE",
+      "PLAN_UX_QUEUE_LIST",
+      "PLAN_UX_KNOWLEDGE_LIST",
+      "PLAN_UX_KNOWLEDGE_UPSERT",
+      "PLAN_UX_KNOWLEDGE_ACTIVE_SET",
+      "PLAN_UX_DIAGNOSIS_START",
+      "PLAN_UX_HYPOTHESES_VERIFY",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless

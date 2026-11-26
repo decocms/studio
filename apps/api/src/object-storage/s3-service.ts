@@ -244,13 +244,13 @@ export class S3Service {
     orgId: string,
     key: string,
     expiresIn = 3600,
-    _opts?: { requireFetchable?: boolean },
+    opts?: { requireFetchable?: boolean; signedAt?: Date },
   ): Promise<string> {
     const s3Key = buildS3Key(orgId, key);
     return getSignedUrl(
       this.client,
       new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
-      { expiresIn },
+      { expiresIn, signingDate: opts?.signedAt },
     );
   }
 

@@ -23,6 +23,7 @@ import * as NotificationTools from "./notifications";
 import * as AlertTools from "./alerts";
 import * as PlanGoalTools from "./plan-goals";
 import * as PlanDiagnosisTools from "./plan-diagnosis";
+import * as PlanEngineTools from "./plan-engine";
 import * as TagTools from "./tags";
 import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
@@ -199,6 +200,23 @@ export const CORE_TOOLS = [
   ReportsTools.REPORTS_SET_REPOSITORY,
   PlanDiagnosisTools.PLAN_DIAGNOSIS_SETUP,
   PlanDiagnosisTools.PLAN_DIAGNOSIS_STATUS,
+  PlanEngineTools.PLAN_UX_SITE_PROFILE_GET,
+  PlanEngineTools.PLAN_UX_SITE_PROFILE_UPDATE,
+  PlanEngineTools.PLAN_UX_SITE_SOURCES_DETECT,
+  PlanEngineTools.PLAN_UX_STORE_VIEW,
+  PlanEngineTools.PLAN_UX_SITE_RUN_LIST,
+  PlanEngineTools.PLAN_UX_SITE_RUN_GET,
+  PlanEngineTools.PLAN_UX_DIAGNOSIS_LIST,
+  PlanEngineTools.PLAN_UX_DIAGNOSIS_GET,
+  PlanEngineTools.PLAN_UX_OPPORTUNITY_GET,
+  PlanEngineTools.PLAN_UX_DOSSIER_GET,
+  PlanEngineTools.PLAN_UX_HYPOTHESIS_STATUS_UPDATE,
+  PlanEngineTools.PLAN_UX_QUEUE_LIST,
+  PlanEngineTools.PLAN_UX_KNOWLEDGE_LIST,
+  PlanEngineTools.PLAN_UX_KNOWLEDGE_UPSERT,
+  PlanEngineTools.PLAN_UX_KNOWLEDGE_ACTIVE_SET,
+  PlanEngineTools.PLAN_UX_DIAGNOSIS_START,
+  PlanEngineTools.PLAN_UX_HYPOTHESES_VERIFY,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,

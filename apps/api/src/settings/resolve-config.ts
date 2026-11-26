@@ -440,6 +440,11 @@ export function resolveConfig(
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_KEY,
     ),
     planDiagnosisMcpUrl: envVars.PLAN_DIAGNOSIS_MCP_URL || undefined,
+    planEngineMaxDailyStarts: toNonNegativeIntegerOrDefault(
+      "PLAN_ENGINE_MAX_DAILY_STARTS",
+      envVars.PLAN_ENGINE_MAX_DAILY_STARTS,
+      10,
+    ),
 
     // Managed asset storage (shared deco tenant bucket). Defaults match the
     // legacy admin platform so an existing deployment works without new env.

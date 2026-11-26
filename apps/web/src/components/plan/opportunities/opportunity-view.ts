@@ -141,6 +141,16 @@ export function errorText(error: unknown): string | null {
   return error instanceof Error && error.message ? error.message : null;
 }
 
+/** The blocking need a refused run asks for, in the engine's order: the
+ *  domain (also from an engine that only flags it), then an AI provider. */
+export function runRefusal(error: unknown): "domain" | "ai_provider" | null {
+  if (!(error instanceof DiagnosisEngineError)) return null;
+  const blocking = error.needs.filter((n) => n.blocking).map((n) => n.key);
+  if (blocking.includes("domain")) return "domain";
+  if (blocking.includes("ai_provider")) return "ai_provider";
+  return blocking.length === 0 && error.needsDomain ? "domain" : null;
+}
+
 /** The engine's money is in BRL; the reader's language sets the format. */
 export function formatMoney(value: number, locale: string): string {
   return new Intl.NumberFormat(locale, {

@@ -1,10 +1,14 @@
 /**
  * The pure decisions behind `use-plan-diagnosis.ts`: what the status read
- * means for the page, when engine reads run, retry and poll, and how an
- * engine refusal surfaces as an error.
+ * means for the page, where engine calls go, when engine reads run, retry
+ * and poll, and how an engine refusal surfaces as an error.
  */
 
-import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
+import type {
+  StudioToolInput,
+  StudioToolName,
+  StudioToolOutput,
+} from "@decocms/shared/tools/tool-io";
 import type {
   CompetitorRejection,
   ParsedToolResult,
@@ -15,11 +19,33 @@ import type {
 type StatusOutput = StudioToolOutput<"PLAN_DIAGNOSIS_STATUS">;
 type UnconfiguredReason = NonNullable<StatusOutput["reason"]>;
 
+/** Where engine calls go: Studio's own tools (`plan_engine_native`), or the org's external engine connection. */
+export type EngineTarget =
+  | { kind: "native" }
+  | { kind: "connection"; connectionId: string };
+
 export type DiagnosisStatusState =
   | { state: "loading" }
   | { state: "error"; error: string; retry: () => void }
   | { state: "unconfigured"; reason: UnconfiguredReason }
-  | { state: "configured"; connectionId: string };
+  | { state: "configured"; target: EngineTarget };
+
+/** Each engine tool the page calls and the Studio tool that answers it with `plan_engine_native` on. */
+export const NATIVE_ENGINE_TOOL = {
+  get_ux_site_profile: "PLAN_UX_SITE_PROFILE_GET",
+  update_ux_site_profile: "PLAN_UX_SITE_PROFILE_UPDATE",
+  get_ux_store_view: "PLAN_UX_STORE_VIEW",
+  get_ux_opportunity: "PLAN_UX_OPPORTUNITY_GET",
+  start_ux_diagnosis: "PLAN_UX_DIAGNOSIS_START",
+  update_ux_hypothesis_status: "PLAN_UX_HYPOTHESIS_STATUS_UPDATE",
+} as const satisfies Record<string, StudioToolName>;
+
+export type EngineTool = keyof typeof NATIVE_ENGINE_TOOL;
+
+/** Both engines take the same arguments; the native tool's contract types them. */
+export type EngineArgs<E extends EngineTool> = StudioToolInput<
+  (typeof NATIVE_ENGINE_TOOL)[E]
+>;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message
@@ -27,36 +53,51 @@ function errorMessage(error: unknown): string {
     : String(error);
 }
 
-/** A failed refetch keeps the last good answer, as React Query keeps `data`. */
+/** A failed refetch keeps the last good answer, as React Query keeps `data`.
+ *  The status reads `plan_engine_native` on the server: a configured answer
+ *  names the external engine's connection, or none when Studio runs it. */
 export function diagnosisStatusState(
   query: { data: StatusOutput | undefined; error: unknown; isPending: boolean },
   retry: () => void,
 ): DiagnosisStatusState {
   const { data, error } = query;
   if (data) {
-    if (data.configured && data.connection_id) {
-      return { state: "configured", connectionId: data.connection_id };
+    if (!data.configured) {
+      return { state: "unconfigured", reason: data.reason ?? "not_connected" };
     }
-    return { state: "unconfigured", reason: data.reason ?? "not_connected" };
+    return {
+      state: "configured",
+      target: data.connection_id
+        ? { kind: "connection", connectionId: data.connection_id }
+        : { kind: "native" },
+    };
   }
   if (error) return { state: "error", error: errorMessage(error), retry };
   return { state: "loading" };
 }
 
-/** The engine connection to read from, or null while reads must stay off. */
-export function engineConnectionOf(
+/** Where engine calls go, or null while they must stay off. */
+export function engineTargetOf(
   status: DiagnosisStatusState,
-): string | null {
-  return status.state === "configured" ? status.connectionId : null;
+): EngineTarget | null {
+  return status.state === "configured" ? status.target : null;
+}
+
+/** The part of an engine read's cache key that keeps one engine's answers
+ *  apart from the other's. A connection's is its id, as before Studio ran
+ *  the engine; ids are org-prefixed, so none is "native". */
+export function engineScope(target: EngineTarget | null): string {
+  if (!target) return "";
+  return target.kind === "native" ? "native" : target.connectionId;
 }
 
 /** Read before the goals load, the view would be every run's instead of
  *  the active goal's. */
 export function storeViewEnabled(
-  connectionId: string | null,
+  target: EngineTarget | null,
   goal: { pending: boolean },
 ): boolean {
-  return connectionId !== null && !goal.pending;
+  return target !== null && !goal.pending;
 }
 
 /** The engine answered with an error, or with a shape the page cannot read. */
@@ -88,8 +129,8 @@ export function retryEngineRead(failureCount: number, error: unknown): boolean {
   return !(error instanceof DiagnosisEngineError) && failureCount < 1;
 }
 
-/** An external connection cannot push Studio events, so a running analysis
- *  is followed by polling. It reads the last good view, so a failed poll
+/** The engine pushes no Studio events, so a running analysis is followed
+ *  by polling. It reads the last good view, so a failed poll
  *  does not stop it. */
 const RUNNING_POLL_MS = 5000;
 

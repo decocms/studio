@@ -54,6 +54,9 @@ import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import { TagStorage } from "../storage/tags";
 import { SprintStorage } from "../storage/sprints";
+import { PlanEngineStorage } from "../storage/plan-engine";
+import { PlanEngineCostStorage } from "../storage/plan-engine-costs";
+import { PlanEngineKnowledgeStorage } from "../storage/plan-engine-knowledge";
 import { PlanGoalStorage } from "../storage/plan-goals";
 import { ProjectSidebarStorage } from "../storage/project-sidebar";
 import { ExperimentStorage } from "../storage/experiments";
@@ -1588,6 +1591,9 @@ export async function createStudioContextFactory(
     tags: new TagStorage(config.db),
     sprints: new SprintStorage(config.db),
     planGoals: new PlanGoalStorage(config.db),
+    planEngine: new PlanEngineStorage(config.db),
+    planEngineKnowledge: new PlanEngineKnowledgeStorage(config.db),
+    planEngineCosts: new PlanEngineCostStorage(config.db),
     projectSidebar: new ProjectSidebarStorage(config.db),
     experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),

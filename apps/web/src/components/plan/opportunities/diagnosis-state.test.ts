@@ -3,7 +3,9 @@ import { StoreViewSchema, parseToolResult } from "./diagnosis-schema.ts";
 import {
   DiagnosisEngineError,
   diagnosisStatusState,
-  engineConnectionOf,
+  engineScope,
+  engineTargetOf,
+  NATIVE_ENGINE_TOOL,
   retryEngineRead,
   storeViewEnabled,
   storeViewRefetchInterval,
@@ -27,7 +29,7 @@ describe("diagnosisStatusState", () => {
     expect(state.error).toBe("network down");
     state.retry();
     expect(retried).toBe(1);
-    expect(engineConnectionOf(state)).toBeNull();
+    expect(engineTargetOf(state)).toBeNull();
   });
 
   it("engine queries stay disabled until the status says configured", () => {
@@ -36,7 +38,7 @@ describe("diagnosisStatusState", () => {
       noRetry,
     );
     expect(loading).toEqual({ state: "loading" });
-    expect(engineConnectionOf(loading)).toBeNull();
+    expect(engineTargetOf(loading)).toBeNull();
 
     for (const reason of [
       "flag_off",
@@ -52,7 +54,7 @@ describe("diagnosisStatusState", () => {
         noRetry,
       );
       expect(state).toEqual({ state: "unconfigured", reason });
-      expect(engineConnectionOf(state)).toBeNull();
+      expect(engineTargetOf(state)).toBeNull();
     }
 
     const configured = diagnosisStatusState(
@@ -65,9 +67,55 @@ describe("diagnosisStatusState", () => {
     );
     expect(configured).toEqual({
       state: "configured",
+      target: { kind: "connection", connectionId: "org_1_plan-diagnosis" },
+    });
+    expect(engineTargetOf(configured)).toEqual({
+      kind: "connection",
       connectionId: "org_1_plan-diagnosis",
     });
-    expect(engineConnectionOf(configured)).toBe("org_1_plan-diagnosis");
+  });
+
+  it("with plan_engine_native on, the server's configured status names no connection and the page calls Studio", () => {
+    const state = diagnosisStatusState(
+      {
+        data: { configured: true, connection_id: null },
+        error: null,
+        isPending: false,
+      },
+      noRetry,
+    );
+    expect(state).toEqual({ state: "configured", target: { kind: "native" } });
+  });
+
+  it("with plan_engine_native off, an answer the external engine gives keeps today's connection path", () => {
+    // What PLAN_DIAGNOSIS_STATUS answers with the flag off: a connection id
+    // whenever configured, so the page never reads org settings to choose.
+    const configured = diagnosisStatusState(
+      {
+        data: { configured: true, connection_id: "org_1_plan-diagnosis" },
+        error: null,
+        isPending: false,
+      },
+      noRetry,
+    );
+    expect(engineTargetOf(configured)).toEqual({
+      kind: "connection",
+      connectionId: "org_1_plan-diagnosis",
+    });
+    expect(
+      diagnosisStatusState(
+        {
+          data: {
+            configured: false,
+            connection_id: "org_1_plan-diagnosis",
+            reason: "not_connected",
+          },
+          error: null,
+          isPending: false,
+        },
+        noRetry,
+      ),
+    ).toEqual({ state: "unconfigured", reason: "not_connected" });
   });
 
   it("a failed refetch keeps the last good status", () => {
@@ -82,15 +130,45 @@ describe("diagnosisStatusState", () => {
     expect(state.state).toBe("configured");
   });
 
-  it("an unconfigured answer without a reason or a configured one without an id is not connected", () => {
-    for (const data of [
-      { configured: false, connection_id: null },
-      { configured: true, connection_id: null },
-    ]) {
+  it("an unconfigured answer without a reason is not connected", () => {
+    for (const connection_id of [null, "org_1_plan-diagnosis"]) {
       expect(
-        diagnosisStatusState({ data, error: null, isPending: false }, noRetry),
+        diagnosisStatusState(
+          {
+            data: { configured: false, connection_id },
+            error: null,
+            isPending: false,
+          },
+          noRetry,
+        ),
       ).toEqual({ state: "unconfigured", reason: "not_connected" });
     }
+  });
+});
+
+describe("engineScope", () => {
+  it("keeps the two engines' cache entries apart, and each connection's", () => {
+    const scopes = [
+      engineScope({ kind: "native" }),
+      engineScope({ kind: "connection", connectionId: "org_1_plan-diagnosis" }),
+      engineScope({ kind: "connection", connectionId: "org_2_plan-diagnosis" }),
+    ];
+    expect(new Set(scopes).size).toBe(3);
+    expect(engineScope(null)).toBe("");
+  });
+
+  it("a connection's scope is its id, so the external engine's keys stay as they were", () => {
+    expect(
+      engineScope({ kind: "connection", connectionId: "org_1_plan-diagnosis" }),
+    ).toBe("org_1_plan-diagnosis");
+  });
+});
+
+describe("NATIVE_ENGINE_TOOL", () => {
+  it("maps every engine tool the page calls to a distinct Studio tool", () => {
+    const names = Object.values(NATIVE_ENGINE_TOOL);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.every((n) => n.startsWith("PLAN_UX_"))).toBe(true);
   });
 });
 
@@ -183,11 +261,13 @@ describe("retryEngineRead", () => {
 
 describe("storeViewEnabled", () => {
   it("reads once the engine is configured and the goals have loaded", () => {
-    expect(storeViewEnabled("conn_1", { pending: false })).toBe(true);
+    const connection = { kind: "connection", connectionId: "conn_1" } as const;
+    expect(storeViewEnabled(connection, { pending: false })).toBe(true);
+    expect(storeViewEnabled({ kind: "native" }, { pending: false })).toBe(true);
   });
 
   it("stays off while the goals load or without an engine connection", () => {
-    expect(storeViewEnabled("conn_1", { pending: true })).toBe(false);
+    expect(storeViewEnabled({ kind: "native" }, { pending: true })).toBe(false);
     expect(storeViewEnabled(null, { pending: false })).toBe(false);
   });
 });

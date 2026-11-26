@@ -1,9 +1,10 @@
 /**
  * The store diagnosis behind Plan. `PLAN_DIAGNOSIS_STATUS` is a Studio tool;
- * everything else calls the org's engine connection, and stays disabled until
- * the status says it is configured. Engine answers go through
- * `diagnosis-schema.ts`; anything the page cannot read throws a
- * `DiagnosisEngineError`, so React Query keeps the last good data.
+ * everything else calls the engine, and stays disabled until the status says
+ * it is configured. With `plan_engine_native` the engine is Studio's own
+ * `PLAN_UX_*` tools; otherwise the org's engine connection. Either way the
+ * answers go through `diagnosis-schema.ts`; anything the page cannot read
+ * throws a `DiagnosisEngineError`, so React Query keeps the last good data.
  */
 
 import {
@@ -31,21 +32,19 @@ import {
 import {
   type DiagnosisStatusState,
   diagnosisStatusState,
-  engineConnectionOf,
+  type EngineArgs,
+  type EngineTool,
+  engineScope,
+  engineTargetOf,
+  NATIVE_ENGINE_TOOL,
   retryEngineRead,
   storeViewEnabled,
   storeViewRefetchInterval,
   unwrapEngineResult,
 } from "./diagnosis-state.ts";
 
-type EngineTool =
-  | "get_ux_site_profile"
-  | "update_ux_site_profile"
-  | "get_ux_store_view"
-  | "get_ux_opportunity"
-  | "start_ux_diagnosis"
-  | "update_ux_hypothesis_status";
-
+/** The status names the engine, so the page never reads the org's flags
+ *  itself and engine reads start only on the one the server chose. */
 export function usePlanDiagnosisStatus(): DiagnosisStatusState {
   const { org } = useProjectContext();
   const studio = useStudioTools();
@@ -76,26 +75,46 @@ export function useDiagnosisSetup() {
 function useEngine() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const connectionId = engineConnectionOf(usePlanDiagnosisStatus());
+  const studio = useStudioTools();
+  const target = engineTargetOf(usePlanDiagnosisStatus());
+
+  /** The engine's answer as the tool returned it. */
+  const answer = async <E extends EngineTool>(
+    name: E,
+    args: EngineArgs<E>,
+  ): Promise<unknown> => {
+    if (!target) {
+      throw new Error("The store diagnosis is not configured");
+    }
+    if (target.kind === "native") {
+      return studio.call(NATIVE_ENGINE_TOOL[name], args);
+    }
+    const client = await queryClient.fetchQuery(
+      mcpClientQueryOptions({
+        connectionId: target.connectionId,
+        orgId: org.id,
+        orgSlug: org.slug,
+      }),
+    );
+    return toolPayload(await client.callTool({ name, arguments: args }));
+  };
 
   /** Throws `DiagnosisEngineError` for an engine error or an unreadable answer;
    *  a failed connect or transport error propagates as is. */
-  const call = async <T>(
+  const call = async <T, E extends EngineTool>(
     schema: z.ZodType<T>,
-    name: EngineTool,
-    args: Record<string, unknown>,
-  ): Promise<T> => {
-    if (!connectionId) {
-      throw new Error("The store diagnosis is not configured");
-    }
-    const client = await queryClient.fetchQuery(
-      mcpClientQueryOptions({ connectionId, orgId: org.id, orgSlug: org.slug }),
-    );
-    const result = await client.callTool({ name, arguments: args });
-    return unwrapEngineResult(parseToolResult(schema, toolPayload(result)));
-  };
+    name: E,
+    args: EngineArgs<E>,
+  ): Promise<T> =>
+    unwrapEngineResult(parseToolResult(schema, await answer(name, args)));
 
-  return { orgId: org.id, connectionId, call, queryClient };
+  return {
+    orgId: org.id,
+    target,
+    scope: engineScope(target),
+    call,
+    queryClient,
+  };
 }
 
 /** The store at a glance for a goal's runs (a null id = every run), off
@@ -104,12 +123,8 @@ function useEngine() {
 export function useStoreView(goal: { id: string | null; pending: boolean }) {
   const engine = useEngine();
   return useQuery({
-    queryKey: KEYS.planStoreView(
-      engine.orgId,
-      goal.id,
-      engine.connectionId ?? "",
-    ),
-    enabled: storeViewEnabled(engine.connectionId, goal),
+    queryKey: KEYS.planStoreView(engine.orgId, goal.id, engine.scope),
+    enabled: storeViewEnabled(engine.target, goal),
     retry: retryEngineRead,
     queryFn: () =>
       engine.call(
@@ -127,7 +142,7 @@ type Engine = ReturnType<typeof useEngine>;
  *  it before starting a case. */
 function opportunityQuery(engine: Engine, id: string) {
   return {
-    queryKey: KEYS.planOpportunity(engine.orgId, id, engine.connectionId ?? ""),
+    queryKey: KEYS.planOpportunity(engine.orgId, id, engine.scope),
     retry: retryEngineRead,
     queryFn: async () =>
       (
@@ -142,7 +157,7 @@ export function useOpportunity(id: string) {
   const engine = useEngine();
   return useQuery({
     ...opportunityQuery(engine, id),
-    enabled: engine.connectionId !== null && id !== "",
+    enabled: engine.target !== null && id !== "",
   });
 }
 
@@ -182,8 +197,8 @@ export function useStartRun() {
 export function useSiteProfile({ enabled = true } = {}) {
   const engine = useEngine();
   return useQuery({
-    queryKey: KEYS.planSiteProfile(engine.orgId, engine.connectionId ?? ""),
-    enabled: enabled && engine.connectionId !== null,
+    queryKey: KEYS.planSiteProfile(engine.orgId, engine.scope),
+    enabled: enabled && engine.target !== null,
     retry: retryEngineRead,
     queryFn: async () =>
       (await engine.call(SiteProfileSchema, "get_ux_site_profile", {})).profile,

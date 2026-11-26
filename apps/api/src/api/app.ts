@@ -157,6 +157,8 @@ import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { createGithubWebhookRoutes } from "./routes/github-webhook";
 import { registerSandboxCredentialPushWorkflow } from "@/sandbox/dbos-credential-push";
+import { registerPlanUxDiagnosisWorkflow } from "@/plan-engine/dbos-ux-diagnosis";
+import { setPlanEngineContextFactory } from "@/plan-engine/run/engine-run";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
@@ -2017,6 +2019,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
   registerSandboxCredentialPushWorkflow();
+  setPlanEngineContextFactory(automationContextFactory);
+  registerPlanUxDiagnosisWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,

@@ -401,6 +401,187 @@ export interface PlanGoalCaseTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+type Timestamp = ColumnType<Date, Date | string, Date | string>;
+type NullableTimestamp = ColumnType<
+  Date | null,
+  Date | string | null | undefined,
+  Date | string | null
+>;
+type Jsonb = ColumnType<unknown, string, string>;
+type NullableJsonb = ColumnType<unknown, string | null, string | null>;
+
+/** The store the Plan engine analyses, one per org (migration 272). */
+export interface PlanUxSiteProfileTable {
+  organization_id: string;
+  domain: string;
+  studio_site: string | null;
+  pdp_path_template: string;
+  competitors: Jsonb;
+  competitors_confirmed_at: NullableTimestamp;
+  design_system: NullableJsonb;
+  design_system_at: NullableTimestamp;
+  sources: NullableJsonb;
+  code_tokens: NullableJsonb;
+  code_repo: string | null;
+  code_project_id: string | null;
+  code_volume: string | null;
+  page_templates: NullableJsonb;
+  updated_at: Timestamp;
+}
+
+/** The BigQuery connection and GA4 dataset the Plan engine reads (migration 273). */
+export interface PlanUxBigQueryBindingTable {
+  organization_id: string;
+  connection_id: string;
+  project_id: string;
+  dataset_id: string;
+  updated_at: Timestamp;
+}
+
+/** One page's analysis by the Plan engine (migration 272). */
+export interface PlanUxDiagnosisTable {
+  id: string;
+  organization_id: string;
+  seq: ColumnType<string, never, never>;
+  page_type: string;
+  status: string;
+  stage: string;
+  progress_note: string | null;
+  domain: string;
+  summary: NullableJsonb;
+  evidence: NullableJsonb;
+  error: string | null;
+  cost_usd: number | null;
+  started_at: Timestamp;
+  finished_at: NullableTimestamp;
+  restarted_at: NullableTimestamp;
+  site_run_id: string | null;
+  goal_id: string | null;
+  objective_statement: string | null;
+}
+
+/** A measured loss in one analysis (migration 272). */
+export interface PlanUxOpportunityTable {
+  id: string;
+  organization_id: string;
+  diagnosis_id: string;
+  rank: number;
+  area: string;
+  title: string;
+  summary: string;
+  device: string;
+  sources: Jsonb;
+  money: NullableJsonb;
+  confidence: number;
+  metric: NullableJsonb;
+  measured: NullableJsonb;
+  reliability: NullableJsonb;
+  drilldown: NullableJsonb;
+  tree_notes: NullableJsonb;
+  outcome: NullableJsonb;
+  observations: NullableJsonb;
+  updated_at: Timestamp;
+}
+
+/** A hypothesis for an opportunity (migration 272). */
+export interface PlanUxHypothesisTable {
+  id: string;
+  organization_id: string;
+  diagnosis_id: string;
+  opportunity_id: string | null;
+  rank: number;
+  kind: string;
+  title: string;
+  device: string;
+  evidence_md: string;
+  idea: string;
+  why: string;
+  where: string;
+  money: NullableJsonb;
+  confidence: number;
+  benchmark_refs: Jsonb;
+  benchmark: Jsonb;
+  before_url: string | null;
+  after_url: string | null;
+  after_patch: string | null;
+  mockup_error: string | null;
+  status: string;
+  status_note: string | null;
+  code_status: string | null;
+  code_note: string | null;
+  code_before_url: string | null;
+  code_after_url: string | null;
+  code_diff: string | null;
+  code_error: string | null;
+  code_started_at: NullableTimestamp;
+  verification: NullableJsonb;
+  category: string | null;
+  tree: NullableJsonb;
+  lifecycle: string | null;
+  lifecycle_log: NullableJsonb;
+  validation: NullableJsonb;
+  relevance: NullableJsonb;
+  experiment: NullableJsonb;
+  priority: NullableJsonb;
+  priority_test: number | null;
+  review: NullableJsonb;
+  updated_at: Timestamp;
+}
+
+/** A competitor page the Plan engine captured (migration 272). */
+export interface PlanUxBenchmarkPdpTable {
+  organization_id: string;
+  domain: string;
+  url: string;
+  screenshot_url: string | null;
+  full_url: string | null;
+  anatomy: Jsonb;
+  captured_at: Timestamp;
+}
+
+/** Something the store knows, for the Plan engine (migration 272). */
+export interface PlanUxKnowledgeTable {
+  id: string;
+  organization_id: string;
+  conhecimento: string;
+  categoria: string;
+  fonte: string;
+  fonte_url: string | null;
+  tipo_fonte: string;
+  contexto: string;
+  areas: Jsonb;
+  evidencia: string;
+  trecho: string | null;
+  assinatura: string | null;
+  confiabilidade: string;
+  limitacoes: string;
+  resultado: string | null;
+  origem: string;
+  diagnosis_id: string | null;
+  hypothesis_id: string | null;
+  active: boolean;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+/** One billed call of the Plan engine (migration 272). */
+export interface PlanCostEventTable {
+  id: string;
+  organization_id: string;
+  at: Timestamp;
+  provider: string;
+  kind: string;
+  feature: string;
+  model: string | null;
+  units_in: ColumnType<string | null, number | null, number | null>;
+  units_out: ColumnType<string | null, number | null, number | null>;
+  cost_usd: number | null;
+  execution_id: string | null;
+  job_id: string | null;
+  product_id: string | null;
+  created_at: Timestamp;
+}
+
 /** An org's thresholds for one alert rule (migration 266). */
 export interface AlertRuleSettingsTable {
   organization_id: string;
@@ -2732,6 +2913,14 @@ export interface Database {
   plan_goals: PlanGoalTable;
   member_plan_state: MemberPlanStateTable;
   plan_goal_cases: PlanGoalCaseTable;
+  plan_ux_site_profiles: PlanUxSiteProfileTable;
+  plan_ux_bigquery_bindings: PlanUxBigQueryBindingTable;
+  plan_ux_diagnoses: PlanUxDiagnosisTable;
+  plan_ux_opportunities: PlanUxOpportunityTable;
+  plan_ux_hypotheses: PlanUxHypothesisTable;
+  plan_ux_benchmark_pdps: PlanUxBenchmarkPdpTable;
+  plan_ux_knowledge: PlanUxKnowledgeTable;
+  plan_cost_events: PlanCostEventTable;
 
   // Automations tables
   automations: AutomationTable;

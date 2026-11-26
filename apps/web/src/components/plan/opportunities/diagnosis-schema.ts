@@ -189,10 +189,12 @@ export type StorePage = z.infer<typeof StorePageSchema>;
 
 const SETUP_KEYS = [
   "domain",
+  "ai_provider",
   "competitors",
   "analytics_install",
   "bigquery",
   "orders",
+  "repository",
 ] as const;
 const SetupKeySchema = z.enum(SETUP_KEYS);
 export type SetupKey = z.infer<typeof SetupKeySchema>;

@@ -1,0 +1,90 @@
+/**
+ * Whether a repository the organization linked can be read right now, for the
+ * engine's code gaps. Only a durable answer (`auth_failed`, a dead grant) may
+ * tell the customer to reconnect; a provider 5xx or rate limit is raised.
+ */
+
+import type { RepoRef } from "@decocms/shared/git-providers";
+import type { StudioContext } from "@/core/studio-context";
+import {
+  accountIsServable,
+  clientForAccount,
+  GitProviderError,
+  providerCapabilities,
+} from "@/git-providers";
+import {
+  type RepositoryRecord,
+  type RepositoryStorage,
+  repoRefOf,
+} from "@/storage/repositories";
+
+type RepositoryUnusableReason =
+  | "no_account"
+  | "account_revoked"
+  | "provider_unconfigured"
+  | "auth_failed"
+  | "not_found";
+
+type RepositoryUsability =
+  | { usable: true; reason: "ok" }
+  | { usable: false; reason: RepositoryUnusableReason };
+
+/** Asks the provider live: a stored account row cannot tell whether its grant was revoked. */
+export async function repositoryUsability(
+  ctx: Pick<StudioContext, "storage" | "db" | "vault">,
+  repository: RepositoryRecord,
+): Promise<RepositoryUsability> {
+  if (!repository.accountId) {
+    return { usable: false, reason: "no_account" };
+  }
+  const account = await ctx.storage.gitProviderAccounts.get(
+    repository.accountId,
+    repository.organizationId,
+  );
+  if (!account) return { usable: false, reason: "no_account" };
+  if (account.status !== "active") {
+    return { usable: false, reason: "account_revoked" };
+  }
+  if (!accountIsServable(account)) {
+    return {
+      usable: false,
+      reason: providerCapabilities()[account.type].configured
+        ? "account_revoked"
+        : "provider_unconfigured",
+    };
+  }
+  try {
+    const summary = await clientForAccount(ctx, account).getRepo(
+      repoRefOf(repository),
+    );
+    return summary
+      ? { usable: true, reason: "ok" }
+      : { usable: false, reason: "not_found" };
+  } catch (error) {
+    // A 403 with a wait is a rate limit, which is transient.
+    if (
+      error instanceof GitProviderError &&
+      error.isAuthFailure &&
+      !error.isRateLimited
+    ) {
+      return { usable: false, reason: "auth_failed" };
+    }
+    throw error;
+  }
+}
+
+/**
+ * The org's repository for an identity. `findByRef` matches host and path only, so the provider is checked
+ * here: two providers can share a self-managed host, and the wrong one would credential an unnamed repository.
+ */
+export async function findLinkedRepository(
+  repositories: Pick<RepositoryStorage, "findByRef">,
+  organizationId: string,
+  ref: RepoRef,
+): Promise<RepositoryRecord | null> {
+  const repository = await repositories.findByRef(organizationId, {
+    host: ref.host,
+    path: ref.path,
+  });
+  return repository?.provider === ref.provider ? repository : null;
+}

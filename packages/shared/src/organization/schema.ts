@@ -383,6 +383,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Plan goals: the Plan page offers the organization's list of goals instead of a single store goal. Any member adds a goal or picks the one they work toward, and each business case is tied to a goal. Needs plan_page_enabled. Off by default; with it off, the Plan page keeps the single store goal.",
     ),
+  plan_engine_native: z
+    .boolean()
+    .optional()
+    .describe(
+      "The Plan page's store diagnosis uses the engine built into Studio instead of the external diagnosis service. Needs plan_page_enabled. Off by default; with it off, the Studio engine's tools refuse and the Plan page keeps using the external service.",
+    ),
   invite_links_enabled: z
     .boolean()
     .optional()
