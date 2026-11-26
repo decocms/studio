@@ -39,7 +39,7 @@ function parseRepo(s: string): { owner: string; name: string } | null {
  * any project, `profile` is null and the page asks for the domain. A failed
  * read keeps what an earlier one found.
  */
-async function syncProfileFromStudio(
+export async function syncProfileFromStudio(
   ctx: StudioContext,
   org: { id: string; slug: string },
 ): Promise<{ profile: SiteProfile | null; sources: SiteSources | null }> {

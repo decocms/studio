@@ -139,6 +139,8 @@ const ALL_TOOL_NAMES = [
   "PLAN_UX_KNOWLEDGE_LIST",
   "PLAN_UX_KNOWLEDGE_UPSERT",
   "PLAN_UX_KNOWLEDGE_ACTIVE_SET",
+  "PLAN_UX_DIAGNOSIS_START",
+  "PLAN_UX_HYPOTHESES_VERIFY",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -867,6 +869,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "PLAN_UX_KNOWLEDGE_ACTIVE_SET",
     description: "Turn an entry of the store's knowledge on or off",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_DIAGNOSIS_START",
+    description: "Start a store diagnosis run on the Plan page",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_UX_HYPOTHESES_VERIFY",
+    description: "Verify a store diagnosis's hypotheses again",
     category: "Organizations",
   },
   // Virtual MCP tools
@@ -2203,6 +2215,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "PLAN_UX_KNOWLEDGE_LIST",
       "PLAN_UX_KNOWLEDGE_UPSERT",
       "PLAN_UX_KNOWLEDGE_ACTIVE_SET",
+      "PLAN_UX_DIAGNOSIS_START",
+      "PLAN_UX_HYPOTHESES_VERIFY",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless

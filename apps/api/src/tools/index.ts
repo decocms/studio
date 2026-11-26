@@ -215,6 +215,8 @@ export const CORE_TOOLS = [
   PlanEngineTools.PLAN_UX_KNOWLEDGE_LIST,
   PlanEngineTools.PLAN_UX_KNOWLEDGE_UPSERT,
   PlanEngineTools.PLAN_UX_KNOWLEDGE_ACTIVE_SET,
+  PlanEngineTools.PLAN_UX_DIAGNOSIS_START,
+  PlanEngineTools.PLAN_UX_HYPOTHESES_VERIFY,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,

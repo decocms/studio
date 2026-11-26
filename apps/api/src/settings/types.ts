@@ -341,6 +341,10 @@ export interface Settings {
    *  `connection_url` of each org's plan-diagnosis connection. No default:
    *  unset = the PLAN_DIAGNOSIS_* tools report the service as unset. */
   planDiagnosisMcpUrl: string | undefined;
+  /** How many store diagnoses an org may start in 24 h with the built-in
+   *  engine (PLAN_ENGINE_MAX_DAILY_STARTS, default 10; 0 = none). Each page
+   *  of a run counts. */
+  planEngineMaxDailyStarts: number;
 
   // Managed asset storage (the shared deco tenant bucket). Used by `managed`
   // file configs: studio mints prefix-scoped STS credentials per site slug via

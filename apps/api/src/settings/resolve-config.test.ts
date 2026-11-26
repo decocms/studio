@@ -639,6 +639,17 @@ describe("feedback configuration", () => {
 });
 
 describe("resolveConfig plan diagnosis engine URL", () => {
+  it("caps the built-in engine at 10 daily starts unless PLAN_ENGINE_MAX_DAILY_STARTS says otherwise", () => {
+    expect(resolveConfig({}).planEngineMaxDailyStarts).toBe(10);
+    expect(
+      resolveConfig({ PLAN_ENGINE_MAX_DAILY_STARTS: "0" })
+        .planEngineMaxDailyStarts,
+    ).toBe(0);
+    expect(() =>
+      resolveConfig({ PLAN_ENGINE_MAX_DAILY_STARTS: "many" }),
+    ).toThrow("PLAN_ENGINE_MAX_DAILY_STARTS must be a non-negative integer");
+  });
+
   it("reads PLAN_DIAGNOSIS_MCP_URL and has no default", () => {
     expect(
       resolveConfig({

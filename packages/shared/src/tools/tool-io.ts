@@ -4535,6 +4535,62 @@ export interface StudioToolIO {
         }
       | { entry: object };
   };
+  PLAN_UX_DIAGNOSIS_START: {
+    input: {
+      page_type?:
+        | "home"
+        | "categoria"
+        | "busca"
+        | "pdp"
+        | "carrinho_checkout"
+        | undefined;
+      todas?: boolean | undefined;
+      pages?:
+        | ("home" | "categoria" | "busca" | "pdp" | "carrinho_checkout")[]
+        | undefined;
+      goal_id?: string | undefined;
+      objective_statement?: string | undefined;
+    };
+    output:
+      | {
+          status: "started";
+          site_run_id: string;
+          diagnoses: {
+            page_type:
+              | "home"
+              | "categoria"
+              | "busca"
+              | "pdp"
+              | "carrinho_checkout";
+            diagnosis_id: string;
+            already_running: boolean;
+          }[];
+        }
+      | {
+          status: "error";
+          error: string;
+          needs_domain?: true | undefined;
+          needs?: object[] | undefined;
+        };
+  };
+  PLAN_UX_HYPOTHESES_VERIFY: {
+    input: { diagnosis_id: string; hypothesis_id?: string | undefined };
+    output:
+      | {
+          status: "running";
+          diagnosis_id: string;
+          instance_id: string;
+          hypotheses: number;
+          skipped: number;
+          repo_snapshot: string;
+          skipped_note?: string | undefined;
+        }
+      | {
+          status: "error";
+          error: string;
+          running_diagnosis_id?: string | undefined;
+        };
+  };
   COLLECTION_VIRTUAL_MCP_CREATE: {
     input: {
       data: {
