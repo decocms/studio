@@ -1,5 +1,9 @@
 import { describe, it, expect } from "bun:test";
-import { readValidatedRuntimeEnv, resolveRuntimeConfig } from "./helpers";
+import {
+  isDetectedRuntime,
+  readValidatedRuntimeEnv,
+  resolveRuntimeConfig,
+} from "./helpers";
 type VmMetadata = Record<string, unknown>;
 
 describe("resolveRuntimeConfig", () => {
@@ -160,5 +164,24 @@ describe("readValidatedRuntimeEnv", () => {
         runtime: { env: [{ key: "bad key", kind: "literal", value: "x" }] },
       }),
     ).toBeNull();
+  });
+});
+
+describe("isDetectedRuntime", () => {
+  it("is true while the selected package manager is the last detection", () => {
+    expect(
+      isDetectedRuntime({ runtime: { selected: "bun", detected: "bun" } }),
+    ).toBe(true);
+  });
+
+  it("is false for a picked package manager or none", () => {
+    expect(
+      isDetectedRuntime({ runtime: { selected: "yarn", detected: "bun" } }),
+    ).toBe(false);
+    expect(isDetectedRuntime({ runtime: { selected: "bun" } })).toBe(false);
+    expect(
+      isDetectedRuntime({ runtime: { selected: null, detected: "bun" } }),
+    ).toBe(false);
+    expect(isDetectedRuntime({})).toBe(false);
   });
 });

@@ -27,6 +27,7 @@ import { resolveSandboxUserId } from "./thread-repo";
 export type RuntimeConfigMeta = {
   runtime?: {
     selected?: string | null;
+    detected?: string | null;
     port?: string | null;
     path?: string | null;
     apps?: { path?: unknown }[] | null;
@@ -119,6 +120,15 @@ function parseValidPort(port: string | null): string | null {
   if (port === null || !/^\d+$/.test(port)) return null;
   const n = Number(port);
   return n >= 1 && n <= 65535 ? port : null;
+}
+
+/**
+ * Whether `runtime.selected` is SANDBOX_START's last detection rather than a
+ * package manager someone picked: detected values are probed again.
+ */
+export function isDetectedRuntime(metadata: Record<string, unknown>): boolean {
+  const runtime = (metadata as RuntimeConfigMeta).runtime;
+  return !!runtime?.selected && runtime.selected === runtime.detected;
 }
 
 /**

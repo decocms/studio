@@ -35,6 +35,7 @@ import {
 } from "../../core/studio-context";
 import {
   readValidatedRuntimeEnv,
+  isDetectedRuntime,
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
 } from "./helpers";
@@ -703,15 +704,17 @@ async function provisionSandbox(params: StartParams): Promise<{
           )
         : buildAnonymousCloneInfo(repository.owner, repository.name);
 
-    // Lockfile probe only when metadata has no PM. Used to be client-side in
+    // Lockfile probe when metadata has no PM, or when its PM is the last
+    // detection rather than a choice (`isDetectedRuntime`): a repo that
+    // switched package managers is then installed with the new one instead
+    // of the one it used when first detected. Used to be client-side in
     // the repo picker, but that introduced a race — SANDBOX_START fired from the
     // auto-start paths before `runtime` landed in metadata, and the daemon
     // got baked clone-only (no install, no dev server, UI stuck on setup).
     // Running it here piggybacks on the same request so the baked workload
-    // always matches the detected PM; the result is persisted so subsequent
-    // starts skip the probe.
+    // always matches the detected PM. A failed probe keeps the stored PM.
     // Studio-credentialed repos skip the probe: the daemon reads the lockfile.
-    if (!packageManager && !studioRepository) {
+    if ((!packageManager || isDetectedRuntime(metadata)) && !studioRepository) {
       const detected = connectionId
         ? await detectRepoRuntime(
             connectionId,
@@ -721,10 +724,10 @@ async function provisionSandbox(params: StartParams): Promise<{
             ctx.vault,
           )
         : await detectRepoRuntimeAnonymous(repository.owner, repository.name);
-      if (detected) {
+      if (detected && detected.packageManager !== packageManager) {
         packageManager = detected.packageManager;
         runtime = PACKAGE_MANAGER_CONFIG[detected.packageManager].runtime;
-        port = detected.devPort ?? port;
+        port = port ?? detected.devPort;
         await persistDetectedRuntime(
           ctx,
           virtualMcpId,
@@ -929,7 +932,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     isResume && existing?.createdAt ? existing.createdAt : Date.now();
 
   const runtimeSelected =
-    (metadata as RuntimeConfigMeta).runtime?.selected ?? null;
+    packageManager ?? (metadata as RuntimeConfigMeta).runtime?.selected ?? null;
   const runtimePort = (metadata as RuntimeConfigMeta).runtime?.port ?? null;
   const runtimePath = (metadata as RuntimeConfigMeta).runtime?.path ?? null;
 
@@ -1048,10 +1051,11 @@ async function healDanglingRepoConnection(params: {
 }
 
 /**
- * Writes back the detected runtime so subsequent SANDBOX_STARTs for this virtual
- * MCP skip the GitHub probe and the client surfaces the resolved PM. Shape
- * matches what the picker previously wrote (`{ selected, port }`), so
- * readers (resolveRuntimeConfig, any client inspectors) keep working.
+ * Writes back the detected runtime so the client surfaces the resolved PM.
+ * `detected` marks `selected` as a detection: while the two match, the next
+ * SANDBOX_START probes again. Picking another package manager in the
+ * project's runtime settings makes `selected` a choice that is kept. The
+ * rest of `runtime` (path, apps, env, a pinned port) is kept.
  */
 async function persistDetectedRuntime(
   ctx: StudioContext,
@@ -1063,10 +1067,16 @@ async function persistDetectedRuntime(
   const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
   if (!virtualMcp) return;
   const meta = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
+  const runtime = (meta as RuntimeConfigMeta).runtime ?? {};
   await ctx.storage.virtualMcps.update(virtualMcpId, actingUserId, {
     metadata: {
       ...meta,
-      runtime: { selected: packageManager, port: devPort },
+      runtime: {
+        ...runtime,
+        selected: packageManager,
+        detected: packageManager,
+        port: runtime.port ?? devPort,
+      },
     } as VirtualMCPUpdateData["metadata"],
   });
 }

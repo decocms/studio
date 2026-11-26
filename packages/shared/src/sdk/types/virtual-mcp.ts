@@ -452,6 +452,13 @@ const RuntimeMetadataSchema = z.object({
     .describe(
       "User-selected package manager (npm | pnpm | yarn | bun | deno). Null/absent means autodetect on next SANDBOX_START.",
     ),
+  detected: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Package manager SANDBOX_START last detected from the repository. While `selected` equals it, `selected` is that detection rather than a choice, and each SANDBOX_START detects again.",
+    ),
   port: z
     .string()
     .nullable()
