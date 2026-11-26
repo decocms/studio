@@ -1063,6 +1063,7 @@ async function fetchRevenueBase(lake: LakeQuery): Promise<RevenueBase> {
 			     ON c.channel_id = o.sales_channel
 			  WHERE o.created_at >= now() - INTERVAL 28 DAY
 			    AND o.status IN ('paid', 'fulfilled')
+			    AND o.source_status != ''
 			  GROUP BY channel_id
 			  ORDER BY revenue DESC
 			  LIMIT 12`,
@@ -1211,6 +1212,7 @@ async function fetchOrdersByProduct(
 		  WHERE created_at >= now() - INTERVAL ${WINDOW_DAYS} DAY
 		    AND sales_channel = '${channelId.replace(/'/g, "")}'
 		    AND status IN ('paid', 'fulfilled')
+		    AND source_status != ''
 		  GROUP BY product_id
 		  ORDER BY qty DESC
 		  LIMIT 1000`,
