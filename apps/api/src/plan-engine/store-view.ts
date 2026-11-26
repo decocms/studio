@@ -1,11 +1,7 @@
 /**
- * A loja vista de uma vez, para o Plan do Studio: a última análise de cada
- * página, o funil dela por dispositivo, as maiores perdas de todas as páginas
- * e as fontes que responderam. Função pura sobre as linhas do banco; a tool
- * `get_ux_store_view` busca as linhas e assina as URLs.
- *
- * Os números do funil saem de `measureMetric` (metrics.ts), a mesma conta das
- * oportunidades, na etapa padrão de cada página: nada novo é calculado aqui.
+ * The store at once, for Studio's Plan: each page's latest analysis, its funnel
+ * by device, the biggest losses and the sources that answered. Pure over DB rows;
+ * funnel numbers come from `measureMetric` (metrics.ts).
  */
 
 import type {
@@ -33,30 +29,27 @@ import type {
   UxPageType,
 } from "./types.ts";
 
-/** Diagnóstico sem as evidências serve para escolher; com elas, para montar. */
+/** A diagnosis without the evidence is enough to choose; with it, to build. */
 type DiagnosisRow = Omit<UxDiagnosis, "evidence"> & {
   evidence?: DiagnosisEvidence | null;
 };
 
-/**
- * Tem resultado para mostrar: terminou, ou é um "verificar de novo" de uma
- * análise que já tinha terminado (volta a `running` com `finished_at`).
- */
+/** Has a result to show: finished, or re-verifying an analysis that had finished. */
 const hasResults = (d: DiagnosisRow) =>
   d.status === "done" || (d.status === "running" && d.finished_at !== null);
 
-/** Empate no mesmo instante fica na ordem de entrada (a do banco, por inserção). */
+/** A tie on the same instant keeps entry order (the database's, by insertion). */
 const newestFirst = (a: DiagnosisRow, b: DiagnosisRow) =>
   b.started_at.localeCompare(a.started_at);
 
 export interface PageChoice<D extends DiagnosisRow> {
-  /** A análise mais nova da página: o estado que a tela mostra. */
+  /** The page's newest analysis: the state the screen shows. */
   latest: D;
-  /** A mais nova com resultado: as perdas, o funil e o print. */
+  /** The newest with a result: the losses, the funnel and the screenshot. */
   results: D | null;
 }
 
-/** Por página, a análise mais nova e a mais nova com resultado. */
+/** Per page, the newest analysis and the newest with a result. */
 export function choosePageDiagnoses<D extends DiagnosisRow>(
   diagnoses: D[],
   goalId?: string | null,
@@ -76,11 +69,7 @@ export function choosePageDiagnoses<D extends DiagnosisRow>(
   return out;
 }
 
-/**
- * A perda que uma página aponta em OUTRA página já coberta pela análise
- * daquela (navegação, carrinho): na 1ª rodada do site inteiro a mesma queda
- * viu→carrinho entrou 4 vezes. Fica só na análise da própria página.
- */
+/** A loss a page reports on ANOTHER page already covered by that page's own analysis; it stays only there. */
 export function coveredElsewhere(
   area: UxArea,
   pages: ReadonlySet<UxPageType>,
@@ -92,7 +81,7 @@ export function coveredElsewhere(
   );
 }
 
-/** Por valor (R$/mês) e depois confiança; sem conta de dinheiro vai por último. */
+/** By value (R$/month), then confidence; without a money estimate it goes last. */
 export const byValue = (
   a: Pick<UxOpportunity, "money" | "confidence">,
   b: Pick<UxOpportunity, "money" | "confidence">,
@@ -102,10 +91,7 @@ export const byValue = (
 
 const DEVICES: UxDevice[] = ["mobile", "desktop"];
 
-/**
- * A etapa padrão da página, por dispositivo: quem chega por semana e a taxa
- * de quem passa para a seguinte. Dispositivo sem dado fica de fora.
- */
+/** The page's default stage by device: weekly arrivals and the rate moving on to the next. */
 export function pageFunnel(
   evidence: DiagnosisEvidence,
   pageType: UxPageType,
@@ -121,7 +107,7 @@ export function pageFunnel(
     return [
       {
         device,
-        // Mesma conta semanal do desenho do teste (experiment.ts).
+        // Same weekly computation as the test design (experiment.ts).
         people_week: Math.round((m.n * 7) / (evidence.window_days || 7)),
         advance_rate: m.rate,
       },
@@ -129,7 +115,7 @@ export function pageFunnel(
   });
 }
 
-/** As fontes que trouxeram dado nesta evidência. */
+/** The sources that brought data into this evidence. */
 function evidenceSources(evidence: DiagnosisEvidence): StoreSource[] {
   const has: Record<StoreSource, boolean> = {
     GA4: evidence.platform_funnel.some((f) => f.steps.length > 0),
@@ -158,7 +144,7 @@ export function buildStoreView(input: {
   opportunities: UxOpportunity[];
   hypotheses: UxHypothesis[];
   goalId?: string | null;
-  /** O perfil da loja; null = a loja ainda não tem domínio. */
+  /** The store profile; null = the store has no domain yet. */
   profile: SiteProfile | null;
 }): StoreView {
   const chosen = choosePageDiagnoses(input.diagnoses, input.goalId);

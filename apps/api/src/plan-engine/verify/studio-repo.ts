@@ -1,16 +1,16 @@
-/** Identificação de um repositório pela URL que o projeto do site guarda. */
+/** Identifies a repository from the URL the site project stores. */
 import type { SiteProfile } from "../types.ts";
 
 export type RepoProvider = "github" | "gitlab" | "bitbucket";
 
-/** Provedor pelo host; o que não é GitLab nem Bitbucket fica GitHub. */
+/** Provider by host; anything that is not GitLab or Bitbucket is GitHub. */
 export function providerOfHost(host: string): RepoProvider {
   if (/(^|\.)gitlab\./i.test(host)) return "gitlab";
   if (/(^|\.)bitbucket\./i.test(host)) return "bitbucket";
   return "github";
 }
 
-/** `https://host/owner/nome(.git)` → host e caminho. */
+/** `https://host/owner/name(.git)` → host and path. */
 export function parseRepoUrl(
   url: string,
 ): { host: string; path: string } | null {

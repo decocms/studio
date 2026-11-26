@@ -3,7 +3,7 @@ import { evidence } from "./fixtures/evidence.ts";
 import { measureMetric, parseMetricRef } from "./metrics.ts";
 
 describe("measureMetric", () => {
-  test("etapa do GA4 com comparação: taxa, amostra e gap em pp", () => {
+  test("GA4 step with comparison: rate, sample and gap in pp", () => {
     const m = measureMetric(evidence(), {
       key: "produto_carrinho",
       device: "mobile",
@@ -18,7 +18,7 @@ describe("measureMetric", () => {
     expect(m?.fallback).toBeUndefined();
   });
 
-  test("sem GA4, viu → carrinho cai pro funil da PDP e avisa", () => {
+  test("without GA4, viewed -> cart falls back to the PDP funnel and says so", () => {
     const m = measureMetric(evidence({ platform_funnel: [] }), {
       key: "produto_carrinho",
       device: "mobile",
@@ -27,12 +27,12 @@ describe("measureMetric", () => {
     expect(m?.key).toBe("pdp_carrinho");
     expect(m?.fallback).toBe(true);
     expect(m?.rate).toBeCloseTo(0.075);
-    // O desktop não tem funil da PDP nesta evidência: sem comparação.
+    // Desktop has no PDP funnel in this evidence: no comparison.
     expect(m?.comp).toBeNull();
     expect(m?.gap_pp).toBeNull();
   });
 
-  test("etapa que não existe nos dados: null", () => {
+  test("a step missing from the data: null", () => {
     expect(
       measureMetric(evidence({ platform_funnel: [] }), {
         key: "checkout_compra",
@@ -44,12 +44,12 @@ describe("measureMetric", () => {
 });
 
 describe("parseMetricRef", () => {
-  test("chave desconhecida não vale", () => {
+  test("an unknown key is invalid", () => {
     expect(parseMetricRef({ key: "conversao" }, "mobile")).toBeNull();
     expect(parseMetricRef(null, "mobile")).toBeNull();
   });
 
-  test("sem dispositivo, usa o da oportunidade; comparar consigo mesmo vira null", () => {
+  test("without a device, uses the opportunity's; comparing with itself becomes null", () => {
     expect(
       parseMetricRef(
         { key: "produto_carrinho", compare_to: "desktop" },

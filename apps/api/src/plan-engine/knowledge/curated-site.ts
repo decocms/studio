@@ -1,19 +1,13 @@
 /**
- * Conhecimento geral de conversão pro site inteiro (home, categoria, busca,
- * carrinho e checkout), no mesmo formato e com a mesma regra do curated.ts:
- * cada número foi conferido no texto da fonte em 16/11/2026, e `trecho` é a
- * citação literal (no idioma original) que contém o número.
- *
- * Fonte que não deu pra abrir, ou cujo número não estava no texto, ficou de
- * fora (ex.: "100 ms de atraso = −7% de conversão" da Akamai, que só circula
- * em matérias de terceiros; "+32% de rejeição de 1 s pra 3 s" do Think with
- * Google, cuja página saiu do ar).
+ * General conversion knowledge for the whole site, in the format of curated.ts:
+ * every number was checked against the source, and `trecho` is the literal quote
+ * (in the original language) containing it. Unverifiable sources were left out.
  */
 
 import type { CuratedInput } from "./curated.ts";
 
 export const SITE_ENTRIES: CuratedInput[] = [
-  // ── Categoria: lista, card, filtros, paginação ──────────────────────────
+  // ── Category: list, card, filters, pagination ──────────────────────────
   {
     id: "cur-016",
     conhecimento:
@@ -285,7 +279,7 @@ export const SITE_ENTRIES: CuratedInput[] = [
       "First, I identify the causal effect of rankings and show that they affect what consumers search, but conditional on search, do not affect purchases. Second, I quantify the effect of rankings using a sequential search model and find an average position effect of $1.92",
   },
 
-  // ── Busca ───────────────────────────────────────────────────────────────
+  // ── Search ──────────────────────────────────────────────────────────────
   {
     id: "cur-030",
     conhecimento:
@@ -399,7 +393,7 @@ export const SITE_ENTRIES: CuratedInput[] = [
       "When I changed the useit.com homepage to include a search box instead of a link, search engine use increased by 91%.",
   },
 
-  // ── Home e navegação ────────────────────────────────────────────────────
+  // ── Home and navigation ─────────────────────────────────────────────────
   {
     id: "cur-036",
     conhecimento:
@@ -498,7 +492,7 @@ export const SITE_ENTRIES: CuratedInput[] = [
       "When testing mobile e-commerce site 70% of the test subjects consistently scrolled up and down the entire page when first landing on a homepage, in order to “get an overview of my options.”",
   },
 
-  // ── Carrinho e checkout ─────────────────────────────────────────────────
+  // ── Cart and checkout ───────────────────────────────────────────────────
   {
     id: "cur-041",
     conhecimento:
@@ -666,7 +660,7 @@ export const SITE_ENTRIES: CuratedInput[] = [
       "Norton was shown to be the seal which gave customers the best sense of trust when purchasing online with ~36% of the votes.",
   },
 
-  // ── Celular ─────────────────────────────────────────────────────────────
+  // ── Mobile ──────────────────────────────────────────────────────────────
   {
     id: "cur-050",
     conhecimento:
@@ -816,7 +810,7 @@ export const SITE_ENTRIES: CuratedInput[] = [
   },
 ];
 
-/** Citação literal (idioma original) que sustenta a `evidencia` de cur-001..015. */
+/** Literal quote (original language) backing the `evidencia` of cur-001..015. */
 export const EXISTING_TRECHOS: Record<string, string> = {
   "cur-001":
     "40% Extra costs too high (shipping, tax, fees) 20% Delivery was too slow",

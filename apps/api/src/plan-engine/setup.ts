@@ -1,13 +1,13 @@
 /**
- * O que o cliente tem que dar pra análise sair inteira, lido só do que está
- * gravado (o perfil e as lacunas das análises). `get_ux_store_view` roda a
- * cada 5 s enquanto a análise anda: nada aqui chama rede nem modelo.
+ * What the customer must provide for a complete analysis, read only from what
+ * is stored. It runs every 5 s while the analysis runs, so nothing here may
+ * call the network or a model.
  */
 
 import type { GapDetail, SetupKey, SetupNeed, StoreSetup } from "./contract.ts";
 import type { SiteProfile, SourceGap } from "./types.ts";
 
-/** Como a tela nomeia a fonte de cada lacuna. */
+/** How the screen names each gap's source. */
 const GAP_SOURCE: Record<SourceGap["source"], string> = {
   bigquery: "GA4",
   heatmap: "Deco Analytics",
@@ -19,7 +19,7 @@ const GAP_SOURCE: Record<SourceGap["source"], string> = {
   github: "Código",
 };
 
-/** A ordem em que o Plan pede as coisas. */
+/** The order in which Plan asks for things. */
 const KEY_ORDER: Record<SetupKey, number> = {
   domain: 0,
   competitors: 1,

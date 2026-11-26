@@ -36,7 +36,7 @@ const v = (
 describe("advance", () => {
   const start = { lifecycle: "gerada" as const, lifecycle_log: [] };
 
-  test("anda pela tabela e registra o motivo", () => {
+  test("follows the table and records the reason", () => {
     const a = advance(start, "em_investigacao", "começou", "t1");
     const b = a && advance(a, "condicao_confirmada", "c1 confirmou", "t2");
     expect(b?.lifecycle).toBe("condicao_confirmada");
@@ -46,11 +46,11 @@ describe("advance", () => {
     ]);
   });
 
-  test("transição fora da tabela não muda nada", () => {
+  test("a transition outside the table changes nothing", () => {
     expect(advance(start, "pronta_para_experimento", "pulo", "t")).toBeNull();
   });
 
-  test("refutada pode voltar a ser investigada", () => {
+  test("a refuted one can be investigated again", () => {
     const r = { lifecycle: "refutada" as const, lifecycle_log: [] };
     expect(
       advance(r, "em_investigacao", "verificar de novo", "t"),
@@ -59,7 +59,7 @@ describe("advance", () => {
 });
 
 describe("lifecycleFromVerification", () => {
-  test("veredito → estado", () => {
+  test("verdict → state", () => {
     expect(
       lifecycleFromVerification(v("confirmada", [run("live", "confirma")])),
     ).toBe("condicao_confirmada");
@@ -73,21 +73,21 @@ describe("lifecycleFromVerification", () => {
     ).toBe("inconclusiva");
   });
 
-  test("nada rodou é falta de acesso (bloqueada), não falta de evidência", () => {
+  test("nothing ran is lack of access (blocked), not lack of evidence", () => {
     expect(lifecycleFromVerification(v("inconclusiva", []))).toBe("bloqueada");
     expect(
       lifecycleFromVerification(v("inconclusiva", [run("live", "nao_testou")])),
     ).toBe("bloqueada");
   });
 
-  test("reescrita que se confirmou na segunda volta é condição confirmada", () => {
+  test("a rewrite confirmed on the second pass is a confirmed condition", () => {
     expect(
       lifecycleFromVerification(v("reescrita", [run("live", "confirma")])),
     ).toBe("condicao_confirmada");
     expect(lifecycleFromVerification(v("reescrita", []))).toBe("inconclusiva");
   });
 
-  test("hipótese antiga sem coluna lê do veredito; sem veredito é gerada", () => {
+  test("an old hypothesis without the column reads from the verdict; without a verdict it is generated", () => {
     expect(lifecycleOf({ verification: null })).toBe("gerada");
     expect(
       lifecycleOf({ verification: v("confirmada", [run("live", "confirma")]) }),
@@ -99,7 +99,7 @@ describe("lifecycleFromVerification", () => {
 });
 
 describe("validationOf", () => {
-  test("página no ar = existência, código = implementação; teste fora da causa não conta", () => {
+  test("live page = existence, code = implementation; a test outside the cause does not count", () => {
     const out = validationOf(
       v("confirmada", [
         run("live", "confirma"),
@@ -115,7 +115,7 @@ describe("validationOf", () => {
     });
   });
 
-  test("confirma e desmente no mesmo nível é conflito; sem verificação, nada testado", () => {
+  test("confirming and disproving at the same level is a conflict; without verification, nothing tested", () => {
     expect(
       validationOf(
         v("inconclusiva", [run("live", "confirma"), run("live", "desmente")]),
@@ -133,15 +133,14 @@ describe("stopReasonOf", () => {
       tree: { testavel_na_pagina: testable },
     }) as never;
 
-  test("achou condição → causa candidata (ainda falta o A/B)", () => {
+  test("found a condition → candidate cause (the A/B is still missing)", () => {
     expect(
       stopReasonOf({}, [h("refutada"), h("condicao_confirmada")]).stop,
     ).toBe("achou_causa_candidata");
   });
 
-  // 16/11 (categoria de uma loja de moda): a tela disse "achamos uma causa candidata" com
-  // o revisor respondendo que a condição não explica a perda.
-  test("condição confirmada que o revisor diz não explicar a perda não é causa candidata", () => {
+  // Regression: a candidate cause must not show when the reviewer says the condition does not explain the loss.
+  test("a confirmed condition the reviewer says does not explain the loss is not a candidate cause", () => {
     const reviewed = (explica: "sim" | "parcial" | "nao") =>
       ({
         verification: null,
@@ -159,7 +158,7 @@ describe("stopReasonOf", () => {
     );
   });
 
-  test("dados frágeis param a investigação", () => {
+  test("fragile data stops the investigation", () => {
     expect(
       stopReasonOf({ reliability: { level: "baixa", checks: [] } }, [
         h("inconclusiva"),
@@ -167,7 +166,7 @@ describe("stopReasonOf", () => {
     ).toBe("dados_insuficientes");
   });
 
-  test("sobrou testável sem investigar = orçamento; só inconclusivas = esgotadas", () => {
+  test("testable left uninvestigated = budget; only inconclusive = exhausted", () => {
     expect(stopReasonOf({}, [h("refutada"), h("gerada")]).stop).toBe(
       "orcamento",
     );
@@ -180,7 +179,7 @@ describe("stopReasonOf", () => {
     });
   });
 
-  test("aprovar pro teste exige a hipótese pronta", () => {
+  test("approving for the test requires a ready hypothesis", () => {
     expect(canApprove("gerada")).toBe(false);
     expect(canApprove("condicao_confirmada")).toBe(false);
     expect(canApprove("relevancia_avaliada")).toBe(false);

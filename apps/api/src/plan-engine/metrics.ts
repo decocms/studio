@@ -1,15 +1,8 @@
 /**
- * A métrica de cada oportunidade, medida em código.
- *
- * Antes a oportunidade só citava números em texto ("11,1% (desktop 20,3%)") e a
- * base do dinheiro era a que o modelo escrevesse. Agora o modelo só diz QUAL
- * etapa do funil o problema afeta, em qual dispositivo e contra qual; a taxa, a
- * amostra e o gap saem daqui, dos mesmos dados que o modelo leu.
- *
- * As etapas do GA4 contam usuárias que fizeram cada evento na janela (não
- * necessariamente na ordem; ver buildPlatformFunnelQuery). As do Deco Analytics
- * são o funil da própria página analisada (PDP, home, categoria, busca):
- * visitantes → viram produto → puseram no carrinho.
+ * Each opportunity's metric, measured in code. The model only picks the funnel
+ * step, device and comparison; rate, sample and gap are computed here from the
+ * same data. GA4 steps count users per event (not necessarily in order);
+ * Deco Analytics steps are the analyzed page's own funnel.
  */
 
 import type {
@@ -38,7 +31,7 @@ export type UxMetricKey =
 interface MetricDef {
   label: string;
   source: Extract<UxSourceKind, "ga4" | "deco_analytics">;
-  /** Eventos do GA4: denominador → numerador. */
+  /** GA4 events: denominator -> numerator. */
   from?: string;
   to?: string;
 }
@@ -136,29 +129,25 @@ export const GA4_METRIC_EVENTS: string[] = [
 export const isMetricKey = (v: unknown): v is UxMetricKey =>
   typeof v === "string" && Object.hasOwn(UX_METRICS, v);
 
-/** O que o modelo escolhe: a etapa, o dispositivo e contra quem comparar. */
+/** What the model picks: the step, the device and what to compare against. */
 export interface UxMetricRef {
   key: UxMetricKey;
   device: UxDevice;
-  /** NULL = sem comparação (o problema não é "um dispositivo pior que o outro"). */
+  /** NULL = no comparison (the problem is not "one device worse than the other"). */
   compare_to: UxDevice | null;
   /**
-   * O segmento que a oportunidade culpa ("a mídia paga traz gente que não
-   * converte"). Os recortes conferem se ele converte mesmo pior que o resto,
-   * e as hipóteses têm que explicar por que pesam mais nele. NULL = a
-   * oportunidade é de todo mundo.
+   * The segment the opportunity blames; the breakdowns check it really converts
+   * worse than the rest. NULL = the opportunity applies to everyone.
    */
   segment?: SegmentRef | null;
   /**
-   * Contra o quê a perda foi medida (losses.ts). Decide o que conta como
-   * causa: perda de DISPOSITIVO precisa de causa que muda entre as telas;
-   * perda ABSOLUTA (sem comparação) aceita causa que vale pras duas; perda de
-   * SEGMENTO precisa de causa que pesa mais nele. Ausente = antes de 16/11.
+   * What the loss was measured against (losses.ts); decides which causes count.
+   * Absent = older data.
    */
   control?: LossControl;
 }
 
-/** Contra o quê uma perda foi medida. */
+/** What a loss was measured against. */
 export type LossControl = "dispositivo" | "segmento" | "absoluta";
 
 export interface SegmentRef {
@@ -168,26 +157,23 @@ export interface SegmentRef {
 
 export interface MetricSample {
   device: UxDevice;
-  /** Denominador: quem chegou na etapa de partida. */
+  /** Denominator: who reached the starting step. */
   n: number;
-  /** Numerador: quem passou pra próxima. */
+  /** Numerator: who moved on to the next step. */
   hits: number;
   rate: number;
 }
 
-/** A métrica medida. Tudo aqui é conta nossa, nada do modelo. */
+/** The measured metric. Everything here is our own computation, nothing from the model. */
 export interface MeasuredMetric extends MetricSample {
   key: UxMetricKey;
   label: string;
   source: MetricDef["source"];
   window_days: number;
   comp: MetricSample | null;
-  /**
-   * (taxa da comparação − taxa daqui) em pontos percentuais. Positivo = aqui
-   * está pior. NULL = sem comparação.
-   */
+  /** (comparison rate - rate here) in percentage points; positive = worse here. NULL = no comparison. */
   gap_pp: number | null;
-  /** A etapa pedida era do GA4, que não respondeu; mediu pelo funil da PDP. */
+  /** The requested step was a GA4 one, which did not answer; measured via the PDP funnel. */
   fallback?: true;
 }
 
@@ -201,9 +187,7 @@ function sample(
   n: number,
   hits: number,
 ): MetricSample | null {
-  // Funil aberto do GA4 pode inverter: numa loja (16/11) 2.515 fizeram
-  // begin_checkout e só 1.733 view_cart, e "carrinho → checkout" saía 145%.
-  // Taxa acima de 100% não é conta: sem amostra.
+  // An open GA4 funnel can invert (e.g. "cart -> checkout" above 100%); a rate over 100% is not a measure, so no sample.
   if (!(n > 0) || !(hits >= 0) || hits > n) return null;
   return { device, n, hits, rate: hits / n };
 }
@@ -224,20 +208,18 @@ function ga4Sample(
   return n == null || hits == null ? null : sample(device, n, hits);
 }
 
-/** Um funil de página: quem entrou → viu produto → pôs no carrinho. */
+/** A page funnel: who entered -> viewed product -> added to cart. */
 type PageFunnel = { visitors: number; viewed: number; carted: number };
 
 /**
- * De onde sai o funil da página analisada: o Deco Analytics quando ele mediu
- * (em algum dispositivo), senão o GA4. Uma fonte só pra todos os
- * dispositivos, pra que a comparação celular × computador não misture contas.
+ * Source of the analyzed page's funnel: Deco Analytics when it measured, else
+ * GA4. One source for all devices so the device comparison stays consistent.
  */
 function pageFunnelSource(evidence: DiagnosisEvidence): {
   source: "deco_analytics" | "ga4";
   funnel: (d: UxDevice) => PageFunnel | null;
 } | null {
-  // Visitantes sem nenhum "viu produto" nem "carrinho" = a loja não manda
-  // esses eventos ao Deco Analytics (numa loja, 16/11), não taxa 0%.
+  // Visitors with no "viewed product" or "cart" at all mean the store does not send those events to Deco Analytics, not a 0% rate.
   const measured = (f: PageFunnel | null | undefined): PageFunnel | null =>
     f && (f.viewed > 0 || f.carted > 0) ? f : null;
   if (evidence.pdp_behaviour.some((b) => measured(b.funnel))) {
@@ -257,7 +239,7 @@ function pageFunnelSource(evidence: DiagnosisEvidence): {
   return null;
 }
 
-/** O funil da página analisada (Deco Analytics, ou o do GA4 quando ele não tem). */
+/** The analyzed page's funnel (Deco Analytics, or GA4's when it has none). */
 function pageSample(
   evidence: DiagnosisEvidence,
   key: UxMetricKey,
@@ -273,9 +255,8 @@ function pageSample(
 }
 
 /**
- * A métrica escolhida, medida nos dados desta análise. NULL = os dados não
- * têm essa etapa nesse dispositivo. "viu produto → carrinho" sem GA4 cai pro
- * funil da PDP (a mesma etapa vista pelo Deco Analytics), e diz isso.
+ * The chosen metric measured on this analysis's data; NULL = no such step on
+ * that device. "viewed product -> cart" without GA4 falls back to the PDP funnel.
  */
 export function measureMetric(
   evidence: DiagnosisEvidence,
@@ -317,7 +298,7 @@ export function measureMetric(
   };
 }
 
-/** Resposta do modelo → referência válida, ou null. */
+/** Model answer -> valid reference, or null. */
 export function parseMetricRef(
   raw: unknown,
   opportunityDevice: UxDevice | "ambos",
@@ -339,9 +320,8 @@ export function parseMetricRef(
 }
 
 /**
- * A etapa existe nos dados deste tipo de página? O funil do Deco Analytics é
- * o da página analisada: `pdp_carrinho` só na PDP, `pagina_*` só fora dela, e
- * nada no carrinho/checkout (é da VTEX, sem heatmap). As do GA4 valem sempre.
+ * Does the step exist for this page type? Deco Analytics steps are the
+ * analyzed page's own; none on cart/checkout (VTEX-owned). GA4 steps always apply.
  */
 export function metricFitsPage(
   key: UxMetricKey,
@@ -350,13 +330,7 @@ export function metricFitsPage(
   return PAGE_METRICS[pageType].includes(key);
 }
 
-/**
- * As etapas que cada página move. Na 1ª rodada do site inteiro (numa loja,
- * 16/11) home, categoria, busca e checkout escolheram "viu produto →
- * carrinho" — a etapa da PDP —, e o mesmo sintoma apareceu 4 vezes no topo da
- * lista, cada um com o próprio dinheiro. Cada página fica com as dela; a PDP
- * com as de sempre.
- */
+/** The steps each page moves, so the same symptom is not repeated across pages. */
 const PAGE_METRICS: Record<UxPageType, UxMetricKey[]> = {
   home: [
     "sessao_produto",
@@ -386,17 +360,9 @@ const PAGE_METRICS: Record<UxPageType, UxMetricKey[]> = {
 };
 
 /**
- * As etapas que medem a PÁGINA analisada, e não o site inteiro. O funil do
- * GA4 é por plataforma, do site todo: "viu vitrine → clicou num produto" soma a
- * home, a recomendação da PDP, a busca e todas as categorias. Em 16/11 (numa loja
- * de moda) a categoria /colecao/promo foi julgada por esse número — o mesmo
- * 37,8% x 23,2% que a busca citou —, e com o sinal trocado. Uma oportunidade
- * só se mede numa etapa daqui; as outras ficam como contexto.
- *
- * - home, categoria, busca: o funil do Deco Analytics da própria rota;
- * - PDP: view_item → add_to_cart (o view_item é o evento da PDP); sem GA4, o
- *   funil da PDP no Deco Analytics (fallback de measureMetric);
- * - carrinho/checkout: os eventos do GA4 que só acontecem nele.
+ * The steps that measure the analyzed PAGE, not the whole site: GA4 funnels are
+ * per platform and site-wide, so only these can ground an opportunity; the
+ * others stay as context.
  */
 const PAGE_SCOPED: Record<UxPageType, UxMetricKey[]> = {
   home: ["pagina_produto", "pagina_carrinho"],
@@ -413,7 +379,7 @@ const PAGE_SCOPED: Record<UxPageType, UxMetricKey[]> = {
   ],
 };
 
-/** A etapa mede a página analisada (e não o site inteiro)? */
+/** Does the step measure the analyzed page (and not the whole site)? */
 export function metricMeasuresPage(
   key: UxMetricKey,
   pageType: UxPageType,
@@ -421,17 +387,12 @@ export function metricMeasuresPage(
   return PAGE_SCOPED[pageType].includes(key);
 }
 
-/** As etapas que medem a página analisada. */
+/** The steps that measure the analyzed page. */
 export function pageScopedMetrics(pageType: UxPageType): UxMetricKey[] {
   return [...PAGE_SCOPED[pageType]];
 }
 
-/**
- * O evento do GA4 que equivale ao numerador de cada etapa: é dele que sai
- * "quanto vale cada pessoa a mais que passa". As do Deco Analytics usam o
- * evento do GA4 do mesmo passo (viu produto = view_item; carrinho =
- * add_to_cart).
- */
+/** The GA4 event equivalent to each step's numerator, used to value each extra person who gets through. */
 const REACHED_EVENT: Record<UxMetricKey, string> = {
   sessao_produto: "view_item",
   produto_carrinho: "add_to_cart",
@@ -439,9 +400,9 @@ const REACHED_EVENT: Record<UxMetricKey, string> = {
   checkout_compra: "purchase",
   produto_compra: "purchase",
   pdp_carrinho: "add_to_cart",
-  // Clicar num produto da vitrine leva à PDP: vale o mesmo que ver produto.
+  // Clicking a showcase product leads to the PDP: worth the same as viewing a product.
   lista_produto: "view_item",
-  // Clicar no banner não leva necessariamente a produto: vale uma sessão.
+  // Clicking the banner does not necessarily lead to a product: worth one session.
   promo_clique: "session_start",
   vercarrinho_checkout: "begin_checkout",
   checkout_frete: "add_shipping_info",
@@ -452,10 +413,8 @@ const REACHED_EVENT: Record<UxMetricKey, string> = {
 };
 
 /**
- * Quantas de quem chega ao numerador da etapa compram, no dispositivo: compra
- * ÷ o evento do numerador, no funil do GA4 da plataforma. Era o modelo que
- * escrevia isto, e em 16/11 aplicou "compra ÷ carrinho" (10,8%) a um clique na
- * vitrine, que está duas etapas antes do carrinho. NULL = sem GA4.
+ * How many of those reaching the step's numerator buy, on the device:
+ * purchase / the numerator event in the platform's GA4 funnel. NULL = no GA4.
  */
 export function purchaseRateAfter(
   evidence: DiagnosisEvidence,
@@ -474,7 +433,7 @@ export function purchaseRateAfter(
   return { rate: Math.min(1, bought / reached), event };
 }
 
-/** Os nomes das etapas pro prompt, só as que existem neste tipo de página. */
+/** Step names for the prompt, only those that exist for this page type. */
 export function metricsForPrompt(pageType: UxPageType = "pdp"): string {
   return (Object.entries(UX_METRICS) as Array<[UxMetricKey, MetricDef]>)
     .filter(([key]) => metricFitsPage(key, pageType))

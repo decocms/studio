@@ -38,8 +38,8 @@ const today = makeEvidence({
   pdp_behaviour: [behaviour(["Product/ProductDetails", "Product/ShelfLook"])],
 });
 
-describe("assinatura da página", () => {
-  test("é do template: outro produto (outras posições) dá a mesma", () => {
+describe("page signature", () => {
+  test("is the template's: another product (other positions) gives the same one", () => {
     const other = makeEvidence({
       captures: [
         capture({
@@ -56,7 +56,7 @@ describe("assinatura da página", () => {
     );
   });
 
-  test("seção nova, parte que some ou barra fixa nova mudam a assinatura", () => {
+  test("a new section, a part that disappears or a new fixed bar change the signature", () => {
     const base = pageSignature(today, "mobile");
     const newSection = makeEvidence({
       captures: [capture()],
@@ -78,7 +78,7 @@ describe("assinatura da página", () => {
     expect(pageSignature(sticky, "mobile")).not.toBe(base);
   });
 
-  test("sem captura nem seção não há o que assinar", () => {
+  test("without capture or section there is nothing to sign", () => {
     expect(
       pageSignature(
         makeEvidence({ captures: [], pdp_behaviour: [] }),
@@ -88,7 +88,7 @@ describe("assinatura da página", () => {
   });
 });
 
-describe("veredito vencido", () => {
+describe("expired verdict", () => {
   const entry = (assinatura: string | null): KnowledgeEntry => ({
     id: "veredito:x",
     conhecimento: "Não é o caso nesta loja: o Leve o Look toma a 1ª tela",
@@ -111,7 +111,7 @@ describe("veredito vencido", () => {
     updated_at: "2026-11-16T00:00:00Z",
   });
 
-  test("a página mudou: vence, perde peso e vai pro prompt como histórico", () => {
+  test("the page changed: it expires, loses weight and goes to the prompt as history", () => {
     const [stale, same, other, none] = markStale(
       [
         entry("pdp|mobile|deadbeef"),
@@ -123,7 +123,7 @@ describe("veredito vencido", () => {
     );
     expect(stale!.stale).toBe(true);
     expect(same!.stale).toBeUndefined();
-    // Outra página (ou sem assinatura): não dá pra dizer, não mexe.
+    // Another page (or no signature): cannot tell, leave it alone.
     expect(other!.stale).toBeUndefined();
     expect(none!.stale).toBeUndefined();
     const now = Date.parse("2026-11-19T00:00:00Z");

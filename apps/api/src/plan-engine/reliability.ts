@@ -1,18 +1,15 @@
 /**
- * "Dá pra confiar nesses dados?" — a avaliação de cada oportunidade antes de
- * ela avançar. Regra do motor: nenhuma oportunidade vai pra frente sem isto.
+ * "Can we trust this data?": each opportunity's assessment before it advances;
+ * none moves forward without it. Fully deterministic. Checks:
+ * 1. Sample: too few people on the step cannot support a rate.
+ * 2. Noise: does the device difference fit in the 95% interval?
+ * 3. Sources: did a source the opportunity cites fail in this analysis?
+ * 4. Tracking: do the numbers contradict each other?
+ * 5. Fair comparison: how much of the gap traffic mix explains, and whether it
+ *    repeats across channels, new x returning and day by day (segments.ts).
+ * 6. Window: 7 days miss seasonality (warning only).
  *
- * Tudo determinístico. As checagens:
- * 1. Amostra: poucas pessoas na etapa não sustentam taxa nenhuma.
- * 2. Ruído: a diferença entre os dispositivos cabe no intervalo de 95%?
- * 3. Fontes: alguma fonte que a oportunidade cita falhou nesta análise?
- * 4. Tracking: os números se contradizem (mais carrinho que produto visto,
- *    GA4 e Deco Analytics contando coisas de tamanhos muito diferentes)?
- * 5. Comparação justa: quanto do gap o mix de tráfego explica, e se o gap
- *    se repete nos canais, em nova × recorrente e dia a dia (segments.ts).
- * 6. Janela: 7 dias não pegam sazonalidade (só aviso).
- *
- * Nível: algo que bloqueia → baixa; alguma atenção → média; senão alta.
+ * Level: something blocking -> low; some attention -> medium; otherwise high.
  */
 
 import type { MeasuredMetric, UxMetricRef } from "./metrics.ts";
@@ -43,9 +40,9 @@ export interface ReliabilityCheck {
     | "premissa"
     | "janela";
   severity: ReliabilitySeverity;
-  /** O que foi checado, curto ("Amostra"). */
+  /** What was checked, short ("Amostra"). */
   label: string;
-  /** O resultado, com número. */
+  /** The result, with a number. */
   text: string;
 }
 
@@ -56,11 +53,11 @@ export interface DataReliability {
   checks: ReliabilityCheck[];
 }
 
-/** Abaixo disso a taxa não sustenta nada. */
+/** Below this the rate supports nothing. */
 export const MIN_SAMPLE = 400;
-/** Abaixo disso a taxa vale, com cuidado. */
+/** Below this the rate counts, with care. */
 const SOLID_SAMPLE = 2_000;
-/** GA4 x Deco Analytics contando a mesma etapa: fora desta razão, algo mede errado. */
+/** GA4 x Deco Analytics counting the same step: outside this ratio, something measures wrong. */
 const MAX_SOURCE_RATIO = 3;
 
 const GAP_KINDS: Record<SourceGap["source"], UxSourceKind | null> = {
@@ -89,9 +86,9 @@ export function assessReliability(input: {
   sources: UxSourceRef[];
   metric: UxMetricRef | null;
   measured: MeasuredMetric | null;
-  /** Os recortes do gap (segments.ts). Ausente = sem recorte. */
+  /** The gap's breakdowns (segments.ts). Absent = no breakdown. */
   drilldown?: Drilldown | null;
-  /** O segmento que a oportunidade culpa, contra o resto (segments.ts). */
+  /** The segment the opportunity blames, against the rest (segments.ts). */
   premise?: SegmentPremise | null;
 }): DataReliability {
   const { evidence, measured } = input;
@@ -169,11 +166,7 @@ function sampleChecks(m: MeasuredMetric): ReliabilityCheck[] {
     );
     const margin = 1.96 * se;
     const noise = Math.abs(diff) <= margin;
-    // O sinal: o dispositivo que a oportunidade diz perder tem que perder.
-    // Em 16/11 (categoria de uma loja de moda) "o celular perde no card" foi medida com o
-    // celular clicando 37,8% contra 23,2% do computador, saiu "média" e
-    // valia R$ 387 mil/mês. Diferença fora do ruído pro lado errado é o
-    // dado dizendo o contrário.
+    // The device the opportunity says loses must actually lose; a significant difference the other way is the data saying the opposite.
     const reversed = !noise && diff < 0;
     out.push({
       code: "ruido",
@@ -249,9 +242,7 @@ function trackingChecks(
     }
     const pdp = evidence.pdp_behaviour.find((b) => b.device === device)?.funnel;
     const viewed = count("view_item");
-    // Só na PDP o GA4 "vendo produto" e o Deco Analytics "visitantes da
-    // página" medem a mesma coisa; numa categoria, a comparação não é
-    // contradição nenhuma (e o texto dizia "visitantes da PDP").
+    // Only on the PDP do GA4 "viewing product" and Deco Analytics "page visitors" measure the same thing; elsewhere the comparison is no contradiction.
     if ((evidence.page_type ?? "pdp") !== "pdp") continue;
     if (funnel && pdp && pdp.visitors > 0 && viewed > 0) {
       const ratio = viewed / pdp.visitors;
@@ -275,7 +266,7 @@ const DIM_LABEL = {
   dia: "dias",
 };
 
-/** Mix de tráfego e consistência do gap nos recortes. */
+/** Traffic mix and gap consistency across breakdowns. */
 function fairnessChecks(d: Drilldown): ReliabilityCheck[] {
   const out: ReliabilityCheck[] = [];
   const mix = mixExplainedShare(d);
@@ -312,7 +303,7 @@ function fairnessChecks(d: Drilldown): ReliabilityCheck[] {
   return out;
 }
 
-/** Nome dos segmentos pra frase. */
+/** Segment names for the sentence. */
 export const SEGMENT_WORD: Record<string, string> = {
   midia_paga: "mídia paga",
   social_pago: "social pago",
@@ -326,12 +317,12 @@ export const SEGMENT_WORD: Record<string, string> = {
   recorrente: "cliente recorrente",
 };
 
-/** Mais que isso de diferença de tela no segmento = a diferença é dele. */
+/** A larger screen difference than this within the segment means the difference is the segment's. */
 const SEGMENT_SPECIFIC = 1.25;
 
 /**
- * A oportunidade culpa um segmento: ele converte mesmo pior que o resto? E a
- * diferença de tela é dele, ou aparece em todo mundo? Exportado pra teste.
+ * The opportunity blames a segment: does it really convert worse than the
+ * rest, and is the screen difference its own? Exported for tests.
  */
 export function premiseChecks(p: SegmentPremise): ReliabilityCheck[] {
   const name = SEGMENT_WORD[p.key] ?? p.key;

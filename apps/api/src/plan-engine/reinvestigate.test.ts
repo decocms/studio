@@ -14,7 +14,7 @@ const h = (over: Partial<UxHypothesis>): UxHypothesis =>
     ...over,
   }) as UxHypothesis;
 
-// PDP de uma loja de moda (16/11): o código mostrou que o "comprar" abre uma gaveta.
+// A PDP where the code showed that "comprar" opens a drawer.
 const refuted = h({
   verification: {
     verdict: "desmentida",
@@ -26,8 +26,8 @@ const refuted = h({
   },
 });
 
-describe("o que a verificação viu volta como fato", () => {
-  test("só desmentida vira fato; é leitura (não medida), da tela da hipótese", () => {
+describe("what verification saw comes back as a fact", () => {
+  test("only a refuted one becomes a fact; it is a reading (not measured), from the hypothesis's screen", () => {
     const facts = verdictFacts([refuted, h({ id: "o1:h2", title: "outra" })]);
     expect(facts).toEqual([
       {
@@ -42,7 +42,7 @@ describe("o que a verificação viu volta como fato", () => {
     ]);
   });
 
-  test("o fato novo entra no fim do livro, sem mexer nos ids antigos", () => {
+  test("the new fact goes at the end of the book, without touching old ids", () => {
     const old: UxFact[] = [
       {
         id: "F1",
@@ -67,7 +67,7 @@ describe("o que a verificação viu volta como fato", () => {
     expect(out.map((f) => f.id)).toEqual(["F1", "F242", "F243"]);
   });
 
-  test("já tentado: a desmentida e a inconclusiva, com o motivo", () => {
+  test("already tried: the refuted and the inconclusive, with the reason", () => {
     const inconclusive = h({
       id: "o1:h2",
       title: "as setas não respondem",

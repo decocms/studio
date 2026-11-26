@@ -1,4 +1,4 @@
-/** Normaliza o que o usuário ou o modelo escreveu num domínio limpo. */
+/** Normalizes what the user or the model wrote into a clean domain. */
 export function normalizeDomain(raw: string): string | null {
   const s = raw
     .trim()

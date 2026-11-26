@@ -1,8 +1,8 @@
 /**
- * Sitemap como último recurso do benchmark: loja cuja home e vitrines não
- * mostram link de produto reconhecível quase sempre publica as PDPs e as
- * categorias no sitemap. `fetch` simples (sem navegador), com teto de tamanho
- * e de pedidos: cada pedido conta no orçamento de subrequests da instância.
+ * Sitemap as the benchmark's last resort: stores whose home and listings show
+ * no recognizable product link usually publish PDPs and categories there.
+ * Plain `fetch` (no browser), with size and request caps because each request
+ * counts against the instance's subrequest budget.
  */
 
 import { USER_AGENTS } from "./browser.ts";
@@ -10,15 +10,15 @@ import { sameStore } from "./domain-check.ts";
 import { classifyPath } from "./store-discovery.ts";
 
 const FETCH_TIMEOUT_MS = 6_000;
-/** Sitemap de loja grande passa de 10 MB; as primeiras URLs bastam. */
+/** A large store's sitemap exceeds 10 MB; the first URLs are enough. */
 const MAX_BYTES = 1_500_000;
-/** robots + até 2 sitemaps do topo + até 2 filhos de um índice. */
+/** robots + up to 2 top-level sitemaps + up to 2 children of an index. */
 const MAX_FETCHES = 5;
 const MAX_CANDIDATES = 6;
 
 export type SitemapWant = "pdp" | "listing";
 
-/** As linhas `Sitemap:` do robots.txt. */
+/** The `Sitemap:` lines of robots.txt. */
 export function sitemapsFromRobots(robots: string): string[] {
   const out: string[] = [];
   for (const line of robots.split(/\r?\n/)) {
@@ -28,7 +28,7 @@ export function sitemapsFromRobots(robots: string): string[] {
   return out;
 }
 
-/** As `<loc>` de um sitemap; `index` = é um índice de outros sitemaps. */
+/** A sitemap's `<loc>`s; `index` = it is an index of other sitemaps. */
 export function parseSitemap(xml: string): {
   index: boolean;
   locs: string[];
@@ -42,16 +42,13 @@ export function parseSitemap(xml: string): {
   return { index: /<sitemapindex[\s>]/i.test(xml), locs };
 }
 
-/** Filho de índice cujo nome diz o que tem dentro. */
+/** Index child whose name says what it holds. */
 const CHILD_HINT: Record<SitemapWant, RegExp> = {
   pdp: /product|produto/i,
   listing: /categor|departa|collection|colec|department|brand|marca/i,
 };
 
-/**
- * Os filhos de um índice a seguir: os que o nome indica primeiro; sem nenhum
- * indicado, os primeiros (índice genérico, `sitemap-1.xml`).
- */
+/** The index children to follow: name-hinted ones first; with none, the first ones (generic index, `sitemap-1.xml`). */
 export function pickChildSitemaps(
   locs: readonly string[],
   want: SitemapWant,
@@ -69,11 +66,7 @@ export function pickChildSitemaps(
   ].slice(0, max);
 }
 
-/**
- * As URLs de uma lista de sitemap que servem: da loja e com cara de PDP (ou
- * de vitrine). Num sitemap cujo nome já diz "produto", toda URL da loja vale —
- * a PDP é confirmada ao abrir de qualquer jeito.
- */
+/** The URLs in a sitemap list that are useful: the store's own and PDP-like (or listing-like); in a product-named sitemap any store URL counts since the PDP is confirmed on open. */
 export function pickPageUrls(
   locs: readonly string[],
   host: string,
@@ -102,7 +95,7 @@ export function pickPageUrls(
   return out;
 }
 
-/** O corpo até `max` bytes; o resto é descartado sem baixar. */
+/** The body up to `max` bytes; the rest is discarded without downloading. */
 async function readCapped(res: Response, max: number): Promise<string> {
   if (!res.body) return "";
   const reader = res.body.getReader();
@@ -126,11 +119,7 @@ async function readCapped(res: Response, max: number): Promise<string> {
   return new TextDecoder().decode(all);
 }
 
-/**
- * Candidatas do sitemap da loja: `Sitemap:` do robots.txt, senão
- * `/sitemap.xml`; um índice é seguido um nível. Nunca lança: sem sitemap,
- * lista vazia.
- */
+/** Candidates from the store's sitemap: robots.txt `Sitemap:`, else `/sitemap.xml`; an index is followed one level. Never throws: no sitemap, empty list. */
 export async function sitemapCandidates(
   origin: string,
   want: SitemapWant,
@@ -158,9 +147,7 @@ export async function sitemapCandidates(
 
   const host = new URL(origin).hostname;
   const robots = await get(`${origin}/robots.txt`);
-  // O robots.txt pode apontar pra outro host (um subdomínio de clube, um
-  // CDN): esse não lista as páginas desta loja. O `/sitemap.xml` da própria
-  // loja entra sempre como reserva.
+  // robots.txt may point to another host that does not list this store's pages; the store's own `/sitemap.xml` is always the fallback.
   const listed = (robots ? sitemapsFromRobots(robots) : []).filter((u) => {
     try {
       return sameStore(new URL(u).hostname, host);

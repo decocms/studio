@@ -1,23 +1,7 @@
 /**
- * Onde a página perde gente — medido em código, antes de qualquer modelo.
- *
- * Até 16/11 a oportunidade era escrita pelo modelo: um título livre e uma
- * etapa do funil escolhida de uma lista. O título saía como CAUSA ("o card não
- * mostra desconto numa página 100% promoção"), a etapa era do site inteiro e
- * com o sinal trocado (o celular clicava MAIS que o computador), e as
- * hipóteses, escritas pra etapa e não pro título, falavam de outra coisa (o
- * filtro que não fica fixo). Nada no código ligava as três.
- *
- * Agora a oportunidade é uma destas perdas, escolhida em código
- * (loss-opportunities.ts): só as com comparação, com a mistura de público
- * descontada. Três jeitos de medir uma perda, e cada um decide o que é causa:
- *
- * - "absoluta": quanto da etapa se perde num dispositivo, sem comparação. Não
- *   vira oportunidade (não diz se a perda é grande); fica como limite.
- * - "dispositivo": a etapa é pior num dispositivo que no outro, fora do ruído.
- *   Só explica uma causa que MUDA entre as telas.
- * - "segmento": um canal (ou nova × recorrente) converte pior que o resto, no
- *   mesmo dispositivo. Só explica uma causa que pesa MAIS nele.
+ * Where the page loses people, measured in code before any model. Each loss is
+ * "absolute" (limit only), "device" (worse on one device) or "segment" (a
+ * channel or new x returning converts worse than the rest).
  */
 
 import {
@@ -34,41 +18,33 @@ import { type SegmentPremise, segmentPremise } from "./segments.ts";
 import type { DiagnosisEvidence, UxDevice, UxPageType } from "./types.ts";
 
 export interface MeasuredLoss {
-  /** "L1", "L2"… — é por isto que o modelo escolhe. */
+  /** "L1", "L2"... - this is what the model picks by. */
   id: string;
   key: UxMetricKey;
   control: LossControl;
   device: UxDevice;
-  /** O outro dispositivo, só na perda de dispositivo. */
+  /** The other device, only on the device loss. */
   compare_to: UxDevice | null;
   segment: SegmentRef | null;
-  /** A etapa no dispositivo (com a comparação, na perda de dispositivo). */
+  /** The stage on the device (with the comparison, on the device loss). */
   measured: MeasuredMetric;
-  /** O segmento contra o resto. Só na perda de segmento. */
+  /** The segment against the rest. Only on the segment loss. */
   premise: SegmentPremise | null;
-  /**
-   * A perda em pp: o gap (dispositivo), a distância pro resto (segmento) ou
-   * quanto não passa da etapa (absoluta).
-   */
+  /** The loss in pp: the gap (device), distance to the rest (segment) or the stage drop (absolute). */
   loss_pp: number;
-  /** Pessoas que não passaram por causa da perda, na janela. */
+  /** People who did not get through because of the loss, in the window. */
   lost: number;
-  /** A perda numa frase, com os números. É o título da oportunidade. */
+  /** The loss in one sentence, with the numbers. It is the opportunity title. */
   title: string;
 }
 
-/** Quantas perdas de segmento por etapa e dispositivo (as maiores). */
+/** How many segment losses per stage and device (the largest ones). */
 const MAX_SEGMENT_LOSSES = 2;
 
-/**
- * O segmento converte no máximo isto do resto pra ser uma perda dele. Numa loja de moda
- * (16/11) o checkout tinha 30 recortes "fora do ruído" com 1–2 pp de
- * distância: amostra grande deixa tudo significativo, e nada disso é um
- * problema de canal.
- */
+/** The segment must convert at most this share of the rest to be a loss of its own. */
 const SEGMENT_MAX_RATIO = 0.85;
 
-/** Recortes que não são um público: sobra de classificação. */
+/** Cuts that are not an audience: classification leftovers. */
 const NOT_A_SEGMENT = new Set(["outros", "sem_dado"]);
 
 const DEVICE_WORD: Record<UxDevice, string> = {
@@ -81,7 +57,7 @@ const OTHER: Record<UxDevice, UxDevice> = {
   desktop: "mobile",
 };
 
-/** Quem está na etapa, o que é passar, o que é não passar — pra frase. */
+/** Who is in the stage, what passing is, what not passing is - for the sentence. */
 const PHRASES: Partial<
   Record<UxMetricKey, { who: string; pass: string; miss: string }>
 > = {
@@ -140,7 +116,7 @@ const PHRASES: Partial<
 const pct = (r: number) =>
   `${(r * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
-/** As frases da etapa; a rota entra quando a página tem uma (categoria, busca). */
+/** The stage sentences; the route is included when the page has one (category, search). */
 function phrases(key: UxMetricKey, route: string | null) {
   const p = PHRASES[key];
   if (!p) {
@@ -156,7 +132,7 @@ function phrases(key: UxMetricKey, route: string | null) {
     : p;
 }
 
-/** A diferença está fora do intervalo de 95%? */
+/** Is the difference outside the 95% interval? */
 function beyondNoise(a: number, na: number, b: number, nb: number): boolean {
   const se = Math.sqrt((a * (1 - a)) / na + (b * (1 - b)) / nb);
   return Math.abs(a - b) > 1.96 * se;
@@ -164,11 +140,7 @@ function beyondNoise(a: number, na: number, b: number, nb: number): boolean {
 
 const ROUTED: UxPageType[] = ["home", "categoria", "busca"];
 
-/**
- * As perdas da página analisada, nas etapas que medem a página (não o site).
- * Ordem estável: etapa, dispositivo (celular primeiro), absoluta, dispositivo,
- * segmento. Exportado pra teste.
- */
+/** The analyzed page's losses, in stable order (stage, device, kind). Exported for tests. */
 export function findLosses(evidence: DiagnosisEvidence): MeasuredLoss[] {
   const pageType = evidence.page_type ?? "pdp";
   const route =
@@ -238,7 +210,7 @@ export function findLosses(evidence: DiagnosisEvidence): MeasuredLoss[] {
   return out.map((l, i) => ({ ...l, id: `L${i + 1}` }));
 }
 
-/** Os segmentos que convertem pior que o resto, no mesmo dispositivo. */
+/** The segments that convert worse than the rest, on the same device. */
 function segmentLosses(
   evidence: DiagnosisEvidence,
   abs: MeasuredMetric,
@@ -282,7 +254,7 @@ function segmentLosses(
   return found.sort((a, b) => b.lost - a.lost).slice(0, MAX_SEGMENT_LOSSES);
 }
 
-/** Uma frase sobre o tipo de comparação, pra hipóteses, revisão e dossiê. */
+/** A sentence about the comparison type, for hypotheses, review and dossier. */
 export function controlNote(
   control: LossControl | undefined,
   segmentKey?: string | null,

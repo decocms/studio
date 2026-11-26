@@ -1,11 +1,6 @@
 /**
- * Checagem só de dados — pra hipótese que não se confere na página.
- *
- * "O celular recebe mais tráfego de campanha, que converte menos em qualquer
- * tela" não tem botão pra inspecionar: quem decide é o gap ajustado pela
- * mistura de canais (segments.ts). Se o gap some com a mistura do outro
- * dispositivo, a explicação se sustenta; se quase nada some e o gap se repete
- * canal a canal, ela cai. Sem modelo e sem navegador.
+ * Data-only check for hypotheses that cannot be verified on the page: the
+ * decider is the gap adjusted for the channel mix (segments.ts). No model, no browser.
  */
 
 import { SEGMENT_WORD } from "./reliability.ts";
@@ -17,14 +12,14 @@ import {
 import type { UxHypothesis, UxOpportunity } from "./types.ts";
 import type { CheckRun, HypothesisVerification } from "./verify/types.ts";
 
-/** No outro dispositivo, abaixo disso do resto = o segmento converte menos lá também. */
+/** On the other device, below this share of the rest = the segment converts less there too. */
 const SEGMENT_WORSE = 0.85;
-/** No outro dispositivo, a partir disso do resto = converte igual. */
+/** On the other device, from this share of the rest = converts the same. */
 const SEGMENT_SAME = 0.95;
 
 const DEVICE_WORD = { mobile: "celular", desktop: "computador" } as const;
 
-/** Troca o que o teste afirma pela pergunta do segmento. */
+/** Replaces what the test asserts with the segment question. */
 function withCheck(
   v: HypothesisVerification,
   claim: string,
@@ -44,9 +39,9 @@ function withCheck(
   };
 }
 
-/** A partir daqui o mix explica a maior parte do gap. */
+/** From here the mix explains most of the gap. */
 const EXPLAINS = 0.5;
-/** Abaixo disso o mix quase não explica. */
+/** Below this the mix barely explains it. */
 const BARELY = 0.2;
 
 const pp = (v: number) =>
@@ -60,7 +55,7 @@ export function trafficCheck(
   h: Pick<UxHypothesis, "device" | "confidence" | "verification">,
   opportunity: Pick<UxOpportunity, "drilldown" | "metric" | "measured">,
   now: string,
-  /** Os recortes do GA4 (evidence.segments), pra oportunidade de um segmento. */
+  /** GA4 cuts (evidence.segments), for a segment opportunity. */
   segments?: FunnelSegmentList,
 ): HypothesisVerification {
   const d = opportunity.drilldown;
@@ -108,10 +103,7 @@ export function trafficCheck(
         : {}),
     };
   };
-  // Oportunidade de um segmento: "esse canal traz gente de baixa intenção"
-  // se decide comparando o segmento com o resto nas DUAS telas. Em 16/11
-  // (numa loja de moda) a oportunidade de social pago não tinha comparação de
-  // tela, a checagem só sabia usar o mix, e a hipótese ficou "bloqueada".
+  // A segment opportunity is decided by comparing the segment with the rest on BOTH screens, not only by the mix.
   const seg = opportunity.metric?.segment;
   const p = seg
     ? segmentPremise(

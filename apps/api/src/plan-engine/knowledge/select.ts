@@ -1,11 +1,8 @@
 /**
- * Quais entradas da base vão pro prompt, e como.
- *
- * O prompt não aguenta a base inteira, e nem deve: entra o que vale pra parte
- * da página em questão, a loja primeiro (um A/B desta loja vale mais que
- * qualquer estudo), pesado pelo tipo de fonte × confiabilidade × idade. Cada
- * entrada ganha um rótulo [K1], [K2]… que o modelo cita; rótulo que não estava
- * no bloco é descartado no parse (`resolveCitations`).
+ * Which knowledge entries go into the prompt: what applies to the page part,
+ * this store first, weighted by source type × reliability × age. Each entry
+ * gets a [K1], [K2]… label the model cites; labels not in the block are
+ * dropped on parse (`resolveCitations`).
  */
 
 import { PAGE_TYPES } from "../page-types.ts";
@@ -18,9 +15,9 @@ import {
 } from "./types.ts";
 
 export interface KnowledgeBlock {
-  /** Texto pro prompt; vazio = nada a dizer. */
+  /** Prompt text; empty = nothing to say. */
   text: string;
-  /** "K3" → entrada. */
+  /** "K3" → entry. */
   byLabel: Map<string, KnowledgeEntry>;
 }
 
@@ -32,7 +29,7 @@ const isStoreEntry = (e: KnowledgeEntry) => STORE_ORIGINS.has(e.origem);
 export function knowledgeScore(e: KnowledgeEntry, now = Date.now()): number {
   const age = (now - Date.parse(e.updated_at)) / DAY_MS;
   const recency = isStoreEntry(e) && Number.isFinite(age) && age > 90 ? 0.7 : 1;
-  // Veredito de uma página que mudou desde então: histórico, peso baixo.
+  // Verdict from a page that has since changed: history, low weight
   const validity = e.stale ? 0.3 : 1;
   return (
     SOURCE_WEIGHT[e.tipo_fonte] *
@@ -42,7 +39,7 @@ export function knowledgeScore(e: KnowledgeEntry, now = Date.now()): number {
   );
 }
 
-/** Uma linha por entrada, curta, com o que importa pra pesar. */
+/** One short line per entry, with what matters for weighing. */
 export function knowledgeLine(label: string, e: KnowledgeEntry): string {
   const result = e.resultado ? ` (${e.resultado})` : "";
   const parts = [
@@ -59,12 +56,9 @@ const MAX_LINE = 360;
 
 export function selectKnowledge(opts: {
   entries: KnowledgeEntry[];
-  /** Partes da página em jogo. Vazio = todas. */
+  /** Page parts in play. Empty = all. */
   areas: UxArea[];
-  /**
-   * O tipo de página analisado: "a página inteira" (`pagina_geral`) puxa as
-   * partes dela. Ausente = PDP.
-   */
+  /** The analyzed page type: "the whole page" (`pagina_geral`) pulls in its parts. Absent = PDP. */
   pageType?: UxPageType;
   maxStore?: number;
   maxCurated?: number;
@@ -78,9 +72,7 @@ export function selectKnowledge(opts: {
   if (areas.has("pagina_geral")) {
     for (const a of PAGE_TYPES[opts.pageType ?? "pdp"].areas) areas.add(a);
   }
-  // Bate direto numa parte em jogo (não só pelo coringa `pagina_geral`): com
-  // a base do site inteiro (16/11) o coringa sozinho trazia estudo de
-  // checkout pra hipótese de filtro.
+  // Match a part in play directly, not only via the `pagina_geral` wildcard, which alone pulls in unrelated studies
   const direct = (e: KnowledgeEntry) => e.areas.some((a) => areas.has(a));
   const fits = (e: KnowledgeEntry) =>
     e.active &&
@@ -92,10 +84,7 @@ export function selectKnowledge(opts: {
       (a, b) => knowledgeScore(b, opts.now) - knowledgeScore(a, opts.now),
     );
   const candidates = opts.entries.filter(fits);
-  // O que a LOJA aprendeu entra sempre, de qualquer parte da página: são
-  // poucas entradas e as que mais importam. Em 16/11 (numa loja de moda) "o Leve
-  // o Look toma a primeira tela" voltou desmentido de novo porque o veredito
-  // era de "leve_o_look" e a oportunidade, de "tamanho". A parte só ordena.
+  // What the STORE learned always enters, from any page part: few entries, the most relevant ones; the part only orders
   const storeAll = opts.entries.filter((e) => e.active && isStoreEntry(e));
   const store = [
     ...ranked(storeAll.filter(fits)),
@@ -124,7 +113,7 @@ export function selectKnowledge(opts: {
   return { text: lines.join("\n"), byLabel };
 }
 
-/** Uma de cada categoria primeiro, depois o resto pela nota. */
+/** One of each category first, then the rest by score. */
 function diversify(list: KnowledgeEntry[], max: number): KnowledgeEntry[] {
   const out: KnowledgeEntry[] = [];
   const seen = new Set<string>();
@@ -142,7 +131,7 @@ function diversify(list: KnowledgeEntry[], max: number): KnowledgeEntry[] {
   return out;
 }
 
-/** A seção do prompt, com a regra de como pesar. Vazio sem entradas. */
+/** The prompt section, with the rule for weighing. Empty without entries. */
 export function knowledgeForPrompt(block: KnowledgeBlock): string {
   if (!block.text) return "";
   return `## O que já se sabe (base de conhecimento)
@@ -150,7 +139,7 @@ Pese pelo tipo: A/B desta loja > verificado nesta loja > estudo > A/B de outra l
 ${block.text}`;
 }
 
-/** Rótulos citados pelo modelo → só os que estavam no bloco, sem repetir. */
+/** Labels cited by the model → only those that were in the block, without repeats. */
 export function resolveCitations(
   raw: unknown,
   block: KnowledgeBlock,
