@@ -1,16 +1,13 @@
 import { authClient } from "@/lib/auth-client";
-import { supportsCodex } from "@decocms/shared/harness/codex-models";
 import { useQuery } from "@tanstack/react-query";
 import { supportsClaudeCode } from "@decocms/shared/sdk/types/ai-providers";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
-import {
-  useOrgFlag,
-  useSandboxOnlyChats,
-} from "@/hooks/use-organization-settings";
+import { useSandboxOnlyChats } from "@/hooks/use-organization-settings";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
 import { useOptionalChatTask } from "./context";
+import { useNewChatHarness } from "./use-new-chat-harness";
 import {
   resolveNeedsRuntimeSetup,
   type RuntimeSetupNeed,
@@ -28,7 +25,8 @@ export function useNeedsRuntimeSetup(): RuntimeSetupNeed {
   const allKeys = useHostedAiProviderKeys();
   const task = useOptionalChatTask();
   const sandboxOnlyChats = useSandboxOnlyChats();
-  const codexChats = useOrgFlag("chat_harness_codex");
+  // A new chat goes to Codex only on a Codex credential, so it needs no setup.
+  const codexChat = useNewChatHarness() === "codex";
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const userId = session?.user.id ?? "";
@@ -39,23 +37,14 @@ export function useNeedsRuntimeSetup(): RuntimeSetupNeed {
   const subscription = useQuery({
     queryKey: KEYS.claudeSubscription(org.id, userId),
     queryFn: () => studio.call("CLAUDE_SUBSCRIPTION_STATUS", {}),
-    enabled: sandboxOnlyChats && !codexChats && !hasClaudeCodeKey,
+    enabled: sandboxOnlyChats && !codexChat && !hasClaudeCodeKey,
   });
   const copilot = useQuery({
     queryKey: KEYS.githubCopilot(org.id),
     queryFn: () => studio.call("GITHUB_COPILOT_STATUS", {}),
-    enabled: sandboxOnlyChats && !codexChats && !hasClaudeCodeKey,
+    enabled: sandboxOnlyChats && !codexChat && !hasClaudeCodeKey,
   });
-
-  const codex = useQuery({
-    queryKey: KEYS.codexSubscription(org.id, userId),
-    queryFn: () => studio.call("CODEX_SUBSCRIPTION_STATUS", {}),
-    enabled: sandboxOnlyChats && codexChats,
-  });
-  if (sandboxOnlyChats && codexChats && !task?.isThreadLocked) {
-    const hasKey = allKeys.some((key) => supportsCodex(key.providerId));
-    return hasKey || codex.data?.connected !== false ? null : "codex-provider";
-  }
+  if (codexChat && !task?.isThreadLocked) return null;
   return resolveNeedsRuntimeSetup({
     isThreadLocked: task?.isThreadLocked ?? false,
     hasCloudProviderKeys: allKeys.length > 0,

@@ -664,10 +664,7 @@ export const settings = {
   "settings.agentTools.chatHarnessCodexTitle":
     "Use Codex for new sandbox chats",
   "settings.agentTools.chatHarnessCodexDescription":
-    "Runs new sandbox chats with Codex. Link your ChatGPT subscription in AI Providers or connect a Responses API provider. Existing chats keep their runtime.",
-  "settings.codexSubscription.setupHeading": "Connect Codex",
-  "settings.codexSubscription.setupDescription":
-    "Link your ChatGPT subscription in Settings → AI Providers, or connect a provider with an OpenAI Responses API endpoint.",
+    "New chats run with Codex for members who link their ChatGPT subscription in AI Providers, or for everyone when a Responses API provider is connected. Other chats use Claude Code. Existing chats keep their runtime.",
   "settings.codexSubscription.connect": "Link",
   "settings.codexSubscription.connected": "ChatGPT subscription linked",
   "settings.codexSubscription.disconnect": "Disconnect",

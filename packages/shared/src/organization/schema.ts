@@ -267,7 +267,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Use Codex for new sandbox chats. Off by default; requires hosted sandboxes and a ChatGPT subscription or Responses API provider. Existing chats keep their pinned runtime.",
+      "Use Codex for new sandbox chats of members with a Codex credential: their linked ChatGPT subscription, or an org Responses API provider other than the deco gateway. Everyone else stays on Claude Code. Off by default; requires hosted sandboxes. Existing chats keep their pinned runtime.",
     ),
   sandbox_run_metadata: z
     .boolean()
