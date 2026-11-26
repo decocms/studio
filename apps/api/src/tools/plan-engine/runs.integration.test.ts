@@ -373,6 +373,33 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
       // A tenant's run never reads or writes another's rows.
       expect(await planEngine.listDiagnoses(OTHER)).toEqual([]);
     }, 60_000);
+
+    it("with the browser flag on but no hosted sandboxes, keeps the named gap and finishes", async () => {
+      await organizationSettings.upsert(ORG, {
+        flags: {
+          plan_page_enabled: true,
+          plan_engine_native: true,
+          plan_engine_browser: true,
+        },
+      });
+      await planEngine.upsertSiteProfile(ORG, { domain: "loja.example" });
+      const out = await PLAN_UX_DIAGNOSIS_START.handler(
+        { page_type: "pdp" },
+        makeCtx(),
+      );
+      if (out.status !== "started") throw new Error(JSON.stringify(out));
+      const [started] = out.diagnoses;
+      if (!started) throw new Error("expected a diagnosis");
+      await waitFor(`plan-ux-diagnosis:${started.diagnosis_id}`);
+      const d = await planEngine.getDiagnosis(ORG, started.diagnosis_id);
+      expect(d?.status).toBe("done");
+      expect(d?.evidence?.gaps).toContainEqual({
+        source: "browser",
+        error: "navegador indisponível nesta instalação",
+      });
+      expect(d?.evidence?.captures).toEqual([]);
+      expect(d?.evidence?.probes).toBeUndefined();
+    }, 60_000);
   });
 
   describe("PLAN_UX_HYPOTHESES_VERIFY", () => {

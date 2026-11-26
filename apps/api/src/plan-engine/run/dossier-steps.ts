@@ -317,4 +317,5 @@ export async function finishStep(
     cost_usd: Math.round(totalCost * 10_000) / 10_000,
     finished: true,
   });
+  await run.releaseBrowser();
 }

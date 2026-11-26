@@ -12,7 +12,7 @@ import type { SiteProfile, SourceGap } from "../types.ts";
 const CODE_UNAVAILABLE = "código indisponível";
 
 /** Why pages are not opened in this run. */
-export const BROWSER_UNAVAILABLE = "navegador indisponível nesta instalação";
+const BROWSER_UNAVAILABLE = "navegador indisponível nesta instalação";
 
 export const browserGap = (): SourceGap => ({
   source: "browser",

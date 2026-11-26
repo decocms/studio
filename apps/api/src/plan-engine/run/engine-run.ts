@@ -8,18 +8,31 @@ import type { StudioContext } from "@/core/studio-context";
 import type { CostEventDraft } from "@/storage/plan-engine-costs";
 import { orgLlm } from "../adapters/llm.ts";
 import { orgMediaStore } from "../adapters/media.ts";
+import {
+  openRunBrowser,
+  type RunBrowser,
+  releaseRunBrowser,
+} from "../adapters/run-browser.ts";
 import type { Llm } from "../ports.ts";
 
 export interface EngineRun {
   orgId: string;
   /** The diagnosis this run works on. */
   id: string;
+  /** The member who started it. */
+  userId: string;
+  /** A "verify again" round's tag; its media goes under its own prefix. */
+  runTag: string | undefined;
   ctx: StudioContext;
   store: StudioContext["storage"]["planEngine"];
   knowledge: StudioContext["storage"]["planEngineKnowledge"];
   llm: Llm;
   /** A URL the model can fetch a stored capture from. */
   mediaUrl: (path: string) => Promise<string>;
+  /** The run's browser, provisioned on the step's first call. */
+  browser: () => Promise<RunBrowser>;
+  /** Removes the run's browser sandbox; never fails. */
+  releaseBrowser: () => Promise<void>;
   /** Best effort: the ledger never fails a step. */
   recordCosts: (
     scope: string,
@@ -44,6 +57,7 @@ export async function openRun(input: {
   orgId: string;
   userId: string;
   diagnosisId: string;
+  runTag?: string;
 }): Promise<EngineRun> {
   if (!contextFactory) {
     throw new Error(
@@ -54,23 +68,37 @@ export async function openRun(input: {
   if (!ctx) {
     throw new Error("quem começou a análise não é mais membro da organização");
   }
-  return runOn(ctx, input.orgId, input.diagnosisId);
+  return runOn(ctx, input);
 }
 
 function runOn(
   ctx: StudioContext,
-  orgId: string,
-  diagnosisId: string,
+  input: {
+    orgId: string;
+    userId: string;
+    diagnosisId: string;
+    runTag?: string;
+  },
 ): EngineRun {
+  const { orgId, userId, diagnosisId } = input;
   const media = ctx.objectStorage ? orgMediaStore(ctx.objectStorage) : null;
+  let browser: Promise<RunBrowser> | null = null;
   return {
     orgId,
     id: diagnosisId,
+    userId,
+    runTag: input.runTag,
     ctx,
     store: ctx.storage.planEngine,
     knowledge: ctx.storage.planEngineKnowledge,
     llm: orgLlm(ctx),
     mediaUrl: async (path) => (media ? media.url(path) : path),
+    browser: () => {
+      browser ??= openRunBrowser({ ctx, orgId, userId, diagnosisId, media });
+      return browser;
+    },
+    releaseBrowser: () =>
+      releaseRunBrowser({ ctx, orgId, userId, diagnosisId }),
     recordCosts: async (scope, drafts) => {
       try {
         await ctx.storage.planEngineCosts.insertCostEvents(

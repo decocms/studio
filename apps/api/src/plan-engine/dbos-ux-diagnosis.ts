@@ -101,7 +101,9 @@ async function planUxDiagnosisWorkflowFn(
 
     if (input.phase !== "verify") {
       const collected = await step("collect", WORK_STEP, collectStep);
-      const captureCost = await step("capture", WORK_STEP, captureStep);
+      const captureCost = await step("capture", WORK_STEP, (run) =>
+        captureStep(run, collected.targets),
+      );
       const benchmarkCost = await step("benchmark", WORK_STEP, benchmarkStep);
       await step("probes", WORK_STEP, probesStep);
       const opp = await step("opportunities", WORK_STEP, opportunitiesStep);

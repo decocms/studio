@@ -14,7 +14,7 @@
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
   "monitoring/dbos-traffic-monitor.ts": "589dbf5c9a67be3bdca84dd89a03774cead75ece5970e8c2f8f810eaadc7fc53",
   "notifications/dbos-digest.ts": "cf3de868c0e85d8c7dec44b229e97f63640c18c19d454afceccc66c3d317f6fa",
-  "plan-engine/dbos-ux-diagnosis.ts": "1e42295724cbeafc18bb246049ba65384c6ee9d05ce0acace5762456d9b34007",
+  "plan-engine/dbos-ux-diagnosis.ts": "43c1ce8e75723b0b62f88fc4e305029c806f22505c4c2dc01ba531d101b80847",
   "sandbox/dbos-credential-push.ts": "8f65b9f8f8dba7989281f5ce4d7921b587f2d0d06a422dd0caa4085cd6ade439",
   "tools/demo-board/dbos-demo-board-reset.ts": "65a4235e5fe596b9e2d0de7830480bfc397e022d85f3fb437fb596cb9d13bf37",
   "tools/task-board/dbos-archive-sweep.ts": "fe2db3802dd291f4d9ad5369a21c28854403bd2756518d9b48c1fcda4f100000",

@@ -7,7 +7,7 @@
  */
 
 import { type DiagnosisPatch, retiredId } from "@/storage/plan-engine";
-import { BROWSER_UNAVAILABLE, codeAccessFor } from "../adapters/unavailable.ts";
+import { codeAccessFor } from "../adapters/unavailable.ts";
 import {
   type CostCollector,
   costTotal,
@@ -42,12 +42,18 @@ import type {
   UxOpportunity,
 } from "../types.ts";
 import {
+  liveDeps,
   planJudgeDeps,
   type VerifyDeps,
   verificationBase,
   verifyHypothesis,
 } from "../verify/index.ts";
-import type { HypothesisVerification } from "../verify/types.ts";
+import { elementKeysOf } from "../verify/plan.ts";
+import type {
+  CheckRun,
+  HypothesisVerification,
+  VerifyCheck,
+} from "../verify/types.ts";
 import type { FallenOpportunity } from "./diagnosis-steps.ts";
 import type { EngineRun } from "./engine-run.ts";
 
@@ -210,15 +216,51 @@ export function toInvestigate(proposals: UxHypothesis[]): UxHypothesis[] {
   return proposals.filter((h) => keep.has(h.id));
 }
 
-/** The page and the code, as this run can test them: neither yet. */
-const unavailableChecks: Pick<VerifyDeps, "live" | "repo"> = {
-  live: async (check) => ({
-    check,
-    outcome: "nao_testou",
-    observed: BROWSER_UNAVAILABLE,
-    screenshot_url: null,
-    source_ref: null,
-  }),
+/**
+ * Prefix of a round's verification media. A "verify again" writes under its
+ * own tag, so the screen never keeps showing the first round's capture.
+ */
+export const verifyKeyPrefix = (
+  diagnosisId: string,
+  runTag: string | undefined,
+  hypothesisId: string,
+) =>
+  `${runTag ? `ux/${diagnosisId}/${runTag}` : `ux/${diagnosisId}`}/verify/${hypothesisId}`;
+
+const notTested = (check: VerifyCheck, why: string): CheckRun => ({
+  check,
+  outcome: "nao_testou",
+  observed: why,
+  screenshot_url: null,
+  source_ref: null,
+});
+
+/**
+ * The live tests in the run's browser, opened on the first one: a hypothesis
+ * with nothing to test on the page provisions nothing.
+ */
+function liveChecks(
+  run: EngineRun,
+  evidence: DiagnosisEvidence,
+  hypothesisId: string,
+): VerifyDeps["live"] {
+  const elementKeys = [...elementKeysOf(evidence)];
+  const keyPrefix = verifyKeyPrefix(run.id, run.runTag, hypothesisId);
+  return async (check) => {
+    const browser = await run.browser();
+    if ("gap" in browser) return notTested(check, browser.gap.error);
+    return liveDeps({
+      browser: browser.port,
+      captures: evidence.captures,
+      elementKeys,
+      media: browser.media,
+      keyPrefix,
+    }).live(check);
+  };
+}
+
+/** The store's code, as this run can test it: not yet. */
+const unavailableRepo: Pick<VerifyDeps, "repo"> = {
   repo: async (check) => ({
     run: {
       check,
@@ -255,7 +297,8 @@ async function verifyAndApply(opts: {
       evidence,
       onUsage: opts.onUsage,
     }),
-    ...unavailableChecks,
+    ...unavailableRepo,
+    live: liveChecks(run, evidence, h.id),
     now: () => new Date().toISOString(),
     timeLeft,
     // The judge does not swap the cause: what it saw comes back as a fact.
@@ -835,6 +878,7 @@ export async function failStep(
   rerun: boolean,
   message: string,
 ): Promise<void> {
+  await run.releaseBrowser();
   if (rerun) {
     const summary =
       (await run.store.getDiagnosis(run.orgId, run.id))?.summary ?? null;
