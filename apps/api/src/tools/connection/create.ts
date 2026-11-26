@@ -168,6 +168,7 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       configuration_state: configurationState,
       configuration_scopes: configurationScopes,
       configuration_secret_fields: fetchResult?.secretFields ?? null,
+      configuration_secret_delivery: fetchResult?.secretDelivery ?? null,
     });
 
     const credentialGrants =

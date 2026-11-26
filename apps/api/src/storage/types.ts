@@ -271,6 +271,7 @@ export interface MCPConnectionTable {
   configuration_state: string | null; // Encrypted JSON state
   configuration_scopes: JsonArray<string[]> | null; // Array of scope strings
   configuration_secret_fields: JsonArray<string[]> | null; // configuration_state keys returned redacted
+  configuration_secret_delivery: "fetch" | null;
 
   // Metadata and discovery
   metadata: JsonObject<Record<string, unknown>> | null;

@@ -6,7 +6,10 @@
  */
 
 import { extractConnectionPermissions } from "@/auth/configuration-scopes";
-import { issueStudioToken } from "@/auth/jwt";
+import { createHash } from "node:crypto";
+import { issueStudioToken, stateProof } from "@/auth/jwt";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { omitSecretConfiguration } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
@@ -173,6 +176,55 @@ export async function buildRequestHeaders(
   );
 }
 
+const TOKEN_TTL_SECONDS = 5 * 60;
+
+/** Names one configuration state, so an MCP can tell which one the vault gave it. */
+export function configurationStateHash(state: Record<string, unknown>): string {
+  return createHash("sha256")
+    .update(JSON.stringify(stripBindingMetadata(state)))
+    .digest("base64url");
+}
+
+/**
+ * The state the token carries. A connection whose MCP reads its secrets back
+ * from Studio gets them left out, with the hash and proof it needs to do so.
+ */
+export async function tokenState(
+  connection: ConnectionEntity,
+  ctx: StudioContext,
+  exp: number,
+): Promise<{
+  state?: Record<string, unknown>;
+  stateHash?: string;
+  stateProof?: string;
+}> {
+  if (!connection.configuration_state) return {};
+  const state = stripBindingMetadata(connection.configuration_state) as Record<
+    string,
+    unknown
+  >;
+  const secretFields = connection.configuration_secret_fields;
+  const organizationId = ctx.organization?.id;
+  if (
+    connection.configuration_secret_delivery !== "fetch" ||
+    !secretFields?.length ||
+    !organizationId
+  ) {
+    return { state };
+  }
+  // ponytail: one settings read per call to an opted-in connection; cache per org if it shows up in traces.
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  if (!orgFlagEnabled(settings?.flags, "mcp_secrets_via_fetch")) {
+    return { state };
+  }
+  const stateHash = configurationStateHash(state);
+  return {
+    state: omitSecretConfiguration(state, secretFields),
+    stateHash,
+    stateProof: stateProof(connection.id, stateHash, exp),
+  };
+}
+
 async function _buildRequestHeaders(
   connection: ConnectionEntity,
   ctx: StudioContext,
@@ -203,31 +255,30 @@ async function _buildRequestHeaders(
   // real user. This causes monitoring to incorrectly attribute actions to the connection
   // creator. Better solution: create a dedicated "Decopilot" service user per organization
   // for automated actions, so they're properly distinguished from real user activity.
+  const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;
   const [configurationToken, error] = userId
-    ? await issueStudioToken({
-        sub: userId,
-        user: {
-          id: userId,
-          email: ctxUser?.email,
-          name: ctxUser?.name,
-          role: ctxUser?.role,
+    ? await issueStudioToken(
+        {
+          sub: userId,
+          user: {
+            id: userId,
+            email: ctxUser?.email,
+            name: ctxUser?.name,
+            role: ctxUser?.role,
+          },
+          metadata: {
+            ...(await tokenState(connection, ctx, exp)),
+            studioUrl: ctx.baseUrl,
+            meshUrl: ctx.baseUrl,
+            connectionId,
+            organizationId: ctx.organization?.id,
+            organizationName: ctx.organization?.name,
+            organizationSlug: ctx.organization?.slug,
+          },
+          permissions,
         },
-        metadata: {
-          state: connection.configuration_state
-            ? (stripBindingMetadata(connection.configuration_state) as Record<
-                string,
-                unknown
-              >)
-            : undefined,
-          studioUrl: ctx.baseUrl,
-          meshUrl: ctx.baseUrl,
-          connectionId,
-          organizationId: ctx.organization?.id,
-          organizationName: ctx.organization?.name,
-          organizationSlug: ctx.organization?.slug,
-        },
-        permissions,
-      })
+        exp,
+      )
         .then((token) => [token, null] as const)
         .catch((error) => [null, error] as const)
     : [null, new Error("User ID required to issue configuration token")];

@@ -724,11 +724,14 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
       outputSchema: z.object({
         stateSchema: z.unknown(),
         scopes: z.array(z.string()).optional(),
+        secretDelivery: z.literal("fetch").optional(),
       }),
       execute: () => {
         return Promise.resolve({
           stateSchema: jsonSchema,
           scopes: [...((scopes as string[]) ?? [])],
+          // This runtime reads Secret() fields back from Studio (secret-state.ts).
+          secretDelivery: "fetch" as const,
         });
       },
     }),

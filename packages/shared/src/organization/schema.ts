@@ -183,6 +183,12 @@ export type PlanObjective = z.infer<typeof PlanObjectiveSchema>;
  * gets its own column instead.
  */
 export const OrgFlagsSchema = z.object({
+  mcp_secrets_via_fetch: z
+    .boolean()
+    .optional()
+    .describe(
+      'Leave secret configuration fields out of the token Studio sends to an MCP whose runtime can read them back from Studio (connections with configuration_secret_delivery "fetch"). Off by default: the token carries the whole configuration.',
+    ),
   voice_mode: z.boolean().optional(),
   home_task_intake_enabled: z
     .boolean()

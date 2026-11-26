@@ -254,7 +254,11 @@ the application's durable store.
 typed clients on `STUDIO_REQUEST_CONTEXT.state`. Declare credential fields (API
 keys, tokens, passwords) with `Secret()`: Studio masks them in the configuration
 form and returns a placeholder instead of their value, while the MCP still
-receives the value in its state. Declare required permissions in
+receives the value in its state. When the organization has
+`mcp_secrets_via_fetch` on, Studio leaves those fields out of the request token
+and the runtime reads the full state back from Studio with that token; set
+`STUDIO_TRUSTED_URLS` (comma-separated origins, default
+`https://studio.decocms.com`) to the Studio instances the MCP may ask. Declare required permissions in
 `configuration.scopes`; Studio evaluates those scopes when it configures the
 connection.
 

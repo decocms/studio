@@ -7,6 +7,7 @@ export {
   parseVirtualUrl,
   buildVirtualUrl,
   SECRET_CONFIGURATION_PLACEHOLDER,
+  omitSecretConfiguration,
   redactSecretConfiguration,
   restoreSecretConfiguration,
   secretFieldsFromStateSchema,

@@ -439,6 +439,7 @@ describe("Connection Tools", () => {
         tools: null,
         scopes: null,
         secretFields: ["appToken"],
+        secretDelivery: "fetch",
       });
 
       // The form sends back what it read: the placeholder for the secret.
@@ -456,6 +457,7 @@ describe("Connection Tools", () => {
       );
 
       expect(result.item.configuration_secret_fields).toEqual(["appToken"]);
+      expect(result.item.configuration_secret_delivery).toBe("fetch");
       expect(result.item.configuration_state).toEqual({
         accountName: "other-store",
         appToken: SECRET_CONFIGURATION_PLACEHOLDER,
@@ -515,6 +517,7 @@ describe("Connection Tools", () => {
       );
 
       expect(result.item.configuration_secret_fields).toEqual(["appToken"]);
+      expect(result.item.configuration_secret_delivery).toBeNull();
       expect(result.item.configuration_state?.appToken).toBe(
         SECRET_CONFIGURATION_PLACEHOLDER,
       );

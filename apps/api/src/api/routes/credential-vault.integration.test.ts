@@ -21,6 +21,16 @@ import {
 } from "../../storage/connection-credential-vault";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
 import { createApp } from "../app";
+import { decodeJwt, SignJWT } from "jose";
+import { issueStudioToken } from "../../auth/jwt";
+import type { StudioContext } from "../../core/studio-context";
+import { tokenState } from "../../mcp-clients/outbound/headers";
+import { ConnectionStorage } from "../../storage/connection";
+import { OrganizationSettingsStorage } from "../../storage/organization-settings";
+import {
+  resolveSecretState,
+  StateUnavailableError,
+} from "../../../../../packages/runtime/src/secret-state";
 
 if (!getSettings().encryptionKey) {
   setGlobalSettings({
@@ -514,6 +524,184 @@ describe("Credential Vault Routes", () => {
     );
 
     expect(res.status).toBe(401);
+  });
+
+  describe("an MCP reading its own configuration", () => {
+    const STUDIO = "http://test";
+    const exp = () => Math.floor(Date.now() / 1000) + 300;
+    let studioCalls: number;
+    const viaApp = async (url: string, init: RequestInit) => {
+      studioCalls++;
+      return app.fetch(new Request(url, init));
+    };
+
+    async function tokenFor(
+      connectionId: string,
+      flag: boolean,
+      at = exp(),
+    ): Promise<{
+      token: string;
+      sent: Awaited<ReturnType<typeof tokenState>>;
+    }> {
+      const settings = new OrganizationSettingsStorage(database.db);
+      await settings.upsert("org_1", {
+        flags: { mcp_secrets_via_fetch: flag },
+      });
+      await database.db
+        .updateTable("connections")
+        .set({
+          configuration_secret_fields: JSON.stringify(["apiKey"]),
+          configuration_secret_delivery: "fetch",
+        })
+        .where("id", "=", "conn_configuration_target")
+        .execute();
+      const connection = await new ConnectionStorage(
+        database.db,
+        new CredentialVault(getSettings().encryptionKey),
+      ).findById("conn_configuration_target");
+      const sent = await tokenState(
+        connection!,
+        {
+          organization: { id: "org_1" },
+          storage: { organizationSettings: settings },
+        } as unknown as StudioContext,
+        at,
+      );
+      const token = await issueStudioToken(
+        {
+          sub: "user_1",
+          metadata: {
+            ...sent,
+            studioUrl: STUDIO,
+            connectionId,
+            organizationId: "org_1",
+            organizationSlug: "org_1",
+          },
+          permissions: {},
+        },
+        at,
+      );
+      return { token, sent };
+    }
+
+    beforeEach(() => {
+      studioCalls = 0;
+    });
+
+    it("keeps the whole state in the token while the flag is off", async () => {
+      const { token, sent } = await tokenFor(
+        "conn_configuration_target",
+        false,
+      );
+      expect(sent).toEqual({
+        state: { apiKey: "configuration-secret", accountId: "acct_123" },
+      });
+      expect(await resolveSecretState(token, STUDIO, viaApp)).toBeNull();
+      expect(studioCalls).toBe(0);
+    });
+
+    it("leaves secrets out of the token and serves them from the vault", async () => {
+      const { token, sent } = await tokenFor("conn_configuration_target", true);
+      expect(sent.state).toEqual({ accountId: "acct_123" });
+      expect(token).not.toContain("configuration-secret");
+
+      const state = await resolveSecretState(token, STUDIO, viaApp);
+      expect(state).toEqual({
+        apiKey: "configuration-secret",
+        accountId: "acct_123",
+      });
+      expect(studioCalls).toBe(1);
+
+      // A later token for the same state is checked locally, by its proof.
+      const later = await tokenFor(
+        "conn_configuration_target",
+        true,
+        exp() + 7,
+      );
+      expect(await resolveSecretState(later.token, STUDIO, viaApp)).toEqual(
+        state,
+      );
+      expect(studioCalls).toBe(1);
+    });
+
+    it("asks Studio again for a token whose proof does not match, and Studio refuses a forged one", async () => {
+      const { token, sent } = await tokenFor("conn_configuration_target", true);
+      await resolveSecretState(token, STUDIO, viaApp);
+      const callsBefore = studioCalls;
+
+      const forged = await new SignJWT({
+        sub: "attacker",
+        metadata: {
+          ...sent,
+          stateProof: "AAAA",
+          studioUrl: STUDIO,
+          connectionId: "conn_configuration_target",
+          organizationId: "org_1",
+          organizationSlug: "org_1",
+        },
+        permissions: {},
+      })
+        .setProtectedHeader({ alg: "HS256" })
+        .setExpirationTime(exp())
+        .sign(new TextEncoder().encode("not-the-studio-secret"));
+
+      const refused = await resolveSecretState(forged, STUDIO, viaApp).catch(
+        (error) => error,
+      );
+      expect(refused).toBeInstanceOf(StateUnavailableError);
+      expect(refused.status).toBe(401);
+      expect(studioCalls).toBe(callsBefore + 1);
+    });
+
+    it("does not keep a state that is not the one the token names", async () => {
+      // Studio calls ON_MCP_CONFIGURATION with the new state before saving it.
+      const { token } = await tokenFor("conn_configuration_target", true);
+      const claims = decodeJwt(token) as unknown as Parameters<
+        typeof issueStudioToken
+      >[0] & { exp: number };
+      claims.metadata!.stateHash = "hash-of-a-state-not-saved-yet";
+      const ahead = await issueStudioToken(claims, claims.exp);
+
+      await resolveSecretState(ahead, STUDIO, viaApp);
+      await resolveSecretState(ahead, STUDIO, viaApp);
+      expect(studioCalls).toBe(2);
+    });
+
+    it("refuses a token issued for another connection", async () => {
+      const { token } = await tokenFor("conn_target", true);
+      const res = await app.fetch(
+        new Request(
+          `${STUDIO}/api/org_1/vault/connections/conn_configuration_target/configuration`,
+          { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        ),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("does not let a studio token read an access token", async () => {
+      const { token } = await tokenFor("conn_target", true);
+      const res = await app.fetch(
+        new Request(
+          `${STUDIO}/api/org_1/vault/connections/conn_target/access-token`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        ),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("never asks a Studio it was not told to trust", async () => {
+      const { token } = await tokenFor("conn_configuration_target", true);
+      const refused = await resolveSecretState(
+        token,
+        "https://studio.decocms.com",
+        viaApp,
+      ).catch((error) => error);
+      expect(refused).toBeInstanceOf(StateUnavailableError);
+      expect(studioCalls).toBe(0);
+    });
   });
 
   describe("batch (service token)", () => {

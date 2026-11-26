@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
+import { connectionProofKey, verifyStudioToken } from "@/auth/jwt";
 import type { StudioContext } from "@/core/studio-context";
+import { configurationStateHash } from "@/mcp-clients/outbound/headers";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
 import {
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
@@ -63,7 +65,7 @@ async function authorizeVaultRequest(
   targetConnectionId: string,
   scope: string,
 ): Promise<
-  | { ok: true; ctx: StudioContext; organizationId: string }
+  | { ok: true; ctx: StudioContext; organizationId: string; self?: true }
   | { ok: false; response: Response }
 > {
   const token = bearerToken(c.req.header("authorization"));
@@ -85,6 +87,23 @@ async function authorizeVaultRequest(
   // by organizationId), so it can't reach another org's connections.
   if (isVaultServiceToken(token)) {
     return { ok: true, ctx, organizationId };
+  }
+
+  // An MCP reading its own configuration with the token Studio called it with.
+  const studioToken =
+    scope === CREDENTIAL_CONFIGURATION_READ_SCOPE
+      ? await verifyStudioToken(token)
+      : undefined;
+  if (studioToken) {
+    const issuedFor = studioToken.metadata;
+    if (
+      studioToken.aud !== undefined ||
+      issuedFor?.connectionId !== targetConnectionId ||
+      issuedFor.organizationId !== organizationId
+    ) {
+      return { ok: false, response: c.json({ error: "Forbidden" }, 403) };
+    }
+    return { ok: true, ctx, organizationId, self: true };
   }
 
   const workloadToken =
@@ -343,7 +362,7 @@ export const createCredentialVaultRoutes = () => {
       return authz.response;
     }
 
-    const { ctx, organizationId } = authz;
+    const { ctx, organizationId, self } = authz;
     const target = await ctx.db
       .selectFrom("connections")
       .select(["status", "configuration_state", "configuration_scopes"])
@@ -383,6 +402,12 @@ export const createCredentialVaultRoutes = () => {
       type: "mcp_configuration",
       state: configurationState,
       scopes: parseConfigurationScopes(target.configuration_scopes),
+      ...(self
+        ? {
+            proofKey: connectionProofKey(targetConnectionId),
+            stateHash: configurationStateHash(configurationState),
+          }
+        : {}),
     });
   });
 

@@ -112,6 +112,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            mcp_secrets_via_fetch?: boolean | undefined;
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
@@ -210,6 +211,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | undefined;
       flags?:
         | {
+            mcp_secrets_via_fetch?: boolean | undefined;
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
@@ -300,6 +302,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            mcp_secrets_via_fetch?: boolean | undefined;
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
@@ -3373,6 +3376,7 @@ export interface StudioToolIO {
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
         configuration_secret_fields?: string[] | null | undefined;
+        configuration_secret_delivery?: "fetch" | null | undefined;
       };
     };
   };
@@ -3487,6 +3491,7 @@ export interface StudioToolIO {
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
         configuration_secret_fields?: string[] | null | undefined;
+        configuration_secret_delivery?: "fetch" | null | undefined;
       }[];
       totalCount?: number | undefined;
       hasMore?: boolean | undefined;
@@ -3585,6 +3590,7 @@ export interface StudioToolIO {
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
         configuration_secret_fields?: string[] | null | undefined;
+        configuration_secret_delivery?: "fetch" | null | undefined;
       } | null;
     };
   };
@@ -3783,6 +3789,7 @@ export interface StudioToolIO {
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
         configuration_secret_fields?: string[] | null | undefined;
+        configuration_secret_delivery?: "fetch" | null | undefined;
       };
     };
   };
@@ -3879,6 +3886,7 @@ export interface StudioToolIO {
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
         configuration_secret_fields?: string[] | null | undefined;
+        configuration_secret_delivery?: "fetch" | null | undefined;
       };
     };
   };
@@ -4016,6 +4024,7 @@ export interface StudioToolIO {
         has_connection_token?: boolean | undefined;
         configuration_scopes?: string[] | null | undefined;
         configuration_secret_fields?: string[] | null | undefined;
+        configuration_secret_delivery?: "fetch" | null | undefined;
       };
       virtualMcp: {
         id: string;

@@ -194,6 +194,13 @@ export const ConnectionEntitySchema = z.object({
     .describe(
       "configuration_state keys the MCP declares secret. Write-only: tool responses replace their values with SECRET_CONFIGURATION_PLACEHOLDER, and sending the placeholder back keeps the stored value.",
     ),
+  configuration_secret_delivery: z
+    .enum(["fetch"])
+    .nullable()
+    .optional()
+    .describe(
+      "Set by Studio when the MCP's runtime can read its secret configuration back from Studio instead of from the request token.",
+    ),
 
   metadata: boundedJsonRecord("metadata").describe(
     "Additional metadata (includes repository info)",
@@ -226,6 +233,7 @@ export const ConnectionCreateDataSchema = ConnectionEntitySchema.omit({
   status: true,
   has_connection_token: true,
   configuration_secret_fields: true,
+  configuration_secret_delivery: true,
 })
   .partial({
     id: true,
@@ -254,6 +262,7 @@ export type ConnectionCreateData = z.infer<typeof ConnectionCreateDataSchema>;
 export const ConnectionUpdateDataSchema = ConnectionEntitySchema.omit({
   has_connection_token: true,
   configuration_secret_fields: true,
+  configuration_secret_delivery: true,
 })
   .partial()
   .extend({
@@ -284,6 +293,16 @@ export function redactSecretConfiguration(
     }
   }
   return redacted;
+}
+
+/** `state` without its `secretFields` keys. */
+export function omitSecretConfiguration(
+  state: Record<string, unknown>,
+  secretFields: readonly string[],
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(state).filter(([key]) => !secretFields.includes(key)),
+  );
 }
 
 /**
