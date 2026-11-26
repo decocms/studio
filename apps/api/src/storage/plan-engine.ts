@@ -177,7 +177,6 @@ function rowToProfile(row: Row): SiteProfile {
     sources: fromJson<SiteSources | null>(row.sources, null),
     code_repo: strOrNull(row.code_repo),
     code_project_id: strOrNull(row.code_project_id),
-    code_volume: strOrNull(row.code_volume),
     updated_at: str(row.updated_at),
   };
 }
@@ -195,8 +194,6 @@ export interface SiteProfilePatch {
   code_repo?: string | null;
   /** `vir_…`; null clears. */
   code_project_id?: string | null;
-  /** org-fs volume; null clears. */
-  code_volume?: string | null;
 }
 
 // ── Diagnoses ────────────────────────────────────────────────────────────────
@@ -501,12 +498,15 @@ export class PlanEngineStorage {
         await sql`
           INSERT INTO plan_ux_site_profiles
             (organization_id, domain, studio_site, pdp_path_template,
-             competitors, competitors_confirmed_at, code_volume, updated_at)
+             page_templates, competitors, competitors_confirmed_at,
+             code_repo, code_project_id, updated_at)
           VALUES (${orgId}, ${patch.domain}, ${patch.studio_site ?? null},
                   ${patch.pdp_path_template ?? "/:product/p"},
+                  ${jsonb(patch.page_templates)},
                   ${jsonb(patch.competitors ?? [])},
                   ${ts(patch.competitors_confirmed ? now : null)},
-                  ${patch.code_volume ?? null}, ${ts(now)})
+                  ${patch.code_repo ?? null}, ${patch.code_project_id ?? null},
+                  ${ts(now)})
         `.execute(this.db);
       } else {
         const otherStore =
@@ -522,7 +522,6 @@ export class PlanEngineStorage {
               : jsonb(patch.page_templates),
           code_repo: val(patch.code_repo),
           code_project_id: val(patch.code_project_id),
-          code_volume: val(patch.code_volume),
           // Another store's competitors don't serve this one.
           competitors:
             patch.competitors !== undefined

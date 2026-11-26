@@ -14,7 +14,6 @@ const profile = (over: Partial<SiteProfile> = {}): SiteProfile => ({
   sources: null,
   code_repo: null,
   code_project_id: null,
-  code_volume: null,
   updated_at: "2026-11-20T00:00:00.000Z",
   ...over,
 });

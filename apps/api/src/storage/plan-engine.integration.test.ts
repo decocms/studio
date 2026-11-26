@@ -305,6 +305,46 @@ describe("PlanEngineStorage", () => {
       ]);
     });
 
+    it("creating a profile keeps the repository, the project and the page routes it was given", async () => {
+      const templates = { home: "/", busca: "/s", categoria: null };
+      const created = await store.upsertSiteProfile(ORG_A, {
+        domain: "loja.example",
+        code_repo: "acme/loja",
+        code_project_id: "vir_loja",
+        page_templates: templates as never,
+      });
+      expect(created).toMatchObject({
+        code_repo: "acme/loja",
+        code_project_id: "vir_loja",
+        page_templates: templates,
+      });
+      const plain = await store.upsertSiteProfile(ORG_B, {
+        domain: "outra.example",
+      });
+      expect(plain).toMatchObject({
+        code_repo: null,
+        code_project_id: null,
+        page_templates: null,
+      });
+    });
+
+    it("no longer writes code_volume", async () => {
+      await store.upsertSiteProfile(ORG_A, { domain: "loja.example" });
+      await sql`
+        UPDATE plan_ux_site_profiles SET code_volume = 'old-volume'
+         WHERE organization_id = ${ORG_A}
+      `.execute(database.db);
+      const profile = await store.upsertSiteProfile(ORG_A, {
+        code_repo: "acme/loja",
+      });
+      expect(profile).not.toHaveProperty("code_volume");
+      const { rows } = await sql<{ code_volume: string | null }>`
+        SELECT code_volume FROM plan_ux_site_profiles
+         WHERE organization_id = ${ORG_A}
+      `.execute(database.db);
+      expect(rows[0]?.code_volume).toBe("old-volume");
+    });
+
     it("JSON columns round-trip, and the profile is per org", async () => {
       await store.upsertSiteProfile(ORG_A, { domain: "a.example" });
       const sources = {

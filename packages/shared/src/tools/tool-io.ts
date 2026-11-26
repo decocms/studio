@@ -4345,7 +4345,6 @@ export interface StudioToolIO {
       competitors?: string[] | undefined;
       code_project_id?: string | null | undefined;
       code_repo?: string | null | undefined;
-      code_volume?: string | null | undefined;
     };
     output:
       | {

@@ -124,10 +124,6 @@ export interface SiteProfile {
    * sandbox — a mesma do editor de site. NULL = "ver no código" desligado.
    */
   code_project_id: string | null;
-  /**
-   * Volume do espelho do repo no org-fs do Studio. NULL = sem espelho.
-   */
-  code_volume: string | null;
   updated_at: string;
 }
 

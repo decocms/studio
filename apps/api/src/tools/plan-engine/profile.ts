@@ -158,13 +158,6 @@ export const PLAN_UX_SITE_PROFILE_UPDATE = defineTool({
       .nullable()
       .optional()
       .describe('The site\'s repository, "owner/name". null turns it off'),
-    code_volume: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "The org filesystem volume mirroring the store's repository. null turns it off",
-      ),
   }),
   outputSchema: engineOutput(
     z.object({ profile: Row, warnings: z.array(RejectedSchema).optional() }),
@@ -201,13 +194,6 @@ export const PLAN_UX_SITE_PROFILE_UPDATE = defineTool({
         : input.code_project_id?.trim() || null;
     if (codeProjectId && !/^vir_[\w-]+$/.test(codeProjectId)) {
       return { error: `projeto inválido (use o id vir_…): ${codeProjectId}` };
-    }
-    const codeVolume =
-      input.code_volume === undefined
-        ? undefined
-        : input.code_volume?.trim() || null;
-    if (codeVolume && !/^[\w.-]+$/.test(codeVolume)) {
-      return { error: `volume inválido: ${codeVolume}` };
     }
     let competitors: string[] | undefined;
     const warnings: Rejected[] = [];
@@ -252,7 +238,6 @@ export const PLAN_UX_SITE_PROFILE_UPDATE = defineTool({
           competitors === undefined ? undefined : competitors.length > 0,
         code_repo: codeRepo,
         code_project_id: codeProjectId,
-        code_volume: codeVolume,
       });
       return { profile, ...(warnings.length > 0 ? { warnings } : {}) };
     } catch (err) {
