@@ -14,6 +14,7 @@ import {
   aliasPathsForKey,
   blockEntriesInTree,
   blocksDirPath,
+  gitBlobSha,
   primeBlobCache,
   resolveBlockContents,
   resolveOrCreateHead,
@@ -328,6 +329,15 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
     for (const [key, value] of set) {
       const aliases = aliasPathsForKey(entries, key);
       const content = `${JSON.stringify(value, null, 2)}\n`;
+      // Already the head's file, e.g. held saves another replica committed
+      // first: writing it again would only add an empty commit.
+      const only = aliases.length === 1 ? aliases[0] : undefined;
+      if (
+        only &&
+        entries.find((e) => e.path === only)?.sha === gitBlobSha(content)
+      ) {
+        continue;
+      }
       // Write-through to the disk store (fail-open) so the read after this
       // save never re-fetches content the replica already has in hand.
       await primeBlobCache(client.repo, content);

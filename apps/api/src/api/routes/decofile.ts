@@ -11,7 +11,8 @@
  *
  * With the org's `cms_auto_commit` flag off, a write is held in Studio instead
  * (decofile/pending-blocks.ts): reads lay it over the head, and publish
- * commits it first.
+ * commits it first. With it on and `cms_background_commit` on, a write is held
+ * the same way, answered at once, and committed in the background.
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -57,8 +58,9 @@ import {
 } from "@/decofile/commit-coalescer";
 import {
   commitPendingBlocks,
+  commitPendingBlocksInBackground,
   decofileQueueKey,
-  holdDecofilePatch,
+  holdDecofilePatchAtHead,
   pendingVersion,
 } from "@/decofile/pending-blocks";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
@@ -73,7 +75,6 @@ import {
 import {
   DecofileTooLargeError,
   readDecofileSnapshot,
-  resolveOrCreateHead,
   streamDocument,
 } from "@/decofile/read-decofile";
 import { readCommittedMeta } from "@/decofile/read-meta";
@@ -318,6 +319,35 @@ async function contentClientForScope(
   );
 }
 
+/**
+ * Start the background commit of saves an earlier one left held, e.g. on a
+ * replica that stopped mid-commit, when the org commits in the background.
+ * Called from an editor's read, so a reopened editor finishes the job; the
+ * read does not wait for it.
+ */
+async function resumeBackgroundCommit(
+  c: Context<DecofileEnv>,
+  client: RepoContentClient,
+): Promise<void> {
+  const scope = c.get("decofileScope");
+  const ctx = c.var.studioContext;
+  const flags = (
+    await ctx.storage.organizationSettings.get(scope.organizationId)
+  )?.flags;
+  if (
+    !orgFlagEnabled(flags, "cms_auto_commit") ||
+    !orgFlagEnabled(flags, "cms_background_commit")
+  ) {
+    return;
+  }
+  commitPendingBlocksInBackground(ctx.storage.decofilePendingBlocks, scope, {
+    client,
+    branch: scope.branch,
+    packagePath: scope.packagePath,
+    coAuthor: coAuthorFromStudioContext(ctx),
+  });
+}
+
 function errorResponse(c: Context<DecofileEnv>, err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   if (err instanceof BlockConflictError) {
@@ -392,6 +422,13 @@ export function createDecofileRoutes(
       const pending =
         await c.var.studioContext.storage.decofilePendingBlocks.list(scope);
       const version = pendingVersion(snapshot.sha, pending);
+      if (scope.userId && pending.length > 0) {
+        void resumeBackgroundCommit(c, client).catch((err) => {
+          console.warn("decofile: could not resume a background commit", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
 
       const headers: Record<string, string> = {
         ETag: `"${version}"`,
@@ -523,14 +560,18 @@ export function createDecofileRoutes(
       const settings = await ctx.storage.organizationSettings.get(
         scope.organizationId,
       );
+      const autoCommit = orgFlagEnabled(settings?.flags, "cms_auto_commit");
+      const deps = {
+        client,
+        branch: scope.branch,
+        packagePath: scope.packagePath,
+        coAuthor: coAuthorFromStudioContext(ctx),
+      };
       let version: string;
-      if (orgFlagEnabled(settings?.flags, "cms_auto_commit")) {
-        const deps = {
-          client,
-          branch: scope.branch,
-          packagePath: scope.packagePath,
-          coAuthor: coAuthorFromStudioContext(ctx),
-        };
+      if (
+        autoCommit &&
+        !orgFlagEnabled(settings?.flags, "cms_background_commit")
+      ) {
         // Held saves first: this patch's `expect` was made against them.
         await commitPendingBlocks(pendingStorage, scope, deps);
         version = await enqueueDecofilePatch(
@@ -539,17 +580,17 @@ export function createDecofileRoutes(
           patch,
         );
       } else {
-        const headSha = await resolveOrCreateHead(client, scope.branch);
-        await holdDecofilePatch({
+        version = await holdDecofilePatchAtHead({
           storage: pendingStorage,
           scope,
           client,
-          headSha,
           packagePath: scope.packagePath,
           patch,
           userId: scope.userId,
         });
-        version = pendingVersion(headSha, await pendingStorage.list(scope));
+        if (autoCommit) {
+          commitPendingBlocksInBackground(pendingStorage, scope, deps);
+        }
       }
       const token = signScopeDraftToken(scope);
       return c.json({ version, token, apiHost: requestApiHost(c) });

@@ -13,7 +13,7 @@ import {
   enqueueDecofilePatch,
   MIN_COMMIT_INTERVAL_MS,
 } from "./commit-coalescer";
-import { resolveBlockContents } from "./read-decofile";
+import { gitBlobSha, resolveBlockContents } from "./read-decofile";
 
 /**
  * These cover the blob-read cost of a decofile save. Regenerating the tracked
@@ -42,6 +42,8 @@ interface FakeOpts {
   tracksGen: boolean;
   /** Reject this many `commitFiles` calls with a conflict before accepting. */
   conflicts?: number;
+  /** Tree blob sha per stem, instead of `sha-<stem>`. */
+  shas?: Record<string, string>;
 }
 
 function fakeClient(opts: FakeOpts) {
@@ -59,7 +61,7 @@ function fakeClient(opts: FakeOpts) {
       (s): TreeEntry => ({
         path: `.deco/blocks/${s}.json`,
         type: "blob",
-        sha: `sha-${s}`,
+        sha: opts.shas?.[s] ?? `sha-${s}`,
       }),
     ),
     ...(opts.tracksGen
@@ -494,6 +496,27 @@ describe("enqueueDecofilePatch commit gap", () => {
       { set: { Header: { __resolveType: "Header" } } },
     );
     expect(Date.now() - start).toBeLessThan(MIN_COMMIT_INTERVAL_MS);
+  });
+
+  it("writes nothing for a block whose content the head already has", async () => {
+    const header = { __resolveType: "Header", title: "held" };
+    const f = fakeClient({
+      stems: ["Header", "Footer"],
+      tracksGen: false,
+      shas: { Header: gitBlobSha(`${JSON.stringify(header, null, 2)}\n`) },
+    });
+    const sha = await enqueueDecofilePatch(`q-same-${Date.now()}`, deps(f), {
+      set: { Header: header },
+    });
+    expect(sha).toBe("head1");
+    expect(f.commitAttempts).toBe(0);
+
+    await enqueueDecofilePatch(`q-same-other-${Date.now()}`, deps(f), {
+      set: { Header: header, Footer: { __resolveType: "Footer", x: 1 } },
+    });
+    expect(f.committed.map((c) => c.path)).toEqual([
+      ".deco/blocks/Footer.json",
+    ]);
   });
 
   it("sends the commit's files inline in the tree write", async () => {
