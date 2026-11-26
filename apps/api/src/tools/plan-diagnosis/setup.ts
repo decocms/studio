@@ -23,7 +23,7 @@ import { planDiagnosisAvailability } from "./config";
 export const PLAN_DIAGNOSIS_SETUP = defineTool({
   name: "PLAN_DIAGNOSIS_SETUP",
   description:
-    "Connect the store diagnosis behind the Plan page to the organization's BigQuery connection and the dataset holding the store's GA4 export. Creates the organization's diagnosis connection, or updates it when it exists. Fails with `flag_off` when the Plan page is off and `service_unset` when this deployment has no diagnosis service.",
+    "Connect the store diagnosis behind the Plan page to the organization's BigQuery connection and the dataset holding the store's GA4 export. With `plan_engine_native` the binding is saved for the diagnosis inside Studio and `connection_id` is null; otherwise it creates the organization's diagnosis connection, or updates it when it exists. Fails with `flag_off` when the Plan page is off and `service_unset` when this deployment has no diagnosis service.",
   annotations: {
     title: "Set Up Store Diagnosis",
     readOnlyHint: false,
@@ -45,7 +45,14 @@ export const PLAN_DIAGNOSIS_SETUP = defineTool({
       .min(1)
       .describe("BigQuery dataset of the GA4 export, such as analytics_123."),
   }),
-  outputSchema: z.object({ connection_id: z.string() }),
+  outputSchema: z.object({
+    connection_id: z
+      .string()
+      .nullable()
+      .describe(
+        "The external engine's connection; null when the diagnosis runs inside Studio.",
+      ),
+  }),
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -71,6 +78,15 @@ export const PLAN_DIAGNOSIS_SETUP = defineTool({
       throw new InvalidInputError(
         `BigQuery connection not found: ${input.bigquery_connection_id}`,
       );
+    }
+
+    if (availability.engine === "native") {
+      await ctx.storage.planEngine.saveBigQueryBinding(organization.id, {
+        connectionId: bigquery.id,
+        projectId: input.bigquery_project_id,
+        datasetId: input.bigquery_dataset_id,
+      });
+      return { connection_id: null };
     }
 
     const id = WellKnownOrgMCPId.PLAN_DIAGNOSIS(organization.id);

@@ -4318,7 +4318,7 @@ export interface StudioToolIO {
       bigquery_project_id: string;
       bigquery_dataset_id: string;
     };
-    output: { connection_id: string };
+    output: { connection_id: string | null };
   };
   PLAN_DIAGNOSIS_STATUS: {
     input: { [x: string]: never };

@@ -196,6 +196,13 @@ export interface SiteProfilePatch {
   code_project_id?: string | null;
 }
 
+/** Which BigQuery connection and GA4 dataset the engine reads. */
+export interface BigQueryBinding {
+  connectionId: string;
+  projectId: string;
+  datasetId: string;
+}
+
 // ── Diagnoses ────────────────────────────────────────────────────────────────
 
 const LIST_COLUMNS = [
@@ -552,6 +559,47 @@ export class PlanEngineStorage {
       throw new Error("upsertSiteProfile: profile vanished after write");
     }
     return saved;
+  }
+
+  async getBigQueryBinding(orgId: string): Promise<BigQueryBinding | null> {
+    try {
+      const row = await this.db
+        .selectFrom("plan_ux_bigquery_bindings")
+        .select(["connection_id", "project_id", "dataset_id"])
+        .where("organization_id", "=", orgId)
+        .executeTakeFirst();
+      return row
+        ? {
+            connectionId: row.connection_id,
+            projectId: row.project_id,
+            datasetId: row.dataset_id,
+          }
+        : null;
+    } catch (err) {
+      rethrow("getBigQueryBinding failed", err);
+    }
+  }
+
+  /** `connectionId` must be one of the org's connections; the caller checks. */
+  async saveBigQueryBinding(
+    orgId: string,
+    binding: BigQueryBinding,
+  ): Promise<void> {
+    const row = {
+      connection_id: binding.connectionId,
+      project_id: binding.projectId,
+      dataset_id: binding.datasetId,
+      updated_at: nowIso(),
+    };
+    try {
+      await this.db
+        .insertInto("plan_ux_bigquery_bindings")
+        .values({ organization_id: orgId, ...row })
+        .onConflict((oc) => oc.column("organization_id").doUpdateSet(row))
+        .execute();
+    } catch (err) {
+      rethrow("saveBigQueryBinding failed", err);
+    }
   }
 
   /** A run swaps the suggested list for the stores that opened, unless the customer confirmed theirs. */

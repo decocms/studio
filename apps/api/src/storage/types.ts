@@ -429,6 +429,15 @@ export interface PlanUxSiteProfileTable {
   updated_at: Timestamp;
 }
 
+/** The BigQuery connection and GA4 dataset the Plan engine reads (migration 273). */
+export interface PlanUxBigQueryBindingTable {
+  organization_id: string;
+  connection_id: string;
+  project_id: string;
+  dataset_id: string;
+  updated_at: Timestamp;
+}
+
 /** One page's analysis by the Plan engine (migration 272). */
 export interface PlanUxDiagnosisTable {
   id: string;
@@ -2905,6 +2914,7 @@ export interface Database {
   member_plan_state: MemberPlanStateTable;
   plan_goal_cases: PlanGoalCaseTable;
   plan_ux_site_profiles: PlanUxSiteProfileTable;
+  plan_ux_bigquery_bindings: PlanUxBigQueryBindingTable;
   plan_ux_diagnoses: PlanUxDiagnosisTable;
   plan_ux_opportunities: PlanUxOpportunityTable;
   plan_ux_hypotheses: PlanUxHypothesisTable;

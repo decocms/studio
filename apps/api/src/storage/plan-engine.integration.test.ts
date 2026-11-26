@@ -19,12 +19,15 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../database/test-db-pg";
+import { CredentialVault } from "../encryption/credential-vault";
+import { ConnectionStorage } from "./connection";
 import { PlanEngineCostStorage } from "./plan-engine-costs";
 import { PlanEngineKnowledgeStorage } from "./plan-engine-knowledge";
 import { PlanEngineStorage, retiredId } from "./plan-engine";
 
 const ORG_A = "org_plan_engine_a";
 const ORG_B = "org_plan_engine_b";
+const USER_ID = "user_plan_engine";
 
 const opportunity = {
   rank: 1,
@@ -80,6 +83,7 @@ describe("PlanEngineStorage", () => {
   let store: PlanEngineStorage;
   let knowledgeStore: PlanEngineKnowledgeStorage;
   let costs: PlanEngineCostStorage;
+  let connections: ConnectionStorage;
 
   async function addDiagnosis(
     id: string,
@@ -119,6 +123,10 @@ describe("PlanEngineStorage", () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
     const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${USER_ID}, 'm@example.com', false, 'M', ${now}, ${now})
+    `.execute(database.db);
     for (const [id, slug] of [
       [ORG_A, "plan-engine-a"],
       [ORG_B, "plan-engine-b"],
@@ -131,13 +139,17 @@ describe("PlanEngineStorage", () => {
     store = new PlanEngineStorage(database.db);
     knowledgeStore = new PlanEngineKnowledgeStorage(database.db);
     costs = new PlanEngineCostStorage(database.db);
+    connections = new ConnectionStorage(
+      database.db,
+      new CredentialVault(CredentialVault.generateKey()),
+    );
   });
 
   beforeEach(async () => {
     await sql`
       TRUNCATE plan_ux_site_profiles, plan_ux_diagnoses, plan_ux_opportunities,
                plan_ux_hypotheses, plan_ux_benchmark_pdps, plan_ux_knowledge,
-               plan_cost_events
+               plan_cost_events, plan_ux_bigquery_bindings
     `.execute(database.db);
   });
 
@@ -161,6 +173,7 @@ describe("PlanEngineStorage", () => {
       expect(rows.map((r) => r.table_name)).toEqual([
         "plan_cost_events",
         "plan_ux_benchmark_pdps",
+        "plan_ux_bigquery_bindings",
         "plan_ux_diagnoses",
         "plan_ux_hypotheses",
         "plan_ux_knowledge",
@@ -394,6 +407,70 @@ describe("PlanEngineStorage", () => {
         model_error: "timeout",
       });
       expect((await store.getSiteProfile(ORG_B))?.code_tokens).toBeNull();
+    });
+  });
+
+  describe("BigQuery binding", () => {
+    async function bigQuery(id: string, orgId: string) {
+      await connections.create({
+        id,
+        organization_id: orgId,
+        created_by: USER_ID,
+        title: "BigQuery",
+        connection_type: "HTTP",
+        connection_url: "https://bigquery.invalid/mcp",
+        connection_token: null,
+        tools: null,
+      });
+    }
+
+    beforeEach(async () => {
+      await sql`DELETE FROM connections WHERE organization_id IN (${ORG_A}, ${ORG_B})`.execute(
+        database.db,
+      );
+    });
+
+    it("is null until saved; a second save replaces it; each org has its own", async () => {
+      await bigQuery("conn_bq_a", ORG_A);
+      await bigQuery("conn_bq_a2", ORG_A);
+      expect(await store.getBigQueryBinding(ORG_A)).toBeNull();
+      await store.saveBigQueryBinding(ORG_A, {
+        connectionId: "conn_bq_a",
+        projectId: "p1",
+        datasetId: "analytics_1",
+      });
+      await store.saveBigQueryBinding(ORG_A, {
+        connectionId: "conn_bq_a2",
+        projectId: "p2",
+        datasetId: "analytics_2",
+      });
+      expect(await store.getBigQueryBinding(ORG_A)).toEqual({
+        connectionId: "conn_bq_a2",
+        projectId: "p2",
+        datasetId: "analytics_2",
+      });
+      expect(await store.getBigQueryBinding(ORG_B)).toBeNull();
+    });
+
+    it("goes with the BigQuery connection it names", async () => {
+      await bigQuery("conn_bq_gone", ORG_A);
+      await store.saveBigQueryBinding(ORG_A, {
+        connectionId: "conn_bq_gone",
+        projectId: "p",
+        datasetId: "d",
+      });
+      await connections.delete("conn_bq_gone");
+      expect(await store.getBigQueryBinding(ORG_A)).toBeNull();
+    });
+
+    it("refuses a connection that does not exist", async () => {
+      await expect(
+        store.saveBigQueryBinding(ORG_A, {
+          connectionId: "conn_missing",
+          projectId: "p",
+          datasetId: "d",
+        }),
+      ).rejects.toThrow(/saveBigQueryBinding failed/);
     });
   });
 

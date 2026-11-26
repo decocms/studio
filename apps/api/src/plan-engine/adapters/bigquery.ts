@@ -8,39 +8,45 @@ import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { clientFromConnection } from "@/mcp-clients";
+import type { BigQueryBinding } from "@/storage/plan-engine";
 import type { BigQueryRunner } from "../ports.ts";
 
-const BindingSchema = z.object({
+/** What PLAN_DIAGNOSIS_SETUP saves on the external engine's plan-diagnosis connection. */
+const LegacyBindingSchema = z.object({
   BIGQUERY: z.object({ value: z.string().min(1) }),
   bigqueryProjectId: z.string().min(1),
   bigqueryDatasetId: z.string().min(1),
 });
 
-interface BigQueryBinding {
-  connectionId: string;
-  projectId: string;
-  datasetId: string;
-}
-
 /**
- * Which BigQuery connection and GA4 dataset the engine reads. Today it is
- * what PLAN_DIAGNOSIS_SETUP saved on the org's plan-diagnosis connection;
+ * Which BigQuery connection and GA4 dataset the engine reads: what
+ * PLAN_DIAGNOSIS_SETUP saved for the built-in engine, else what it saved on
+ * the external engine's connection, so an org set up there need not redo it.
  * null when nothing is bound.
  */
-async function planBigQueryBinding(
+export async function planBigQueryBinding(
   ctx: StudioContext,
   orgId: string,
 ): Promise<BigQueryBinding | null> {
+  const saved = await ctx.storage.planEngine.getBigQueryBinding(orgId);
+  if (saved) return saved;
   const connection = await ctx.storage.connections.findById(
     WellKnownOrgMCPId.PLAN_DIAGNOSIS(orgId),
     orgId,
   );
-  const state = BindingSchema.safeParse(connection?.configuration_state);
-  if (!state.success) return null;
+  return connectionBigQueryBinding(connection?.configuration_state);
+}
+
+/** The binding saved in the plan-diagnosis connection's `configuration_state`; null when it holds none. */
+export function connectionBigQueryBinding(
+  state: unknown,
+): BigQueryBinding | null {
+  const parsed = LegacyBindingSchema.safeParse(state);
+  if (!parsed.success) return null;
   return {
-    connectionId: state.data.BIGQUERY.value,
-    projectId: state.data.bigqueryProjectId,
-    datasetId: state.data.bigqueryDatasetId,
+    connectionId: parsed.data.BIGQUERY.value,
+    projectId: parsed.data.bigqueryProjectId,
+    datasetId: parsed.data.bigqueryDatasetId,
   };
 }
 

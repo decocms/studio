@@ -25,7 +25,9 @@ import { CredentialVault } from "../../encryption/credential-vault";
 import { getSettings, setGlobalSettings } from "../../settings";
 import { ConnectionStorage } from "../../storage/connection";
 import { ConnectionCredentialVaultStorage } from "../../storage/connection-credential-vault";
+import { planBigQueryBinding } from "../../plan-engine/adapters/bigquery";
 import { OrganizationSettingsStorage } from "../../storage/organization-settings";
+import { PlanEngineStorage } from "../../storage/plan-engine";
 import type { Permission } from "../../storage/types";
 import { PLAN_DIAGNOSIS_SETUP, PLAN_DIAGNOSIS_STATUS } from "./index";
 
@@ -60,6 +62,7 @@ describe("PLAN_DIAGNOSIS tools", () => {
   let connections: ConnectionStorage;
   let connectionCredentialVault: ConnectionCredentialVaultStorage;
   let organizationSettings: OrganizationSettingsStorage;
+  let planEngine: PlanEngineStorage;
   const originalSettings = getSettings();
   const engineCalls: Array<{ name: string; arguments: unknown }> = [];
 
@@ -92,7 +95,12 @@ describe("PLAN_DIAGNOSIS tools", () => {
         undefined,
         orgId,
       ),
-      storage: { connections, connectionCredentialVault, organizationSettings },
+      storage: {
+        connections,
+        connectionCredentialVault,
+        organizationSettings,
+        planEngine,
+      },
       baseUrl: "https://studio.example.com",
       metadata: { requestId: "req_1", timestamp: new Date() },
       // The engine is the infrastructure edge: record what Studio tells it.
@@ -151,6 +159,7 @@ describe("PLAN_DIAGNOSIS tools", () => {
       database.db,
     );
     organizationSettings = new OrganizationSettingsStorage(database.db);
+    planEngine = new PlanEngineStorage(database.db);
     await resetTestPgDatabase(database);
     await seedCommonTestPgFixtures(database);
   });
@@ -164,7 +173,7 @@ describe("PLAN_DIAGNOSIS tools", () => {
       await connections.delete(id);
     }
     await organizationSettings.upsert(ORG_ID, {
-      flags: { plan_page_enabled: true },
+      flags: { plan_page_enabled: true, plan_engine_native: false },
     });
     await createBigQueryConnection(BIGQUERY_ID, ORG_ID);
     await createBigQueryConnection(FOREIGN_BIGQUERY_ID, OTHER_ORG_ID);
@@ -317,6 +326,93 @@ describe("PLAN_DIAGNOSIS tools", () => {
       configured: false,
       connection_id: WellKnownOrgMCPId.PLAN_DIAGNOSIS(ORG_ID),
       reason: "not_connected",
+    });
+  });
+
+  describe("with plan_engine_native on", () => {
+    const enableNative = () =>
+      organizationSettings.upsert(ORG_ID, {
+        flags: { plan_page_enabled: true, plan_engine_native: true },
+      });
+    const binding = () =>
+      planBigQueryBinding(makeCtx("PLAN_DIAGNOSIS_STATUS"), ORG_ID);
+
+    beforeEach(enableNative);
+
+    it("needs no diagnosis service: setup saves the binding for Studio's engine and creates no connection", async () => {
+      setEngineUrl(undefined);
+      expect(await status()).toEqual({
+        configured: false,
+        connection_id: null,
+        reason: "not_connected",
+      });
+
+      expect(await setup(validInput)).toEqual({ connection_id: null });
+
+      expect(await status()).toEqual({ configured: true, connection_id: null });
+      expect(await binding()).toEqual({
+        connectionId: BIGQUERY_ID,
+        projectId: "analytics-project",
+        datasetId: "analytics_123",
+      });
+      expect(
+        await connections.findById(
+          WellKnownOrgMCPId.PLAN_DIAGNOSIS(ORG_ID),
+          ORG_ID,
+        ),
+      ).toBeNull();
+      expect(engineCalls).toHaveLength(0);
+    });
+
+    it("a second setup replaces the binding", async () => {
+      await setup(validInput);
+      await setup({ ...validInput, bigquery_dataset_id: "analytics_456" });
+      expect(await binding()).toMatchObject({ datasetId: "analytics_456" });
+    });
+
+    it("an org set up on the external engine is configured without redoing it", async () => {
+      await organizationSettings.upsert(ORG_ID, {
+        flags: { plan_engine_native: false },
+      });
+      await setup(validInput);
+      await enableNative();
+
+      expect(await status()).toEqual({ configured: true, connection_id: null });
+      expect(await binding()).toEqual({
+        connectionId: BIGQUERY_ID,
+        projectId: "analytics-project",
+        datasetId: "analytics_123",
+      });
+
+      // Once set up for Studio's engine, its own binding wins.
+      await setup({ ...validInput, bigquery_dataset_id: "analytics_native" });
+      expect(await binding()).toMatchObject({ datasetId: "analytics_native" });
+    });
+
+    it("refuses another org's BigQuery connection and saves nothing", async () => {
+      await expect(
+        setup({ ...validInput, bigquery_connection_id: FOREIGN_BIGQUERY_ID }),
+      ).rejects.toThrow(/not found/);
+      expect(await binding()).toBeNull();
+    });
+
+    it("is not connected once the bound BigQuery connection is gone", async () => {
+      await setup(validInput);
+      await connections.delete(BIGQUERY_ID);
+      expect(await status()).toEqual({
+        configured: false,
+        connection_id: null,
+        reason: "not_connected",
+      });
+      expect(await binding()).toBeNull();
+    });
+
+    it("still answers flag_off with the Plan page off", async () => {
+      await organizationSettings.upsert(ORG_ID, {
+        flags: { plan_page_enabled: false, plan_engine_native: true },
+      });
+      expect(await status()).toMatchObject({ reason: "flag_off" });
+      await expect(setup(validInput)).rejects.toThrow(/^flag_off/);
     });
   });
 });

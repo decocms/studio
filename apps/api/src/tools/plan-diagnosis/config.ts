@@ -15,19 +15,27 @@ function resolvePlanDiagnosisMcpUrl(): string | undefined {
 }
 
 /**
- * The diagnosis exists only with the Plan page on, and only where this
- * deployment knows the engine.
+ * The diagnosis exists only with the Plan page on. With `plan_engine_native`
+ * it runs inside Studio; otherwise only where this deployment knows the
+ * external engine.
  */
 export async function planDiagnosisAvailability(
   ctx: StudioContext,
   organizationId: string,
 ): Promise<
-  { ok: true; url: string } | { ok: false; reason: PlanDiagnosisUnavailable }
+  | { ok: true; engine: "native" }
+  | { ok: true; engine: "connection"; url: string }
+  | { ok: false; reason: PlanDiagnosisUnavailable }
 > {
   const settings = await ctx.storage.organizationSettings.get(organizationId);
   if (!orgFlagEnabled(settings?.flags, "plan_page_enabled")) {
     return { ok: false, reason: "flag_off" };
   }
+  if (orgFlagEnabled(settings?.flags, "plan_engine_native")) {
+    return { ok: true, engine: "native" };
+  }
   const url = resolvePlanDiagnosisMcpUrl();
-  return url ? { ok: true, url } : { ok: false, reason: "service_unset" };
+  return url
+    ? { ok: true, engine: "connection", url }
+    : { ok: false, reason: "service_unset" };
 }
