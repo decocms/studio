@@ -147,7 +147,6 @@ export interface StudioToolIO {
             plan_page_enabled?: boolean | undefined;
             plan_goals_enabled?: boolean | undefined;
             plan_engine_native?: boolean | undefined;
-            plan_engine_browser?: boolean | undefined;
             invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
@@ -246,7 +245,6 @@ export interface StudioToolIO {
             plan_page_enabled?: boolean | undefined;
             plan_goals_enabled?: boolean | undefined;
             plan_engine_native?: boolean | undefined;
-            plan_engine_browser?: boolean | undefined;
             invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
@@ -337,7 +335,6 @@ export interface StudioToolIO {
             plan_page_enabled?: boolean | undefined;
             plan_goals_enabled?: boolean | undefined;
             plan_engine_native?: boolean | undefined;
-            plan_engine_browser?: boolean | undefined;
             invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }

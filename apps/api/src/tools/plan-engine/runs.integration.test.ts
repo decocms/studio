@@ -25,11 +25,13 @@ import {
 } from "../../database/test-db-pg";
 import { buildDbosConfig } from "../../dbos/config";
 import { CredentialVault } from "../../encryption/credential-vault";
+import type { BoundObjectStorage } from "../../object-storage/bound-object-storage";
 import { registerPlanUxDiagnosisWorkflow } from "../../plan-engine/dbos-ux-diagnosis";
 import { evidence } from "../../plan-engine/fixtures/evidence";
 import { NO_AI_MODEL } from "../../plan-engine/ports";
 import { setPlanEngineContextFactory } from "../../plan-engine/run/engine-run";
 import type { OpportunityDraft } from "../../plan-engine/types";
+import { agentSandboxEnabled } from "../../settings";
 import { AIProviderKeyStorage } from "../../storage/ai-provider-keys";
 import { ConnectionStorage } from "../../storage/connection";
 import { OrganizationSettingsStorage } from "../../storage/organization-settings";
@@ -119,6 +121,7 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
   let storage: Record<string, unknown>;
   let keyId = "";
   let dropModelOnRun: string | null = null;
+  let runObjectStorage: BoundObjectStorage | null = null;
   const prompts: string[] = [];
 
   /** The model at the provider boundary: answers by which step is asking. */
@@ -264,13 +267,14 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
           simple_mode: { tiers: NO_TIERS },
         });
       }
-      return makeCtx(orgId);
+      return { ...makeCtx(orgId), objectStorage: runObjectStorage };
     });
   });
 
   beforeEach(async () => {
     prompts.length = 0;
     dropModelOnRun = null;
+    runObjectStorage = null;
     await sql`
       TRUNCATE plan_ux_site_profiles, plan_ux_diagnoses, plan_ux_opportunities,
                plan_ux_hypotheses, plan_ux_knowledge, plan_cost_events
@@ -463,13 +467,16 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
       expect(await planEngine.listDiagnoses(OTHER)).toEqual([]);
     }, 60_000);
 
-    it("with the browser flag on but no hosted sandboxes, keeps the named gap and finishes", async () => {
+    it("with the engine on and object storage but no hosted sandboxes, keeps the named gap and finishes", async () => {
+      expect(agentSandboxEnabled()).toBe(false);
+      const unused = () => Promise.reject(new Error("no capture to store"));
+      runObjectStorage = {
+        put: unused,
+        getBytes: unused,
+        presignedGetUrl: unused,
+      } as unknown as BoundObjectStorage;
       await organizationSettings.upsert(ORG, {
-        flags: {
-          plan_page_enabled: true,
-          plan_engine_native: true,
-          plan_engine_browser: true,
-        },
+        flags: { plan_page_enabled: true, plan_engine_native: true },
       });
       await planEngine.upsertSiteProfile(ORG, { domain: "loja.example" });
       const out = await PLAN_UX_DIAGNOSIS_START.handler(

@@ -13,7 +13,7 @@ import {
 } from "@decocms/sandbox/provider";
 import type { StudioContext } from "@/core/studio-context";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
-import { getSettings } from "@/settings";
+import { agentSandboxEnabled } from "@/settings";
 import {
   ensureOrRephrase,
   waitForSchedulableCapacity,
@@ -21,7 +21,7 @@ import {
 import type { BrowserPort, MediaStore } from "../ports.ts";
 import type { SourceGap } from "../types.ts";
 import { sandboxBrowser } from "./sandbox-browser.ts";
-import { browserGap, MEDIA_UNAVAILABLE } from "./unavailable.ts";
+import { browserGap } from "./unavailable.ts";
 
 /** The run's browser and where its captures go, or why it has none. */
 export type RunBrowser =
@@ -54,14 +54,14 @@ function browserSandboxId(input: {
   };
 }
 
-/** Hosted sandboxes on in this deployment, and the browser on for the org. */
+/** The built-in engine on for the org, with hosted sandboxes and object storage here. */
 async function browserEnabled(
   ctx: StudioContext,
   orgId: string,
 ): Promise<boolean> {
-  if (!getSettings().agentSandboxEnabled) return false;
+  if (!agentSandboxEnabled() || !ctx.objectStorage) return false;
   const settings = await ctx.storage.organizationSettings.get(orgId);
-  return orgFlagEnabled(settings?.flags, "plan_engine_browser");
+  return orgFlagEnabled(settings?.flags, "plan_engine_native");
 }
 
 export async function openRunBrowser(
@@ -69,8 +69,9 @@ export async function openRunBrowser(
 ): Promise<RunBrowser> {
   const { ctx, orgId, userId, media } = input;
   try {
-    if (!(await browserEnabled(ctx, orgId))) return { gap: browserGap() };
-    if (!media) return { gap: { source: "browser", error: MEDIA_UNAVAILABLE } };
+    if (!media || !(await browserEnabled(ctx, orgId))) {
+      return { gap: browserGap() };
+    }
     const provider = await getAgentSandboxProvider(ctx);
     const id = browserSandboxId(input);
     await waitForSchedulableCapacity(provider);
