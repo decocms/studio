@@ -20,15 +20,16 @@ import { useT } from "@/i18n/use-t.ts";
 import { formatRelativeTime } from "@/lib/format-time.ts";
 import { track } from "@/lib/posthog-client";
 import type { PageType } from "./diagnosis-schema.ts";
-import { DiagnosisEngineError } from "./diagnosis-state.ts";
 import { PAGE_LABEL } from "./labels.ts";
 import {
   errorText,
   runRequestedEvent,
   runnablePages,
+  runRefusal,
   runningElsewhere,
   startRunInput,
 } from "./opportunity-view.ts";
+import { AiProviderAction } from "./setup-card.tsx";
 import { StoreDomainForm } from "./store-domain.tsx";
 import { useStartRun, useStoreView } from "./use-plan-diagnosis.ts";
 
@@ -75,18 +76,9 @@ export function useRequestRun(goal: RunGoal) {
   };
 }
 
-/** What the engine needs before it runs: its blocking needs, or the domain
- *  from an engine that only flags it. */
-function blockingNeeds(error: Error): string[] {
-  if (!(error instanceof DiagnosisEngineError)) return [];
-  const keys = error.needs.filter((n) => n.blocking).map((n) => n.key);
-  if (keys.length > 0) return keys;
-  return error.needsDomain ? ["domain"] : [];
-}
-
 /** Why a run did not start, or which pages were already running elsewhere.
- *  Asks for each blocking need it has an input for (today, the domain) and
- *  runs again once it is saved. */
+ *  Asks for the domain and runs again once it is saved; points to the AI
+ *  providers when the org has no model. */
 export function RunRequestNotice({
   error,
   elsewhere,
@@ -98,7 +90,9 @@ export function RunRequestNotice({
 }) {
   const t = useT();
   if (error) {
-    const needsDomain = blockingNeeds(error).includes("domain");
+    const refusal = runRefusal(error);
+    const needsDomain = refusal === "domain";
+    const needsAiProvider = refusal === "ai_provider";
     return (
       <div role="alert" className="flex items-start gap-2 text-xs">
         <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
@@ -106,9 +100,11 @@ export function RunRequestNotice({
           <span className="text-foreground">
             {needsDomain
               ? t("plan.opportunities.newRun.needsDomain")
-              : t("plan.opportunities.newRun.failed")}
+              : needsAiProvider
+                ? t("plan.opportunities.setup.aiProvider")
+                : t("plan.opportunities.newRun.failed")}
           </span>
-          {!needsDomain && errorText(error) && (
+          {!refusal && errorText(error) && (
             <span className="break-words text-muted-foreground">
               {errorText(error)}
             </span>
@@ -119,6 +115,11 @@ export function RunRequestNotice({
                 submitLabel={t("plan.opportunities.domain.saveAndRun")}
                 onSaved={onDomainSaved}
               />
+            </div>
+          )}
+          {needsAiProvider && (
+            <div className="pt-1.5">
+              <AiProviderAction />
             </div>
           )}
         </div>

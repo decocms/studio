@@ -1,8 +1,9 @@
 /**
- * What only the customer can give the analysis: the store's domain, the
- * competitors to compare with, Deco Analytics, the GA4 export, the store's
- * orders and the site's repository. The engine names what is missing; the analysis runs without all
- * but the domain, so this card asks without blocking anything.
+ * What only the customer can give the analysis: the store's domain, an AI
+ * provider, the competitors to compare with, Deco Analytics, the GA4 export,
+ * the store's orders and the site's repository. The engine names what is
+ * missing; the analysis runs without all but the domain and the AI provider,
+ * so this card asks without blocking anything.
  */
 
 import { type ReactNode, useState } from "react";
@@ -25,6 +26,19 @@ function Need({ text, children }: { text: string; children: ReactNode }) {
       <p className="text-sm text-foreground">{text}</p>
       {children}
     </div>
+  );
+}
+
+/** Links to the org's AI providers; a run is refused without a model. */
+export function AiProviderAction() {
+  const t = useT();
+  const { org } = useProjectContext();
+  return (
+    <Button asChild variant="outline" size="sm">
+      <Link to="/$org/settings/ai-providers" params={{ org: org.slug }}>
+        {t("plan.opportunities.setup.aiProviderAction")}
+      </Link>
+    </Button>
   );
 }
 
@@ -66,6 +80,12 @@ function NeedBlock({
         <div className="max-w-md">
           <StoreDomainForm />
         </div>
+      );
+    case "ai_provider":
+      return (
+        <Need text={t("plan.opportunities.setup.aiProvider")}>
+          <AiProviderAction />
+        </Need>
       );
     case "competitors":
       return <CompetitorsRow list={need.suggested ?? competitors} suggested />;

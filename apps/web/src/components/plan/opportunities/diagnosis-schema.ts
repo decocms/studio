@@ -189,6 +189,7 @@ export type StorePage = z.infer<typeof StorePageSchema>;
 
 const SETUP_KEYS = [
   "domain",
+  "ai_provider",
   "competitors",
   "analytics_install",
   "bigquery",

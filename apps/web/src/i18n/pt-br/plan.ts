@@ -448,6 +448,9 @@ export const plan = {
   "plan.opportunities.setup.orders":
     "Ainda não há pedidos da loja, então não há estimativa em dinheiro.",
   "plan.opportunities.setup.ordersAction": "Conectar a plataforma da loja",
+  "plan.opportunities.setup.aiProvider":
+    "Conecte um provedor de IA para a análise rodar. Ela usa os modelos da organização.",
+  "plan.opportunities.setup.aiProviderAction": "Abrir os provedores de IA",
   "plan.opportunities.setup.repository":
     "A análise não conseguiu ler o código do site. Ligue o repositório do site ao Studio, ou reconecte a conta do GitHub.",
   "plan.opportunities.setup.repositoryAction": "Abrir os repositórios",

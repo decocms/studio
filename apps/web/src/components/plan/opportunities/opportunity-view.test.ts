@@ -2,15 +2,17 @@ import { describe, expect, it } from "bun:test";
 import {
   GetOpportunitySchema,
   type Lifecycle,
+  StartRunSchema,
   type OpportunityHypothesis,
   StoreViewSchema,
+  parseToolResult,
   type StoreOpportunity,
   type StoreOpportunityHypothesis,
   type StorePage,
   type StoreView,
   type StartRunResult,
 } from "./diagnosis-schema.ts";
-import { DiagnosisEngineError } from "./diagnosis-state.ts";
+import { DiagnosisEngineError, unwrapEngineResult } from "./diagnosis-state.ts";
 import {
   opportunityDetailFixture,
   storeViewFixture,
@@ -34,6 +36,7 @@ import {
   pageLosses,
   parseOpportunityId,
   readyHypothesis,
+  runRefusal,
   runRequestedEvent,
   runnablePages,
   runningElsewhere,
@@ -996,7 +999,79 @@ describe("setupNeeds", () => {
     expect(setupNeeds(view).map((n) => n.key)).toEqual(["repository"]);
   });
 
+  it("asks for an AI provider right after the domain", () => {
+    const view = StoreViewSchema.parse({
+      ...storeViewWithSetupFixture,
+      setup: {
+        needs: [
+          { key: "domain", blocking: true, suggested: null },
+          { key: "ai_provider", blocking: true },
+          { key: "competitors", blocking: false, suggested: [] },
+        ],
+        current: { domain: null, competitors: [] },
+      },
+    });
+    expect(setupNeeds(view).map((n) => n.key)).toEqual([
+      "domain",
+      "ai_provider",
+      "competitors",
+    ]);
+  });
+
   it("is empty for an engine without setup", () => {
     expect(setupNeeds(StoreViewSchema.parse(storeViewFixture))).toEqual([]);
+  });
+});
+
+describe("runRefusal", () => {
+  const refusal = (raw: unknown) => {
+    try {
+      unwrapEngineResult(parseToolResult(StartRunSchema, raw));
+    } catch (err) {
+      return runRefusal(err);
+    }
+    throw new Error("the start was not refused");
+  };
+
+  it("asks for an AI provider when the org has no model", () => {
+    expect(
+      refusal({
+        status: "error",
+        error: "nenhum modelo de IA conectado: conecte um provedor",
+        needs: [{ key: "ai_provider", blocking: true }],
+      }),
+    ).toBe("ai_provider");
+  });
+
+  it("asks for the domain first when both block", () => {
+    expect(
+      refusal({
+        status: "error",
+        error: "sem domínio",
+        needs: [
+          { key: "domain", blocking: true, suggested: null },
+          { key: "ai_provider", blocking: true },
+        ],
+      }),
+    ).toBe("domain");
+  });
+
+  it("asks for the domain from an engine that only flags it", () => {
+    expect(
+      refusal({ status: "error", error: "sem domínio", needs_domain: true }),
+    ).toBe("domain");
+  });
+
+  it("names nothing for another error, a non-blocking need or a transport failure", () => {
+    expect(refusal({ status: "error", error: "D1 timeout" })).toBeNull();
+    expect(
+      refusal({
+        status: "error",
+        error: "x",
+        needs: [{ key: "ai_provider", blocking: false }],
+      }),
+    ).toBeNull();
+    expect(runRefusal(new Error("fetch failed"))).toBeNull();
+    expect(runRefusal(null)).toBeNull();
   });
 });

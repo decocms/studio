@@ -443,6 +443,9 @@ export const plan = {
   "plan.opportunities.setup.orders":
     "No store orders yet, so no money estimate.",
   "plan.opportunities.setup.ordersAction": "Connect the store platform",
+  "plan.opportunities.setup.aiProvider":
+    "Connect an AI provider so the analysis can run. It uses the organization's models.",
+  "plan.opportunities.setup.aiProviderAction": "Open AI providers",
   "plan.opportunities.setup.repository":
     "The analysis could not read the site's code. Link the site's repository to Studio, or reconnect the GitHub account.",
   "plan.opportunities.setup.repositoryAction": "Open repositories",
