@@ -55,7 +55,9 @@ function Harness({
   previewServerUrl = "https://acme.com",
   mobileApp = null,
   onMobileApp,
+  backgroundCommit,
 }: {
+  backgroundCommit?: ReactNode;
   isBlocksV8: boolean;
   fastPreview: boolean;
   previewServerUrl?: string;
@@ -80,11 +82,29 @@ function Harness({
       isBlocksV8={isBlocksV8}
       previewServerUrl={form.watch("metadata.previewServerUrl")}
       fastPreview={form.watch("metadata.fastPreview")}
+      backgroundCommit={backgroundCommit}
     />
   );
 }
 
 describe("PreviewSettingsRows", () => {
+  it("offers the organization's background-commit row only on v7 with Fast Preview on", () => {
+    const row = <p>background commit row</p>;
+    const cases = [
+      { isBlocksV8: false, fastPreview: true, shown: true },
+      { isBlocksV8: false, fastPreview: false, shown: false },
+      { isBlocksV8: true, fastPreview: true, shown: false },
+    ];
+    for (const { shown, ...props } of cases) {
+      const { queryByText, unmount } = renderBare(
+        <Harness {...props} backgroundCommit={row} />,
+        { wrapper },
+      );
+      expect(!!queryByText("background commit row")).toBe(shown);
+      unmount();
+    }
+  });
+
   it("v7: the preview URL, the Fast Preview switch and in-place render, as on main", () => {
     const { queryByText, getByRole } = renderBare(
       <Harness isBlocksV8={false} fastPreview />,
