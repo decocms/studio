@@ -33,12 +33,15 @@ const inRange = (col: string) => `${col} < ${AT}
 
 // FINAL: `orders` replaces on `version`, so an order that went paid → canceled
 // would otherwise count twice. Every created order counts, whatever its status now.
+// An empty source_status is a VTEX incomplete order (checkout never completed),
+// which VTEX's own order list leaves out.
 const ORDERS_SQL = `
   SELECT ${daysAgo("created_at")} AS days_ago, ${bucket("created_at")} AS bucket,
     count() AS placed, sum(total) AS revenue, sum(item_count) AS items,
     any(currency) AS currency
   FROM customer_lake.orders FINAL
-  WHERE connection_id = {conn:String} AND ${inRange("created_at")}
+  WHERE connection_id = {conn:String} AND source_status != ''
+    AND ${inRange("created_at")}
   GROUP BY days_ago, bucket`;
 
 // uniqExact absorbs hook retries that wrote the same event twice.
@@ -81,7 +84,7 @@ const CHANNELS_SQL = `
   SELECT sales_channel AS channel, ${daysAgo("created_at")} AS days_ago,
     ${bucket("created_at")} AS bucket, count() AS placed
   FROM customer_lake.orders FINAL
-  WHERE connection_id = {conn:String} AND created_at < ${AT}
+  WHERE connection_id = {conn:String} AND source_status != '' AND created_at < ${AT}
     AND created_at >= ${AT} - INTERVAL 3 DAY AND days_ago IN (0, 1)
   GROUP BY channel, days_ago, bucket`;
 
