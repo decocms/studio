@@ -510,40 +510,41 @@ export const KEYS = {
     ["plan-goals", organizationId, "cases", goalId] as const,
   planDiagnosisAll: (organizationId: string) =>
     ["plan-diagnosis", organizationId] as const,
-  planDiagnosisStatus: (organizationId: string) =>
+  planDiagnosisStatuses: (organizationId: string) =>
     ["plan-diagnosis", organizationId, "status"] as const,
-  // Engine reads carry the org's engine connection id.
+  planDiagnosisStatus: (organizationId: string, native: boolean) =>
+    [
+      "plan-diagnosis",
+      organizationId,
+      "status",
+      native ? "native" : "connection",
+    ] as const,
+  // Engine reads carry the engine they came from: Studio's own, or the org's engine connection.
   planStoreViews: (organizationId: string) =>
     ["plan-diagnosis", organizationId, "store-view"] as const,
   planStoreView: (
     organizationId: string,
     goalId: string | null,
-    connectionId: string,
+    engine: string,
   ) =>
-    [
-      "plan-diagnosis",
-      organizationId,
-      "store-view",
-      goalId,
-      connectionId,
-    ] as const,
+    ["plan-diagnosis", organizationId, "store-view", goalId, engine] as const,
   planSiteProfiles: (organizationId: string) =>
     ["plan-diagnosis", organizationId, "site-profile"] as const,
-  planSiteProfile: (organizationId: string, connectionId: string) =>
-    ["plan-diagnosis", organizationId, "site-profile", connectionId] as const,
+  planSiteProfile: (organizationId: string, engine: string) =>
+    ["plan-diagnosis", organizationId, "site-profile", engine] as const,
   planOpportunities: (organizationId: string) =>
     ["plan-diagnosis", organizationId, "opportunity"] as const,
   planOpportunity: (
     organizationId: string,
     opportunityId: string,
-    connectionId: string,
+    engine: string,
   ) =>
     [
       "plan-diagnosis",
       organizationId,
       "opportunity",
       opportunityId,
-      connectionId,
+      engine,
     ] as const,
   automationsAll: (organizationId: string) =>
     ["automations", organizationId] as const,
