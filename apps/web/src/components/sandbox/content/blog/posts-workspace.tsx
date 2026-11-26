@@ -60,6 +60,7 @@ import { GeneratePostDialog } from "./generate-post-dialog";
 import { useGeneratePost } from "./use-generate-post";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
+  blockPropChoices,
   buildPlanningPostBlock,
   canDeletePost,
   customBlogSectionPaths,
@@ -419,12 +420,16 @@ export function PostsWorkspace({
       return content || title.trim() ? { title, body: { content } } : null;
     }
     const parsed = parseImportedContent(text);
+    const resolveTypes = sectionResolveTypes(meta, {
+      hideDefaults,
+      customPaths: customBlogSectionPaths(decofile),
+    });
     const sections = sectionsToBlocks(
       parsed.sections,
-      sectionResolveTypes(meta, {
-        hideDefaults,
-        customPaths: customBlogSectionPaths(decofile),
-      }),
+      resolveTypes,
+      resolveTypes.Callout
+        ? blockPropChoices(resolveTypes.Callout, "variant", meta)
+        : [],
     );
     return sections.length > 0 || parsed.title.trim()
       ? { title: parsed.title, body: { sections } }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   blockComponentName,
+  blockPropChoices,
   blocksPostStatus,
   buildBlogBlock,
   DEFAULT_SCHEDULE_HOUR,
@@ -3533,6 +3534,74 @@ describe("rawBlockSchema", () => {
       schema: { definitions: { A: { $ref: "#/definitions/A" } } },
     } as unknown as LiveMeta;
     expect(rawBlockSchema(RT, cyclic)).toEqual({});
+  });
+});
+
+describe("blockPropChoices", () => {
+  const RT = "site/sections/Blog/Post/Callout.tsx";
+  const metaWith = (variant: unknown) =>
+    ({
+      manifest: {
+        blocks: { sections: { [RT]: { $ref: "#/definitions/Callout" } } },
+      },
+      schema: {
+        definitions: {
+          Callout: {
+            type: "object",
+            allOf: [{ $ref: "#/definitions/CalloutProps" }],
+            properties: { __resolveType: { type: "string", enum: [RT] } },
+          },
+          CalloutProps: {
+            type: "object",
+            properties: { title: { type: "string" }, variant },
+          },
+          Variant: { type: "string", enum: ["info", "summary"] },
+        },
+      },
+    }) as unknown as LiveMeta;
+
+  test("reads an enum, which is how a TanStack site declares a union", () => {
+    const meta = metaWith({
+      type: "string",
+      enum: ["info", "warning", "success"],
+      nullable: true,
+    });
+    expect(blockPropChoices(RT, "variant", meta)).toEqual([
+      "info",
+      "warning",
+      "success",
+    ]);
+  });
+
+  test("reads an anyOf of consts, which is how a Deno site declares one", () => {
+    const meta = metaWith({
+      anyOf: [
+        { type: "string", const: "info", default: "info" },
+        { type: "string", const: "tip", default: "tip" },
+        { type: "null" },
+      ],
+    });
+    expect(blockPropChoices(RT, "variant", meta)).toEqual(["info", "tip"]);
+  });
+
+  test("follows a ref to a named type", () => {
+    const meta = metaWith({ $ref: "#/definitions/Variant" });
+    expect(blockPropChoices(RT, "variant", meta)).toEqual(["info", "summary"]);
+  });
+
+  test("names none for a free string, a missing prop or an unknown block", () => {
+    const meta = metaWith({ type: "string" });
+    expect(blockPropChoices(RT, "variant", meta)).toEqual([]);
+    expect(blockPropChoices(RT, "title", meta)).toEqual([]);
+    expect(blockPropChoices(RT, "nope", meta)).toEqual([]);
+    expect(blockPropChoices("site/sections/Nope.tsx", "variant", meta)).toEqual(
+      [],
+    );
+  });
+
+  test("keeps only the strings of a mixed enum", () => {
+    const meta = metaWith({ enum: ["info", 2, null, "tip"] });
+    expect(blockPropChoices(RT, "variant", meta)).toEqual(["info", "tip"]);
   });
 });
 
