@@ -1,57 +1,48 @@
 /**
- * Achar PDP, vitrine e busca numa loja qualquer (benchmark).
- *
- * O que roda no Chrome (`storeLinksInPage` e `searchHintsInPage`, em
- * page-scripts.ts) só junta links e formulários crus; a decisão mora aqui, fora
- * da página, pra ser testável sem navegador.
+ * Find a PDP, listing and search on any store (benchmark). The Chrome-side
+ * scripts only collect raw links and forms; the decisions live here so they are
+ * testable without a browser.
  */
 
 import { sameStore } from "./domain-check.ts";
 
-/** Onde o link está na página: menu e área principal valem mais que rodapé. */
+/** Where the link is on the page: menu and main area count more than footer. */
 export type LinkZone = "nav" | "header" | "main" | "footer" | "other";
 
-/** Um `<a href>` como a página o viu (href já absoluto). */
+/** An `<a href>` as the page saw it (href already absolute). */
 export interface RawLink {
   href: string;
   zone: LinkZone;
   text: string;
-  /** Tem foto dentro: card de produto ou de categoria. */
+  /** Has a photo inside: product or category card. */
   image: boolean;
 }
 
 export interface StoreLinks {
-  /** Cara de PDP pelo padrão da URL. */
+  /** Looks like a PDP by URL pattern. */
   pdp: string[];
-  /**
-   * Talvez PDP: slug longo com foto na área principal, `<slug>.html`. Só vale
-   * depois de aberta e confirmada pelos dados estruturados.
-   */
+  /** Maybe a PDP: only counts once opened and confirmed by structured data. */
   maybePdp: string[];
-  /** Vitrine (categoria, coleção): menu primeiro, rodapé por último. */
+  /** Listing (category, collection): menu first, footer last. */
   listing: string[];
 }
 
-/**
- * Padrões de URL de PDP. `/products/<handle>` só na raiz (ou com prefixo de
- * idioma, ou dentro de /collections/x/): `/content/products/editorial` e
- * `/mobile/products/br/…` passavam e custaram ~3 min de páginas que não são PDP.
- */
+/** PDP URL patterns; `/products/<handle>` only at the root, with a language prefix or inside /collections/x/. */
 const PDP_PATTERN =
   /(\/p$|\/p\/|\/product\/|\/produto\/|\/produtos\/[^/]+\/?$|^(\/[a-z]{2}(-[a-z]{2})?)?\/products\/[^/]+\/?$|\/collections\/[^/]+\/products\/[^/]+|\/prd\/|-p-\d|-p\d{6,}\.html$|\/dp\/|\/item\/|^\/[a-z0-9-]+\/[a-z]*\d{3,}[a-z0-9]*\.html$)/i;
 
-/** `<slug-de-tres-palavras>.html`: PDP no Magento, mas categoria também usa `.html`. */
+/** `<three-word-slug>.html`: a PDP on Magento, but categories also use `.html`. */
 const HTML_SLUG = /^\/([a-z0-9]+-){2,}[a-z0-9]+\.html$/i;
 
-/** Slug que nomeia coleção ou campanha, não produto. */
+/** Slug that names a collection or campaign, not a product. */
 const LISTING_WORDS =
   /(^|-)(colecao|collection|categoria|category|departamento|department|outlet|sale|promo\w*|liquida\w*|novidades|lancamentos|look|lookbook|campanha|marca|brand)(-|$)/i;
 
-/** Páginas que não são produto nem vitrine. */
+/** Pages that are neither product nor listing. */
 const SKIP =
   /(^|[/_-])(login|entrar|conta|minha-conta|account|my-account|cart|carrinho|sacola|checkout|store-locator|lojas|nossas-lojas|ajuda|help|faq|politica\w*|policy|privac\w*|termos|terms|blog|contato|contact|wishlist|favoritos|institucional|sobre|about|quem-somos|trocas?|devoluc\w*|atendimento|rastre\w*|cadastro|register|newsletter|trabalhe-conosco|carreiras|careers|imprensa|search|busca|buscar|pesquisa|catalogsearch)([/_.-]|$)/i;
 
-/** Arquivo, não página. */
+/** A file, not a page. */
 const FILE = /\.(pdf|jpe?g|png|gif|webp|svg|xml|txt|zip|json|js|css)$/i;
 
 const ZONE_ORDER: Record<LinkZone, number> = {
@@ -64,7 +55,7 @@ const ZONE_ORDER: Record<LinkZone, number> = {
 
 const LIMIT = 12;
 
-/** Segmentos do caminho, sem o prefixo de idioma (`/pt-br/`). */
+/** Path segments, without the language prefix (`/pt-br/`). */
 function segmentsOf(pathname: string): string[] {
   const segs = pathname.split("/").filter(Boolean);
   return segs.length > 1 && /^[a-z]{2}(-[a-z]{2})?$/i.test(segs[0] ?? "")
@@ -72,7 +63,7 @@ function segmentsOf(pathname: string): string[] {
     : segs;
 }
 
-/** Que tipo de página o caminho parece ser. */
+/** What kind of page the path looks like. */
 export function classifyPath(
   pathname: string,
   hint: { image?: boolean; zone?: LinkZone } = {},
@@ -83,8 +74,7 @@ export function classifyPath(
   const segs = segmentsOf(pathname);
   const last = segs[segs.length - 1] ?? "";
   if (HTML_SLUG.test(`/${last}`) && !LISTING_WORDS.test(last)) return "maybe";
-  // Slug solto (`/camiseta-basica-algodao`): produto quando tem cara de nome
-  // de produto e aparece como card com foto, ou termina num código.
+  // A loose slug (`/basic-cotton-tee`): a product when it looks like a product name and shows up as a photo card, or ends in a code.
   if (segs.length <= 2 && !LISTING_WORDS.test(last)) {
     const words = last
       .replace(/\.html$/i, "")
@@ -100,7 +90,7 @@ export function classifyPath(
   return segs.length <= 3 ? "listing" : null;
 }
 
-/** Chave de uma URL interna (origem + caminho), ou null se for de fora. */
+/** Key of an internal URL (origin + path), or null if it is external. */
 function internalKey(href: string, origin: string): string | null {
   let url: URL;
   let base: URL;
@@ -115,11 +105,7 @@ function internalKey(href: string, origin: string): string | null {
   return `${url.origin}${url.pathname}`;
 }
 
-/**
- * Links de uma página da loja em três baldes: PDP pelo padrão da URL, talvez
- * PDP (só confirmada), e vitrines pra descer um nível quando a home não lista
- * produto (o comum: muita home só tem categorias).
- */
+/** A store page's links in three buckets: PDP by URL, maybe-PDP (needs confirmation), and listings to descend into. */
 export function classifyStoreLinks(
   links: readonly RawLink[],
   origin: string,
@@ -148,23 +134,19 @@ export function classifyStoreLinks(
   };
 }
 
-/** Quantos produtos a página lista (padrão de PDP ou card de produto). */
+/** How many products the page lists (PDP pattern or product card). */
 export function productCount(links: StoreLinks): number {
   return links.pdp.length + links.maybePdp.length;
 }
 
-/** Uma página com 4+ produtos é vitrine ou resultado de busca. */
+/** A page with 4+ products is a listing or search result. */
 export const MIN_LISTED_PRODUCTS = 4;
 
-/** Item de menu que não é tipo de produto. */
+/** Menu item that is not a product type. */
 const NOT_A_TERM =
   /^(menu|home|in[ií]cio|entrar|login|conta|sacola|carrinho|ver tudo|ver mais|todos|todas|sale|outlet|novidades|lan[cç]amentos|promo[cç](ão|ões)|ofertas|marcas|blog|ajuda|contato|lojas)$/i;
 
-/**
- * Um termo de busca tirado da própria loja: o primeiro item do menu com cara de
- * tipo de produto ("vestidos", "tênis"). Serve quando o termo da loja analisada
- * não acha nada no concorrente, que pode nem vender aquilo.
- */
+/** A search term taken from the store's own menu (first product-type item), for when its term finds nothing at the competitor. */
 export function termFromLinks(
   links: readonly RawLink[],
   origin: string,
@@ -196,9 +178,9 @@ export function termFromLinks(
   return null;
 }
 
-// ── Busca ────────────────────────────────────────────────────────────────────
+// ── Search ───────────────────────────────────────────────────────────────────
 
-/** Um `<form>` da página: `action` como está no HTML, inputs com nome. */
+/** A page `<form>`: `action` as in the HTML, named inputs. */
 export interface RawSearchForm {
   action: string;
   method: string;
@@ -206,10 +188,10 @@ export interface RawSearchForm {
 }
 
 export interface SearchHints {
-  /** URL da página onde os formulários estavam (base das actions relativas). */
+  /** URL of the page where the forms were (base for relative actions). */
   pageUrl: string;
   forms: RawSearchForm[];
-  /** Começo do HTML, pra reconhecer a plataforma. */
+  /** Start of the HTML, to recognize the platform. */
   html: string;
 }
 
@@ -222,7 +204,7 @@ export type Platform =
   | "nuvemshop"
   | "vnda";
 
-/** A plataforma da loja pelos rastros que ela deixa no HTML; null = não sei. */
+/** The store's platform from the traces it leaves in the HTML; null = unknown. */
 export function detectPlatform(html: string): Platform | null {
   if (/render-runtime|__RUNTIME__|\/_v\/segment\/|vtex\.store-/i.test(html))
     return "vtex-io";
@@ -242,10 +224,7 @@ export function detectPlatform(html: string): Platform | null {
   return null;
 }
 
-/**
- * A rota de busca de cada plataforma; `{q}` é o termo. `/s?q=` é a do deco,
- * `/busca?ft=` a do VTEX legado e `/<termo>?_q=<termo>&map=ft` a do VTEX IO.
- */
+/** Each platform's search route; `{q}` is the term. */
 const PLATFORM_SEARCH_ROUTES: Record<Platform, string[]> = {
   "vtex-io": ["/{q}?_q={q}&map=ft"],
   "vtex-legacy": ["/busca?ft={q}"],
@@ -256,7 +235,7 @@ const PLATFORM_SEARCH_ROUTES: Record<Platform, string[]> = {
   vnda: ["/busca?q={q}"],
 };
 
-/** Sem plataforma reconhecida: das mais comuns às mais raras. */
+/** No recognized platform: from the most common to the rarest. */
 const COMMON_SEARCH_ROUTES = [
   "/search?q={q}",
   "/s?q={q}",
@@ -268,15 +247,11 @@ const COMMON_SEARCH_ROUTES = [
   "/pesquisa?q={q}",
 ];
 
-/** Nome de campo que é a caixa de busca. */
+/** Field name that is the search box. */
 const SEARCH_INPUT_NAME =
   /^(q|_q|query|ft|search|busca|buscar|term|termo|keyword|s)$/i;
 
-/**
- * A rota do formulário de busca da página (`{q}` no lugar do termo), ou null.
- * Só GET: um POST não vira URL. Action relativa resolve contra a página; de
- * outro domínio não serve (a captura é da loja).
- */
+/** The page's search form route (`{q}` for the term), or null. GET only; relative actions resolve against the page, cross-domain ones are ignored. */
 export function searchRouteFromForms(
   forms: readonly RawSearchForm[],
   pageUrl: string,
@@ -309,10 +284,7 @@ export function searchRouteFromForms(
   return null;
 }
 
-/**
- * As rotas de busca a tentar, em ordem: a do formulário da home (é a da loja,
- * com certeza), a da plataforma reconhecida e as comuns. Absolutas, sem repetir.
- */
+/** Search routes to try, in order: the home form's, the recognized platform's, then common ones. Absolute, deduplicated. */
 export function searchRoutes(hints: SearchHints): string[] {
   const origin = new URL(hints.pageUrl).origin;
   const platform = detectPlatform(hints.html);
@@ -329,12 +301,12 @@ export function searchRoutes(hints: SearchHints): string[] {
   return out;
 }
 
-/** A rota com o termo. */
+/** The route with the term. */
 export function fillRoute(route: string, term: string): string {
   return route.replaceAll("{q}", encodeURIComponent(term));
 }
 
-/** A rota como aparece na lacuna: só caminho e query, sem o termo. */
+/** The route as it shows up in the gap: path and query only, without the term. */
 export function routeLabel(route: string): string {
   try {
     const u = new URL(route.replaceAll("{q}", "QQ"));
@@ -344,7 +316,7 @@ export function routeLabel(route: string): string {
   }
 }
 
-/** Caiu na home, sem o termo na URL (o `/?s=termo` de algumas lojas vale). */
+/** Landed on the home, without the term in the URL (some stores' `/?s=term` is valid). */
 function sentHome(landed: string, term: string): boolean {
   try {
     const u = new URL(landed);
@@ -358,13 +330,9 @@ function sentHome(landed: string, term: string): boolean {
 }
 
 /**
- * O que uma rota de busca devolveu:
- * - `ok`: lista produtos;
- * - `missing`: a rota não existe (404, volta pra home, ou página que não
- *   responde pelo termo);
- * - `no_results`: a busca existe e diz que não achou nada;
- * - `no_product_links`: a busca respondeu pelo termo, mas sem link de produto
- *   que a gente reconheça.
+ * What a search route returned: `ok` lists products, `missing` the route does
+ * not exist, `no_results` the search found nothing, `no_product_links` it
+ * answered by the term but with no recognizable product link.
  */
 export type SearchOutcome =
   | "ok"
@@ -372,7 +340,7 @@ export type SearchOutcome =
   | "no_results"
   | "no_product_links";
 
-/** Sobre o texto sem acento (`fold`). */
+/** On the accent-free text (`fold`). */
 const NO_RESULTS =
   /nenhum (produto|resultado|item)|nao (encontramos|achamos|encontrou)|nao (foi|foram) encontrad|sem resultados?|(^|[^\d])0 (produtos|resultados|itens|results)|nao ha produtos|no results|no products? found|nothing found/gi;
 
@@ -385,12 +353,12 @@ const fold = (s: string) =>
 export function searchOutcome(r: {
   status: number;
   links: StoreLinks;
-  /** Texto do conteúdo da página. */
+  /** Page content text. */
   text: string;
-  /** Título, h1 e caixa de busca: onde a busca repete o termo. */
+  /** Title, h1 and search box: where the search repeats the term. */
   heading: string;
   term: string;
-  /** URL final: rota desconhecida que redireciona pra home não é a busca. */
+  /** Final URL: an unknown route that redirects to the home is not the search. */
   landed?: string;
 }): SearchOutcome {
   if (r.status === 404 || r.status === 410) return "missing";
@@ -398,7 +366,7 @@ export function searchOutcome(r: {
   if (productCount(r.links) >= MIN_LISTED_PRODUCTS) return "ok";
   if (r.status >= 400) return "missing";
   const term = fold(r.term);
-  // "Nenhum produto" sozinho pode ser o carrinho vazio; vale perto do termo.
+  // "Nenhum produto" alone can be an empty cart; it only counts near the term.
   const text = fold(r.text);
   const empty = [...text.matchAll(NO_RESULTS)];
   const emptyNearTerm = empty.some((m) =>
@@ -413,13 +381,13 @@ export function searchOutcome(r: {
 }
 
 export interface SearchAttempt {
-  /** `routeLabel` da rota. */
+  /** The route's `routeLabel`. */
   route: string;
   term: string;
   outcome: SearchOutcome;
 }
 
-/** A lacuna da busca que não deu página, nomeando a etapa que falhou. */
+/** The gap for a search that produced no page, naming the step that failed. */
 export function searchFailureMessage(
   domain: string,
   attempts: readonly SearchAttempt[],

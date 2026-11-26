@@ -6,7 +6,7 @@ import {
   toStudioProject,
 } from "./studio-project.ts";
 
-// Um recorte de COLLECTION_VIRTUAL_MCP_LIST.
+// A cut of COLLECTION_VIRTUAL_MCP_LIST.
 const loja = {
   id: "vir_loja",
   title: "loja",
@@ -37,7 +37,7 @@ const agent = {
 };
 
 describe("toStudioProject", () => {
-  test("lê domínio, slug, repo e runtime do projeto", () => {
+  test("reads domain, slug, repo and runtime from the project", () => {
     expect(toStudioProject(loja)).toEqual({
       id: "vir_loja",
       title: "loja",
@@ -52,7 +52,7 @@ describe("toStudioProject", () => {
     });
   });
 
-  test("lê o host e o id do repositório no Studio, quando o projeto tem", () => {
+  test("reads the host and repository id in Studio, when the project has them", () => {
     const item = {
       metadata: {
         siteSlug: "loja",
@@ -74,7 +74,7 @@ describe("toStudioProject", () => {
     });
   });
 
-  test("lê o domínio de previewServerUrl", () => {
+  test("reads the domain from previewServerUrl", () => {
     const item = {
       metadata: {
         siteSlug: "loja",
@@ -84,7 +84,7 @@ describe("toStudioProject", () => {
     expect(toStudioProject(item)?.domain).toBe("www.loja.example");
   });
 
-  test("previewServerUrl vence productionUrl", () => {
+  test("previewServerUrl beats productionUrl", () => {
     const item = {
       metadata: {
         siteSlug: "loja",
@@ -112,20 +112,20 @@ describe("toStudioProject", () => {
     ).toBe("www.loja.example");
   });
 
-  test("agente (sem siteSlug) não é projeto de site", () => {
+  test("an agent (no siteSlug) is not a site project", () => {
     expect(toStudioProject(agent)).toBeNull();
   });
 });
 
 describe("pickStudioProject", () => {
-  test("com dois sites, vence o que está em produção", () => {
+  test("with two sites, the one in production wins", () => {
     const p = pickStudioProject([agent, storefront, loja], {
       orgSlug: "loja",
     });
     expect(p?.site_slug).toBe("loja");
   });
 
-  test("o domínio já conhecido decide, com ou sem www", () => {
+  test("the already known domain decides, with or without www", () => {
     const other = {
       ...storefront,
       metadata: {
@@ -147,7 +147,7 @@ describe("pickStudioProject", () => {
     ).toBe("loja");
   });
 
-  test("org sem site devolve null", () => {
+  test("an org without a site returns null", () => {
     expect(pickStudioProject([agent], { orgSlug: "loja" })).toBeNull();
   });
 });
@@ -155,20 +155,20 @@ describe("pickStudioProject", () => {
 describe("projectConfirmsStore", () => {
   const project = (domain: string | null) => ({ domain });
 
-  test("o domínio do projeto é o da loja (com ou sem www.)", () => {
+  test("the project domain is the store's (with or without www.)", () => {
     expect(
       projectConfirmsStore(project("www.loja.example"), "loja.example"),
     ).toBe(true);
   });
 
-  // Um projeto com siteSlug e sem productionUrl pode ser qualquer Virtual MCP.
-  test("projeto sem domínio não confirma nada", () => {
+  // A project with siteSlug and no productionUrl can be any Virtual MCP.
+  test("a project without a domain confirms nothing", () => {
     expect(projectConfirmsStore(project(null), "www.outra.example")).toBe(
       false,
     );
   });
 
-  test("projeto de outra loja não confirma", () => {
+  test("a project from another store does not confirm", () => {
     expect(
       projectConfirmsStore(project("www.loja.example"), "www.outra.example"),
     ).toBe(false);
@@ -186,7 +186,7 @@ describe("findAnalyticsSite", () => {
   });
   const opts = { orgSlug: "org", domain: null };
 
-  test("acha o site registrado mesmo sem domínio no projeto", async () => {
+  test("finds the registered site even without a domain on the project", async () => {
     const found = await findAnalyticsSite(
       [project("a"), project("b")],
       async (slug) => slug === "b",
@@ -195,7 +195,7 @@ describe("findAnalyticsSite", () => {
     expect(found).toBe("b");
   });
 
-  test("o projeto do domínio é tentado primeiro", async () => {
+  test("the domain's project is tried first", async () => {
     const probed: string[] = [];
     const found = await findAnalyticsSite(
       [project("a"), project("b", "www.loja.example")],
@@ -209,7 +209,7 @@ describe("findAnalyticsSite", () => {
     expect(probed).toEqual(["b"]);
   });
 
-  test("o slug da org vem antes dos demais", async () => {
+  test("the org slug comes before the others", async () => {
     const probed: string[] = [];
     await findAnalyticsSite(
       [project("a"), project("org")],
@@ -222,7 +222,7 @@ describe("findAnalyticsSite", () => {
     expect(probed).toEqual(["org", "a"]);
   });
 
-  test("nenhum registrado", async () => {
+  test("none registered", async () => {
     const found = await findAnalyticsSite(
       [project("a"), project("b")],
       async () => false,
@@ -231,7 +231,7 @@ describe("findAnalyticsSite", () => {
     expect(found).toBeNull();
   });
 
-  test("probe que falha conta como não registrado", async () => {
+  test("a failing probe counts as not registered", async () => {
     const found = await findAnalyticsSite(
       [project("a"), project("b")],
       async (slug) => {

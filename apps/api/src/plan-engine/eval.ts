@@ -1,19 +1,7 @@
 /**
- * A régua do diagnóstico: as métricas da proposta de arquitetura (19/11),
- * calculadas sobre um diagnóstico GRAVADO (o JSON do `get_ux_diagnosis`),
- * sem gastar modelo. Serve pra comparar uma rodada nova com o baseline e pra
- * saber se uma mudança melhorou de verdade (scripts/ux-eval.ts).
- *
- * O que se mede:
- * - oportunidade: tem comparação (dispositivo/segmento)? o título é uma perda
- *   (com número) ou parece uma causa ("o pop-up de newsletter aparece")?
- *   E: a oportunidade que o código de hoje montaria a partir da MESMA
- *   evidência (loss-opportunities.ts) — é o "e se rodasse hoje".
- * - hipótese: cita fato? o "fato" dela está nos fatos citados? quantas a
- *   verificação desmentiu, deixou inconclusiva, bloqueou; quantas ficaram
- *   prontas pro teste;
- * - concordância com os vereditos humanos rotulados (aceita/derrubada);
- * - custo e tempo.
+ * Diagnosis metrics computed over a STORED diagnosis (the `get_ux_diagnosis`
+ * JSON) with no model spend, to compare a new round against a baseline
+ * (scripts/ux-eval.ts).
  */
 
 import { checkGrounding, factBook, factIndex } from "./facts.ts";
@@ -24,11 +12,11 @@ import type {
   UxOpportunity,
 } from "./types.ts";
 
-/** Um veredito humano sobre uma hipótese gravada. */
+/** A human verdict on a stored hypothesis. */
 export interface EvalLabel {
-  /** Os 8 primeiros caracteres do id do diagnóstico (basta). */
+  /** First 8 characters of the diagnosis id (enough). */
   diagnosis: string;
-  /** Um pedaço do título da hipótese (sem diferenciar maiúscula). */
+  /** A piece of the hypothesis title (case-insensitive). */
   match: string;
   verdict: "aceita" | "derrubada";
   motivo: string;
@@ -42,16 +30,16 @@ export interface EvalReport {
   opportunities: {
     total: number;
     with_comparison: number;
-    /** Títulos que não são uma perda medida (sem número, ou que nomeiam a causa). */
+    /** Titles that are not a measured loss (no number, or naming the cause). */
     cause_like_titles: string[];
-    /** O que o código de hoje montaria com a mesma evidência. */
+    /** What today's code would build from the same evidence. */
     today: { total: number; titles: string[] };
   };
   hypotheses: {
     total: number;
     with_cited_facts: number;
     fact_claims: number;
-    /** "fato_observado" cujo texto está nos fatos citados. */
+    /** "fato_observado" whose text is in the cited facts. */
     fact_claims_grounded: number;
     refuted: number;
     inconclusive: number;
@@ -64,11 +52,7 @@ export interface EvalReport {
   };
 }
 
-/**
- * O título é uma perda medida: diz a tela ou o público e traz um número. Até
- * 16/11 o modelo escrevia o título, e saía causa ("o card não mostra
- * desconto", "newsletter aparece na PDP"). Exportado pra teste.
- */
+/** The title is a measured loss: names the screen or audience and carries a number. Exported for tests. */
 export function isLossTitle(title: string): boolean {
   return /\d/.test(title) && /(celular|computador)/i.test(title);
 }
@@ -80,7 +64,7 @@ const STATES = {
   ready: "pronta_para_experimento",
 } as const;
 
-/** As métricas de um diagnóstico gravado. */
+/** Metrics of a stored diagnosis. */
 export function evaluateDiagnosis(
   raw: {
     diagnosis: {
@@ -136,8 +120,7 @@ export function evaluateDiagnosis(
     const h = hypotheses.find((x) =>
       x.title.toLowerCase().includes(l.match.toLowerCase()),
     );
-    // Derrubada por humano: o sistema acerta se ela não ficou de pé.
-    // Aceita: acerta se ficou (não refutada nem bloqueada).
+    // Human-rejected: right if it did not stand; accepted: right if it stood (not refuted or blocked)
     const standing =
       !!h &&
       h.lifecycle !== STATES.refuted &&
@@ -185,7 +168,7 @@ export function evaluateDiagnosis(
   };
 }
 
-/** Soma de vários relatórios (a linha "total" do script). */
+/** Sum of several reports (the script's "total" row). */
 export function sumReports(reports: EvalReport[]) {
   const sum = (f: (r: EvalReport) => number) =>
     reports.reduce((s, r) => s + f(r), 0);

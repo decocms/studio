@@ -1,11 +1,8 @@
 /**
- * A base de conhecimento do diagnóstico: o que se sabe sobre conversão de
- * e-commerce em geral (curated.ts, revisado em PR) e o que se aprendeu sobre
- * ESTA loja (tabela ux_knowledge: vereditos, decisões e A/Bs cadastrados).
- *
- * Não é um banco de artigos: cada entrada diz de onde veio, quanto vale e
- * onde não se aplica. Um estudo, um A/B de outra loja e o que 10 concorrentes
- * fazem não podem pesar igual — e um A/B desta loja vale mais que todos eles.
+ * The diagnosis knowledge base: general e-commerce conversion knowledge
+ * (curated.ts, reviewed in PR) plus what was learned about THIS store. Each
+ * entry records its origin, weight and where it does not apply, so a study, another store's A/B
+ * and this store's own A/B do not weigh the same.
  */
 
 import type { UxArea } from "../types.ts";
@@ -29,14 +26,10 @@ export type KnowledgeSourceType =
 
 export type KnowledgeReliability = "alta" | "media" | "baixa";
 
-/** De onde a entrada entrou na base. */
+/** Where the entry came from. */
 export type KnowledgeOrigin = "curada" | "manual" | "veredito" | "decisao";
 
-/**
- * O que a entrada concluiu. Pra A/B: positivo/negativo/neutro. Pra veredito do
- * verificador: confirmada (a condição EXISTE na loja; não prova causa) ou
- * refutada. NULL = conhecimento geral.
- */
+/** What the entry concluded. A confirmed verdict means the condition EXISTS, not that it is the cause. NULL = general knowledge. */
 export type KnowledgeResult =
   | "positivo"
   | "negativo"
@@ -46,48 +39,38 @@ export type KnowledgeResult =
 
 export interface KnowledgeEntry {
   id: string;
-  /** A afirmação, numa frase ("Custo extra inesperado faz abandonar o carrinho"). */
+  /** The claim, in one sentence. */
   conhecimento: string;
   categoria: KnowledgeCategory;
-  /** Quem disse ("Baymard Institute, pesquisa anual de abandono"). */
+  /** Who said it. */
   fonte: string;
   fonte_url: string | null;
   tipo_fonte: KnowledgeSourceType;
-  /** Onde foi observado ("compradoras dos EUA, todos os segmentos"). */
+  /** Where it was observed. */
   contexto: string;
-  /** Partes da página onde vale (de qualquer tipo de página; areas.ts). */
+  /** Page parts where it applies (any page type; areas.ts). */
   areas: UxArea[];
-  /** O que a fonte achou, com número. */
+  /** What the source found, with a number. */
   evidencia: string;
-  /**
-   * Trecho literal da fonte (no idioma dela) que contém o número: é o que
-   * deixa conferir que a citação não foi inventada. NULL = entrada manual ou
-   * aprendida (o veredito não tem fonte externa).
-   */
+  /** Literal excerpt from the source (in its language) containing the number, so the citation can be checked. NULL = manual or learned. */
   trecho?: string | null;
   confiabilidade: KnowledgeReliability;
-  /** Onde não se aplica / o que o estudo não prova. */
+  /** Where it does not apply / what the study does not prove. */
   limitacoes: string;
   resultado: KnowledgeResult | null;
   origem: KnowledgeOrigin;
   diagnosis_id: string | null;
   hypothesis_id: string | null;
-  /**
-   * A assinatura da página quando o veredito foi aprendido (validity.ts).
-   * NULL = não depende de uma página (geral, manual, decisão, tráfego).
-   */
+  /** The page signature when the verdict was learned (validity.ts). NULL = not page-dependent. */
   assinatura?: string | null;
-  /**
-   * Calculado na análise, não gravado: a página mudou desde o veredito
-   * (`markStale`). Vai pro prompt como histórico, com peso menor.
-   */
+  /** Computed at analysis time, not stored: the page changed since the verdict (`markStale`). */
   stale?: boolean;
   active: boolean;
   created_at: string;
   updated_at: string;
 }
 
-/** Quanto cada tipo de fonte pesa. Benchmark é sinal de mercado, não prova. */
+/** How much each source type weighs. Benchmark is a market signal, not proof. */
 export const SOURCE_WEIGHT: Record<KnowledgeSourceType, number> = {
   ab_desta_loja: 1,
   veredito_desta_loja: 0.8,
@@ -114,5 +97,5 @@ export const SOURCE_TYPE_LABEL: Record<KnowledgeSourceType, string> = {
   opiniao: "opinião",
 };
 
-/** Tipos que só entram com link pra fonte: é o que segura citação inventada. */
+/** Types that only enter with a source link, which guards against invented citations. */
 export const NEEDS_URL: KnowledgeSourceType[] = ["estudo", "ab_outra_loja"];

@@ -29,8 +29,8 @@ function a(
   return { href, zone, text: "", image: false, ...extra };
 }
 
-describe("classifyPath: o que a URL diz da página", () => {
-  test("padrões de PDP das plataformas", () => {
+describe("classifyPath: what the URL says about the page", () => {
+  test("platform PDP patterns", () => {
     for (const path of [
       "/vestido-midi-floral/p",
       "/produto/camisa-linho",
@@ -45,32 +45,32 @@ describe("classifyPath: o que a URL diz da página", () => {
     }
   });
 
-  test("/products/ fora da raiz não é PDP", () => {
+  test("/products/ outside the root is not a PDP", () => {
     expect(classifyPath("/content/products/editorial")).not.toBe("pdp");
     expect(classifyPath("/mobile/products/br/x")).not.toBe("pdp");
   });
 
-  test("talvez PDP: slug.html, slug com código, card com foto", () => {
+  test("maybe PDP: slug.html, slug with code, card with photo", () => {
     expect(classifyPath("/camisa-de-linho-azul.html")).toBe("maybe");
     expect(classifyPath("/camisa-linho-123456")).toBe("maybe");
     expect(
       classifyPath("/camisa-de-linho-azul", { image: true, zone: "main" }),
     ).toBe("maybe");
-    // O mesmo slug sem foto, ou no menu, é vitrine.
+    // The same slug without a photo, or in the menu, is a showcase.
     expect(classifyPath("/camisa-de-linho-azul")).toBe("listing");
     expect(
       classifyPath("/camisa-de-linho-azul", { image: true, zone: "nav" }),
     ).toBe("listing");
   });
 
-  test("coleção e campanha com foto continuam vitrine", () => {
+  test("collection and campaign with photo remain showcases", () => {
     expect(
       classifyPath("/colecao-verao-praia", { image: true, zone: "main" }),
     ).toBe("listing");
     expect(classifyPath("/feminino.html")).toBe("listing");
   });
 
-  test("institucional, conta, busca e arquivo ficam de fora", () => {
+  test("institutional, account, search and file stay out", () => {
     for (const path of [
       "/",
       "/institucional/sobre",
@@ -83,13 +83,13 @@ describe("classifyPath: o que a URL diz da página", () => {
     ]) {
       expect([path, classifyPath(path)]).toEqual([path, null]);
     }
-    // "sobre" é palavra inteira: sobretudo é roupa.
+    // "sobre" is a whole word: "sobretudo" is clothing.
     expect(classifyPath("/sobretudos")).toBe("listing");
   });
 });
 
 describe("classifyStoreLinks", () => {
-  test("menu antes do conteúdo, rodapé por último", () => {
+  test("menu before content, footer last", () => {
     const out = classifyStoreLinks(
       [
         a("/trabalhe-conosco", "footer"),
@@ -108,7 +108,7 @@ describe("classifyStoreLinks", () => {
     ]);
   });
 
-  test("de fora da loja, repetido, âncora e query não contam duas vezes", () => {
+  test("outside the store, repeated, anchor and query do not count twice", () => {
     const out = classifyStoreLinks(
       [
         a("https://outra-loja-exemplo.com.br/x/p"),
@@ -125,7 +125,7 @@ describe("classifyStoreLinks", () => {
     ]);
   });
 
-  test("grade de cards com slug solto conta como lista de produtos", () => {
+  test("card grid with a bare slug counts as a product list", () => {
     const card = (slug: string) => a(slug, "main", { image: true });
     const out = classifyStoreLinks(
       [
@@ -143,14 +143,14 @@ describe("classifyStoreLinks", () => {
     expect(out.listing).toEqual([`${ORIGIN}/saias`]);
   });
 
-  test("teto de 12 por balde", () => {
+  test("cap of 12 per bucket", () => {
     const many = Array.from({ length: 30 }, (_, i) => a(`/item-${i}/p`));
     expect(classifyStoreLinks(many, ORIGIN).pdp.length).toBe(12);
   });
 });
 
-describe("termFromLinks: termo de busca tirado do menu do concorrente", () => {
-  test("o primeiro item do menu com cara de tipo de produto", () => {
+describe("termFromLinks: search term taken from a competitor's menu", () => {
+  test("the first menu item that looks like a product type", () => {
     expect(
       termFromLinks(
         [
@@ -163,13 +163,13 @@ describe("termFromLinks: termo de busca tirado do menu do concorrente", () => {
     ).toBe("vestidos");
   });
 
-  test("sem texto (ícone): o fim do caminho", () => {
+  test("without text (icon): the end of the path", () => {
     expect(termFromLinks([a("/feminino/calcas-jeans", "nav")], ORIGIN)).toBe(
       "calcas jeans",
     );
   });
 
-  test("nada que sirva", () => {
+  test("nothing usable", () => {
     expect(
       termFromLinks(
         [a("/minha-conta", "nav", { text: "Entrar" }), a("/x/p")],
@@ -179,7 +179,7 @@ describe("termFromLinks: termo de busca tirado do menu do concorrente", () => {
   });
 });
 
-describe("searchRouteFromForms: a busca que a home declara", () => {
+describe("searchRouteFromForms: the search the home declares", () => {
   const page = `${ORIGIN}/`;
   const form = (
     action: string,
@@ -187,7 +187,7 @@ describe("searchRouteFromForms: a busca que a home declara", () => {
     method = "get",
   ): RawSearchForm => ({ action, method, inputs });
 
-  test("input type=search, action relativa", () => {
+  test("input type=search, relative action", () => {
     expect(
       searchRouteFromForms(
         [form("busca", [{ name: "termo", type: "search", value: "" }])],
@@ -196,7 +196,7 @@ describe("searchRouteFromForms: a busca que a home declara", () => {
     ).toBe(`${ORIGIN}/feminino/busca?termo={q}`);
   });
 
-  test("input pelo nome (ft, q…), action absoluta no caminho", () => {
+  test("input by name (ft, q...), absolute action on the path", () => {
     expect(
       searchRouteFromForms(
         [form("/busca", [{ name: "ft", type: "text", value: "" }])],
@@ -205,7 +205,7 @@ describe("searchRouteFromForms: a busca que a home declara", () => {
     ).toBe(`${ORIGIN}/busca?ft={q}`);
   });
 
-  test("action vazia: a própria página; campos escondidos vão junto", () => {
+  test("empty action: the page itself; hidden fields come along", () => {
     expect(
       searchRouteFromForms(
         [
@@ -219,7 +219,7 @@ describe("searchRouteFromForms: a busca que a home declara", () => {
     ).toBe(`${ORIGIN}/?post_type=product&s={q}`);
   });
 
-  test("pula newsletter, POST e action de outro domínio", () => {
+  test("skips newsletter, POST and another domain's action", () => {
     expect(
       searchRouteFromForms(
         [
@@ -235,7 +235,7 @@ describe("searchRouteFromForms: a busca que a home declara", () => {
     ).toBe(`${ORIGIN}/pesquisa?query={q}`);
   });
 
-  test("www e apex são a mesma loja", () => {
+  test("www and apex are the same store", () => {
     expect(
       searchRouteFromForms(
         [
@@ -249,7 +249,7 @@ describe("searchRouteFromForms: a busca que a home declara", () => {
   });
 });
 
-describe("detectPlatform e searchRoutes: a rota de cada plataforma", () => {
+describe("detectPlatform and searchRoutes: each platform's route", () => {
   const cases: Array<[string, Platform, string]> = [
     [
       `<script>window.__RUNTIME__ = {}</script><link href="/_v/segment/x">`,
@@ -275,17 +275,17 @@ describe("detectPlatform e searchRoutes: a rota de cada plataforma", () => {
   ];
 
   for (const [html, platform, route] of cases) {
-    test(`${platform}: a rota dela logo depois da do formulário`, () => {
+    test(`${platform}: its route right after the form's`, () => {
       expect(detectPlatform(html)).toBe(platform);
       const routes = searchRoutes({ pageUrl: `${ORIGIN}/`, forms: [], html });
       expect(routes[0]).toBe(route);
-      // As comuns continuam na fila, sem repetir.
+      // The common ones stay in the queue, without repeats.
       expect(new Set(routes).size).toBe(routes.length);
       expect(routes).toContain(`${ORIGIN}/busca?q={q}`);
     });
   }
 
-  test("formulário primeiro; plataforma desconhecida: as comuns", () => {
+  test("form first; unknown platform: the common ones", () => {
     const routes = searchRoutes({
       pageUrl: `${ORIGIN}/`,
       forms: [
@@ -317,7 +317,7 @@ describe("detectPlatform e searchRoutes: a rota de cada plataforma", () => {
   });
 });
 
-describe("searchOutcome: o que a rota de busca respondeu", () => {
+describe("searchOutcome: what the search route answered", () => {
   const none: StoreLinks = { pdp: [], maybePdp: [], listing: [] };
   const grid: StoreLinks = {
     pdp: ["a", "b", "c", "d"].map((x) => `${ORIGIN}/${x}/p`),
@@ -332,24 +332,24 @@ describe("searchOutcome: o que a rota de busca respondeu", () => {
     term: "vestido",
   };
 
-  test("lista produtos", () => {
+  test("lists products", () => {
     expect(searchOutcome({ ...base, links: grid })).toBe("ok");
   });
 
-  test("404, ou redirecionou pra home", () => {
+  test("404, or redirected to the home", () => {
     expect(searchOutcome({ ...base, links: grid, status: 404 })).toBe(
       "missing",
     );
     expect(searchOutcome({ ...base, links: grid, landed: `${ORIGIN}/` })).toBe(
       "missing",
     );
-    // `/?s=vestido` é busca, não home.
+    // `/?s=vestido` is a search, not the home.
     expect(
       searchOutcome({ ...base, links: grid, landed: `${ORIGIN}/?s=vestido` }),
     ).toBe("ok");
   });
 
-  test("nenhum resultado pelo termo (sem acento, qualquer caixa)", () => {
+  test("no results for the term (accent- and case-insensitive)", () => {
     expect(
       searchOutcome({
         ...base,
@@ -366,7 +366,7 @@ describe("searchOutcome: o que a rota de busca respondeu", () => {
     ).toBe("no_results");
   });
 
-  test("carrinho vazio numa página qualquer não é busca sem resultado", () => {
+  test("an empty cart on any page is not a search without results", () => {
     expect(
       searchOutcome({
         ...base,
@@ -374,23 +374,23 @@ describe("searchOutcome: o que a rota de busca respondeu", () => {
         text: `Sacola: nenhum produto no carrinho. ${"Novidades da semana ".repeat(10)} Vestido de festa`,
       }),
     ).toBe("missing");
-    // "10 produtos" não é "0 produtos".
+    // "10 produtos" is not "0 produtos".
     expect(
       searchOutcome({ ...base, heading: "vestido", text: "10 produtos" }),
     ).toBe("no_product_links");
   });
 
-  test("respondeu pelo termo sem link de produto reconhecível", () => {
+  test("answered for the term without a recognizable product link", () => {
     expect(
       searchOutcome({ ...base, heading: "Resultados para vestido | Loja" }),
     ).toBe("no_product_links");
   });
 });
 
-describe("searchFailureMessage: a lacuna nomeia a etapa", () => {
+describe("searchFailureMessage: the gap names the stage", () => {
   const d = "concorrente-exemplo.com.br";
 
-  test("nenhuma rota é a busca", () => {
+  test("no route is the search", () => {
     expect(
       searchFailureMessage(
         d,
@@ -405,7 +405,7 @@ describe("searchFailureMessage: a lacuna nomeia a etapa", () => {
     );
   });
 
-  test("busca sem resultado, também com o termo do concorrente", () => {
+  test("search without results, also with the competitor's term", () => {
     expect(
       searchFailureMessage(
         d,
@@ -421,7 +421,7 @@ describe("searchFailureMessage: a lacuna nomeia a etapa", () => {
     );
   });
 
-  test("resultado sem link de produto", () => {
+  test("result without a product link", () => {
     expect(
       searchFailureMessage(
         d,
@@ -433,7 +433,7 @@ describe("searchFailureMessage: a lacuna nomeia a etapa", () => {
     );
   });
 
-  test("sem tempo", () => {
+  test("out of time", () => {
     expect(searchFailureMessage(d, [], true)).toBe(
       "sem tempo pra testar a busca de concorrente-exemplo.com.br",
     );

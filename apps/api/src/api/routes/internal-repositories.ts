@@ -2,8 +2,10 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import {
+  accountIsServable,
   cappedLimit,
   type ChangeRequestHistoryItem,
+  clientForAccount,
   DEFAULT_FILE_BYTES,
   DEFAULT_TREE_ENTRIES,
   GitProviderError,
@@ -13,11 +15,10 @@ import {
   MAX_FILE_BYTES,
   MAX_SEARCH_HITS,
   MAX_TREE_ENTRIES,
-  findLinkedRepository,
+  providerCapabilities,
   type RepoInsightsClient,
-  repositoryUsability,
 } from "@/git-providers";
-import type { RepositoryRecord } from "@/storage/repositories";
+import { type RepositoryRecord, repoRefOf } from "@/storage/repositories";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
 
 /**
@@ -110,6 +111,24 @@ export function changeRequestWire(
     commits: item.commits,
   };
 }
+
+/**
+ * Why a repository cannot be read, in terms of what a human has to do about it.
+ *
+ * The distinction the consumer needs is DURABLE versus TRANSIENT: only a
+ * durable answer may flip a connection card to "disconnected". `auth_failed`
+ * is durable (the grant is dead until someone reconnects); a provider 5xx never
+ * reaches here at all, because it is raised rather than reported as a reason.
+ */
+const RESOLVE_REASONS = [
+  "ok",
+  "no_account",
+  "account_revoked",
+  "provider_unconfigured",
+  "auth_failed",
+  "not_found",
+] as const;
+type ResolveReason = (typeof RESOLVE_REASONS)[number];
 
 const refSchema = z.object({
   provider: z.enum(["github", "gitlab", "bitbucket"]),
@@ -310,13 +329,7 @@ export const createInternalRepositoryRoutes = (
 
     const repository = parsed.data.repository_id
       ? await repositoryOr404(ctx, organizationId, parsed.data.repository_id)
-      : parsed.data.ref
-        ? await findLinkedRepository(
-            ctx.storage.repositories,
-            organizationId,
-            parsed.data.ref,
-          )
-        : null;
+      : await findByRef(ctx, organizationId, parsed.data.ref);
     if (!repository) {
       logCall({
         route: "resolve",
@@ -334,7 +347,7 @@ export const createInternalRepositoryRoutes = (
       { route: "resolve", org: organizationId, repository, startedAt },
       async () => ({
         repository: repositoryWire(repository),
-        ...(await repositoryUsability(ctx, repository)),
+        ...(await resolveUsability(ctx, repository)),
       }),
     );
   });
@@ -470,3 +483,69 @@ export const createInternalRepositoryRoutes = (
 
   return app;
 };
+
+/**
+ * The org's repository for an identity. `findByRef` matches on host and path
+ * alone, so the provider is checked here: two providers can share a host in a
+ * self-managed deployment, and answering with the wrong one would credential a
+ * read against a repository the caller did not name.
+ */
+async function findByRef(
+  ctx: StudioContext,
+  organizationId: string,
+  ref: z.infer<typeof refSchema> | undefined,
+): Promise<RepositoryRecord | null> {
+  if (!ref) return null;
+  const repository = await ctx.storage.repositories.findByRef(organizationId, {
+    host: ref.host,
+    path: ref.path,
+  });
+  return repository?.provider === ref.provider ? repository : null;
+}
+
+/**
+ * Whether a credential that can actually read this repository exists right now.
+ *
+ * The live call is the point: a stored account row says nothing about whether
+ * its grant was revoked on the provider's side this morning, and the consumer
+ * uses this answer to decide whether to show a reconnect prompt. A transient
+ * failure is NOT reported as unusable — it is raised, so the caller leaves its
+ * card alone rather than telling a reader to reconnect a working integration.
+ */
+async function resolveUsability(
+  ctx: StudioContext,
+  repository: RepositoryRecord,
+): Promise<{ usable: boolean; reason: ResolveReason }> {
+  if (!repository.accountId) {
+    return { usable: false, reason: "no_account" };
+  }
+  const account = await ctx.storage.gitProviderAccounts.get(
+    repository.accountId,
+    repository.organizationId,
+  );
+  if (!account) return { usable: false, reason: "no_account" };
+  if (account.status !== "active") {
+    return { usable: false, reason: "account_revoked" };
+  }
+  if (!accountIsServable(account)) {
+    return {
+      usable: false,
+      reason: providerCapabilities()[account.type].configured
+        ? "account_revoked"
+        : "provider_unconfigured",
+    };
+  }
+  try {
+    const summary = await clientForAccount(ctx, account).getRepo(
+      repoRefOf(repository),
+    );
+    return summary
+      ? { usable: true, reason: "ok" }
+      : { usable: false, reason: "not_found" };
+  } catch (error) {
+    if (error instanceof GitProviderError && error.isAuthFailure) {
+      return { usable: false, reason: "auth_failed" };
+    }
+    throw error;
+  }
+}

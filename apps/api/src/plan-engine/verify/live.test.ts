@@ -48,23 +48,23 @@ const snap = (over: Partial<ClickSnapshot> = {}): ClickSnapshot => ({
 });
 
 describe("selectorFor", () => {
-  test("elemento vira a âncora que elementLabelsInPage grava", () => {
+  test("an element becomes the anchor elementLabelsInPage writes", () => {
     expect(selectorFor({ kind: "element", key: "a#0|123" }, capture)).toBe(
       '[data-ux-anchor="a#0|123"]',
     );
   });
 
-  test("parte usa o seletor da captura", () => {
+  test("a part uses the capture's selector", () => {
     expect(selectorFor({ kind: "part", part: "price" }, capture)).toBe(
       "div.price > span.value",
     );
   });
 
-  test("parte sem seletor na captura é null", () => {
+  test("a part with no selector in the capture is null", () => {
     expect(selectorFor({ kind: "part", part: "shipping" }, capture)).toBeNull();
   });
 
-  test("aspas na chave não quebram o seletor", () => {
+  test("quotes in the key do not break the selector", () => {
     expect(selectorFor({ kind: "element", key: 'a"b|1' }, capture)).toBe(
       '[data-ux-anchor="a\\"b|1"]',
     );
@@ -72,7 +72,7 @@ describe("selectorFor", () => {
 });
 
 describe("describeClickChange", () => {
-  test("URL diferente é navegação", () => {
+  test("a different URL is a navigation", () => {
     const r = describeClickChange(
       snap(),
       snap({ url: "https://loja-exemplo.com.br/outro/p" }),
@@ -82,7 +82,7 @@ describe("describeClickChange", () => {
     expect(r.text).toContain("https://loja-exemplo.com.br/outro/p");
   });
 
-  test("só a seleção mudou", () => {
+  test("only the selection changed", () => {
     const r = describeClickChange(
       snap(),
       snap({ selection: "Vestido Floral" }),
@@ -92,14 +92,14 @@ describe("describeClickChange", () => {
     expect(r.text).toContain("seleção de texto");
   });
 
-  test("tudo igual: nada mudou", () => {
+  test("all equal: nothing changed", () => {
     const r = describeClickChange(snap(), snap());
     expect(r.changed).toBe(false);
     expect(r.navigated).toBe(false);
     expect(r.text).toContain("nada mudou");
   });
 
-  test("só o #hash mudou não é navegação", () => {
+  test("only the #hash changing is not a navigation", () => {
     const r = describeClickChange(
       snap(),
       snap({ url: "https://loja-exemplo.com.br/vestido/p#avaliacoes" }),
@@ -108,7 +108,7 @@ describe("describeClickChange", () => {
     expect(r.changed).toBe(true);
   });
 
-  test("abriu diálogo", () => {
+  test("a dialog opened", () => {
     const r = describeClickChange(snap(), snap({ openDialogs: 1 }));
     expect(r.changed).toBe(true);
     expect(r.text).toContain("diálogo");
@@ -137,7 +137,7 @@ const facts = (over: Partial<ElementFacts> = {}): ElementFacts => ({
 });
 
 describe("describeFacts", () => {
-  test("conta cursor, cores, sublinhado e link", () => {
+  test("reports cursor, colours, underline and link", () => {
     const t = describeFacts(facts());
     expect(t).toContain("cursor pointer");
     expect(t).toContain("#1a0dab");
@@ -146,7 +146,7 @@ describe("describeFacts", () => {
     expect(t).toContain("fora de <a>");
   });
 
-  test("dentro de link mostra o href", () => {
+  test("inside a link shows the href", () => {
     const t = describeFacts(
       facts({ inLink: true, href: "/vestido/p", textDecoration: "underline" }),
     );
@@ -157,7 +157,7 @@ describe("describeFacts", () => {
 });
 
 describe("clipAround", () => {
-  test("largura da tela e folga em volta do elemento", () => {
+  test("screen width with padding around the element", () => {
     const c = clipAround(
       { x: 16, y: 480, width: 358, height: 48 },
       { width: 390, height: 844 },
@@ -168,7 +168,7 @@ describe("clipAround", () => {
     expect(c.y + c.height).toBeGreaterThan(528);
   });
 
-  test("não sobe acima do topo", () => {
+  test("does not go above the top", () => {
     const c = clipAround(
       { x: 0, y: 10, width: 100, height: 20 },
       { width: 390, height: 844 },
@@ -176,7 +176,7 @@ describe("clipAround", () => {
     expect(c.y).toBe(0);
   });
 
-  test("elemento gigante é cortado em uma tela", () => {
+  test("a huge element is cut to one screen", () => {
     const c = clipAround(
       { x: 0, y: 100, width: 390, height: 5000 },
       { width: 390, height: 844 },
@@ -186,11 +186,11 @@ describe("clipAround", () => {
 });
 
 describe("capObserved", () => {
-  test("junta os passos", () => {
+  test("joins the steps", () => {
     expect(capObserved(["a", "b"])).toBe("a\nb");
   });
 
-  test("corta o meio e guarda a última linha (o motivo de parar)", () => {
+  test("cuts the middle and keeps the last line (why it stopped)", () => {
     const lines = [
       ...Array.from({ length: 100 }, () => "x".repeat(50)),
       "clicar aqui mexeria na loja (botão de compra)",
@@ -205,22 +205,22 @@ describe("capObserved", () => {
   });
 });
 
-// ── runLiveCheck com página falsa ────────────────────────────────────────────
+// ── runLiveCheck with a fake page ────────────────────────────────────────────
 
 type Handler = (...args: unknown[]) => unknown;
 
 interface FakeOpts {
-  /** Fatos por seletor; ausente = não achou. */
+  /** Facts by selector; absent = not found. */
   facts?: Record<string, Partial<ElementFacts>>;
-  /** Resultado do teste de ponto do clique. */
+  /** Result of the click point hit test. */
   point?: { found: boolean; covered: boolean; x: number; y: number };
-  /** O que o clique faz na página. */
+  /** What the click does to the page. */
   onClick?: (page: FakeControl) => void;
-  /** Passo que lança. */
+  /** A step that throws. */
   throwOn?: unknown;
-  /** Pedidos de rastreio que a página abortou. */
+  /** Tracking requests the page aborted. */
   blocked?: number;
-  /** O que measurePdpInPage mede na página do teste (por chamada). */
+  /** What measurePdpInPage measures on the check's page (per call). */
   measured?: Array<{
     selectors: Record<string, string | null>;
     positions: Record<string, number | null>;
@@ -229,7 +229,7 @@ interface FakeOpts {
 
 interface FakeControl {
   setUrl(url: string): void;
-  /** Pedido de navegação do frame principal que ainda não terminou. */
+  /** A main-frame navigation request not yet finished. */
   emitNavigation(url: string): void;
 }
 
@@ -245,16 +245,16 @@ function fakePage(o: FakeOpts = {}) {
   let navigation: string | null = null;
   const calls = {
     clicks: 0,
-    /** Movimentos do mouse, na ordem. */
+    /** Mouse moves, in order. */
     pointer: [] as string[],
     evaluated: [] as unknown[],
     closed: false,
-    /** Ordem do que aconteceu: nomes das funções avaliadas e "click". */
+    /** What happened, in order: evaluated function names and "click". */
     timeline: [] as string[],
-    /** Argumento de cada measurePdpInPage. */
+    /** Each measurePdpInPage argument. */
     measureOpts: [] as unknown[],
   };
-  // O hash falso do snapshot depende das marcas data-ux-*, como o outerHTML de verdade.
+  // The fake snapshot hash depends on data-ux-* marks, like the real outerHTML.
   const marks = new Set<string>();
   const control: FakeControl = {
     setUrl: (u) => {
@@ -400,7 +400,7 @@ async function runWith(fake: ReturnType<typeof fakePage>, check: VerifyCheck) {
 }
 
 describe("runLiveCheck", () => {
-  test("alvo que não existe nesta PDP: nao_testou, não achei o alvo", async () => {
+  test("a target missing on this PDP: nao_testou, target not found", async () => {
     const fake = fakePage({ facts: {} });
     const r = await runWith(
       fake,
@@ -411,7 +411,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.closed).toBe(true);
   });
 
-  test("alvo proibido: nao_testou e nunca clica", async () => {
+  test("a forbidden target: nao_testou and never clicks", async () => {
     const fake = fakePage({
       facts: {
         [TITLE_SEL]: { tag: "button", text: "Adicionar à sacola" },
@@ -427,8 +427,8 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(0);
   });
 
-  test("o que está por cima no ponto do clique é proibido: não clica", async () => {
-    // O título passa, mas o centro dele cai num filho que é botão de compra.
+  test("what sits on top at the click point is forbidden: does not click", async () => {
+    // The title passes, but its centre lands on a child that is a buy button.
     const fake = fakePage({
       facts: {
         [TITLE_SEL]: {},
@@ -444,7 +444,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(0);
   });
 
-  test("outro elemento cobre o alvo: nao_testou e não clica", async () => {
+  test("another element covers the target: nao_testou and does not click", async () => {
     const fake = fakePage({
       facts: {
         [TITLE_SEL]: {},
@@ -461,7 +461,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(0);
   });
 
-  test("passo que lança: nao_testou e os seguintes não rodam", async () => {
+  test("a step that throws: nao_testou and the following ones do not run", async () => {
     const fake = fakePage({
       facts: { [TITLE_SEL]: {}, [HIT]: {} },
       throwOn: chooseOptionInPage,
@@ -479,7 +479,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(0);
   });
 
-  test("observe_click que navegou encerra o teste", async () => {
+  test("an observe_click that navigated ends the check", async () => {
     const fake = fakePage({
       facts: {
         [TITLE_SEL]: { inLink: true, href: "/vestido-floral/p" },
@@ -496,7 +496,7 @@ describe("runLiveCheck", () => {
       ]),
     );
     expect(r.outcome).toBe("nao_decidiu");
-    // A navegação mora na última linha (o motivo de parar), que o corte guarda.
+    // The navigation is on the last line (why it stopped), which the cut keeps.
     const last = r.observed.split("\n").at(-1) ?? "";
     expect(last).toContain("navegou de");
     expect(last).toContain("href=/vestido-floral/p");
@@ -504,7 +504,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(1);
   });
 
-  test("navegação lenta (pedida mas não concluída) também encerra", async () => {
+  test("a slow navigation (requested, not finished) also ends it", async () => {
     const fake = fakePage({
       facts: { [TITLE_SEL]: {}, [HIT]: {} },
       onClick: (c) => c.emitNavigation("https://loja-exemplo.com.br/lento/p"),
@@ -522,7 +522,7 @@ describe("runLiveCheck", () => {
     expect(r.observed).not.toContain("inspect");
   });
 
-  test("observe_click sem efeito: nao_decidiu com 'nada mudou' e segue", async () => {
+  test("an observe_click with no effect: nao_decidiu with 'nada mudou' and goes on", async () => {
     const fake = fakePage({ facts: { [TITLE_SEL]: {}, [HIT]: {} } });
     const r = await runWith(
       fake,
@@ -535,7 +535,7 @@ describe("runLiveCheck", () => {
     expect(r.outcome).toBe("nao_decidiu");
     expect(r.observed).toContain("nada mudou");
     expect(r.observed).toContain("inspect");
-    // Rola, espera, testa o ponto, olha o "antes" e clica, nessa ordem.
+    // Scrolls, waits, hit-tests, reads the "before" and clicks, in that order.
     const t = fake.calls.timeline;
     const at = (name: string) => t.indexOf(name);
     expect(at("scrollToCenterInPage")).toBeGreaterThan(-1);
@@ -544,7 +544,7 @@ describe("runLiveCheck", () => {
     expect(at("clickSnapshotInPage")).toBeLessThan(at("click"));
   });
 
-  test("link que abre em outra aba: diz isso e não clica", async () => {
+  test("a link opening another tab: says so and does not click", async () => {
     const blank = {
       inLink: true,
       href: "/vestido-floral/p",
@@ -566,7 +566,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(0);
   });
 
-  test("target com nome de janela também é outra aba: não clica", async () => {
+  test("a window-name target is another tab too: does not click", async () => {
     const named = { inLink: true, href: "/x/p", linkTarget: "produto" };
     const fake = fakePage({ facts: { [TITLE_SEL]: named, [HIT]: named } });
     const r = await runWith(
@@ -577,7 +577,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(0);
   });
 
-  test("target _self clica normalmente", async () => {
+  test("target _self clicks normally", async () => {
     const self = { inLink: true, href: "/x/p", linkTarget: "_self" };
     const fake = fakePage({ facts: { [TITLE_SEL]: self, [HIT]: self } });
     await runWith(
@@ -587,7 +587,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(1);
   });
 
-  test("conta os pedidos de rastreio bloqueados, no começo do relato", async () => {
+  test("reports blocked tracking requests at the start of the report", async () => {
     const fake = fakePage({
       facts: { [TITLE_SEL]: {}, [HIT]: {} },
       blocked: 2,
@@ -597,7 +597,7 @@ describe("runLiveCheck", () => {
       capture: fullCapture,
       check: liveCheck([
         { op: "open" },
-        // Relato maior que o teto: o corte é no meio, a linha fica.
+        // A report over the cap: the cut is in the middle, the line stays.
         ...Array.from({ length: 20 }, () => ({
           op: "inspect" as const,
           target: TITLE,
@@ -621,7 +621,7 @@ describe("runLiveCheck", () => {
     expect(r.observed.split("\n")[0]).toBe("bloqueei 2 pedidos de rastreio");
   });
 
-  test("choose_size clica pela mesma trava: opção proibida não é clicada", async () => {
+  test("choose_size clicks through the same lock: a forbidden option is not clicked", async () => {
     const fake = fakePage({
       facts: {
         "[data-ux-choice]": { tag: "button", type: "submit", text: "P" },
@@ -637,7 +637,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.clicks).toBe(0);
   });
 
-  test("keep_overlays: a página abre e recarrega sem fechar o pop-up", async () => {
+  test("keep_overlays: the page opens and reloads without closing the pop-up", async () => {
     const fake = fakePage({ facts: {} });
     const opened: Array<boolean | undefined> = [];
     const r = await runLiveCheck({
@@ -663,7 +663,7 @@ describe("runLiveCheck", () => {
     expect(fake.calls.evaluated).not.toContain(dismissOverlaysInPage);
   });
 
-  test("sem keep_overlays: abre como sempre e o reload fecha o pop-up", async () => {
+  test("without keep_overlays: opens as usual and the reload closes the pop-up", async () => {
     const fake = fakePage({ facts: {} });
     const opened: Array<boolean | undefined> = [];
     await runLiveCheck({
@@ -685,8 +685,8 @@ describe("runLiveCheck", () => {
     expect(fake.calls.evaluated).toContain(dismissOverlaysInPage);
   });
 
-  // Há pop-up que só abre no primeiro mousemove/touchmove.
-  test("gesture mexe o mouse no miolo da tela e nunca clica nem toca", async () => {
+  // Some pop-ups open only on the first mousemove/touchmove.
+  test("gesture moves the mouse in the middle of the screen and never clicks or touches", async () => {
     const fake = fakePage({ facts: {} });
     const r = await runWith(
       fake,
@@ -721,7 +721,7 @@ describe("runLiveCheck", () => {
     }
   });
 
-  test("performGesture só move o mouse, pelo miolo da tela", async () => {
+  test("performGesture only moves the mouse, through the middle of the screen", async () => {
     const calls: string[] = [];
     await performGesture(
       {
@@ -735,14 +735,14 @@ describe("runLiveCheck", () => {
     expect(calls.every((c) => c.startsWith("move "))).toBe(true);
   });
 
-  test("erro ao marcar as âncoras vai pro relato", async () => {
+  test("an error marking the anchors goes into the report", async () => {
     const fake = fakePage({ throwOn: elementLabelsInPage, facts: {} });
     const r = await runWith(fake, liveCheck([{ op: "open" }]));
     expect(r.observed).toContain("explodiu");
   });
 });
 
-// ── clickSnapshotInPage com um DOM mínimo ────────────────────────────────────
+// ── clickSnapshotInPage with a minimal DOM ───────────────────────────────────
 
 describe("clickSnapshotInPage", () => {
   const withDom = (parentHtml: string) => {
@@ -766,7 +766,7 @@ describe("clickSnapshotInPage", () => {
     }
   };
 
-  test("as marcas data-ux-* não mudam o hash", () => {
+  test("data-ux-* marks do not change the hash", () => {
     const clean = withDom('<div class="a"><h1>Vestido</h1></div>');
     const marked = withDom(
       '<div class="a" data-ux-hit="1"><h1 data-ux-anchor="r#0|1" data-ux-choice="1">Vestido</h1></div>',
@@ -774,14 +774,14 @@ describe("clickSnapshotInPage", () => {
     expect(marked.nearHtmlHash).toBe(clean.nearHtmlHash);
   });
 
-  test("mudança de verdade muda o hash", () => {
+  test("a real change changes the hash", () => {
     const a = withDom('<div class="a"><h1>Vestido</h1></div>');
     const b = withDom('<div class="a open"><h1>Vestido</h1></div>');
     expect(a.nearHtmlHash).not.toBe(b.nearHtmlHash);
   });
 });
 
-// ── elementFactsInPage: o target efetivo do link ────────────────────────────
+// ── elementFactsInPage: the link's effective target ──────────────────────────
 
 describe("elementFactsInPage linkTarget", () => {
   const facts = (target: string | null, baseTarget: string | null) => {
@@ -828,35 +828,35 @@ describe("elementFactsInPage linkTarget", () => {
     }
   };
 
-  test("o target do próprio link", () => {
+  test("the link's own target", () => {
     expect(facts("_blank", null).linkTarget).toBe("_blank");
   });
 
-  test("link sem target herda o <base target> do documento", () => {
+  test("a link without target inherits the document's <base target>", () => {
     expect(facts(null, "_blank").linkTarget).toBe("_blank");
   });
 
-  test("target do link (mesmo vazio) vence o <base target>", () => {
+  test("the link's target (even empty) wins over <base target>", () => {
     expect(facts("", "_blank").linkTarget).toBe("");
     expect(facts("_self", "_blank").linkTarget).toBe("_self");
   });
 
-  test("sem target nem base: null", () => {
+  test("no target and no base: null", () => {
     expect(facts(null, null).linkTarget).toBeNull();
   });
 });
 
-// ── Invólucro de tamanho zero (14/11) ───────────────────────────────────────
+// ── Zero-size wrapper ────────────────────────────────────────────────────────
 
-// Um pop-up de newsletter mede 390×0 aberto e quem aparece é o filho fixed: a medida vem dele.
-describe("elementFactsInPage: invólucro de tamanho zero", () => {
+// A pop-up wrapper can measure 390×0 while its fixed child shows: measure the child.
+describe("elementFactsInPage: zero-size wrapper", () => {
   type Box = { left: number; top: number; width: number; height: number };
   type Fake = {
     rect: Box;
     style: Record<string, string>;
     cls?: string;
     tag?: string;
-    /** Element.checkVisibility (ausente = navegador sem ele). */
+    /** Element.checkVisibility (absent = a browser without it). */
     checkVisibility?: () => boolean;
   };
   const withEdges = (r: Box) => ({
@@ -937,7 +937,7 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
   const visible = { display: "flex", visibility: "visible", opacity: "1" };
   const SCREEN = { left: 0, top: 0, width: 390, height: 844 };
 
-  test("mede o maior filho visível (fixed inclusive) e diz que mediu", () => {
+  test("measures the largest visible child (fixed included) and says so", () => {
     const f = run({ left: 0, top: 4097, width: 390, height: 0 }, [
       {
         rect: { left: 0, top: 0, width: 390, height: 900 },
@@ -967,7 +967,7 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
     );
   });
 
-  test("acordeão fechado (height:0 overflow:hidden): não desce", () => {
+  test("a closed accordion (height:0 overflow:hidden): does not descend", () => {
     const f = run(
       { left: 0, top: 1200, width: 390, height: 0 },
       [
@@ -982,7 +982,7 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
     expect(f.rect?.height).toBe(0);
   });
 
-  test("filho fixed escapa do overflow:hidden do invólucro: desce", () => {
+  test("a fixed child escapes the wrapper's overflow:hidden: descends", () => {
     const f = run(
       { left: 0, top: 1200, width: 390, height: 0 },
       [{ rect: SCREEN, style: { ...visible, position: "fixed" } }],
@@ -992,14 +992,14 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
     expect(f.wrapper?.height).toBe(0);
   });
 
-  test("checkVisibility recusa: não conta, mesmo com estilo visível", () => {
+  test("checkVisibility refuses: does not count, even with a visible style", () => {
     const f = run({ left: 0, top: 0, width: 0, height: 0 }, [
       { rect: SCREEN, style: visible, checkVisibility: () => false },
     ]);
     expect(f.wrapper).toBeNull();
   });
 
-  test("filho fora do documento (left:-9999) não conta", () => {
+  test("a child off the document (left:-9999) does not count", () => {
     const f = run({ left: 0, top: 0, width: 0, height: 0 }, [
       {
         rect: { left: -9999, top: 0, width: 300, height: 300 },
@@ -1009,7 +1009,7 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
     expect(f.wrapper).toBeNull();
   });
 
-  test("alvo com tamanho: nada muda", () => {
+  test("a target with size: nothing changes", () => {
     const f = run({ left: 0, top: 10, width: 300, height: 40 }, [
       { rect: SCREEN, style: visible },
     ]);
@@ -1017,7 +1017,7 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
     expect(f.wrapper).toBeNull();
   });
 
-  test("invólucro sem filho visível: fica a medida zero, sem nota", () => {
+  test("a wrapper with no visible child keeps the zero size, with no note", () => {
     const f = run({ left: 0, top: 0, width: 0, height: 0 }, [
       { rect: SCREEN, style: { ...visible, visibility: "hidden" } },
     ]);
@@ -1025,7 +1025,7 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
     expect(f.wrapper).toBeNull();
   });
 
-  test("inspect e screenshot no invólucro contam o filho; o clique segue no alvo", async () => {
+  test("inspect and screenshot on the wrapper report the child; the click stays on the target", async () => {
     const wrapper = { width: 390, height: 0, child: "div.fixed.top-0…" };
     const rect = { x: 0, y: 0, width: 390, height: 844 };
     const fake = fakePage({
@@ -1059,13 +1059,13 @@ describe("elementFactsInPage: invólucro de tamanho zero", () => {
     expect(r.observed).toContain(`inspect`);
     expect(r.observed.split(note).length - 1).toBe(3);
     expect(clips).toEqual([{ x: 0, y: 0, width: 390, height: 844 }]);
-    // O clique usa o teste de ponto do próprio alvo (clickPointInPage), como antes.
+    // The click uses the target's own hit test (clickPointInPage).
     expect(fake.calls.evaluated).toContain(clickPointInPage);
     expect(fake.calls.clicks).toBe(1);
   });
 });
 
-// ── Partes medidas de novo na página do teste (14/11) ────────────────────────
+// ── Parts measured again on the check's page ─────────────────────────────────
 
 const PART_RECO = { kind: "part", part: "first_recommendation" } as const;
 const PART_SHIP = { kind: "part", part: "shipping" } as const;
@@ -1076,7 +1076,7 @@ const measured = (
 ) => ({ selectors, positions });
 
 describe("selectorCandidates", () => {
-  test("parte: o medido nesta página primeiro, o da captura de reserva", () => {
+  test("a part: this page's measure first, the capture's as fallback", () => {
     expect(
       selectorCandidates(PART_RECO, capture, {
         first_recommendation: "#shelf > h2",
@@ -1084,15 +1084,15 @@ describe("selectorCandidates", () => {
     ).toEqual(["#shelf > h2", "h2.reco"]);
   });
 
-  test("sem medida nesta página, só o da captura", () => {
+  test("with no measure on this page, only the capture's", () => {
     expect(selectorCandidates(PART_RECO, capture, {})).toEqual(["h2.reco"]);
   });
 
-  test("os dois nulos: nada a tentar", () => {
+  test("both null: nothing to try", () => {
     expect(selectorCandidates(PART_SHIP, capture, {})).toEqual([]);
   });
 
-  test("iguais não repetem", () => {
+  test("equal ones do not repeat", () => {
     expect(
       selectorCandidates(PART_RECO, capture, {
         first_recommendation: "h2.reco",
@@ -1100,7 +1100,7 @@ describe("selectorCandidates", () => {
     ).toEqual(["h2.reco"]);
   });
 
-  test("elemento ignora a medida", () => {
+  test("an element ignores the measure", () => {
     expect(
       selectorCandidates(TITLE, capture, { first_recommendation: "x" }),
     ).toEqual([TITLE_SEL]);
@@ -1108,7 +1108,7 @@ describe("selectorCandidates", () => {
 });
 
 describe("partsOf", () => {
-  test("só as partes, sem repetir", () => {
+  test("only the parts, without repeats", () => {
     expect(
       partsOf(
         liveCheck([
@@ -1123,8 +1123,8 @@ describe("partsOf", () => {
   });
 });
 
-describe("runLiveCheck: partes medidas na página do teste", () => {
-  test("captura sem a parte, a página tem: usa e conta no relato", async () => {
+describe("runLiveCheck: parts measured on the check's page", () => {
+  test("the capture lacks the part, the page has it: uses it and reports it", async () => {
     const fake = fakePage({
       facts: { "#cep": { tag: "input", text: "CEP" } },
       measured: [measured({ shipping: "#cep" }, { shipping: 1004 })],
@@ -1140,7 +1140,7 @@ describe("runLiveCheck: partes medidas na página do teste", () => {
     expect(r.observed).toContain('inspect frete: <input> "CEP"');
   });
 
-  test("o medido nesta página vence o da captura", async () => {
+  test("this page's measure wins over the capture's", async () => {
     const fake = fakePage({
       facts: {
         "#shelf > h2": { tag: "h2", text: "Complete seu look" },
@@ -1156,7 +1156,7 @@ describe("runLiveCheck: partes medidas na página do teste", () => {
     expect(r.observed).not.toContain("a captura não tinha");
   });
 
-  test("o medido não casa mais: cai no da captura", async () => {
+  test("the measure no longer matches: falls back to the capture's", async () => {
     const fake = fakePage({
       facts: { "h2.reco": { tag: "h2", text: "Quem comprou também curtiu" } },
       measured: [measured({ first_recommendation: "#sumiu" })],
@@ -1168,7 +1168,7 @@ describe("runLiveCheck: partes medidas na página do teste", () => {
     expect(r.observed).toContain('"Quem comprou também curtiu"');
   });
 
-  test("reload mede de novo", async () => {
+  test("reload measures again", async () => {
     const fake = fakePage({
       facts: { "#novo": { tag: "h2", text: "Depois do reload" } },
       measured: [
@@ -1188,14 +1188,14 @@ describe("runLiveCheck: partes medidas na página do teste", () => {
     expect(
       fake.calls.timeline.filter((n) => n === "measurePdpInPage"),
     ).toHaveLength(2);
-    // A medida do teste nunca rola a página (pop-up de scroll, lazy-load).
+    // The check's measure never scrolls the page (scroll pop-ups, lazy loading).
     expect(fake.calls.measureOpts).toEqual([
       { skipScroll: true },
       { skipScroll: true },
     ]);
   });
 
-  test("teste sem parte não mede (a medida rola a página e custa tempo)", async () => {
+  test("a check with no part does not measure (measuring scrolls and costs time)", async () => {
     const fake = fakePage({ facts: { [TITLE_SEL]: {} } });
     await runWith(
       fake,
@@ -1204,7 +1204,7 @@ describe("runLiveCheck: partes medidas na página do teste", () => {
     expect(fake.calls.timeline).not.toContain("measurePdpInPage");
   });
 
-  test("a medida quebra: segue com a captura e diz por quê", async () => {
+  test("the measure breaks: goes on with the capture and says why", async () => {
     const fake = fakePage({
       facts: { "h2.reco": { tag: "h2", text: "Vitrine" } },
       throwOn: measurePdpInPage,
@@ -1219,10 +1219,10 @@ describe("runLiveCheck: partes medidas na página do teste", () => {
   });
 });
 
-// Setas de galeria escondidas no celular (0×0): o centro de um retângulo vazio caía noutra coisa.
+// Gallery arrows hidden on mobile (0×0): an empty rectangle's centre lands elsewhere.
 describe("isHiddenTarget", () => {
   const facts = (rect: ElementFacts["rect"]) => ({ rect }) as ElementFacts;
-  test("0×0 ou sem retângulo é escondido", () => {
+  test("0×0 or no rectangle is hidden", () => {
     expect(isHiddenTarget(facts(null))).toBe(true);
     expect(isHiddenTarget(facts({ x: 0, y: 0, width: 0, height: 0 }))).toBe(
       true,
@@ -1231,7 +1231,7 @@ describe("isHiddenTarget", () => {
       true,
     );
   });
-  test("com área é visível", () => {
+  test("with area it is visible", () => {
     expect(
       isHiddenTarget(facts({ x: 10, y: 600, width: 40, height: 40 })),
     ).toBe(false);

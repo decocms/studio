@@ -1,12 +1,7 @@
 /**
- * O navegador pra ver a loja como a cliente vê: abrir a PDP no tamanho de um
- * celular, medir onde estão preço, tamanho e botão, ler o design system e
- * tirar o print. O navegador em si é uma porta (BrowserPort); no Studio ele
- * roda num sandbox.
- *
- * Tudo que roda DENTRO da página (as funções passadas a `page.evaluate`) mora em
- * page-scripts.ts, separado de propósito: aquelas funções são serializadas e
- * executadas no Chrome, então não podem fechar sobre nada deste módulo.
+ * Opens the store as a shopper sees it, on a `BrowserPort` (a sandbox in Studio).
+ * Code that runs inside the page lives in page-scripts.ts: it is serialized to
+ * Chrome, so it cannot close over anything in this module.
  */
 
 import { sleep } from "@decocms/shared/std";
@@ -24,7 +19,7 @@ import {
 } from "./ports.ts";
 import type { UxDevice } from "./types.ts";
 
-/** Viewports dos relatórios: iPhone comum e notebook comum. */
+/** Report viewports: a common phone and a common laptop. */
 export const VIEWPORTS: Record<
   UxDevice,
   Viewport & { isMobile: boolean; hasTouch: boolean }
@@ -45,10 +40,7 @@ export const VIEWPORTS: Record<
   },
 };
 
-/**
- * User-agent de celular de verdade. Sem ele muita loja serve o layout de desktop
- * espremido, e o print "do celular" mente.
- */
+/** A real phone user agent; without it many stores serve a squeezed desktop layout. */
 export const USER_AGENTS: Record<UxDevice, string> = {
   mobile:
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
@@ -72,18 +64,12 @@ export function __setPageWaitForTesting(
   };
 }
 
-/**
- * Teto do print de página inteira, em px CSS. A PDP de uma loja de moda passa
- * de 10.000px no celular; a 2x isso vira uma imagem de 20.000px que nenhum
- * modelo de visão lê e que a tela nem mostra. O que importa está nas primeiras
- * telas.
- */
+/** Full-page screenshot cap in CSS px: what matters is in the first screens. */
 export const FULL_PAGE_MAX_HEIGHT = 6_000;
 
 /**
- * Roda `fn` com um navegador que fecha, no fim, toda página que `fn` abriu,
- * mesmo com erro ou com `fn` ainda pendurada (o teto por loja do benchmark).
- * Depois de fechado, abrir página nele falha.
+ * Runs `fn` with a browser that closes every page `fn` opened when it ends, even
+ * on error or while `fn` still hangs. Opening a page after that fails.
  */
 export async function withBrowser<T>(
   browser: BrowserPort,
@@ -130,16 +116,9 @@ export async function withBrowser<T>(
 }
 
 /**
- * Abre `url` no dispositivo pedido e deixa a página pronta pra medir: espera a
- * rede acalmar, fecha banner de cookie/newsletter e rola até o fim e de volta
- * pra disparar o lazy-load (sem isso a recomendação nem existe no DOM).
- *
- * `blockRequest` aborta os pedidos que casarem (o verificador corta rastreio,
- * pra um teste nosso não virar clique de cliente no heatmap); a página conta
- * quantos abortou. `keepOverlays` deixa pop-up e banner abertos: é o teste do
- * verificador sobre o próprio pop-up. `ownStore: false` abre sem o `?html=1`
- * (concorrente: ver `forceHtml`). `onStatus` recebe o status HTTP da última
- * navegação.
+ * Opens `url` on `device` ready to measure: network settled, overlays dismissed
+ * (unless `keepOverlays`), scrolled through for lazy-load. `ownStore: false`
+ * skips `?html=1`; `blockRequest` aborts matching requests.
  */
 export async function openPage(
   browser: BrowserPort,
@@ -165,14 +144,14 @@ export async function openPage(
       if (res.error === null) {
         status = res.status ?? 0;
       } else {
-        // Rede que nunca acalma (tag de terceiro): o DOM carregado já serve pra medir.
+        // A network that never settles still leaves a DOM good enough to measure.
         console.warn(
           `[plan-engine] a rede não acalmou em ${target}, seguindo com o DOM: ${res.error}`,
         );
       }
     };
     await go(ownStore ? forceHtml(url) : url);
-    // Um redirect (apex → www) pode derrubar o `?html=1`: pede de novo a partir da URL final.
+    // A redirect can drop `?html=1`: request again from the final URL.
     const landed = ownStore ? htmlRetryUrl(page.url()) : null;
     if (landed) await go(landed);
     opts.onStatus?.(status);
@@ -186,7 +165,7 @@ export async function openPage(
         `a loja serviu ${contentType || "algo que não é HTML"} pro navegador em ${page.url()} (versão pra agente?)`,
       );
     }
-    // O desafio anti-robô recarrega sozinho: lê de novo depois de uma espera.
+    // Anti-bot challenges reload on their own: read again after a wait.
     const snapshot = async () => {
       try {
         return classifyBotWall({
@@ -214,10 +193,7 @@ export async function openPage(
   }
 }
 
-/**
- * A página não abriu (DNS, conexão) ou não veio em HTML. No benchmark, numa
- * vitrine ou rota de busca, é só aquela URL: tenta a próxima.
- */
+/** The page did not open (DNS, connection) or was not HTML; callers may try the next URL. */
 export class PageOpenError extends Error {
   constructor(message: string) {
     super(message);
@@ -225,36 +201,29 @@ export class PageOpenError extends Error {
   }
 }
 
-/** Quanto esperar um desafio anti-robô que recarrega sozinho (o do Akamai leva ~5s). */
+/** How long to wait for a self-reloading anti-bot challenge. */
 const WALL_RETRY_WAIT_MS = 7_000;
 
-/** A loja respondeu um muro anti-robô em vez da página. */
+/** The store answered with an anti-bot wall instead of the page. */
 export class BotWallError extends Error {
   constructor(
     readonly wall: string,
     readonly url: string,
   ) {
-    // Sem a URL: a do desafio carrega um token de 200 caracteres.
+    // No URL in the message: the challenge's URL carries a long token.
     super(`bloqueou o navegador automático (anti-robô: ${wall})`);
     this.name = "BotWallError";
   }
 }
 
-/**
- * Muro por status HTTP (401/403/429), o mesmo critério do `blocks_bots` do
- * domain-check: a loja barra robô e ninguém aqui conserta isso.
- */
+/** A wall by HTTP status (401/403/429), as domain-check's `blocks_bots`. */
 export function isStatusBotWall(err: unknown): boolean {
   return err instanceof BotWallError && /^HTTP (401|403|429)$/.test(err.wall);
 }
 
 /**
- * A página é um muro anti-robô? Devolve o nome dele ou null. Sondado em 10/11
- * em lojas grandes de moda: Akamai `bm-verify`, DataDome, Cloudflare "Just a
- * moment", Akamai "Access Denied", 429.
- *
- * Só vale página quase vazia: loja de verdade carrega o script do DataDome ou
- * do Turnstile mesmo quando deixa passar, e isso não é muro.
+ * The anti-bot wall's name, or null. Only near-empty pages count: real stores
+ * load wall scripts even when they let the browser through.
  */
 export function classifyBotWall(snap: {
   status: number;
@@ -286,15 +255,8 @@ export function classifyBotWall(snap: {
 }
 
 /**
- * Loja que serve versão pra agente responde markdown em vez da PDP: uma loja
- * de moda devolveu um texto com "type: product", e preço/tamanho/botão
- * voltaram todos `null`.
- *
- * `?html=1` é a saída de debug dessas lojas: sempre HTML. Só vale pra loja
- * analisada: no concorrente é um parâmetro desconhecido, que a plataforma dele
- * pode ler como filtro de busca ou de vitrine, ou servir como outra página. O
- * benchmark abre com `ownStore: false`. Loja que bloqueia agente sem saída
- * nenhuma vai aparecer como captura vazia — o print mostra o porquê.
+ * Adds `?html=1`, which forces HTML on stores that serve markdown to agents.
+ * Only for the analyzed store: elsewhere it is an unknown parameter.
  */
 export function forceHtml(url: string): string {
   try {
@@ -307,11 +269,8 @@ export function forceHtml(url: string): string {
 }
 
 /**
- * Motivo de a página nunca ter aberto (DNS, host fora do ar, conexão
- * recusada); NULL quando a URL final é http(s), mesmo com erro na navegação.
- * O Chrome cai em `chrome-error://` e o `document.contentType` dali não é
- * HTML, o que sem isto virava "versão pra agente". Rede que não acalma numa
- * página real não conta.
+ * Why the page never opened (DNS, host down, refused); null when the final URL
+ * is http(s), even if navigation reported an error.
  */
 export function navigationFailure(
   finalUrl: string,
@@ -325,8 +284,8 @@ export function navigationFailure(
 }
 
 /**
- * A URL pra pedir de novo quando a navegação perdeu o `?html=1` num redirect;
- * NULL quando ele sobreviveu. Tira o `.md` da rota de agente (`/p.md` → `/p`).
+ * The URL to request again when a redirect dropped `?html=1`; null when it
+ * survived. Strips an agent route's `.md`.
  */
 export function htmlRetryUrl(finalUrl: string): string | null {
   try {
@@ -340,19 +299,12 @@ export function htmlRetryUrl(finalUrl: string): string | null {
   }
 }
 
-/**
- * Rola a página até `y` (px do documento) e devolve a rolagem que ficou de
- * fato. Único caminho de rolagem do lado de fora: `window.scrollTo` sozinho
- * não mexia em loja com scroll-behavior smooth e o <body> como rolador.
- */
+/** Scrolls to `y` (document px) and returns the scroll actually reached. */
 async function scrollPageTo(page: BrowserPage, y: number): Promise<number> {
   return await page.evaluate(scrollPageToInPage, y);
 }
 
-/**
- * Rola em passos até o fim e volta ao topo — dispara o lazy-load. Para quando
- * a rolagem efetiva não anda mais (fim da página), com teto de 20.000px.
- */
+/** Scrolls to the end in steps and back to the top, to trigger lazy-load. */
 async function scrollThrough(
   page: BrowserPage,
   screenHeight: number,
@@ -369,7 +321,7 @@ async function scrollThrough(
   await pause(400);
 }
 
-/** Grava a imagem na mídia da org e devolve o caminho que `MediaStore.url` lê. */
+/** Stores the image in the org's media; returns the path `MediaStore.url` reads. */
 export async function storeImage(
   media: MediaStore,
   path: string,
@@ -379,13 +331,13 @@ export async function storeImage(
   return await media.put(path, bytes, contentType);
 }
 
-/** Print da primeira tela (o que a cliente vê sem rolar). */
+/** Screenshot of the first screen, before any scroll. */
 export async function screenshotFold(page: BrowserPage): Promise<Uint8Array> {
   await scrollPageTo(page, 0);
   return await page.screenshot({ quality: 72 });
 }
 
-/** Print da página inteira, cortado em FULL_PAGE_MAX_HEIGHT. */
+/** Full-page screenshot, cut at FULL_PAGE_MAX_HEIGHT. */
 export async function screenshotFull(page: BrowserPage): Promise<Uint8Array> {
   const height = await page.evaluate(() =>
     Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
@@ -405,17 +357,10 @@ export async function screenshotFull(page: BrowserPage): Promise<Uint8Array> {
   });
 }
 
-/**
- * Teto de lado da imagem que o modelo de visão aceita: 8.000px (o provedor
- * recusa o pedido inteiro com 400 acima disso). Fica uma folga.
- */
+/** Largest image side the vision model accepts, with some margin. */
 export const MAX_IMAGE_SIDE_PX = 7_800;
 
-/**
- * Escala do print de página inteira pra caber no teto do modelo. O celular é
- * capturado a 2x: 6.000px CSS viram 12.000px de imagem — foi o 400 de 05/11,
- * quando a PDP passou a abrir em HTML.
- */
+/** Scale that fits a full-page screenshot within the model's image cap. */
 export function fullPageScale(
   cssHeight: number,
   deviceScaleFactor: number,
@@ -424,7 +369,7 @@ export function fullPageScale(
   return px > MAX_IMAGE_SIDE_PX ? MAX_IMAGE_SIDE_PX / px : 1;
 }
 
-/** Print de um recorte da página (px CSS, coordenadas do documento). */
+/** Screenshot of a page region (CSS px, document coordinates). */
 export async function screenshotClip(
   page: BrowserPage,
   clip: { x: number; y: number; width: number; height: number },

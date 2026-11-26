@@ -17,6 +17,7 @@ import { checkApiKeyPermission } from "../../auth/api-key-permissions";
 import { AccessControl } from "../../core/access-control";
 import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 import type { StudioDatabase } from "../../database";
+import { CredentialVault } from "../../encryption/credential-vault";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
@@ -28,6 +29,7 @@ import { S3Service } from "../../object-storage/s3-service";
 import { CURATED_KNOWLEDGE } from "../../plan-engine/knowledge/curated";
 import type { HeatmapReader } from "../../plan-engine/ports";
 import type { OpportunityDraft } from "../../plan-engine/types";
+import { AIProviderKeyStorage } from "../../storage/ai-provider-keys";
 import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import {
   type HypothesisDraft,
@@ -114,6 +116,7 @@ describe("PLAN_UX tools", () => {
   let planEngineKnowledge: PlanEngineKnowledgeStorage;
   let organizationSettings: OrganizationSettingsStorage;
   let virtualMcps: VirtualMCPStorage;
+  let aiProviderKeys: AIProviderKeyStorage;
 
   type Principal = { kind: "member" } | { kind: "apiKey"; allow: Permission };
 
@@ -149,8 +152,10 @@ describe("PLAN_UX tools", () => {
         planEngineKnowledge,
         organizationSettings,
         virtualMcps,
+        aiProviderKeys,
       },
       objectStorage,
+      aiProviders: { listModels: async () => [] },
     } as unknown as StudioContext;
   }
 
@@ -207,6 +212,10 @@ describe("PLAN_UX tools", () => {
     planEngineKnowledge = new PlanEngineKnowledgeStorage(database.db);
     organizationSettings = new OrganizationSettingsStorage(database.db);
     virtualMcps = new VirtualMCPStorage(database.db);
+    aiProviderKeys = new AIProviderKeyStorage(
+      database.db,
+      new CredentialVault(CredentialVault.generateKey()),
+    );
   });
 
   beforeEach(async () => {
@@ -458,7 +467,10 @@ describe("PLAN_UX tools", () => {
         pages: Array<{ page_type: string; diagnosis_id: string }>;
         top: Array<{ id: string; hypotheses: Array<{ id: string }> }>;
         running: boolean;
-        setup?: { current: { domain: string | null } };
+        setup?: {
+          current: { domain: string | null };
+          needs: Array<{ key: string; blocking: boolean }>;
+        };
       };
       expect(view.pages.map((p) => [p.page_type, p.diagnosis_id])).toEqual([
         ["pdp", d.id],
@@ -467,6 +479,11 @@ describe("PLAN_UX tools", () => {
       expect(view.top[0]?.hypotheses.map((x) => x.id)).toEqual([h.id]);
       expect(view.running).toBe(false);
       expect(view.setup?.current.domain).toBe("www.loja.example");
+      // Org A has no AI provider: setup asks for one.
+      expect(view.setup?.needs).toContainEqual({
+        key: "ai_provider",
+        blocking: true,
+      });
       expect(
         await call(PLAN_UX_STORE_VIEW, { goal_id: "other" }),
       ).toMatchObject({ pages: [], top: [], others: [] });
@@ -474,6 +491,40 @@ describe("PLAN_UX tools", () => {
         pages: [],
         top: [],
       });
+    });
+
+    it("the store view asks for an AI provider only while the org has no model", async () => {
+      const needsOf = async () =>
+        (
+          (await call(PLAN_UX_STORE_VIEW, {}, ORG_B)) as {
+            setup: { needs: Array<{ key: string }> };
+          }
+        ).setup.needs.map((n) => n.key);
+      expect(await needsOf()).toEqual(["domain", "ai_provider"]);
+      const key = await aiProviderKeys.create({
+        providerId: "openrouter",
+        label: "test",
+        apiKey: "sk-test",
+        organizationId: ORG_B,
+        createdBy: USER_ID,
+      });
+      await organizationSettings.upsert(ORG_B, {
+        simple_mode: {
+          tiers: {
+            fast: null,
+            smart: { keyId: key.id, modelId: "anthropic/claude-sonnet-5.5" },
+            thinking: null,
+            image: null,
+            web_search: null,
+            deep_research: null,
+          },
+        },
+      });
+      try {
+        expect(await needsOf()).toEqual(["domain"]);
+      } finally {
+        await aiProviderKeys.delete(key.id, ORG_B);
+      }
     });
 
     it("an opportunity comes with its hypotheses' lifecycle and the citations that exist", async () => {

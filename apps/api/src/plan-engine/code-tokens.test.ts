@@ -6,7 +6,12 @@ import {
   pickThemePaths,
   themePropsOf,
 } from "./code-tokens.ts";
-import type { Llm, LlmRequest, RepoEntry } from "./ports.ts";
+import {
+  type Llm,
+  type LlmRequest,
+  NoAiModelError,
+  type RepoEntry,
+} from "./ports.ts";
 
 const entry = (path: string, size = 1000, type = "file"): RepoEntry => ({
   name: path.split("/").pop() ?? path,
@@ -15,7 +20,7 @@ const entry = (path: string, size = 1000, type = "file"): RepoEntry => ({
   size,
 });
 
-describe("pickThemePaths (loja deco com Tailwind 3 na raiz)", () => {
+describe("pickThemePaths (deco store with Tailwind 3 at the root)", () => {
   const root = [
     entry("tailwind.config.ts", 5435),
     entry("tailwind.css", 85_334),
@@ -26,7 +31,7 @@ describe("pickThemePaths (loja deco com Tailwind 3 na raiz)", () => {
   ];
   const dirs = new Set([".deco", "sections", "static"]);
 
-  test("lê config, CSS de entrada, site.json e a section de Theme", () => {
+  test("reads the config, entry CSS, site.json and the Theme section", () => {
     expect(pickThemePaths(root, dirs)).toEqual([
       "tailwind.config.ts",
       "tailwind.css",
@@ -35,7 +40,7 @@ describe("pickThemePaths (loja deco com Tailwind 3 na raiz)", () => {
     ]);
   });
 
-  test("deixa de fora o CSS gerado em static/ e arquivo grande demais", () => {
+  test("leaves out generated CSS in static/ and oversized files", () => {
     const paths = pickThemePaths(
       [
         ...root,
@@ -48,7 +53,7 @@ describe("pickThemePaths (loja deco com Tailwind 3 na raiz)", () => {
     expect(paths).not.toContain("huge.css");
   });
 
-  test("tanstack: CSS em src/styles e Theme em src/sections", () => {
+  test("tanstack: CSS in src/styles and Theme in src/sections", () => {
     expect(
       pickThemePaths(
         [entry("src", 0, "dir"), entry("src/styles/app.css", 123_704)],
@@ -58,7 +63,7 @@ describe("pickThemePaths (loja deco com Tailwind 3 na raiz)", () => {
   });
 });
 
-describe("pickThemePaths (TanStack com o código na raiz)", () => {
+describe("pickThemePaths (TanStack with the code at the root)", () => {
   const root = [
     entry("router.tsx", 3835),
     entry(".deco", 0, "dir"),
@@ -68,7 +73,7 @@ describe("pickThemePaths (TanStack com o código na raiz)", () => {
   ];
   const dirs = new Set([".deco", "sections", "styles", "components"]);
 
-  test("CSS em styles/, o bloco de tema e a section de Theme", () => {
+  test("CSS in styles/, the theme block and the Theme section", () => {
     expect(
       pickThemePaths(
         [
@@ -87,7 +92,7 @@ describe("pickThemePaths (TanStack com o código na raiz)", () => {
     ]);
   });
 
-  test("o tema da loja vem antes do Fashion theme do template", () => {
+  test("the store's theme comes before the template's Fashion theme", () => {
     expect(
       pickThemePaths(
         [
@@ -107,7 +112,7 @@ describe("pickThemePaths (TanStack com o código na raiz)", () => {
     ]);
   });
 
-  test("site.json listado entra", () => {
+  test("a listed site.json is read", () => {
     const paths = pickThemePaths(
       [...root, entry(".deco/blocks/site.json", 5000)],
       dirs,
@@ -117,7 +122,7 @@ describe("pickThemePaths (TanStack com o código na raiz)", () => {
 });
 
 describe("cssVariablesOf", () => {
-  test("pega as declarações, sem comentário e sem repetir", () => {
+  test("takes the declarations, without comments or repeats", () => {
     expect(
       cssVariablesOf(`:root {
   /* --ignorada: 1px; */
@@ -138,7 +143,7 @@ describe("cssVariablesOf", () => {
 });
 
 describe("themePropsOf", () => {
-  test("achata as props da section de Theme do site.json", () => {
+  test("flattens the Theme section props from site.json", () => {
     const site = JSON.stringify({
       global: [
         {
@@ -157,7 +162,7 @@ describe("themePropsOf", () => {
     });
   });
 
-  test("JSON quebrado não lança", () => {
+  test("broken JSON does not throw", () => {
     expect(themePropsOf("{")).toEqual({});
   });
 });
@@ -174,7 +179,7 @@ describe("chooseThemeBlock", () => {
     text: theme("#384c53"),
   };
 
-  test("o bloco que outro bloco referencia pelo nome vence", () => {
+  test("the block another block references by name wins", () => {
     const site = {
       path: ".deco/blocks/site.json",
       text: JSON.stringify({ theme: { __resolveType: "Fashion theme" } }),
@@ -182,7 +187,7 @@ describe("chooseThemeBlock", () => {
     expect(chooseThemeBlock([own, fashion, site])).toBe(fashion.path);
   });
 
-  test("site.json com o tema inline: nenhum bloco solto vale", () => {
+  test("site.json with the theme inline: no loose block counts", () => {
     const site = {
       path: ".deco/blocks/site.json",
       text: JSON.stringify({ theme: JSON.parse(theme("#333333")) }),
@@ -190,15 +195,15 @@ describe("chooseThemeBlock", () => {
     expect(chooseThemeBlock([site, own, fashion])).toBeNull();
   });
 
-  test("sem referência: o que não é o Fashion theme do template", () => {
+  test("no reference: the one that is not the template's Fashion theme", () => {
     expect(chooseThemeBlock([fashion, own])).toBe(own.path);
   });
 
-  test("só o Fashion theme: ele mesmo", () => {
+  test("only the Fashion theme: that one", () => {
     expect(chooseThemeBlock([fashion])).toBe(fashion.path);
   });
 
-  test("sem bloco de tema solto (site.json não conta): null", () => {
+  test("no loose theme block (site.json does not count): null", () => {
     expect(
       chooseThemeBlock([{ path: ".deco/blocks/site.json", text: "{}" }]),
     ).toBeNull();
@@ -238,7 +243,7 @@ describe("extractCodeTokens", () => {
     read: async (path: string) => files[path] ?? null,
   });
 
-  test("lista o repo, lê o tema e o commit é a hora da leitura", async () => {
+  test("lists the repo, reads the theme, and the commit is the read time", async () => {
     const listed: string[] = [];
     const down: Llm = async () => {
       throw new Error("modelo fora do ar");
@@ -252,7 +257,7 @@ describe("extractCodeTokens", () => {
     expect(listed.sort()).toEqual(["", ".deco/blocks", "styles"]);
     expect(tokens.repo).toBe("acme/loja-exemplo");
     expect(tokens.commit).toBe("2026-11-20T12:00:00.000Z");
-    // Um tema só: o do template não completa o da loja.
+    // One theme only: the template's does not fill in the store's.
     expect(tokens.files).toEqual([
       "styles/app.css",
       ".deco/blocks/Loja Theme.json",
@@ -260,11 +265,25 @@ describe("extractCodeTokens", () => {
     expect(tokens.css_variables).toEqual({ "--alert-height": "40px" });
     expect(tokens.theme).toEqual({ "mainColors.primary": "#333333" });
     expect(JSON.stringify(tokens)).not.toContain("#ffeaaf");
-    // O modelo fora do ar: a parte sem modelo sai mesmo assim.
+    // Model down: the model-free part still comes out.
     expect(tokens.model_error).toBe("modelo fora do ar");
   });
 
-  test("o modelo nomeia: tetos, itens sem nome fora, valores em texto", async () => {
+  test("no model: the error propagates instead of becoming model_error", async () => {
+    const noModel: Llm = async () => {
+      throw new NoAiModelError();
+    };
+    await expect(
+      extractCodeTokens({
+        code: code(),
+        llm: noModel,
+        now: "2026-11-20T12:00:00.000Z",
+        onUsage: () => {},
+      }),
+    ).rejects.toBeInstanceOf(NoAiModelError);
+  });
+
+  test("the model names: caps, unnamed items dropped, values as text", async () => {
     const calls: LlmRequest[] = [];
     const llm: Llm = async (request) => {
       calls.push(request);
@@ -290,7 +309,7 @@ describe("extractCodeTokens", () => {
     expect(calls[0]?.tier).toBe("smart");
     expect(calls[0]?.userPrompt).toContain("acme/loja-exemplo");
     expect(calls[0]?.userPrompt).toContain("### .deco/blocks/Loja Theme.json");
-    // Os 20 primeiros, depois os sem nome saem.
+    // The first 20, then the unnamed ones are dropped.
     expect(tokens.colors).toHaveLength(18);
     expect(tokens.colors[0]).toEqual({
       name: "primary",
@@ -304,7 +323,7 @@ describe("extractCodeTokens", () => {
     expect(tokens.model_error).toBeUndefined();
   });
 
-  test("resposta sem JSON: só a parte sem modelo, sem erro", async () => {
+  test("answer without JSON: only the model-free part, no error", async () => {
     const tokens = await extractCodeTokens({
       code: code(),
       llm: async () => "não sei",
@@ -316,7 +335,7 @@ describe("extractCodeTokens", () => {
     expect(tokens.model_error).toBeUndefined();
   });
 
-  test("raiz vazia é erro", async () => {
+  test("an empty root is an error", async () => {
     await expect(
       extractCodeTokens({
         code: {

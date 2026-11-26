@@ -94,7 +94,7 @@ const o = {
 describe("buildDossier", () => {
   const md = buildDossier({ hypothesis: h, opportunity: o });
 
-  test("a meta da rodada entra como uma linha, só quando existe", () => {
+  test("the round's goal enters as one line, only when it exists", () => {
     const withGoal = buildDossier({
       hypothesis: h,
       opportunity: o,
@@ -110,7 +110,7 @@ describe("buildDossier", () => {
     ).toBe(md);
   });
 
-  test("as seis partes, na ordem do texto", () => {
+  test("the six parts, in text order", () => {
     const order = [
       "## Problema relacionado",
       "## 1. Hipótese",
@@ -124,13 +124,13 @@ describe("buildDossier", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  test("os recortes e a base da relevância entram, pro revisor não inventar explicação", () => {
+  test("the cuts and the relevance basis go in, so the reviewer does not invent an explanation", () => {
     expect(md).toContain(
       "Recortes do GA4: com a mistura de canais do outro dispositivo o gap vai de 9.07 para 8.1 pp; o gap aparece em 6 de 7 canais",
     );
   });
 
-  test("cada afirmação com o tipo; teste fora da causa não entra como evidência", () => {
+  test("each claim with its type; a test outside the cause does not count as evidence", () => {
     expect(md).toContain("seletor em y=1272 _(fato)_");
     expect(md).toContain("o gap aparece também na busca _(inferência)_");
     expect(md).toContain("seletor abaixo da dobra");
@@ -138,7 +138,7 @@ describe("buildDossier", () => {
     expect(md).toContain("Tracking: fontes divergem");
   });
 
-  test("efeito causal é sempre não testado, e a conclusão não promete conversão", () => {
+  test("causal effect is always untested, and the conclusion does not promise conversion", () => {
     expect(md).toContain("Efeito causal: Não testado");
     expect(md).toContain("15.274 por grupo, 2 semana(s)");
     expect(conclusionOf(h)).toContain(
@@ -146,7 +146,7 @@ describe("buildDossier", () => {
     );
   });
 
-  test("com a revisão, as falhas viram limitação e a revisão aparece", () => {
+  test("with the review, failures become a limitation and the review appears", () => {
     const reviewed = buildDossier({
       hypothesis: h,
       opportunity: o,
@@ -161,8 +161,8 @@ describe("buildDossier", () => {
     expect(reviewed).toContain("Explica o gap? parcial.");
   });
 
-  // 19/11: o revisor lê o dado que a afirmação cita, não só a frase.
-  test("com o livro de fatos, cada afirmação traz o dado citado", () => {
+  // The reviewer reads the data the claim cites, not just the sentence.
+  test("with the fact book, each claim carries the cited data", () => {
     const withFacts = buildDossier({
       hypothesis: {
         ...h,

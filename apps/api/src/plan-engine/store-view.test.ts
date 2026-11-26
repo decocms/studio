@@ -205,7 +205,7 @@ describe("buildStoreView", () => {
     });
     expect(view.pages.map((p) => p.diagnosis_id)).toEqual(["d-goal"]);
     expect(ids(view.top)).toEqual(["o-goal"]);
-    // Sem meta, vale a mais nova de cada página, de qualquer meta.
+    // Without a goal, the newest of each page applies, from any goal.
     const all = buildStoreView({
       profile: null,
       diagnoses: [forGoal, otherGoal, noGoal],
@@ -347,7 +347,7 @@ describe("buildStoreView", () => {
       { source: "vtex", owner: "external", message: "VTEX: produtos: 503" },
     ]);
     expect(page?.gap_details.map((g) => g.message)).toEqual(page?.gaps);
-    // A linha do funil não é lacuna de fonte: vai como nossa, do GA4.
+    // The funnel row is not a source gap: it goes as ours, from GA4.
     expect(byPage.get("home")?.gap_details).toEqual([
       {
         source: "browser",
@@ -410,7 +410,7 @@ describe("buildStoreView", () => {
       opportunities: [],
       hypotheses: [],
     });
-    // A análise velha da PDP não é a escolhida: a lacuna dela não pede nada.
+    // The old PDP analysis is not the chosen one: its gap asks for nothing.
     expect(view.setup).toEqual({
       needs: [
         {
@@ -433,5 +433,21 @@ describe("buildStoreView", () => {
         hypotheses: [],
       }).setup.needs,
     ).toEqual([{ key: "domain", blocking: true, suggested: null }]);
+  });
+
+  test("an org without an AI model is asked for a provider; the rest is unchanged", () => {
+    const input = {
+      profile: null,
+      diagnoses: [diagnosis("d-pdp", "pdp", { evidence: evidence() })],
+      opportunities: [],
+      hypotheses: [],
+    };
+    const withModel = buildStoreView(input);
+    const without = buildStoreView({ ...input, hasModel: false });
+    expect(without.setup.needs).toEqual([
+      { key: "domain", blocking: true, suggested: null },
+      { key: "ai_provider", blocking: true },
+    ]);
+    expect({ ...without, setup: null }).toEqual({ ...withModel, setup: null });
   });
 });

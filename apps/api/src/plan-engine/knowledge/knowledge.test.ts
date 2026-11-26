@@ -24,8 +24,8 @@ const store = (over: Partial<KnowledgeEntry>): KnowledgeEntry => ({
   ...over,
 });
 
-describe("base curada", () => {
-  test("todo artigo curado tem editora e título (senão some das pastas)", () => {
+describe("curated base", () => {
+  test("every curated article has a publisher and title (otherwise it vanishes from the folders)", () => {
     const editoras = new Set(PUBLISHERS.map((p) => p.key));
     const urls = new Set(CURATED_KNOWLEDGE.map((e) => e.fonte_url));
     for (const url of urls) {
@@ -34,11 +34,11 @@ describe("base curada", () => {
       expect(editoras.has(artigo?.editora ?? "outras")).toBe(true);
       expect(artigo?.titulo.length ?? 0).toBeGreaterThan(5);
     }
-    // Artigo que ninguém cita é resto de entrada apagada.
+    // An article nobody cites is a leftover of a deleted entry.
     for (const url of Object.keys(ARTICLES)) expect(urls.has(url)).toBe(true);
   });
 
-  test("ids únicos, áreas válidas, link https, toda entrada com achado e limite", () => {
+  test("unique ids, valid areas, https link, every entry with a finding and a limit", () => {
     const ids = new Set(CURATED_KNOWLEDGE.map((e) => e.id));
     expect(ids.size).toBe(CURATED_KNOWLEDGE.length);
     const areas = new Set(Object.keys(UX_AREAS));
@@ -51,14 +51,14 @@ describe("base curada", () => {
     expect(NEEDS_URL).toContain("estudo");
   });
 
-  test("toda entrada curada tem o trecho literal da fonte (até 300 caracteres)", () => {
+  test("every curated entry has the source's literal excerpt (up to 300 characters)", () => {
     for (const e of CURATED_KNOWLEDGE) {
       expect(e.trecho?.trim().length ?? 0).toBeGreaterThan(10);
       expect((e.trecho ?? "").length).toBeLessThanOrEqual(300);
     }
   });
 
-  test("cobre o site inteiro: cada tipo de página tem estudo das partes dele", () => {
+  test("covers the whole site: each page type has a study of its parts", () => {
     for (const t of [
       "home",
       "categoria",
@@ -76,8 +76,8 @@ describe("base curada", () => {
   });
 });
 
-describe("selectKnowledge por página", () => {
-  test("hipótese de filtro traz estudo de filtro antes do coringa da página inteira", () => {
+describe("selectKnowledge per page", () => {
+  test("a filter hypothesis brings the filter study before the whole-page wildcard", () => {
     const block = selectKnowledge({
       entries: CURATED_KNOWLEDGE,
       areas: ["filtros_ordenacao"],
@@ -87,7 +87,7 @@ describe("selectKnowledge por página", () => {
     expect(first!.areas).toContain("filtros_ordenacao");
   });
 
-  test("a página inteira da busca puxa as partes da busca, não as da PDP", () => {
+  test("the whole search page pulls the search parts, not the PDP's", () => {
     const block = selectKnowledge({
       entries: CURATED_KNOWLEDGE,
       areas: ["pagina_geral"],
@@ -107,7 +107,7 @@ describe("selectKnowledge por página", () => {
 });
 
 describe("selectKnowledge", () => {
-  test("só o que vale pras partes em jogo; a loja vem primeiro", () => {
+  test("only what applies to the parts in play; the store comes first", () => {
     const block = selectKnowledge({
       entries: [store({}), ...CURATED_KNOWLEDGE],
       areas: ["leve_o_look"],
@@ -122,7 +122,7 @@ describe("selectKnowledge", () => {
     }
   });
 
-  test("o que a loja aprendeu entra mesmo de outra parte da página, depois das da parte", () => {
+  test("what the store learned gets in even from another part of the page, after the part's own", () => {
     const block = selectKnowledge({
       entries: [
         store({ id: "outra", areas: ["leve_o_look"], origem: "veredito" }),
@@ -135,7 +135,7 @@ describe("selectKnowledge", () => {
     expect(ids.slice(0, 2)).toEqual(["daqui", "outra"]);
   });
 
-  test("desligada não entra; o orçamento de caracteres corta", () => {
+  test("disabled does not get in; the character budget cuts", () => {
     const off = selectKnowledge({
       entries: [store({ active: false })],
       areas: [],
@@ -150,7 +150,7 @@ describe("selectKnowledge", () => {
     expect(tight.byLabel.size).toBeLessThan(3);
   });
 
-  test("uma de cada categoria antes de repetir categoria", () => {
+  test("one of each category before repeating a category", () => {
     const block = selectKnowledge({
       entries: CURATED_KNOWLEDGE,
       areas: [],
@@ -161,7 +161,7 @@ describe("selectKnowledge", () => {
     expect(new Set(cats).size).toBe(4);
   });
 
-  test("citação fora do bloco é descartada", () => {
+  test("a citation outside the block is discarded", () => {
     const block = selectKnowledge({ entries: [store({})], areas: [] });
     const got = resolveCitations(["[K1]", "k1", "K9", 3], block);
     expect(got.map((e) => e.id)).toEqual(["s1"]);
@@ -199,8 +199,8 @@ const verification = (
   verified_at: "2026-11-15T10:00:00Z",
 });
 
-describe("aprender com o verificador", () => {
-  test("confirmada vira condição, nunca causa", () => {
+describe("learning from the verifier", () => {
+  test("confirmed becomes a condition, never a cause", () => {
     const d = fromVerification({
       hypothesis: hyp,
       area: "tamanho",
@@ -214,7 +214,7 @@ describe("aprender com o verificador", () => {
     expect(d?.confiabilidade).toBe("alta");
   });
 
-  test("desmentida e reescrita viram refutada; só código = média", () => {
+  test("disproved and rewritten become refuted; code only = medium", () => {
     expect(
       fromVerification({
         hypothesis: hyp,
@@ -233,7 +233,7 @@ describe("aprender com o verificador", () => {
     ).toBe("refutada");
   });
 
-  test("inconclusiva não ensina nada", () => {
+  test("inconclusive teaches nothing", () => {
     expect(
       fromVerification({
         hypothesis: hyp,
@@ -245,8 +245,8 @@ describe("aprender com o verificador", () => {
   });
 });
 
-describe("aprender com a decisão", () => {
-  test("descartada com motivo guarda o motivo; pendente não grava", () => {
+describe("learning from the decision", () => {
+  test("discarded with a reason keeps the reason; pending does not record", () => {
     const d = fromDecision({
       hypothesis: hyp,
       area: "tamanho",
@@ -268,8 +268,8 @@ describe("aprender com a decisão", () => {
   });
 });
 
-describe("em que partes o aprendizado vale", () => {
-  test("a parte que a hipótese mira vem primeiro; a da oportunidade fica junto", () => {
+describe("which parts the learning applies to", () => {
+  test("the part the hypothesis targets comes first; the opportunity's stays with it", () => {
     const buy = {
       tree: { alvo: { kind: "part", key: "buy_button", label: "" } },
     } as never;
@@ -282,7 +282,7 @@ describe("em que partes o aprendizado vale", () => {
     expect(areasFor(buy, "botao_compra")).toEqual(["botao_compra"]);
   });
 
-  test("o veredito gravado aparece quando a análise olha o botão de compra", () => {
+  test("the stored verdict shows up when the analysis looks at the buy button", () => {
     const d = fromVerification({
       hypothesis: {
         ...hyp,

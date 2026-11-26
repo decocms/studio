@@ -1,4 +1,4 @@
-/** Evidência de teste com funil do GA4 nos dois dispositivos e funil da PDP no celular. */
+/** Test evidence with the GA4 funnel on both devices and the PDP funnel on mobile. */
 import type {
   DevicePdpBehaviour,
   DiagnosisEvidence,
@@ -57,13 +57,9 @@ export const evidence = (
   ...over,
 });
 
-/**
- * Recortes sintéticos de uma loja de moda (GA4, uma semana), viu produto →
- * carrinho no site. Metade de quem vê produto no celular chega por social
- * pago, que converte pouco em qualquer tela.
- */
+/** Synthetic slices of a fashion store (GA4, one week), viewed product → cart on the site. */
 const SAMPLE_CUTS: Array<[string, string, number, number, number, number]> = [
-  // dim, key, celular viu, celular carrinho, computador viu, computador carrinho
+  // dim, key, mobile viewed, mobile cart, desktop viewed, desktop cart
   ["canal", "busca_organica", 10_382, 1_640, 3_056, 823],
   ["canal", "crm", 6_801, 922, 3_990, 739],
   ["canal", "direto", 39_378, 4_119, 4_631, 1_252],
@@ -100,7 +96,7 @@ export const sampleSegments: FunnelSegment[] = SAMPLE_CUTS.flatMap(
   ],
 );
 
-/** O funil sem recorte da mesma semana. */
+/** The unsliced funnel of the same week. */
 export const sampleFunnel = [
   {
     platform: "web_mobile",

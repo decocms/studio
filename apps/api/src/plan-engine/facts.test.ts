@@ -14,7 +14,7 @@ import { evidence as makeEvidence } from "./fixtures/evidence.ts";
 import { parseClaims } from "./tree.ts";
 import type { DiagnosisEvidence, PageCapture } from "./types.ts";
 
-/** As posições da PDP de uma loja de moda (16/11), celular e computador. */
+/** PDP part positions, mobile and desktop. */
 const capture = (
   device: "mobile" | "desktop",
   height: number,
@@ -63,12 +63,12 @@ const idOf = (pattern: RegExp, device?: "mobile" | "desktop") => {
 };
 
 describe("buildFacts", () => {
-  test("ids estáveis: a mesma evidência dá o mesmo livro", () => {
+  test("stable ids: the same evidence gives the same ledger", () => {
     expect(buildFacts(ev)).toEqual(facts);
     expect(facts.map((f) => f.id)).toEqual(facts.map((_, i) => `F${i + 1}`));
   });
 
-  test("a posição diz se está na 1ª tela e quanto falta rolar", () => {
+  test("the position says whether it is on the first screen and how much scrolling is left", () => {
     const size = book.get(idOf(/seletor de tamanho/, "mobile"));
     expect(size?.text).toBe(
       "seletor de tamanho: y=1031px, abaixo da 1ª tela (844px): 187px de rolagem",
@@ -80,7 +80,7 @@ describe("buildFacts", () => {
     );
   });
 
-  test("o funil do GA4 vira um fato por etapa, com o dispositivo", () => {
+  test("the GA4 funnel becomes one fact per step, with the device", () => {
     const cart = facts.filter((f) => /^add_to_cart/.test(f.text));
     expect(cart.map((f) => [f.device, f.text])).toEqual([
       ["mobile", "add_to_cart: 5000 (10.0% de view_item)"],
@@ -88,7 +88,7 @@ describe("buildFacts", () => {
     ]);
   });
 
-  test("concorrente é leitura de IA, não fato medido", () => {
+  test("a competitor is an AI reading, not a measured fact", () => {
     const withBench = buildFacts({
       ...ev,
       benchmark: [
@@ -119,13 +119,13 @@ describe("buildFacts", () => {
     );
   });
 
-  test("o livro gravado na evidência vale mais que montar de novo", () => {
+  test("the ledger stored in the evidence wins over rebuilding", () => {
     const stored = [{ ...facts[0]!, text: "gravado" }];
     expect(factBook({ ...ev, facts: stored })[0]!.text).toBe("gravado");
     expect(factBook(ev)).toEqual(facts);
   });
 
-  test("o prompt traz o id na frente e as fontes que faltaram no fim", () => {
+  test("the prompt puts the id first and the missing sources last", () => {
     const text = factBookForPrompt(facts, [
       { source: "heatmap", error: "fora do ar" },
     ]);
@@ -136,7 +136,7 @@ describe("buildFacts", () => {
     expect(text.trim().endsWith("- heatmap: fora do ar")).toBe(true);
   });
 
-  test("evidência antiga, sem viewport nem posições, não quebra", () => {
+  test("old evidence, without viewport or positions, does not break", () => {
     const old = {
       ...ev,
       captures: [{ device: "mobile" } as unknown as PageCapture],
@@ -149,7 +149,7 @@ describe("buildFacts", () => {
 describe("numbersIn", () => {
   const values = (t: string) => numbersIn(t).map((n) => n.value * n.scale);
 
-  test("vírgula ou ponto decimal; ponto com 3 dígitos é milhar", () => {
+  test("comma or dot decimal; a dot with 3 digits is thousands", () => {
     expect(values("9,9% contra 25.8%")).toEqual([9.9, 25.8]);
     expect(values("104.604 cliques em 1.031px")).toEqual([104_604, 1031]);
     expect(values("cerca de 72,5 mil usuárias e R$ 2,26 mi")).toEqual([
@@ -157,27 +157,27 @@ describe("numbersIn", () => {
     ]);
   });
 
-  test("ids, ordinais e inteiro pequeno sem unidade não são medida", () => {
+  test("ids, ordinals and small unitless integers are not measures", () => {
     expect(values("[F12] e L3 na 1ª tela, p25, 2 cards, 3 tamanhos")).toEqual(
       [],
     );
-    // Com unidade, mesmo pequeno, é medida.
+    // With a unit, even a small number is a measure.
     expect(values("5% e 3px e 2pp")).toEqual([5, 3, 2]);
   });
 });
 
 describe("isSupported", () => {
   const n = (t: string) => numbersIn(t)[0]!;
-  test("o mesmo número, arredondado como foi escrito", () => {
+  test("the same number, rounded as written", () => {
     expect(isSupported(n("25,8%"), [25.79])).toBe(true);
     expect(isSupported(n("26%"), [25.79])).toBe(true);
     expect(isSupported(n("25,9%"), [25.79])).toBe(false);
   });
 
-  test("diferença, soma e razão de dois números citados", () => {
+  test("difference, sum and ratio of two cited numbers", () => {
     expect(isSupported(n("15,9pp"), [25.8, 9.9])).toBe(true);
     expect(isSupported(n("2,6x"), [25.8, 9.9])).toBe(true);
-    // 56,8% = 1.022.400 de 1.800.000.
+    // 56,8% = 1.022.400 out of 1.800.000.
     expect(isSupported(n("56,8%"), [1_022_400, 1_800_000])).toBe(true);
     expect(isSupported(n("439px"), [1031, 844])).toBe(false);
   });
@@ -187,7 +187,7 @@ describe("checkGrounding", () => {
   const size = idOf(/seletor de tamanho/, "mobile");
   const buy = idOf(/botão de compra/, "mobile");
 
-  test("a observação real da PDP está nos fatos que ela cita", () => {
+  test("the real PDP observation is in the facts it cites", () => {
     const g = checkGrounding(
       "No celular o botão 'comprar' está na 1ª tela (660px), mas o seletor de tamanho fica a 1031px, 187px abaixo da 1ª tela.",
       [size, buy],
@@ -198,7 +198,7 @@ describe("checkGrounding", () => {
     expect(g.facts.map((f) => f.id)).toEqual([size, buy]);
   });
 
-  test("id que não existe e número que não está no fato aparecem", () => {
+  test("a nonexistent id and a number not in the fact are reported", () => {
     const g = checkGrounding(
       "o tamanho fica a 1031px e o banner tem 439px",
       [size, "F999"],
@@ -210,17 +210,17 @@ describe("checkGrounding", () => {
 });
 
 describe("parseFactIds", () => {
-  test("aceita lista, texto e colchete, sem repetir", () => {
+  test("accepts list, text and brackets, without repeats", () => {
     expect(parseFactIds(["F12", "f3", "[F12]"])).toEqual(["F12", "F3"]);
     expect(parseFactIds("F1, F2")).toEqual(["F1", "F2"]);
     expect(parseFactIds(null)).toEqual([]);
   });
 });
 
-describe("o rótulo 'fato' é dado pelo código", () => {
+describe("the 'fato' label is assigned by code", () => {
   const size = idOf(/seletor de tamanho/, "mobile");
 
-  test("fato medido citado e número conferido: fica fato", () => {
+  test("cited measured fact and verified number: stays a fact", () => {
     const [c] = parseClaims(
       [{ texto: "tamanho em y=1031px", fatos: [size], tipo: "fato_observado" }],
       book,
@@ -232,7 +232,7 @@ describe("o rótulo 'fato' é dado pelo código", () => {
     });
   });
 
-  test("sem fato, com número de fora ou com id inventado: vira inferência", () => {
+  test("no fact, an outside number or an invented id: becomes an inference", () => {
     const claims = parseClaims(
       [
         { texto: "tamanho em y=1031px", tipo: "fato_observado" },
@@ -252,7 +252,7 @@ describe("o rótulo 'fato' é dado pelo código", () => {
     ]);
   });
 
-  test("só leitura de print (concorrente) é no máximo indireta", () => {
+  test("screenshot reading alone (competitor) is at most indirect", () => {
     const bench = {
       id: "F1",
       kind: "concorrente" as const,
@@ -269,7 +269,7 @@ describe("o rótulo 'fato' é dado pelo código", () => {
         unsupported: [],
       }),
     ).toBe("evidencia_indireta");
-    // O modelo nunca dá conclusão de experimento.
+    // The model never gives an experiment conclusion.
     expect(
       groundedLabel("conclusao_experimental", {
         facts: [bench],
@@ -280,8 +280,8 @@ describe("o rótulo 'fato' é dado pelo código", () => {
   });
 });
 
-describe("o dado citado, pra quem lê", () => {
-  test("fonte, tela e a frase; leitura de IA marcada; sem o id", async () => {
+describe("the cited data, for the reader", () => {
+  test("source, screen and sentence; AI reading marked; no id", async () => {
     const { factLine } = await import("./facts.ts");
     const size = facts.find(
       (f) => f.device === "mobile" && f.text.startsWith("seletor de tamanho"),
@@ -303,7 +303,7 @@ describe("o dado citado, pra quem lê", () => {
     );
   });
 
-  test("a evidência da hipótese traz o dado embaixo da afirmação", async () => {
+  test("the hypothesis evidence carries the data under the claim", async () => {
     const { claimsMarkdown } = await import("./tree.ts");
     const size = facts.find(
       (f) => f.device === "mobile" && f.text.startsWith("seletor de tamanho"),

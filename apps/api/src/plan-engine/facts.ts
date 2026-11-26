@@ -1,22 +1,10 @@
 /**
- * O livro de fatos do diagnóstico: a evidência inteira quebrada em fatos
- * atômicos com id (F1, F2…), cada um com fonte, dispositivo e se foi MEDIDO em
- * código ou LIDO por uma IA (o benchmark é leitura de print).
- *
- * Por que existe: até 19/11 o modelo recebia a evidência como texto corrido e
- * devolvia "observações" e "a favor" em prosa, com o rótulo "fato_observado"
- * que ele mesmo escolhia. Na PDP de uma loja de moda (16/11) a observação "a
- * seta 'Next item' tem 82% de cliques mortos… parece não responder" virou
- * hipótese e foi desmentida: no celular nem existe seta. Nada amarrava a frase
- * a um dado. Agora quem afirma cita o id, e o código confere:
- *   - o id existe neste diagnóstico;
- *   - todo número da frase está num fato citado (ou é a diferença, a soma ou
- *     a razão de dois deles);
- *   - "fato_observado" só com fato MEDIDO.
- *
- * Os fatos são gravados na evidência (`evidence.facts`) no começo da análise,
- * pra que o id F12 de uma hipótese continue apontando pro mesmo fato na
- * verificação e no dossiê, mesmo que o código daqui mude entre as instâncias.
+ * The diagnosis fact ledger: the evidence broken into atomic facts with an id
+ * (F1, F2...), each with source, device and whether it was MEASURED in code or
+ * READ by an AI. Whoever asserts a claim cites ids, and code checks that the
+ * ids exist, that every number is in a cited fact (or is their difference, sum
+ * or ratio), and that "fato_observado" only cites MEASURED facts. Facts are
+ * stored in `evidence.facts` so ids stay stable across verification and dossier.
  */
 
 import { elementsForPrompt, stockNote } from "./hypotheses.ts";
@@ -44,20 +32,17 @@ export type UxFactKind =
   | "verificacao";
 
 export interface UxFact {
-  /** F1, F2… na ordem em que o livro foi montado. */
+  /** F1, F2... in the order the ledger was built. */
   id: string;
   kind: UxFactKind;
   source: UxSourceKind;
-  /** NULL = vale pras duas telas, ou é do app. */
+  /** NULL = applies to both screens, or is from the app. */
   device: UxDevice | null;
-  /**
-   * Medido em código (funil, posição em px, clique). false = lido por uma IA
-   * num print (o que um concorrente faz): é sinal, não fato desta loja.
-   */
+  /** Measured in code. false = read by an AI from a screenshot: a signal, not a fact about this store. */
   measured: boolean;
-  /** O título do bloco no prompt ("Página real — mobile (390×844) …"). */
+  /** The block title in the prompt ("Real page - mobile (390x844) ..."). */
   group: string;
-  /** A frase, com o número, como vai pro prompt. */
+  /** The sentence, with the number, as it goes into the prompt. */
   text: string;
 }
 
@@ -78,7 +63,7 @@ const PLATFORM_WORD: Record<string, string> = {
   app_android: "app Android",
 };
 
-/** A posição de uma parte, dita contra a altura da primeira tela. */
+/** A part's position, stated against the height of the first screen. */
 function positionText(y: number | null | undefined, fold: number): string {
   if (y == null) return "não achado na página";
   return y < fold
@@ -105,10 +90,7 @@ const PAGE_FACT_LABEL: Record<string, string> = {
   pagination: "como a lista continua",
 };
 
-/**
- * A evidência → fatos, sempre na mesma ordem (o id depende dela). O conteúdo é
- * o mesmo que `evidenceForPrompt` mostrava, um dado por linha.
- */
+/** The evidence -> facts, always in the same order (the id depends on it). */
 export function buildFacts(ev: DiagnosisEvidence): UxFact[] {
   const out: UxFact[] = [];
   const add = (f: Omit<UxFact, "id">) =>
@@ -117,7 +99,7 @@ export function buildFacts(ev: DiagnosisEvidence): UxFact[] {
   const spec = pageSpec(ev.page_type);
   const pageName = spec.key === "pdp" ? "PDP" : spec.label.toLowerCase();
 
-  // Funil do GA4: uma etapa por fato, com a taxa sobre a etapa anterior.
+  // GA4 funnel: one step per fact, with the rate over the previous step.
   for (const f of ev.platform_funnel ?? []) {
     const group = `Funil GA4 — ${PLATFORM_WORD[f.platform] ?? f.platform} (usuárias, ${ev.window_days} dias, todas as páginas)`;
     for (const [i, s] of f.steps.entries()) {
@@ -135,7 +117,7 @@ export function buildFacts(ev: DiagnosisEvidence): UxFact[] {
     }
   }
 
-  // Recortes do GA4: viu produto → carrinho por canal e por nova × recorrente.
+  // GA4 breakdowns: viewed product -> cart by channel and by new x returning.
   for (const dim of ["canal", "visitante"] as const) {
     const totals: Record<string, number> = {};
     const rows: Array<{
@@ -238,8 +220,7 @@ export function buildFacts(ev: DiagnosisEvidence): UxFact[] {
       });
     }
     for (const s of b.sections ?? []) {
-      // CTR acima de 100% = a seção fica por cima da página (pop-up,
-      // gaveta): o "alcance" mede rolagem e não diz quantos a viram.
+      // A CTR above 100% means the section sits over the page (pop-up, drawer): "reach" measures scrolling and does not say how many saw it.
       add({
         ...base,
         kind: "secao",
@@ -419,11 +400,7 @@ export function buildFacts(ev: DiagnosisEvidence): UxFact[] {
   return out;
 }
 
-/**
- * Fatos novos no fim do livro, com os ids seguintes (F243…). É como a
- * verificação devolve o que viu pra próxima rodada de hipóteses: o id dos
- * fatos antigos não muda.
- */
+/** New facts appended to the ledger with the following ids; old ids never change. */
 export function appendFacts(
   book: UxFact[],
   items: Array<Omit<UxFact, "id">>,
@@ -435,15 +412,12 @@ export function appendFacts(
   return [...book, ...items.map((f, i) => ({ ...f, id: `F${last + i + 1}` }))];
 }
 
-/** Os fatos deste diagnóstico: os gravados, ou montados agora (evidência antiga). */
+/** This diagnosis's facts: the stored ones, or built now (old evidence). */
 export function factBook(ev: DiagnosisEvidence): UxFact[] {
   return ev.facts && ev.facts.length > 0 ? ev.facts : buildFacts(ev);
 }
 
-/**
- * O livro em texto pro prompt: um bloco por grupo, uma linha por fato com o
- * id na frente. As fontes que não responderam vão no fim (buraco com nome).
- */
+/** The ledger as prompt text: one block per group, one line per fact; unanswered sources go last. */
 export function factBookForPrompt(
   facts: UxFact[],
   gaps: DiagnosisEvidence["gaps"] = [],
@@ -474,10 +448,7 @@ const SOURCE_WORD: Record<UxSourceKind, string> = {
   benchmark: "concorrente",
 };
 
-/**
- * Um fato pra quem lê (tela, dossiê, revisor): a fonte, a tela e a frase, e
- * "lido por IA" quando não foi medido. Sem o id: quem lê não tem o livro.
- */
+/** A fact for the reader: source, screen and sentence, plus "read by AI" when not measured. No id. */
 export function factLine(f: UxFact): string {
   const where = [
     f.kind === "interacao"
@@ -496,9 +467,9 @@ export function factLine(f: UxFact): string {
   return `${where}: ${f.text}${f.measured ? "" : " (lido por IA)"}`;
 }
 
-// ── Conferência de citação ──────────────────────────────────────────────────
+// ── Citation check ──────────────────────────────────────────────────────────
 
-/** Ids de fato numa resposta do modelo: ["F12", "f3"], "F12, F14" ou "[F12]". */
+/** Fact ids in a model answer: ["F12", "f3"], "F12, F14" or "[F12]". */
 export function parseFactIds(raw: unknown): string[] {
   const items = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
   const out: string[] = [];
@@ -512,26 +483,25 @@ export function parseFactIds(raw: unknown): string[] {
 }
 
 export interface ParsedNumber {
-  /** Como está escrito ("9,9%", "1.031px"). */
+  /** As written ("9,9%", "1.031px"). */
   raw: string;
   value: number;
-  /** Casas decimais escritas (a tolerância da comparação). */
+  /** Decimal places written (the comparison tolerance). */
   decimals: number;
-  /** Multiplicador por extenso: "72,5 mil" = 72.500. */
+  /** Spelled-out multiplier: "72,5 mil" = 72,500. */
   scale: number;
 }
 
 /**
- * Os números de uma frase. Pula o que não é medida: id (F12, L3, K1, p25),
- * ordinal (1ª, 2º) e inteiro pequeno sem unidade ("2 cards", "3 tamanhos").
- * Aceita vírgula ou ponto decimal; ponto seguido de 3 dígitos é milhar.
+ * The numbers in a sentence, skipping non-measures (ids, ordinals, small
+ * unitless integers). A dot followed by 3 digits is a thousands separator.
  */
 export function numbersIn(text: string, all = false): ParsedNumber[] {
   const out: ParsedNumber[] = [];
   const re = /(?<![\p{L}\d.,])(\d{1,3}(?:\.\d{3})+(?!\d)|\d+)(?:[.,](\d+))?/gu;
   for (const m of text.matchAll(re)) {
     const rest = text.slice((m.index ?? 0) + m[0].length);
-    // Ordinal (1ª, 2º) e pedaço de palavra (3D, 4G) não são medida.
+    // Ordinals (1ª, 2º) and word fragments (3D, 4G) are not measures.
     if (/^[ªº°]/.test(rest)) continue;
     const unitMatch =
       /^\s*(%|px|pp|×|x(?!\p{L})|s(?!\p{L})|mil(?!\p{L})|mi(?!\p{L})|milh)/iu.exec(
@@ -556,18 +526,14 @@ export function numbersIn(text: string, all = false): ParsedNumber[] {
   return out;
 }
 
-/** O número escrito bate com `m`, arredondado como ele foi escrito? */
+/** Does the written number match `m`, rounded as it was written? */
 function matches(n: ParsedNumber, m: number): boolean {
   const written = n.value * n.scale;
   const tolerance = (0.5 * n.scale) / 10 ** n.decimals + 1e-9;
   return Math.abs(Math.abs(m) - written) <= tolerance;
 }
 
-/**
- * Um número está sustentado se é um dos números dos fatos citados, ou a
- * diferença, a soma ou a razão (×1 ou ×100) de dois deles — "15,9pp" de
- * 25,8% − 9,9%, "56,8% de quem vê produto" de duas contagens.
- */
+/** A number is supported if it is a cited fact's number, or the difference, sum or ratio (x1 or x100) of two. */
 export function isSupported(
   n: ParsedNumber,
   pool: number[],
@@ -590,26 +556,20 @@ export function isSupported(
 }
 
 export interface Grounding {
-  /** Os fatos citados que existem. */
+  /** The cited facts that exist. */
   facts: UxFact[];
-  /** Ids citados que não existem neste diagnóstico. */
+  /** Cited ids that do not exist in this diagnosis. */
   unknown: string[];
-  /** Números da frase que nenhum fato citado sustenta. */
+  /** Numbers in the sentence that no cited fact supports. */
   unsupported: string[];
 }
 
-/**
- * Confere uma frase contra os fatos que ela cita. Não decide nada: quem chama
- * escolhe o que fazer (derrubar a observação, rebaixar o rótulo).
- */
+/** Checks a sentence against the facts it cites; the caller decides what to do. */
 export function checkGrounding(
   text: string,
   ids: string[],
   book: Map<string, UxFact>,
-  /**
-   * Aceitar diferença/soma/razão de dois números citados. Desligue contra o
-   * livro inteiro: com centenas de números, quase tudo vira "derivado".
-   */
+  /** Accept the difference/sum/ratio of two cited numbers. Turn off against the whole ledger, where almost everything becomes "derived". */
   derived = true,
 ): Grounding {
   const facts: UxFact[] = [];
@@ -628,7 +588,7 @@ export function checkGrounding(
   return { facts, unknown, unsupported };
 }
 
-/** Índice id → fato. */
+/** Index id -> fact. */
 export function factIndex(facts: UxFact[]): Map<string, UxFact> {
   return new Map(facts.map((f) => [f.id, f]));
 }

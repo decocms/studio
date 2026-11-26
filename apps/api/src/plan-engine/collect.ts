@@ -1,22 +1,7 @@
 /**
- * Coleta: os números que a análise manual juntou à mão pra `pdp-oportunidades`.
- *
- *   - funil por plataforma (web no celular, web no computador, app) — GA4 via
- *     BigQuery, por USUÁRIA (o método dos analistas: uma pessoa pode levar
- *     três sessões pra comprar);
- *   - comportamento na PDP por dispositivo — Deco Analytics (rolagem, dobra,
- *     cliques mortos, funil da página, alcance por seção);
- *   - receita por canal de venda — lake (pedidos VTEX), base da conta do dinheiro;
- *   - produtos muito vistos que não vendem, cruzados com o estoque ao vivo — a
- *     fila de PDPs do relatório.
- *
- * Cada fonte é independente: a que falhar vira um `SourceGap` e o diagnóstico
- * segue com as outras. Uma análise com um buraco nomeado vale mais que nenhuma.
- *
- * Custo: o GA4 de uma loja grande é grande, e a cota diária é dividida. Aqui
- * só entram colunas estreitas (event_name, platform, device.category,
- * user_pseudo_id e items.item_id) em 7 dias — ordem de 10 GB, contra os ~290 GB
- * do funil completo com event_params.
+ * Collects the GA4 funnel, Deco Analytics page behaviour, revenue per channel
+ * and top-viewed products against live stock. Each source is independent: one
+ * that fails becomes a `SourceGap` and the diagnosis goes on with the rest.
  */
 
 import { delay } from "@decocms/shared/std";
@@ -58,17 +43,17 @@ import {
   vtexSearchByProductIds,
 } from "./vtex.ts";
 
-/** Janela padrão. Uma semana pega o ciclo de lançamento (quarta) inteiro. */
+/** Default window. A week covers a full weekly launch cycle. */
 const WINDOW_DAYS = 7;
 
-/** Quantos produtos mais vistos entram no cruzamento com o estoque. */
+/** How many top-viewed products are checked against stock. */
 const TOP_VIEWED = 40;
 
 export interface CollectInput {
   profile: SiteProfile;
-  /** A página analisada. Ausente = PDP (o diagnóstico de antes de 16/11). */
+  /** The analysed page. Absent = PDP. */
   pageType?: UxPageType;
-  /** O site do Deco Analytics quando o perfil não diz qual (o slug da org). */
+  /** The Deco Analytics site when the profile doesn't name one (the org slug). */
   orgSlug: string;
   heatmap: HeatmapReader;
   lake: LakeQuery;
@@ -77,17 +62,17 @@ export interface CollectInput {
     projectId: string;
     datasetId: string;
   } | null;
-  /** Null só quando o domínio da loja não é conhecido. */
+  /** Null only when the store's domain is unknown. */
   vtex: VtexAccess | null;
   onScan?: (scan: BigQueryScan) => void;
-  /** O catálogo público e a busca da loja. Ausente = o `fetch` global. */
+  /** The store's public catalog and search. Absent = the global `fetch`. */
   fetch?: typeof fetch;
 }
 
-/** Uma página pra abrir no navegador, com o motivo de ter sido escolhida. */
+/** A page to open in the browser, with the reason it was picked. */
 export interface CaptureCandidate {
   url: string;
-  /** O produto da PDP. Vazio = não é PDP (ou é a home de último recurso). */
+  /** The PDP's product. Empty = not a PDP (or the last-resort home). */
   product_id: string;
   why: string;
   stock: ProductSignal["availability"] | null;
@@ -96,7 +81,7 @@ export interface CaptureCandidate {
 export interface CollectResult {
   evidence: Omit<DiagnosisEvidence, "captures" | "benchmark">;
   capture_targets: CaptureCandidate[];
-  /** Rotas lidas de novo do `hmPages` nesta coleta; o chamador grava no perfil. */
+  /** Routes re-read from `hmPages` in this run; the caller saves them. */
   page_templates?: PageTemplates;
 }
 
@@ -107,7 +92,7 @@ export async function collectEvidence(
   const site = input.profile.studio_site || input.orgSlug;
   const pageType = input.pageType ?? "pdp";
 
-  // Rotas de home, busca e categoria, do `hmPages` quando faltam ou estão velhas.
+  // Home, search and category routes, from `hmPages` when missing or stale.
   let templates = input.profile.page_templates ?? null;
   let freshTemplates: PageTemplates | undefined;
   let siteRoutes: PageRoute[] = [];
@@ -134,7 +119,7 @@ export async function collectEvidence(
       });
     }
   }
-  // Sem rota ou funil no Deco Analytics, o funil da página vem do GA4 (no máximo uma consulta).
+  // No route or funnel in Deco Analytics: the page funnel comes from GA4 (one query max).
   const usesGa4Pages =
     input.bigquery !== null &&
     (pageType === "home" || pageType === "busca" || pageType === "categoria");
@@ -233,7 +218,7 @@ export async function collectEvidence(
     gaps.push({ source: "bigquery", error: "BigQuery não configurado na app" });
   }
 
-  // Produtos vistos x estoque só servem à PDP (a fila de PDPs e a página a abrir).
+  // Viewed products vs stock only matter for the PDP (its queue and page to open).
   let products: ProductSignal[] = [];
   let viewed: ProductRow[] = [];
   if (pageType === "pdp" && input.bigquery && input.vtex) {
@@ -246,7 +231,7 @@ export async function collectEvidence(
       gaps.push({
         source: "vtex",
         error: `produtos: ${errText(err)}`,
-        // O catálogo é o público da loja: ninguém aqui o conserta.
+        // The catalog is the store's public one: nobody here can fix it.
         owner: "external" as const,
       });
     }
@@ -296,7 +281,7 @@ export async function collectEvidence(
   };
 }
 
-/** As rotas deste tipo de página com o tráfego delas (resumo pro prompt). */
+/** Routes of this page type with their traffic (a summary for the prompt). */
 function routesOfType(
   pageType: UxPageType,
   siteRoutes: PageRoute[],
@@ -316,7 +301,7 @@ function routesOfType(
   });
 }
 
-/** O termo mais buscado no Intelligent Search da VTEX (endpoint público da loja). */
+/** The top search term in VTEX Intelligent Search (a public store endpoint). */
 async function topSearchTerm(
   domain: string,
   fetchImpl: typeof fetch,
@@ -334,9 +319,8 @@ async function topSearchTerm(
 }
 
 /**
- * Sem Intelligent Search (16/11, `searches: []`), um termo que a
- * loja vende: o último pedaço da categoria mais vista que é uma palavra só
- * (`/produtos/vestido` → "vestido"; `/joias/aneis` → "aneis").
+ * Without Intelligent Search, a term the store sells: the last single-word
+ * segment of the most-viewed category (`/produtos/vestido` → "vestido").
  */
 function termFromRoutes(categoryRoutes: string[]): string | null {
   for (const r of categoryRoutes) {
@@ -346,7 +330,7 @@ function termFromRoutes(categoryRoutes: string[]): string | null {
   return null;
 }
 
-/** A página a abrir fora da PDP: a rota do heatmap no domínio da loja. */
+/** The page to open outside the PDP: the heatmap route on the store's domain. */
 function pageCaptureTargets(
   pageType: UxPageType,
   domain: string,
@@ -385,12 +369,11 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// ── Funil por plataforma (GA4 / BigQuery) ────────────────────────────────────
+// ── Funnel per platform (GA4 / BigQuery) ─────────────────────────────────────
 
 /**
- * Os eventos do funil: os de sempre e os das outras páginas (vitrine, banner,
- * etapas do checkout). Mais nomes no IN não custa mais: o GA4 cobra por
- * coluna lida, e as colunas são as mesmas.
+ * Funnel events: the usual ones plus those of other pages (shelf, banner,
+ * checkout steps). More names in the IN cost nothing: GA4 bills per column read.
  */
 const FUNNEL_EVENTS: readonly string[] = [
   ...new Set([
@@ -413,10 +396,9 @@ function ga4Suffix(daysAgo: number, now = new Date()): string {
 }
 
 /**
- * Usuárias distintas por evento, por plataforma × dispositivo. Funil ABERTO
- * (fez o evento na janela, não necessariamente na ordem) — o mesmo "indireto"
- * do GA4 que os analistas usam; ordenar no tempo exigiria event_params e
- * multiplicaria o custo.
+ * Distinct users per event, per platform × device. An OPEN funnel (did the event
+ * in the window, not necessarily in order); ordering in time would need
+ * event_params and multiply the cost.
  */
 export function buildPlatformFunnelQuery(
   projectId: string,
@@ -446,10 +428,8 @@ GROUP BY platform, event_name
 }
 
 /**
- * Canal de aquisição da usuária, pelo PRIMEIRO toque (traffic_source do export
- * do GA4 é da aquisição da usuária, não da sessão). É o que deixa ver se a
- * diferença entre celular e computador é a página ou o tráfego: campanha de
- * aquisição cai mais no celular, e gente nova converte menos em qualquer tela.
+ * The user's acquisition channel by FIRST touch (the GA4 export's traffic_source
+ * is per user, not per session). It tells page effects from traffic mix.
  */
 const CHANNEL_SQL = `CASE
       WHEN REGEXP_CONTAINS(LOWER(IFNULL(traffic_source.medium, '')), r'cpc|ppc|paid|cpm|cpv|ads|display')
@@ -469,11 +449,9 @@ const CHANNEL_SQL = `CASE
     END`;
 
 /**
- * O funil por plataforma E os recortes dele, numa leitura só da tabela. Cada
- * GROUPING SET é um recorte: o funil inteiro (o de antes), por canal de
- * aquisição, por usuária nova × recorrente (primeiro toque dentro da janela =
- * nova; cookie apagado também parece nova) e por dia. Só colunas estreitas —
- * nada de event_params, que é o que encarece o GA4.
+ * The platform funnel AND its segments in one table read: each GROUPING SET is
+ * a segment (whole funnel, channel, new × returning, day). New = first touch in
+ * the window (a cleared cookie also looks new). Narrow columns only.
  */
 export function buildFunnelSegmentsQuery(
   projectId: string,
@@ -525,10 +503,7 @@ GROUP BY GROUPING SETS (
 `;
 }
 
-/**
- * Linhas da consulta de recortes → o funil por plataforma (a linha sem
- * recorte) e os recortes. Exportado pra teste.
- */
+/** Segment query rows → the platform funnel (unsegmented row) and segments. */
 export function toFunnelSegments(
   rows: ReadonlyArray<Record<string, unknown>>,
 ): {
@@ -597,8 +572,8 @@ export function toFunnelSegments(
 }
 
 /**
- * O erro diz que o dataset, a tabela ou o projeto não existe, ou que a conta
- * não tem acesso: isso o cliente resolve. Timeout e 5xx são nossos.
+ * Missing dataset, table or project, or no access: the customer fixes that.
+ * Timeouts and 5xx are ours.
  */
 export function isBigQuerySetupError(message: string): boolean {
   return (
@@ -617,8 +592,8 @@ function bigQueryGapOwner(
 }
 
 /**
- * O funil com recortes; se a consulta nova falhar, o funil simples de antes
- * (o diagnóstico não pode perder o funil por causa dos recortes).
+ * The segmented funnel; if that query fails, the plain platform funnel, so the
+ * diagnosis never loses the funnel over the segments.
  */
 async function fetchFunnelWithSegments(
   bq: NonNullable<CollectInput["bigquery"]>,
@@ -665,7 +640,7 @@ async function fetchPlatformFunnel(
   return toPlatformFunnels(data.rows ?? []);
 }
 
-/** Linhas (plataforma, evento, usuárias) → um funil por plataforma, na ordem. */
+/** Rows (platform, event, users) → one funnel per platform, in order. */
 export function toPlatformFunnels(
   rows: ReadonlyArray<Record<string, unknown>>,
 ): PlatformFunnel[] {
@@ -693,17 +668,17 @@ export function toPlatformFunnels(
     }));
 }
 
-// ── Funil por página (GA4 / BigQuery) ───────────────────────────────────────
+// ── Funnel per page (GA4 / BigQuery) ─────────────────────────────────────────
 
-/** Rotas com menos usuárias que isto por dispositivo não entram (ruído). */
+/** Routes with fewer users than this per device are dropped (noise). */
 const MIN_PAGE_VISITORS = 20;
-/** Quantas rotas por dispositivo a consulta devolve. */
+/** How many routes per device the query returns. */
 const MAX_PAGES_PER_DEVICE = 150;
 
-/** Uma rota do site no GA4, num dispositivo. */
+/** A site route in GA4, on one device. */
 export interface Ga4PageRow {
   device: UxDevice;
-  /** Caminho sem query nem barra final (`/` na home). */
+  /** Path without query or trailing slash (`/` for the home). */
   path: string;
   visitors: number;
   viewed: number;
@@ -711,14 +686,9 @@ export interface Ga4PageRow {
 }
 
 /**
- * O funil de cada rota do site no GA4: quem teve `page_view` nela, e dessas,
- * quem viu produto e quem pôs no carrinho DEPOIS, na mesma sessão. É o funil
- * da página que o Deco Analytics daria, para lojas que não mandam a ele os
- * eventos de produto e carrinho. Só web (o app não tem rota).
- *
- * Lê `event_params` (page_location e ga_session_id), a coluna cara do GA4: só
- * roda quando o Deco Analytics não respondeu (numa loja média, ~0,8 GB
- * por dia de janela).
+ * Per-route GA4 funnel: users with a `page_view` there who later viewed a product
+ * or added to cart in the same session. Web only. Reads the costly `event_params`
+ * column, so it only runs when Deco Analytics has no answer.
  */
 export function buildPageFunnelQuery(
   projectId: string,
@@ -768,7 +738,7 @@ QUALIFY ROW_NUMBER() OVER (PARTITION BY pv.device ORDER BY visitors DESC) <= ${M
 `;
 }
 
-/** Linhas da consulta → rotas por dispositivo; linha malformada fica de fora. */
+/** Query rows → routes per device; malformed rows are dropped. */
 export function toGa4PageRows(
   rows: ReadonlyArray<Record<string, unknown>>,
 ): Ga4PageRow[] {
@@ -802,7 +772,7 @@ async function fetchGa4Pages(
   return toGa4PageRows(data.rows ?? []);
 }
 
-/** `/:product/p` → regex que casa as rotas concretas desse template. */
+/** `/:product/p` → a regex matching that template's concrete routes. */
 function templateRegex(template: string): RegExp | null {
   if (!template.includes("/:")) return null;
   const body = template
@@ -817,9 +787,8 @@ function templateRegex(template: string): RegExp | null {
 }
 
 /**
- * As rotas do GA4 no formato das do `hmPages` (views = usuárias somadas nos
- * dispositivos), sem as páginas de produto: o GA4 tem uma rota por produto,
- * e o `detectPageTemplates` só sabe tirar o template.
+ * GA4 routes shaped like `hmPages` ones (views = users summed across devices),
+ * without product pages, since GA4 has one route per product.
  */
 export function ga4ListingRoutes(
   rows: readonly Ga4PageRow[],
@@ -836,7 +805,7 @@ export function ga4ListingRoutes(
     .sort((a, b) => b.views - a.views);
 }
 
-/** O funil de uma rota no GA4. NULL = o GA4 não tem a rota. */
+/** A route's funnel in GA4. NULL = GA4 doesn't have the route. */
 export function ga4FunnelFor(
   rows: readonly Ga4PageRow[],
   route: string,
@@ -853,26 +822,24 @@ export function ga4FunnelFor(
   return byDevice.length > 0 ? { route: path, by_device: byDevice } : null;
 }
 
-/** O Deco Analytics mediu o funil da página em algum dispositivo. */
+/** Deco Analytics measured the page funnel on some device. */
 function hasPageFunnel(behaviour: readonly DevicePdpBehaviour[]): boolean {
   return behaviour.some(
     (b) => b.funnel !== null && (b.funnel.viewed > 0 || b.funnel.carted > 0),
   );
 }
 
-// ── Comportamento na página (Deco Analytics) ─────────────────────────────────
+// ── Page behaviour (Deco Analytics) ──────────────────────────────────────────
 
 /**
- * Seções que não são conteúdo: tema, fontes, pixels, VWO, consentimento.
- * Aparecem com 90%+ de alcance e tempo "visto" porque estão no DOM do topo,
- * não porque alguém as viu. Numa PDP medida em 04/11 eram 18 das 25 seções
- * do payload — todas com zero clique. O filtro de verdade é o clique; a regex
- * só tira as que somam clique por acidente (um pixel que intercepta toque).
+ * Non-content sections (theme, fonts, pixels, VWO, consent) show 90%+ reach
+ * just by sitting atop the DOM. Clicks are the real filter; this regex drops
+ * the ones that catch stray clicks.
  */
 const NON_VISUAL_SECTION =
   /\/(Theme|Fonts|PageAssets|Tracking|Seo|SEO|Analytics|Pixel|Scripts?|VWO|ConsentManagement)\b|\/Tracking\//;
 
-/** Nenhum projeto da org tem o Deco Analytics: o cliente é que instala. */
+/** No project in the org has Deco Analytics: the customer installs it. */
 class AnalyticsNotInstalled extends Error {
   constructor(site: string) {
     super(`o site "${site}" não está registrado no Deco Analytics`);
@@ -906,9 +873,8 @@ async function fetchPageBehaviour(
 }
 
 /**
- * Em 12/11 a rota respondia `registered: true` com todos os painéis vazios em
- * 9 de 10 chamadas seguidas (e às vezes só um painel cheio), sem erro nenhum.
- * Vazio não é "sem tráfego" numa PDP com milhões de views: tenta de novo.
+ * The route can answer `registered: true` with every panel empty and no error.
+ * Empty is not "no traffic" on a busy PDP, so retry.
  */
 const HEATMAP_ATTEMPTS = 4;
 const HEATMAP_RETRY_MS = 4_000;
@@ -930,7 +896,7 @@ async function fetchHeatmapWithData(
   return last as HeatmapPayload;
 }
 
-/** Os painéis que falharam em algum dispositivo, sem repetir. */
+/** Panels that failed on any device, deduplicated. */
 export function failedPanels(payloads: readonly HeatmapPayload[]): string[] {
   return [
     ...new Set(
@@ -943,7 +909,7 @@ export function failedPanels(payloads: readonly HeatmapPayload[]): string[] {
   ].sort();
 }
 
-/** O resumo e os elementos vieram: é o mínimo pra ler a página. */
+/** Summary and elements arrived: the minimum to read the page. */
 function hasHeatmapData(p: HeatmapPayload): boolean {
   return (
     (p.data.hmSummary?.[0]?.views ?? 0) > 0 &&
@@ -951,20 +917,16 @@ function hasHeatmapData(p: HeatmapPayload): boolean {
   );
 }
 
-/** Quantos elementos vão pro prompt, por critério (mais clique, morto). */
+/** How many elements go to the prompt per criterion (most clicks, dead). */
 const ELEMENTS_PER_CRITERION = 8;
 
-/** Abaixo disso, a taxa de clique morto de um elemento é ruído. */
+/** Below this, an element's dead-click rate is noise. */
 const MIN_ELEMENT_CLICKS = 200;
 
 /**
- * Os elementos que valem ler: os mais clicados e os com mais clique morto em
- * elemento clicável (um botão que não respondeu). Morto em imagem ou texto
- * fica de fora do critério: é tocar na foto, não defeito.
- *
- * O clique de raiva do Deco Analytics (3+ cliques em 1 s) fica de fora de
- * propósito: conta cliques, não pessoas, e passar fotos rápido também conta.
- * Virava hipótese de "frustração" que não era (16/11).
+ * The most-clicked elements and those with most dead clicks on interactive
+ * targets. Dead taps on images or text are not defects; rage clicks are left
+ * out because they count clicks, not people, and photo swiping triggers them.
  */
 export function pickElements(
   payload: HeatmapPayload,
@@ -1011,7 +973,7 @@ export function pickElements(
 const sectionName = (root: string) =>
   root.replace(/^site\/sections\//, "").replace(/\.tsx#\d+$/, "");
 
-/** Payload `view=heatmap` → o recorte que o prompt e a tela leem. */
+/** `view=heatmap` payload → the slice the prompt and the UI read. */
 export function toDeviceBehaviour(
   device: UxDevice,
   payload: HeatmapPayload,
@@ -1020,7 +982,7 @@ export function toDeviceBehaviour(
   if (!summary?.views) return null;
   const scroll = payload.data.hmScroll ?? [];
   const reachAt = (depth: number): number => {
-    // A curva é por ponto percentual; pega o primeiro ponto >= depth.
+    // The curve is per percentage point; take the first point >= depth.
     const point = scroll.find((p) => p.depth >= depth);
     return point ? point.reach_pct : 0;
   };
@@ -1060,7 +1022,7 @@ export function toDeviceBehaviour(
             reach_pct: reachAt(i * 5),
           }))
         : undefined,
-    // Zero em "viu produto" e "carrinho" é evento que não chega, não ninguém comprando.
+    // Zero "viewed product" and "cart" means the events don't arrive, not no sales.
     funnel:
       pageRow && funnelMeasured
         ? {
@@ -1076,9 +1038,9 @@ export function toDeviceBehaviour(
   };
 }
 
-// ── Receita por canal (lake) ─────────────────────────────────────────────────
+// ── Revenue per channel (lake) ───────────────────────────────────────────────
 
-/** O lake respondeu, mas sem pedido pago na janela: o cliente é que traz os pedidos. */
+/** The lake answered with no paid order in the window: the customer brings orders. */
 class NoPaidOrders extends Error {
   constructor() {
     super("nenhum pedido pago nos últimos 28 dias");
@@ -1086,7 +1048,7 @@ class NoPaidOrders extends Error {
   }
 }
 
-/** Sem pedido na janela, falha: vira lacuna que pede os pedidos ao cliente. */
+/** Throws with no order in the window: a gap asking the customer for orders. */
 async function fetchRevenueBase(lake: LakeQuery): Promise<RevenueBase> {
   const [rows, currencyRows] = await Promise.all([
     lake(
@@ -1129,9 +1091,9 @@ async function fetchRevenueBase(lake: LakeQuery): Promise<RevenueBase> {
   };
 }
 
-// ── Produtos: muito vistos x vendas x estoque ────────────────────────────────
+// ── Products: most viewed × sales × stock ────────────────────────────────────
 
-/** Um produto muito visto, com ou sem problema. A escolha do print sai daqui. */
+/** A top-viewed product, problem or not; screenshots are picked from these. */
 export type ProductRow = Omit<ProductSignal, "reason">;
 
 async function fetchProductSignals(
@@ -1152,7 +1114,7 @@ async function fetchProductSignals(
   );
 
   const top = [...views].sort((a, b) => b.views - a.views).slice(0, TOP_VIEWED);
-  // Os que vendem bem e quase ninguém vê: vendas altas, views abaixo da mediana.
+  // Products that sell well but few people see: high sales, low views.
   const viewsById = new Map(views.map((v) => [v.product_id, v.views]));
   const medianViews =
     [...views].sort((a, b) => a.views - b.views)[Math.floor(views.length / 2)]
@@ -1233,9 +1195,8 @@ async function fetchProductSignals(
 }
 
 /**
- * Pedidos por produto no canal do site, 7 dias. O canal do site é o que a VTEX
- * chama de "Principal" (ou o id 1, o padrão da VTEX) — o app vende por outro
- * canal e não passa pela PDP do site.
+ * Orders per product on the site channel in the window: VTEX's "Principal" (or
+ * id 1, the VTEX default). The app sells through another channel.
  */
 async function fetchOrdersByProduct(
   lake: LakeQuery,
@@ -1258,17 +1219,9 @@ async function fetchOrdersByProduct(
 }
 
 /**
- * As PDPs que vão ao navegador:
- *
- *   1. a mais vista com a grade inteira à venda: é a PDP comum, a que o modelo
- *      deve olhar pra falar da página. Em 12/11 a "mais vista à venda" tinha
- *      1 de 5 tamanhos, e o modelo desenhou solução de
- *      esgotado achando que era a página de sempre;
- *   2. a mais vista esgotada ou com grade quebrada, marcada como tal.
- *
- * Sem produto com grade inteira, a mais vista à venda (marcada com o estoque
- * dela). Sem produto nenhum (BigQuery fora), a home — o diagnóstico perde a
- * captura de PDP mas não para. Exportado pra teste.
+ * PDPs for the browser: the most viewed with its whole size grid on sale (the
+ * typical page), then the most viewed sold out or broken-grid one, flagged.
+ * Falls back to the top on-sale PDP, then the home.
  */
 export function pickCaptureTargets(
   viewed: ProductRow[],

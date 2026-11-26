@@ -13,7 +13,7 @@ afterAll(() => restoreWait());
 const ORIGIN = "https://loja-exemplo.com.br";
 
 describe("resolvePdpUrl", () => {
-  test("a primeira candidata que se declara produto, sem abrir a home", async () => {
+  test("takes the first candidate that declares a product, without opening the home", async () => {
     let current = "";
     const f = fakeBrowser(() => ({
       goto: (url) => {
@@ -35,7 +35,7 @@ describe("resolvePdpUrl", () => {
     ]);
   });
 
-  test("nenhuma candidata: os links de PDP da home, ainda com ?html=1", async () => {
+  test("with no candidate, takes the home's PDP links, still with ?html=1", async () => {
     let current = "";
     const f = fakeBrowser(() => ({
       goto: (url) => {

@@ -32,11 +32,13 @@ import {
   generateOpportunityHypotheses,
   reservesLimit,
 } from "../opportunities.ts";
+import { NO_AI_MODEL, noAiModelGap, rethrowNoAiModel } from "../ports.ts";
 import { triedLines, verdictFacts } from "../reinvestigate.ts";
 import type {
   DiagnosisEvidence,
   DiagnosisSummary,
   OpportunityDraft,
+  UxDiagnosis,
   UxHypothesis,
   UxOpportunity,
 } from "../types.ts";
@@ -55,7 +57,7 @@ import {
   type RepoSnapshot,
   repoSnapshotKey,
 } from "../verify/repo.ts";
-import { withRepoSnapshot } from "../verify/repo-snapshot.ts";
+import { withGap, withRepoSnapshot } from "../verify/repo-snapshot.ts";
 import type { RepoReader } from "../ports.ts";
 import type {
   CheckRun,
@@ -362,6 +364,7 @@ async function verifyAndApply(opts: {
       reason: outcome.reason,
     };
   } catch (err) {
+    rethrowNoAiModel(err);
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[plan-engine] verification of ${h.id}: ${message}`);
     const base = verificationBase(h);
@@ -701,6 +704,7 @@ export async function reinvestigateStep(
       }
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     reason = `${f.reason}; a rodada nova falhou (${err instanceof Error ? err.message : err})`;
   }
   await run.recordCosts(
@@ -838,6 +842,7 @@ export async function replaceStep(
       }
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     line = `"${saved.title}" não entrou no lugar de "${f.title}": as hipóteses não saíram (${err instanceof Error ? err.message : err}).`;
   }
   // Read again: verification above wrote to the summary since the step began.
@@ -894,26 +899,31 @@ export async function outcomesStep(run: EngineRun): Promise<void> {
   }
 }
 
-/** A failed run becomes an error; a failed "verify again" goes back to done. */
+/** A failed run becomes an error and a failed "verify again" goes back to done; a lost model also leaves the customer's gap. */
+export function failPatch(
+  diagnosis: Pick<UxDiagnosis, "summary" | "evidence"> | null,
+  rerun: boolean,
+  message: string,
+): DiagnosisPatch {
+  const evidence =
+    message === NO_AI_MODEL && diagnosis?.evidence
+      ? { evidence: withGap(diagnosis.evidence, noAiModelGap()) }
+      : {};
+  return rerun
+    ? { ...rerunFailedPatch(diagnosis?.summary ?? null, message), ...evidence }
+    : { status: "error", error: message, finished: true, ...evidence };
+}
+
 export async function failStep(
   run: EngineRun,
   rerun: boolean,
   message: string,
 ): Promise<void> {
   await run.releaseBrowser();
-  if (rerun) {
-    const summary =
-      (await run.store.getDiagnosis(run.orgId, run.id))?.summary ?? null;
-    await run.store.updateDiagnosis(
-      run.orgId,
-      run.id,
-      rerunFailedPatch(summary, message),
-    );
-    return;
-  }
-  await run.store.updateDiagnosis(run.orgId, run.id, {
-    status: "error",
-    error: message,
-    finished: true,
-  });
+  const diagnosis = await run.store.getDiagnosis(run.orgId, run.id);
+  await run.store.updateDiagnosis(
+    run.orgId,
+    run.id,
+    failPatch(diagnosis, rerun, message),
+  );
 }

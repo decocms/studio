@@ -19,7 +19,7 @@ afterAll(() => restoreWait());
 const ORIGIN = "https://concorrente-exemplo.com.br";
 const HOME = `${ORIGIN}/`;
 
-/** Um link da página falsa. */
+/** A link on the fake page. */
 function a(
   path: string,
   zone: LinkZone = "main",
@@ -33,18 +33,18 @@ interface FakePage {
   text?: string;
   heading?: string;
   hints?: Omit<SearchHints, "pageUrl">;
-  /** Erro ao ler a página (ex.: o desafio anti-robô recarregou). */
+  /** Error reading the page (e.g. the anti-bot challenge reloaded). */
   readError?: string;
   status?: number;
   product?: boolean;
-  /** A navegação cai aqui (ex.: `chrome-error://chromewebdata/`). */
+  /** Where navigation lands (e.g. `chrome-error://chromewebdata/`). */
   landsOn?: string;
   gotoError?: string;
 }
 
 /**
- * Navegador falso: cada URL responde o que o mapa manda (a chave é a URL sem
- * o `html`, exata; senão origem + caminho).
+ * Fake browser: each URL answers what the map says (keyed by the exact URL
+ * without `html`, else origin + path).
  */
 function fakeBrowser(site: Record<string, FakePage>) {
   const visited: string[] = [];
@@ -106,7 +106,7 @@ function fakeBrowser(site: Record<string, FakePage>) {
   return { browser, visited };
 }
 
-/** fetch falso: robots e sitemaps por URL; o resto é 404. */
+/** Fake fetch: robots and sitemaps by URL; anything else is 404. */
 function fakeFetch(files: Record<string, string>) {
   const asked: string[] = [];
   const fetcher = async (input: string) => {
@@ -129,7 +129,7 @@ async function collect(gen: AsyncGenerator<string, void>): Promise<string[]> {
 }
 
 describe("pdpCandidates", () => {
-  test("concorrente: nenhuma URL aberta leva o ?html=1", async () => {
+  test("a competitor: no opened URL carries ?html=1", async () => {
     const f = fakeBrowser({
       [HOME]: { links: [a("/vestidos", "nav")] },
       [`${ORIGIN}/vestidos`]: { links: [a("/vestido-midi/p")] },
@@ -142,7 +142,7 @@ describe("pdpCandidates", () => {
     for (const url of f.visited) expect(url).not.toContain("html=1");
   });
 
-  test("loja analisada: continua pedindo o HTML", async () => {
+  test("the analysed store: keeps asking for HTML", async () => {
     const f = fakeBrowser({
       [HOME]: { links: [a("/vestidos", "nav")] },
       [`${ORIGIN}/vestidos`]: { links: [a("/vestido-midi/p")] },
@@ -153,7 +153,7 @@ describe("pdpCandidates", () => {
     for (const url of f.visited) expect(url).toContain("html=1");
   });
 
-  test("domínio que não existe: a lacuna nomeia a falha de navegação", async () => {
+  test("a domain that does not exist: the gap names the navigation failure", async () => {
     const f = fakeBrowser({
       [HOME]: {
         landsOn: "chrome-error://chromewebdata/",
@@ -167,7 +167,7 @@ describe("pdpCandidates", () => {
     ).rejects.toThrow(`não abriu ${HOME}: net::ERR_NAME_NOT_RESOLVED`);
   });
 
-  test("vitrine do menu antes da do rodapé; vitrine que não abre é pulada", async () => {
+  test("menu listings before footer ones; a listing that does not open is skipped", async () => {
     const f = fakeBrowser({
       [HOME]: {
         links: [
@@ -194,7 +194,7 @@ describe("pdpCandidates", () => {
     ]);
   });
 
-  test("só abre vitrine quando quem consome pede mais", async () => {
+  test("opens a listing only when the consumer asks for more", async () => {
     const f = fakeBrowser({
       [HOME]: { links: [a("/camisa-polo/p"), a("/vestidos", "nav")] },
     });
@@ -208,7 +208,7 @@ describe("pdpCandidates", () => {
     expect(f.visited).toEqual([HOME]);
   });
 
-  test("sem link de PDP na home nem nas vitrines: cai no sitemap", async () => {
+  test("with no PDP link on the home or listings, falls back to the sitemap", async () => {
     const f = fakeBrowser({
       [HOME]: { links: [a("/vestidos", "nav")] },
       [`${ORIGIN}/vestidos`]: { links: [a("/vestidos/curtos", "main")] },
@@ -224,7 +224,7 @@ describe("pdpCandidates", () => {
     expect(asked).toEqual([`${ORIGIN}/robots.txt`, `${ORIGIN}/sitemap.xml`]);
   });
 
-  test("prazo vencido: não abre vitrine nem busca sitemap", async () => {
+  test("past the deadline, opens no listing and reads no sitemap", async () => {
     const f = fakeBrowser({ [HOME]: { links: [a("/vestidos", "nav")] } });
     const { fetcher, asked } = fakeFetch({});
     const links = await collect(
@@ -248,7 +248,7 @@ describe("findListingPage", () => {
     a("/produtos/d"),
   ];
 
-  test("a primeira vitrine que lista produto, do menu", async () => {
+  test("the first menu listing that lists products", async () => {
     const f = fakeBrowser({
       [HOME]: {
         links: [a("/trabalhe-conosco", "footer"), a("/saias", "nav")],
@@ -264,7 +264,7 @@ describe("findListingPage", () => {
     expect(found.url).toBe(`${ORIGIN}/saias`);
   });
 
-  test("sem vitrine com produto na home: categorias do sitemap", async () => {
+  test("with no home listing with products, the sitemap's categories", async () => {
     const f = fakeBrowser({
       [HOME]: { links: [a("/lookbook-verao", "nav")] },
       [`${ORIGIN}/calcas`]: { links: grid },
@@ -282,7 +282,7 @@ describe("findListingPage", () => {
     expect(found.url).toBe(`${ORIGIN}/calcas`);
   });
 
-  test("nada que liste produto: a lacuna conta o que abriu", async () => {
+  test("nothing lists products: the gap says what opened", async () => {
     const f = fakeBrowser({ [HOME]: { links: [a("/saias", "nav")] } });
     await expect(
       findListingPage(
@@ -296,7 +296,7 @@ describe("findListingPage", () => {
     );
   });
 
-  test("home sem vitrine e sem sitemap", async () => {
+  test("a home with no listing and no sitemap", async () => {
     const f = fakeBrowser({ [HOME]: { links: [] } });
     await expect(
       findListingPage(
@@ -331,7 +331,7 @@ describe("findSearchPage", () => {
     html: "",
   };
 
-  test("a rota do formulário da home vem primeiro", async () => {
+  test("the home form's route comes first", async () => {
     const f = fakeBrowser({
       [HOME]: { hints: searchForm },
       [`${ORIGIN}/procurar?termo=vestido`]: { links: grid },
@@ -341,7 +341,7 @@ describe("findSearchPage", () => {
     expect(f.visited).toEqual([HOME, `${ORIGIN}/procurar?termo=vestido`]);
   });
 
-  test("VTEX IO: a rota da plataforma; rota que não abre não derruba as outras", async () => {
+  test("VTEX IO: the platform's route; a route that fails does not stop the others", async () => {
     const f = fakeBrowser({
       [HOME]: { hints: { forms: [], html: "<script>__RUNTIME__</script>" } },
       [`${ORIGIN}/vestido?_q=vestido&map=ft`]: {
@@ -360,7 +360,7 @@ describe("findSearchPage", () => {
     ]);
   });
 
-  test("o termo da loja não acha nada: uma vez com o termo do menu, na mesma rota", async () => {
+  test("our term finds nothing: once more with the menu's term, on the same route", async () => {
     const f = fakeBrowser({
       [HOME]: {
         hints: searchForm,
@@ -376,7 +376,7 @@ describe("findSearchPage", () => {
     expect(f.visited.length).toBe(3);
   });
 
-  test("sem termo da loja: usa o do menu", async () => {
+  test("with no term of ours, uses the menu's", async () => {
     const f = fakeBrowser({
       [HOME]: {
         hints: searchForm,
@@ -388,7 +388,7 @@ describe("findSearchPage", () => {
     expect(found.url).toBe(`${ORIGIN}/procurar?termo=sapatos`);
   });
 
-  test("nenhum dos dois termos acha: a lacuna diz que a busca existe e veio vazia", async () => {
+  test("neither term finds anything: the gap says search exists and came back empty", async () => {
     const f = fakeBrowser({
       [HOME]: {
         hints: searchForm,
@@ -408,18 +408,18 @@ describe("findSearchPage", () => {
     );
   });
 
-  test("nenhuma rota é a busca: a lacuna lista as testadas", async () => {
+  test("no route is the search: the gap lists the ones tried", async () => {
     const f = fakeBrowser({ [HOME]: { hints: { forms: [], html: "" } } });
     await expect(
       findSearchPage(f.browser, DOMAIN, "vestido", later()),
     ).rejects.toThrow(
       `rota de busca de ${DOMAIN} não encontrada (testadas: /search?q=…, /s?q=…, /busca?q=…, /…?_q=…&map=ft, /busca?ft=…)`,
     );
-    // Teto de rotas por loja.
+    // Route cap per store.
     expect(f.visited.length).toBe(6);
   });
 
-  test("desafio anti-robô numa rota encerra a loja", async () => {
+  test("an anti-bot challenge on a route ends the store", async () => {
     const f = fakeBrowser({
       [HOME]: { hints: { forms: [], html: "" } },
       [`${ORIGIN}/search?q=vestido`]: {
@@ -432,7 +432,7 @@ describe("findSearchPage", () => {
     expect(f.visited.length).toBe(2);
   });
 
-  test("prazo vencido: não testa rota", async () => {
+  test("past the deadline, tries no route", async () => {
     const f = fakeBrowser({ [HOME]: { hints: { forms: [], html: "" } } });
     await expect(
       findSearchPage(f.browser, DOMAIN, "vestido", Date.now() - 1),

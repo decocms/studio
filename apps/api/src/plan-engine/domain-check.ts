@@ -45,16 +45,16 @@ async function guardedGet(
   }
 }
 
-/** "www.loja.example" e "loja.example" são a mesma loja. */
+/** "www.loja.example" and "loja.example" are the same store. */
 export function sameStore(a: string, b: string): boolean {
   return a.replace(/^www\./, "") === b.replace(/^www\./, "");
 }
 
 /**
- * Confere se o domínio existe e responde: o modelo sugere concorrente que não
- * existe, e há loja real que só atende em www. Site que barra robô (401/403/429)
- * existe, só vem marcado com blocks_bots. Endereço de rede interna não é
- * buscado: vale como recusado.
+ * Checks the domain exists and responds: the model suggests competitors that do
+ * not exist, and some real stores only answer on www. A site that blocks bots
+ * (401/403/429) exists, flagged with blocks_bots. A private-network address is
+ * not fetched and counts as refused.
  */
 export async function checkDomain(
   domain: string,
@@ -73,7 +73,7 @@ export async function checkDomain(
         guard,
         AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       );
-      // Só libera a conexão: falhar aqui não muda a resposta que já veio.
+      // Only release the connection; failing here does not change the response.
       res.body?.cancel().catch(() => {});
       // A fetcher that follows redirects itself (the browser's) names where it landed.
       const finalHost = new URL(res.url || url).host;
@@ -88,7 +88,7 @@ export async function checkDomain(
       if (err instanceof BlockedUrlError) {
         return { ok: false, domain, reason: "endereço de rede interna" };
       }
-      // mantém o motivo anterior: se um host respondeu erro, ele vale mais que "não respondeu"
+      // keep the previous reason: an error response outranks "did not respond"
     }
   }
   return { ok: false, domain, reason };

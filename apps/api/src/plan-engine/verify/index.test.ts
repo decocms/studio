@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { NoAiModelError } from "../ports.ts";
 import type { UxHypothesis } from "../types.ts";
 import { reverifyBlock, type VerifyDeps, verifyHypothesis } from "./index.ts";
 import type { CheckRun, HypothesisVerification, VerifyCheck } from "./types.ts";
@@ -65,7 +66,7 @@ function deps(over: Partial<VerifyDeps> = {}): VerifyDeps {
 }
 
 describe("verifyHypothesis", () => {
-  test("plano vazio: inconclusiva, sem abrir o navegador", async () => {
+  test("empty plan: inconclusive, without opening the browser", async () => {
     let liveCalls = 0;
     const out = await verifyHypothesis(
       h(),
@@ -86,7 +87,7 @@ describe("verifyHypothesis", () => {
     if (out.kind === "keep") expect(out.confidence).toBe(0.8);
   });
 
-  test("untestable vira o resumo", async () => {
+  test("untestable becomes the summary", async () => {
     const out = await verifyHypothesis(
       h(),
       deps({
@@ -100,7 +101,7 @@ describe("verifyHypothesis", () => {
     expect(out.verification.summary).toBe("é preferência da cliente");
   });
 
-  test("followup do repo entra na fila live", async () => {
+  test("the repo followup joins the live queue", async () => {
     const seen: string[] = [];
     await verifyHypothesis(
       h(),
@@ -120,7 +121,7 @@ describe("verifyHypothesis", () => {
     expect(seen).toEqual(["c1-f"]);
   });
 
-  test("reescrita confirmada: rewrite, judge 2x, segunda sem reescrita", async () => {
+  test("confirmed rewrite: rewrite, judge twice, second without rewrite", async () => {
     const calls: boolean[] = [];
     let n = 0;
     const out = await verifyHypothesis(
@@ -144,7 +145,7 @@ describe("verifyHypothesis", () => {
     }
   });
 
-  test("a segunda passada vê a hipótese temporária", async () => {
+  test("the second pass sees the temporary hypothesis", async () => {
     const plans: UxHypothesis[] = [];
     let n = 0;
     await verifyHypothesis(
@@ -166,7 +167,7 @@ describe("verifyHypothesis", () => {
     );
   });
 
-  test("reescrita desmentida: drop com o resumo da segunda", async () => {
+  test("refuted rewrite: drop with the second summary", async () => {
     let n = 0;
     const out = await verifyHypothesis(
       h(),
@@ -179,7 +180,7 @@ describe("verifyHypothesis", () => {
     if (out.kind === "drop") expect(out.reason).toBe("sum-desmentida");
   });
 
-  test("reescrita de novo na segunda vale desmentida", async () => {
+  test("rewriting again on the second pass counts as refuted", async () => {
     const out = await verifyHypothesis(
       h(),
       deps({ judge: async () => judged("reescrita", draft) }),
@@ -187,7 +188,7 @@ describe("verifyHypothesis", () => {
     expect(out.kind).toBe("drop");
   });
 
-  test("plan lança: inconclusiva, confiança intacta", async () => {
+  test("plan throws: inconclusive, confidence untouched", async () => {
     const out = await verifyHypothesis(
       h(),
       deps({
@@ -202,7 +203,7 @@ describe("verifyHypothesis", () => {
     if (out.kind === "keep") expect(out.confidence).toBe(0.8);
   });
 
-  test("confirmada sobe 0.2, com teto 0.9", async () => {
+  test("confirmed raises 0.2, capped at 0.9", async () => {
     const out = await verifyHypothesis(h({ confidence: 0.8 }), deps());
     expect(out).toMatchObject({ kind: "keep" });
     expect((out as { confidence: number }).confidence).toBeCloseTo(0.9);
@@ -211,7 +212,7 @@ describe("verifyHypothesis", () => {
     expect((low as { confidence: number }).confidence).toBeCloseTo(0.7);
   });
 
-  test("repo lança: aquele teste vira nao_testou e a hipótese segue", async () => {
+  test("repo throws: that test becomes nao_testou and the hypothesis continues", async () => {
     let judgedRuns: CheckRun[] = [];
     const out = await verifyHypothesis(
       h(),
@@ -237,7 +238,24 @@ describe("verifyHypothesis", () => {
     ]);
   });
 
-  test("live lança: aquele teste vira nao_testou e a hipótese segue", async () => {
+  test("repo without a model: the error ends the verification", async () => {
+    const out = verifyHypothesis(
+      h(),
+      deps({
+        plan: async () => ({
+          checks: [chk("c1", "repo")],
+          dropped: [],
+          untestable: null,
+        }),
+        repo: async () => {
+          throw new NoAiModelError();
+        },
+      }),
+    );
+    await expect(out).rejects.toBeInstanceOf(NoAiModelError);
+  });
+
+  test("live throws: that test becomes nao_testou and the hypothesis continues", async () => {
     let judgedRuns: CheckRun[] = [];
     await verifyHypothesis(
       h(),
@@ -263,7 +281,7 @@ describe("verifyHypothesis", () => {
     ]);
   });
 
-  test("judge lança: inconclusiva, confiança intacta", async () => {
+  test("judge throws: inconclusive, confidence untouched", async () => {
     const out = await verifyHypothesis(
       h(),
       deps({
@@ -278,8 +296,8 @@ describe("verifyHypothesis", () => {
     expect((out as { confidence: number }).confidence).toBe(0.8);
   });
 
-  // 19/11: o juiz não troca a causa; a que ele proporia vira linha de investigação.
-  test("sem reescrita permitida: reescrita vira desmentida, com a causa sugerida nas linhas", async () => {
+  // The judge does not swap the cause; the one it would propose becomes an investigation line.
+  test("rewrite not allowed: a rewrite becomes refuted, with the suggested cause in the lines", async () => {
     const allowed: boolean[] = [];
     const out = await verifyHypothesis(
       h(),
@@ -303,7 +321,7 @@ describe("verifyHypothesis", () => {
     ]);
   });
 
-  test("segundo plano vazio: rewrite fica, confiança original", async () => {
+  test("empty second plan: rewrite stays, original confidence", async () => {
     let n = 0;
     const out = await verifyHypothesis(
       h(),
@@ -319,7 +337,7 @@ describe("verifyHypothesis", () => {
     expect((out as { confidence: number }).confidence).toBe(0.8);
   });
 
-  test("repo roda antes do live, qualquer que seja a ordem do plano", async () => {
+  test("repo runs before live, whatever the plan order", async () => {
     const order: string[] = [];
     await verifyHypothesis(
       h(),
@@ -342,7 +360,7 @@ describe("verifyHypothesis", () => {
     expect(order).toEqual(["c2", "c1"]);
   });
 
-  test("desmentida na primeira: drop", async () => {
+  test("refuted on the first pass: drop", async () => {
     const out = await verifyHypothesis(
       h(),
       deps({ judge: async () => judged("desmentida") }),
@@ -351,7 +369,7 @@ describe("verifyHypothesis", () => {
   });
 });
 
-describe("verificar de novo", () => {
+describe("verify again", () => {
   const prior = (
     over: Partial<HypothesisVerification> = {},
   ): HypothesisVerification => ({
@@ -363,12 +381,12 @@ describe("verificar de novo", () => {
     ...over,
   });
 
-  test("guarda a confiança de antes da verificação", async () => {
+  test("keeps the confidence from before verification", async () => {
     const out = await verifyHypothesis(h({ confidence: 0.5 }), deps());
     expect(out.verification.base_confidence).toBe(0.5);
   });
 
-  test("confirmar de novo não sobe outra vez: parte da confiança de antes", async () => {
+  test("confirming again does not raise twice: starts from the prior confidence", async () => {
     const out = await verifyHypothesis(
       h({ confidence: 0.7, verification: prior({ base_confidence: 0.5 }) }),
       deps(),
@@ -378,7 +396,7 @@ describe("verificar de novo", () => {
     expect(out.verification.base_confidence).toBe(0.5);
   });
 
-  test("inconclusiva de novo: confiança como está, base preservada", async () => {
+  test("inconclusive again: confidence as is, base kept", async () => {
     const out = await verifyHypothesis(
       h({ confidence: 0.7, verification: prior({ base_confidence: 0.5 }) }),
       deps({ judge: async () => judged("inconclusiva") }),
@@ -387,7 +405,7 @@ describe("verificar de novo", () => {
     expect(out.verification.base_confidence).toBe(0.5);
   });
 
-  test("verificação antiga sem base: a confiança atual é a base", async () => {
+  test("old verification without base: the current confidence is the base", async () => {
     const out = await verifyHypothesis(
       h({ confidence: 0.6, verification: prior() }),
       deps(),
@@ -396,7 +414,7 @@ describe("verificar de novo", () => {
     if (out.kind === "keep") expect(out.confidence).toBeCloseTo(0.8);
   });
 
-  test("já reescrita: o juiz não pode reescrever de novo", async () => {
+  test("already rewritten: the judge cannot rewrite again", async () => {
     const original = { title: "A primeira", why: "o primeiro porquê" };
     const allowed: boolean[] = [];
     const out = await verifyHypothesis(
@@ -415,7 +433,7 @@ describe("verificar de novo", () => {
     expect(out.verification.rewritten_from).toEqual(original);
   });
 
-  test("já reescrita e o juiz reescreve mesmo assim: vale desmentida", async () => {
+  test("already rewritten and the judge rewrites anyway: counts as refuted", async () => {
     const original = { title: "A primeira", why: "o primeiro porquê" };
     let judges = 0;
     const out = await verifyHypothesis(
@@ -434,7 +452,7 @@ describe("verificar de novo", () => {
     expect(judges).toBe(1);
   });
 
-  test("confirmar uma reescrita não apaga de onde ela veio", async () => {
+  test("confirming a rewrite keeps where it came from", async () => {
     const original = { title: "A primeira", why: "o primeiro porquê" };
     const out = await verifyHypothesis(
       h({
@@ -447,8 +465,8 @@ describe("verificar de novo", () => {
   });
 });
 
-describe("prazo", () => {
-  /** Relógio falso: cada teste rodado gasta `cost` ms de um prazo de `budget`. */
+describe("deadline", () => {
+  /** Fake clock: each test run spends `cost` ms of a `budget` deadline. */
   const clock = (budget: number, cost: number) => {
     let used = 0;
     return {
@@ -459,7 +477,7 @@ describe("prazo", () => {
     };
   };
 
-  test("sem tempo desde o começo: nenhum teste roda, todos 'sem tempo'", async () => {
+  test("out of time from the start: no test runs, all 'sem tempo'", async () => {
     let liveCalls = 0;
     let repoCalls = 0;
     let seen: CheckRun[] = [];
@@ -494,7 +512,7 @@ describe("prazo", () => {
     );
   });
 
-  test("teste que começaria depois do prazo sai 'sem tempo'; os de antes rodam", async () => {
+  test("a test that would start past the deadline is 'sem tempo'; earlier ones run", async () => {
     const c = clock(1_000, 600);
     const ran: string[] = [];
     let seen: CheckRun[] = [];
@@ -527,7 +545,7 @@ describe("prazo", () => {
     expect(seen[2]?.observed).toBe("sem tempo nesta rodada");
   });
 
-  test("reescrita sem tempo pra segunda verificação: fica como estava", async () => {
+  test("rewrite without time for the second verification: stays as it was", async () => {
     const c = clock(1_000, 1_000);
     let plans = 0;
     let judges = 0;
@@ -560,19 +578,19 @@ describe("prazo", () => {
 });
 
 describe("reverifyBlock", () => {
-  test("pendente sem 'ver no código': pode verificar de novo", () => {
+  test("pending without 'ver no código': may verify again", () => {
     expect(
       reverifyBlock(h({ status: "pending", code_status: null })),
     ).toBeNull();
   });
 
-  test("aprovada: recusa, a verificação pode reescrever ou apagar", () => {
+  test("approved: refuses, verification could rewrite or delete", () => {
     expect(
       reverifyBlock(h({ status: "approved", code_status: null })),
     ).toContain("já foi aprovada (ou tem 'ver no código')");
   });
 
-  test("com 'ver no código' (mesmo pendente ou com erro): recusa", () => {
+  test("with 'ver no código' (even pending or errored): refuses", () => {
     for (const code_status of ["running", "done", "error"] as const) {
       expect(reverifyBlock(h({ status: "pending", code_status }))).toContain(
         "ver no código",
@@ -580,7 +598,7 @@ describe("reverifyBlock", () => {
     }
   });
 
-  test("descartada: recusa", () => {
+  test("discarded: refuses", () => {
     expect(
       reverifyBlock(h({ status: "dismissed", code_status: null })),
     ).toContain("descartada");

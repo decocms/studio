@@ -1,22 +1,15 @@
 /**
- * Funções que rodam DENTRO da página, via `page.evaluate`.
- *
- * ⚠️ Cada função aqui é serializada (`fn.toString()`) e executada no Chrome.
- * Ela não pode usar nada de fora do próprio corpo: nem import, nem constante do
- * módulo, nem helper de outro arquivo. Um helper compartilhado precisa ser
- * declarado dentro de cada função que o usa. Quebrar isso não dá erro de tipo —
- * dá `ReferenceError` em produção, dentro do navegador.
- *
- * Tudo é heurística sobre o DOM de uma loja qualquer, porque o módulo é
- * genérico: não há seletor de loja nenhuma aqui. Quando a heurística não acha, o campo
- * volta `null` e o diagnóstico diz "não achei", em vez de chutar.
+ * Functions that run INSIDE the page via `page.evaluate`. Each is serialized
+ * with `fn.toString()`, so it can only use its own body: no imports, module
+ * constants or outside helpers (a violation is a browser `ReferenceError`, not a
+ * type error). Heuristics are store-agnostic and return `null` when nothing matches.
  */
 
 import type { ClickSnapshot, ElementFacts } from "./verify/safety.ts";
 
-// ── Texto visível ────────────────────────────────────────────────────────────
+// ── Visible text ─────────────────────────────────────────────────────────────
 
-/** O mínimo de um nó do DOM que `visibleTextOf` lê (um Node de verdade serve). */
+/** The minimum of a DOM node that `visibleTextOf` reads (a real Node works). */
 export interface TextTreeNode {
   nodeType: number;
   nodeValue: string | null;
@@ -26,11 +19,11 @@ export interface TextTreeNode {
 }
 
 /**
- * Texto de um nó sem o conteúdo de SCRIPT, STYLE, NOSCRIPT e TEMPLATE. NÃO roda
- * na página: é a cópia testável do `visibleText` que cada função in-page declara
- * por dentro (regra de serialização acima); o teste confere que os corpos são
- * iguais. Motivo (14/11): o textContent do botão de compra de uma loja é
- * `{"name":"add_to_cart",...}Adicionar à sacola`.
+ * Text of a node without SCRIPT, STYLE, NOSCRIPT and TEMPLATE content. Does NOT
+ * run in the page: it is the testable copy of the `visibleText` that each
+ * in-page function declares internally (serialization rule above); the test
+ * checks that the bodies are identical. Needed because a buy button's
+ * textContent can carry an embedded event JSON before the label.
  */
 export function visibleTextOf(node: TextTreeNode): string {
   let out = "";
@@ -46,14 +39,9 @@ export function visibleTextOf(node: TextTreeNode): string {
 }
 
 /**
- * Rótulo de um nó: o texto visível sem SCRIPT/STYLE/NOSCRIPT/TEMPLATE e sem
- * sub-árvore escondida (`hidden(n)`: display none, visibility hidden). O
- * rótulo do seletor de tamanho de uma loja saía com o tooltip escondido
- * "vendido por parceiro..." (revisão, 14/11). Só pra EXIBIR: a trava de
- * clique continua lendo o texto inteiro (`visibleTextOf`), de propósito.
- *
- * Cópia igual em `const labelText = (node, hidden) => {...}` nas funções da
- * página (o teste confere).
+ * Display label: visible text without scripts or hidden subtrees (tooltips).
+ * Display only; the click guard reads the full text (`visibleTextOf`).
+ * Copied as `const labelText` in the page functions (the test checks it).
  */
 export function labelTextOf(
   node: TextTreeNode,
@@ -72,7 +60,7 @@ export function labelTextOf(
   return out.replace(/\s+/g, " ").trim();
 }
 
-/** O mínimo de um elemento que `navigationOf` lê (um Element de verdade serve). */
+/** The minimum of an element that `navigationOf` reads (a real Element works). */
 export interface ActionNode {
   localName: string;
   getAttribute(name: string): string | null;
@@ -80,17 +68,11 @@ export interface ActionNode {
 }
 
 /**
- * Pra onde um clique no elemento leva o navegador (caminho, ou host+caminho se
- * for outro site), ou "" se ele não troca de página: link com href de verdade,
- * ou botão de envio dentro de formulário. Isso importa pro clique morto: o
- * Deco Analytics chama de morto o clique em que a página não muda em 1 s, e
- * uma navegação que demora mais que isso conta como morta. Em 16/11 o envio
- * da busca de uma loja (`button[type=submit] "Search term"`) saiu com 56% de
- * mortos e virou "botão que não responde", com 23% de quem tocou indo ao
- * carrinho.
- *
- * Cópia igual em `const navigationOf = (e, here) => {...}` dentro de
- * `elementLabelsInPage` (o teste confere).
+ * Where a click takes the browser (path, or host+path for another site), or ""
+ * if the page does not change: a real link or a submit button in a form.
+ * Deco Analytics counts a click as dead when the page does not change within
+ * 1 s, so a slower navigation must not be read as dead.
+ * Copied as `const navigationOf` in `elementLabelsInPage` (the test checks it).
  */
 export function navigationOf(e: ActionNode, here: string): string {
   let to = "";
@@ -129,12 +111,11 @@ export function navigationOf(e: ActionNode, here: string): string {
   }
 }
 
-// ── Fechar banners ───────────────────────────────────────────────────────────
+// ── Dismiss banners ──────────────────────────────────────────────────────────
 
 /**
- * Aceita cookies e some com modais que cobrem a página (newsletter, cupom de
- * primeira compra). Só esconde camada FIXA que cobre mais da metade da tela —
- * header e barra de compra fixa ficam, porque são justamente o que se mede.
+ * Accepts cookies and hides modals covering the page. Only fixed layers covering
+ * over half the screen go; the header and sticky buy bar stay because they are measured.
  */
 export function dismissOverlaysInPage(): void {
   const accept = [
@@ -152,7 +133,7 @@ export function dismissOverlaysInPage(): void {
         try {
           (el as HTMLElement).click();
         } catch {
-          /* elemento sumiu no meio */
+          /* element vanished midway */
         }
       }
     }
@@ -166,9 +147,7 @@ export function dismissOverlaysInPage(): void {
       (el as HTMLElement).style.setProperty("display", "none", "important");
     }
   }
-  // Só destrava o que o modal travou (overflow hidden/clip). Forçar `auto` no
-  // <html> de uma loja, que é `visible` com o <body> em `auto`, tirava a rolagem
-  // da janela e passava pro <body>: `scrollTo` parava de mexer (14/11).
+  // Only unlock what the modal locked: forcing `auto` on <html> moves scrolling to <body> and breaks `scrollTo`.
   for (const el of [document.documentElement, document.body]) {
     if (/(hidden|clip)/.test(getComputedStyle(el).overflowY)) {
       el.style.setProperty("overflow", "auto", "important");
@@ -176,17 +155,12 @@ export function dismissOverlaysInPage(): void {
   }
 }
 
-// ── Rolar a página ───────────────────────────────────────────────────────────
+// ── Scroll the page ──────────────────────────────────────────────────────────
 
 /**
- * O elemento que rola a página quando não é (só) a janela: o <body> com
- * overflow auto/scroll e conteúdo maior que ele, ou o maior elemento assim que
- * cubra a tela. `null` = quem rola é a janela. Numa loja, com o <html> em
- * `overflow: auto`, `window.scrollTo(0, 1000)` deixava `scrollY = 0` e quem
- * rolava era o <body> (14/11).
- *
- * Cada função in-page que rola ou mede posição declara uma cópia deste corpo
- * em `const pageScroller = () => {...}`; o teste confere que são iguais.
+ * The element that scrolls the page when it is not the window (<body> with
+ * overflow, or the largest such element covering the screen); `null` = window.
+ * Copied as `const pageScroller` in each in-page function that scrolls or measures (the test checks it).
  */
 export function pageScrollerInPage(): Element | null {
   const vw = window.innerWidth;
@@ -197,7 +171,7 @@ export function pageScrollerInPage(): Element | null {
     const s = getComputedStyle(el);
     if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
     if (s.position === "fixed") return false;
-    // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+    // Visible and covering the screen: an off-screen drawer is not the page.
     if (s.display === "none" || s.visibility === "hidden") return false;
     const r = el.getBoundingClientRect();
     return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -219,11 +193,9 @@ export function pageScrollerInPage(): Element | null {
 }
 
 /**
- * Rola a página até `y` (px do topo do documento) e devolve a rolagem que
- * ficou de fato. Rola a janela e, no que ela não alcançou, o elemento que rola
- * a página (`pageScrollerInPage`). "instant" nos dois: uma loja tem
- * `scroll-behavior: smooth` e, sem isso, `scrollY` ainda é 0 logo depois do
- * `scrollTo` (14/11). Único caminho de rolagem do módulo.
+ * Scrolls to `y` (px from the document top) and returns the scroll reached,
+ * scrolling the window and then the page scroller. "instant" because
+ * `scroll-behavior: smooth` would leave `scrollY` at 0. The only scroll path.
  */
 export function scrollPageToInPage(y: number): number {
   const pageScroller = (): Element | null => {
@@ -235,7 +207,7 @@ export function scrollPageToInPage(y: number): number {
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -268,10 +240,7 @@ export function scrollPageToInPage(y: number): number {
   return Math.round(window.scrollY + (scroller ? scroller.scrollTop : 0));
 }
 
-/**
- * Topo de `selector` em px do documento (com a rolagem do rolador certo), ou
- * `null` se o seletor não casa. Pro `screenshotAt` mirar o elemento (14/11).
- */
+/** Top of `selector` in document px, or `null` if it matches nothing. */
 export function elementDocTopInPage(selector: string): number | null {
   const pageScroller = (): Element | null => {
     const vw = window.innerWidth;
@@ -282,7 +251,7 @@ export function elementDocTopInPage(selector: string): number | null {
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -315,16 +284,12 @@ export function elementDocTopInPage(selector: string): number | null {
   return Math.round(el.getBoundingClientRect().top + scrolled);
 }
 
-// ── Preço e botão "desta peça" ──────────────────────────────────────────────
+// ── Price and the "this item's" button ─────────────────────────────────────
 
 /**
- * Preço DESTE produto, de onde a página declara: JSON-LD `Product` (o
- * primeiro com `offers`), depois `[itemprop=price]`/meta de preço, depois o
- * `view_item` do dataLayer (GA4/UA). Uma loja não tem JSON-LD nem meta: o
- * valor só aparece no `view_item` (14/11). `from: null` = não achou.
- *
- * NÃO roda sozinha na página: `measurePdpInPage` declara uma cópia igual em
- * `const productPriceValues = (...) => {...}` (o teste confere).
+ * THIS product's price from what the page declares: JSON-LD `Product`, then
+ * `[itemprop=price]`/meta, then the dataLayer `view_item`. `from: null` = not found.
+ * Copied as `const productPriceValues` in `measurePdpInPage` (the test checks it).
  */
 export function productPriceValues(
   ldTexts: string[],
@@ -336,16 +301,14 @@ export function productPriceValues(
   from: "json-ld" | "meta" | "dataLayer" | null;
 } {
   const out: number[] = [];
-  // Preço de lista (o "de" riscado) à parte: só vale se o de venda não
-  // aparecer em lugar nenhum (revisão, 14/11).
+  // List price (struck-through) only counts when no sale price shows.
   const list: number[] = [];
   const add = (v: unknown, into: number[] = out): void => {
     let n = Number.NaN;
     if (typeof v === "number") n = v;
     else if (typeof v === "string") {
       const t = v.replace(/[^\d.,]/g, "");
-      // "1.998" é milhar, não decimal: ponto seguido de 3 dígitos no fim
-      // (revisão, 14/11).
+      // "1.998" is thousands, not decimal: a dot followed by 3 digits at the end.
       n = Number.parseFloat(
         /,\d{1,2}$/.test(t)
           ? t.replace(/\./g, "").replace(",", ".")
@@ -363,7 +326,7 @@ export function productPriceValues(
       const r = o as Record<string, unknown>;
       add(r.price);
       add(r.lowPrice);
-      // Preço de lista, se vier (o "de" do "de/por").
+      // List price, if present (the "old" price of the old/new pair).
       for (const spec of [r.priceSpecification].flat()) {
         if (!spec || typeof spec !== "object") continue;
         const sp = spec as Record<string, unknown>;
@@ -396,7 +359,7 @@ export function productPriceValues(
         return { values: out, list, from: "json-ld" };
       }
     } catch {
-      /* JSON-LD quebrado: segue pro próximo */
+      /* broken JSON-LD: move on to the next */
     }
   }
   for (const v of metaValues) add(v);
@@ -422,11 +385,9 @@ export function productPriceValues(
 }
 
 /**
- * O texto mostra um destes valores no formato de dinheiro da página? 244.3
- * casa "R$ 244,30" e "$244.30"; 1299.9 casa "1.299,90"; 780 casa "R$ 780".
- * Não casa pedaço de outro número ("1.244,30", "24,43", "780,50").
- *
- * Cópia igual em `measurePdpInPage` (`const moneyHasValue = ...`).
+ * Does the text show one of these values in the page's money format ("R$ 244,30",
+ * "1.299,90")? It does not match part of another number ("1.244,30").
+ * Copied as `const moneyHasValue` in `measurePdpInPage`.
  */
 export function moneyHasValue(text: string, values: number[]): boolean {
   for (const v of values) {
@@ -451,9 +412,8 @@ export function moneyHasValue(text: string, values: number[]): boolean {
 }
 
 /**
- * Texto de botão de compra: curto, com verbo de compra, e não é favorito nem
- * lista ("Adicionar aos favoritos", "Adicionar à lista de desejos"; revisão,
- * 14/11). Cópia igual em `measurePdpInPage` (`const isBuyText = ...`).
+ * Buy button text: short, with a buy verb, and not a wishlist or favorite.
+ * Copied as `const isBuyText` in `measurePdpInPage`.
  */
 export function isBuyText(text: string): boolean {
   if (text.length > 40) return false;
@@ -464,12 +424,9 @@ export function isBuyText(text: string): boolean {
 }
 
 /**
- * Quais textos mostram o preço desta peça: primeiro o de venda (`sale`) fora
- * de riscado; o de lista (`list`, o "de" riscado) só se nenhum mostrar o de
- * venda. Antes os dois valiam juntos e o riscado podia ganhar por estar mais
- * alto (revisão, 14/11). Devolve os índices.
- *
- * Cópia igual em `measurePdpInPage` (`const priceMatches = ...`).
+ * Indices of the texts showing this item's price: the sale price outside
+ * struck-through text first, the list price only if no sale price shows.
+ * Copied as `const priceMatches` in `measurePdpInPage`.
  */
 export function priceMatches(
   cands: Array<{ text: string; struck: boolean }>,
@@ -489,12 +446,9 @@ export function priceMatches(
 }
 
 /**
- * Índice do candidato mais alto na página (menor y) fora de barra fixa
- * (`pinned`), ou -1. Empate de altura (2px): `prefer` decide entre o menor
- * elemento (preço: o span do valor, não o bloco "de/por") e o maior (botão:
- * o clicável, não o texto de dentro).
- *
- * Cópia igual em `measurePdpInPage` (`const pickTopCandidate = ...`).
+ * Index of the topmost candidate outside a sticky bar (`pinned`), or -1. On a
+ * height tie, `prefer` picks the smallest element (price) or the largest (button).
+ * Copied as `const pickTopCandidate` in `measurePdpInPage`.
  */
 export function pickTopCandidate(
   cands: Array<{ y: number; area: number; pinned: boolean }>,
@@ -519,7 +473,7 @@ export function pickTopCandidate(
   return best;
 }
 
-// ── Medir a PDP ──────────────────────────────────────────────────────────────
+// ── Measure the PDP ─────────────────────────────────────────────────────────
 
 export interface MeasuredPdp {
   page_height: number;
@@ -530,7 +484,7 @@ export interface MeasuredPdp {
     shipping: number | null;
     first_recommendation: number | null;
   };
-  /** Seletores dos elementos achados — o mockup usa pra saber onde mexer. */
+  /** Selectors of the elements found; the mockup uses them to know where to change things. */
   selectors: {
     price: string | null;
     size_selector: string | null;
@@ -541,11 +495,7 @@ export interface MeasuredPdp {
   has_sticky_buy: boolean;
   above_fold_outline: string[];
   sold_out_signal: boolean;
-  /**
-   * Depuração (sonda): quantos candidatos a preço e a botão de compra havia
-   * e de onde veio o valor do preço ("fonte" = critério antigo, maior
-   * fonte; 14/11).
-   */
+  /** Probe debugging: candidate counts and where the price value came from. */
   candidates?: {
     price: number;
     price_from: "json-ld" | "meta" | "dataLayer" | "fonte";
@@ -554,16 +504,12 @@ export interface MeasuredPdp {
 }
 
 /**
- * Onde estão preço, tamanho, botão de compra, frete e a primeira recomendação
- * (px do topo do documento), se existe barra de compra fixa, e o que aparece na
- * primeira tela. Precisa da página já rolada uma vez (lazy-load).
+ * Where price, size, buy button, shipping and first recommendation are (px from
+ * the document top), whether a sticky buy bar exists, and what is on the first
+ * screen. Needs the page scrolled once (lazy-load).
  */
 export async function measurePdpInPage(opts?: {
-  /**
-   * Não rola a página (a sonda da barra fixa vai a 60% e volta): o teste ao
-   * vivo mede de novo sem mexer no estado sob teste — rolar dispara pop-up de
-   * scroll e lazy-load (revisão, 14/11). `has_sticky_buy` sai false.
-   */
+  /** Skips scrolling, which would trigger scroll pop-ups and lazy-load; `has_sticky_buy` is then false. */
   skipScroll?: boolean;
 }): Promise<MeasuredPdp> {
   const visible = (el: Element): boolean => {
@@ -576,8 +522,7 @@ export async function measurePdpInPage(opts?: {
       Number(s.opacity) > 0.05
     );
   };
-  // Posição no documento = topo na tela + a rolagem de quem rola a página
-  // (a janela ou o <body>, numa loja; 14/11). Mesmo corpo de `pageScrollerInPage`.
+  // Document position = screen top + the page scroller's offset.
   const pageScroller = (): Element | null => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -587,7 +532,7 @@ export async function measurePdpInPage(opts?: {
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -612,7 +557,7 @@ export async function measurePdpInPage(opts?: {
     window.scrollY + (scroller?.contains(el) ? scroller.scrollTop : 0);
   const top = (el: Element): number =>
     Math.round(el.getBoundingClientRect().top + scrollOf(el));
-  // Rola pelo mesmo caminho de `scrollPageToInPage`.
+  // Scrolls through the same path as `scrollPageToInPage`.
   const scrollPage = (y: number): void => {
     window.scrollTo({ top: y, left: 0, behavior: "instant" });
     scroller?.scrollTo({
@@ -621,10 +566,7 @@ export async function measurePdpInPage(opts?: {
       behavior: "instant",
     });
   };
-  // Texto visível, sem o conteúdo de SCRIPT/STYLE/NOSCRIPT/TEMPLATE: sites
-  // TanStack embutem o JSON do evento de analytics DENTRO do botão, e o
-  // textContent de "Adicionar à sacola" passava de 40 caracteres (14/11).
-  // Mesmo corpo de `visibleTextOf` (testado fora do navegador).
+  // Visible text minus SCRIPT/STYLE/NOSCRIPT/TEMPLATE; same body as `visibleTextOf`.
   const visibleText = (node: Node): string => {
     let out = "";
     const walk = (n: typeof node): void => {
@@ -637,9 +579,7 @@ export async function measurePdpInPage(opts?: {
     walk(node);
     return out.replace(/\s+/g, " ").trim();
   };
-  // Com :nth-of-type quando o caminho curto casa primeiro com outro
-  // elemento: o preço de uma loja é o 2º <span> do "de/por", e o seletor sem
-  // posição apontava pro "R$ 349,00" riscado (14/11).
+  // Add :nth-of-type when the short path also matches another element.
   const cssPath = (el: Element): string => {
     const build = (nth: boolean): string => {
       const parts: string[] = [];
@@ -671,20 +611,14 @@ export async function measurePdpInPage(opts?: {
     try {
       if (document.querySelector(short) === el) return short;
     } catch {
-      /* classe com caractere que o seletor não aceita: vai com posição */
+      /* class with a character the selector does not accept: use position */
     }
     return build(true);
   };
 
   const all = Array.from(document.querySelectorAll("body *")).filter(visible);
 
-  // Fora de barra fixa: ancestral `fixed`, ou `sticky` do tamanho de uma
-  // barra (menos de meia tela). A foto de uma loja é um `sticky` da altura da
-  // tela com nome, preço e "comprar" por cima, e isso é a primeira tela, não
-  // barra (14/11). Cabeçalho/menu também não é o produto.
-  // Cabeçalho do SITE: o header/nav visível mais alto fora de main/article
-  // (e o header que o contém). <header> semântico dentro do bloco do
-  // produto não conta (revisão, 14/11).
+  // Outside a sticky bar: a `fixed` ancestor, or a `sticky` smaller than half the screen. The site header is the topmost visible header/nav outside main/article.
   let siteHeader: Element | null = null;
   for (const h of Array.from(
     document.querySelectorAll(
@@ -713,15 +647,12 @@ export async function measurePdpInPage(opts?: {
     }
     return false;
   };
-  // Na tela na horizontal: carrossel esconde card fora dela (o "leve o look"
-  // de uma loja tem "R$" em x=1758, y=405; 14/11).
+  // On screen horizontally: a carousel hides off-screen cards.
   const onScreenX = (el: Element): boolean => {
     const r = el.getBoundingClientRect();
     return r.right > 0 && r.left < window.innerWidth;
   };
-  // Mesmos corpos de `productPriceValues`, `moneyHasValue`,
-  // `pickTopCandidate`, `isBuyText` e `priceMatches` (testados fora do
-  // navegador).
+  // Same bodies as `productPriceValues`, `moneyHasValue`, `pickTopCandidate`, `isBuyText` and `priceMatches`.
   const isBuyText = (text: string): boolean => {
     if (text.length > 40) return false;
     if (/(favorit|desejo|wishlist|lista)/i.test(text)) return false;
@@ -755,16 +686,14 @@ export async function measurePdpInPage(opts?: {
     from: "json-ld" | "meta" | "dataLayer" | null;
   } => {
     const out: number[] = [];
-    // Preço de lista (o "de" riscado) à parte: só vale se o de venda não
-    // aparecer em lugar nenhum (revisão, 14/11).
+    // List price (struck-through) only counts when no sale price shows.
     const list: number[] = [];
     const add = (v: unknown, into: number[] = out): void => {
       let n = Number.NaN;
       if (typeof v === "number") n = v;
       else if (typeof v === "string") {
         const t = v.replace(/[^\d.,]/g, "");
-        // "1.998" é milhar, não decimal: ponto seguido de 3 dígitos no fim
-        // (revisão, 14/11).
+        // "1.998" is a thousands separator, not a decimal: a dot followed by 3 digits at the end.
         n = Number.parseFloat(
           /,\d{1,2}$/.test(t)
             ? t.replace(/\./g, "").replace(",", ".")
@@ -782,7 +711,7 @@ export async function measurePdpInPage(opts?: {
         const r = o as Record<string, unknown>;
         add(r.price);
         add(r.lowPrice);
-        // Preço de lista, se vier (o "de" do "de/por").
+        // List price, if present (the "old" price of the old/new pair).
         for (const spec of [r.priceSpecification].flat()) {
           if (!spec || typeof spec !== "object") continue;
           const sp = spec as Record<string, unknown>;
@@ -819,7 +748,7 @@ export async function measurePdpInPage(opts?: {
           return { values: out, list, from: "json-ld" };
         }
       } catch {
-        /* JSON-LD quebrado: segue pro próximo */
+        /* broken JSON-LD: move on to the next */
       }
     }
     for (const v of metaValues) add(v);
@@ -888,12 +817,7 @@ export async function measurePdpInPage(opts?: {
     return best;
   };
 
-  // Preço: o preço DESTE produto (JSON-LD, meta, view_item) no formato da
-  // página, e vale o mais alto visível fora de barra fixa. Escolher pela
-  // maior fonte pegava o preço da folha de baixo de uma loja (y=938) e
-  // ignorava o da foto, na primeira tela (14/11). Sem valor declarado, ou
-  // sem texto que o mostre, fica o critério antigo (maior fonte na metade
-  // de cima).
+  // Price: this product's declared price in the page's format, the highest visible one outside a sticky bar; without it, the largest font in the top half.
   const money = /(R\$|US\$|\$|€|£)\s?\d/;
   const pageHeight = Math.max(
     document.documentElement.scrollHeight,
@@ -911,7 +835,7 @@ export async function measurePdpInPage(opts?: {
     ).map((el) => el.getAttribute("content") ?? visibleText(el)),
     (window as unknown as { dataLayer?: unknown }).dataLayer,
   );
-  // Riscado: o "de" do "de/por" (line-through, ou dentro de <s>/<del>).
+  // Struck-through: the "old" price of the old/new pair (line-through, or inside <s>/<del>).
   const struck = (el: Element): boolean => {
     if (el.closest("s, del, strike")) return true;
     let n: Element | null = el;
@@ -936,8 +860,7 @@ export async function measurePdpInPage(opts?: {
     declared.list,
     moneyHasValue,
   ).map((i) => moneyEls[i]!);
-  // O mais de dentro: o bloco "nome + preço" da foto de uma loja (y=671) também
-  // mostra o valor e ficava acima do <span> do preço (14/11).
+  // The innermost one: a "name + price" block also shows the value.
   const innerPrice = priceCands.filter(
     (el) => !priceCands.some((o) => o !== el && el.contains(o)),
   );
@@ -967,11 +890,7 @@ export async function measurePdpInPage(opts?: {
     }
   }
 
-  // Botão de compra: o mais alto visível fora de barra fixa (a barra tem a
-  // sonda dela). Candidatos: button/a/[role=button] e o que tem cursor
-  // pointer ou onclick (o "comprar" da foto de uma loja é um <label>), com texto
-  // curto de compra e pelo menos 60×28. Escolher o maior pegava o
-  // #add-to-cart-button da folha de baixo (y=1304; 14/11).
+  // Buy button: the topmost visible one outside a sticky bar. Candidates: button/a/[role=button] or cursor pointer/onclick, with short buy text and at least 60×28.
   const semantic = (el: Element): boolean =>
     el.localName === "button" ||
     el.localName === "a" ||
@@ -990,8 +909,7 @@ export async function measurePdpInPage(opts?: {
     }
     rawBuy.push(el);
   }
-  // Aninhados: o semântico vence o de cursor (cursor pointer é herdado), e
-  // entre dois de cursor fica o de fora.
+  // Nested: the semantic one wins over cursor (inherited); between cursor ones, the outer.
   const buyCands = rawBuy.filter(
     (el) =>
       !rawBuy.some(
@@ -1011,8 +929,7 @@ export async function measurePdpInPage(opts?: {
         "large",
       )
     ] ?? null;
-  // Só barra fixa com botão: o critério antigo (o maior botão de compra),
-  // pra não dizer que não há botão.
+  // Only a sticky bar with a button: fall back to the largest buy button.
   if (!buy) {
     let buyArea = 0;
     for (const el of rawBuy) {
@@ -1025,7 +942,7 @@ export async function measurePdpInPage(opts?: {
     }
   }
 
-  // Seletor de tamanho: 3+ irmãos cujo texto é um tamanho.
+  // Size selector: 3+ siblings whose text is a size.
   const sizeToken =
     /^(PP|P|M|G|GG|XG|XGG|XS|S|L|XL|XXL|U|UN|ÚNICO|UNICO|\d{2}|\d{1,2}(\.5)?)$/i;
   let sizes: Element | null = null;
@@ -1038,10 +955,7 @@ export async function measurePdpInPage(opts?: {
     }
   }
 
-  // Frete: campo de CEP ou texto de entrega perto do produto. Entre os
-  // candidatos vale o mais perto do botão de compra (ou do preço): a barra
-  // de promoção do topo de uma loja gira "frete grátis" e, quando o slide
-  // estava visível, virava o frete em y=2 (14/11).
+  // Shipping: ZIP field or delivery text near the product, closest to the buy button (or price) so a rotating top promo bar does not win.
   const near = buy ?? price;
   const nearest = (els: Element[]): Element | null => {
     if (!near || els.length < 2) return els[0] ?? null;
@@ -1059,9 +973,7 @@ export async function measurePdpInPage(opts?: {
         ),
       ),
   );
-  // O texto tem que ser curto e o elemento folha (ou só com filhos em linha):
-  // sem isso o `<main>` de uma loja, com 1 filho e "frete grátis" no meio
-  // de tudo, virou o frete em y=0 (14/11).
+  // Short text and a leaf element (or only inline children), so a wrapper containing the text does not count.
   if (!shipping) {
     const texts: Element[] = [];
     for (const el of all) {
@@ -1083,9 +995,7 @@ export async function measurePdpInPage(opts?: {
     shipping = nearest(texts);
   }
 
-  // Primeira recomendação: título de vitrine abaixo do botão de compra. As
-  // palavras cobrem os títulos reais de uma loja ("Complete seu look",
-  // "Quem comprou também curtiu", 14/11).
+  // First recommendation: a showcase title below the buy button.
   const recoWords =
     /(voc[eê] tamb[eé]m|vo[cç][eê] (tamb[eé]m )?(pode|vai) gostar|compre junto|complete (o|seu) look|leve tamb[eé]m|leve o look|quem comprou|quem viu|recomend|you may also|similar|combin[ae] com|combina|aproveite tamb[eé]m|outras cores|veja tamb[eé]m)/i;
   let reco: Element | null = null;
@@ -1101,8 +1011,7 @@ export async function measurePdpInPage(opts?: {
     if (top(el) <= buyTop) continue;
     if (!reco || top(el) < top(reco)) reco = el;
   }
-  // Sem título que case: o primeiro bloco abaixo do botão de compra com 3+
-  // cards distintos de produto (`/p` no fim do caminho) é vitrine.
+  // No matching title: the first block below the buy button with 3+ distinct product cards.
   if (!reco && buy) {
     const productPath = (a: HTMLAnchorElement): string | null => {
       try {
@@ -1114,8 +1023,7 @@ export async function measurePdpInPage(opts?: {
         return null;
       }
     };
-    // Só link de card: com foto de 80px+ dentro. Bolinha de cor também
-    // aponta pra outro /p e não é vitrine (revisão, 14/11).
+    // Only card links with a 80px+ photo; a color swatch also points to another /p.
     const cardPath = (a: HTMLAnchorElement): string | null =>
       Array.from(a.querySelectorAll("img")).some(
         (img) => img.getBoundingClientRect().width >= 80,
@@ -1159,8 +1067,7 @@ export async function measurePdpInPage(opts?: {
     }
   }
 
-  // Barra fixa: rola até 60% da página e procura botão de compra visível
-  // dentro de um ancestral fixed/sticky. Com `skipScroll`, não sonda.
+  // Sticky bar: scroll to 60% and look for a visible buy button in a fixed/sticky ancestor; skipped with `skipScroll`.
   let sticky = false;
   if (!opts?.skipScroll) {
     scrollPage(Math.floor(pageHeight * 0.6));
@@ -1186,8 +1093,7 @@ export async function measurePdpInPage(opts?: {
     await new Promise((r) => setTimeout(r, 300));
   }
 
-  // Rótulo pra exibir: sem sub-árvore escondida (tooltip). Mesmo corpo de
-  // `labelTextOf` (revisão, 14/11).
+  // Display label without hidden subtrees (tooltips); same body as `labelTextOf`.
   const hiddenNode = (n: TextTreeNode): boolean => {
     const st = getComputedStyle(n as unknown as Element);
     return st.display === "none" || st.visibility === "hidden";
@@ -1208,7 +1114,7 @@ export async function measurePdpInPage(opts?: {
     walk(node);
     return out.replace(/\s+/g, " ").trim();
   };
-  // O que está na primeira tela, em ordem, em texto curto.
+  // What is on the first screen, in order, as short text.
   const outline: string[] = [];
   const seen = new Set<string>();
   for (const el of all) {
@@ -1217,7 +1123,7 @@ export async function measurePdpInPage(opts?: {
     const tag = el.tagName.toLowerCase();
     const isLeaf = el.children.length === 0;
     if (tag === "img" && r.width * r.height > window.innerWidth * 120) {
-      // Carrossel empilha N fotos no mesmo lugar; uma linha basta.
+      // A carousel stacks N photos in the same spot; one line is enough.
       const line = `[imagem ${Math.round(r.width)}×${Math.round(r.height)} em y=${Math.round(r.top)}]`;
       if (!seen.has(line)) {
         seen.add(line);
@@ -1265,26 +1171,21 @@ export async function measurePdpInPage(opts?: {
   };
 }
 
-/** Medidas de uma página fora da PDP (home, categoria, busca). */
+/** Measurements of a non-PDP page (home, category, search). */
 export interface MeasuredSitePage {
   page_height: number;
-  /** Partes da página (px do topo do documento). NULL = não achou. */
+  /** Page parts (px from the document top). NULL = not found. */
   positions: Record<string, number | null>;
   selectors: Record<string, string | null>;
   above_fold_outline: string[];
-  /** Números e sim/não da página (cards na 1ª tela, total de resultados…). */
+  /** Numbers and yes/no facts of the page (cards on the first screen, total results…). */
   facts: Record<string, number | boolean | string | null>;
 }
 
 /**
- * Mede home, categoria ou busca: onde ficam o destaque, a primeira vitrine,
- * o primeiro card, filtro, ordenar, busca e menu, e os fatos que decidem se a
- * cliente acha o produto (quantos cards na primeira tela, quantos por linha, o
- * que o card mostra, total de resultados, se a busca voltou vazia).
- *
- * Card de produto = link pra PDP pelo padrão da URL (`/p`, `/produto/`…) com
- * foto; o card é o ancestral mais próximo que parece item de lista. Tudo é
- * heurística sobre o DOM de uma loja qualquer: o que não achar volta null.
+ * Measures home, category or search: hero, showcases, first card, filter, sort,
+ * search and menu positions, plus facts on whether the product is findable.
+ * A card is a PDP-pattern link with a photo; its container is the nearest list-item ancestor.
  */
 export async function measureSitePageInPage(
   kind: "home" | "categoria" | "busca",
@@ -1300,8 +1201,7 @@ export async function measureSitePageInPage(
       Number(s.opacity) > 0.05
     );
   };
-  // Posição no documento = topo na tela + a rolagem de quem rola a página
-  // (a janela ou o <body>, numa loja; 14/11). Mesmo corpo de `pageScrollerInPage`.
+  // Document position = screen top + the page scroller's offset.
   const pageScroller = (): Element | null => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -1311,7 +1211,7 @@ export async function measureSitePageInPage(
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -1336,7 +1236,7 @@ export async function measureSitePageInPage(
     window.scrollY + (scroller?.contains(el) ? scroller.scrollTop : 0);
   const top = (el: Element): number =>
     Math.round(el.getBoundingClientRect().top + scrollOf(el));
-  // Rola pelo mesmo caminho de `scrollPageToInPage`.
+  // Scrolls through the same path as `scrollPageToInPage`.
   const scrollPage = (y: number): void => {
     window.scrollTo({ top: y, left: 0, behavior: "instant" });
     scroller?.scrollTo({
@@ -1345,10 +1245,7 @@ export async function measureSitePageInPage(
       behavior: "instant",
     });
   };
-  // Texto visível, sem o conteúdo de SCRIPT/STYLE/NOSCRIPT/TEMPLATE: sites
-  // TanStack embutem o JSON do evento de analytics DENTRO do botão, e o
-  // textContent de "Adicionar à sacola" passava de 40 caracteres (14/11).
-  // Mesmo corpo de `visibleTextOf` (testado fora do navegador).
+  // Visible text minus SCRIPT/STYLE/NOSCRIPT/TEMPLATE; same body as `visibleTextOf`.
   const visibleText = (node: Node): string => {
     let out = "";
     const walk = (n: typeof node): void => {
@@ -1361,9 +1258,7 @@ export async function measureSitePageInPage(
     walk(node);
     return out.replace(/\s+/g, " ").trim();
   };
-  // Com :nth-of-type quando o caminho curto casa primeiro com outro
-  // elemento: o preço de uma loja é o 2º <span> do "de/por", e o seletor sem
-  // posição apontava pro "R$ 349,00" riscado (14/11).
+  // Add :nth-of-type when the short path also matches another element.
   const cssPath = (el: Element): string => {
     const build = (nth: boolean): string => {
       const parts: string[] = [];
@@ -1395,7 +1290,7 @@ export async function measureSitePageInPage(
     try {
       if (document.querySelector(short) === el) return short;
     } catch {
-      /* classe com caractere que o seletor não aceita: vai com posição */
+      /* class with a character the selector does not accept: use position */
     }
     return build(true);
   };
@@ -1438,7 +1333,7 @@ export async function measureSitePageInPage(
     return best;
   };
 
-  // Cards de produto: link pra PDP com foto, um por produto.
+  // Product cards: a link to a PDP with a photo, one per product.
   const pdpPattern =
     /(\/p$|\/p\/|\/product\/|\/produto\/|^(\/[a-z]{2}(-[a-z]{2})?)?\/products\/[^/]+\/?$|\/collections\/[^/]+\/products\/[^/]+|\/prd\/|-p-\d|-p\d{6,}\.html$|\/dp\/|\/item\/)/i;
   const cards: Element[] = [];
@@ -1454,9 +1349,7 @@ export async function measureSitePageInPage(
     }
     if (url.origin !== location.origin || !pdpPattern.test(url.pathname))
       continue;
-    // O card é o menor ancestral com foto e preço (até 6 níveis): numa loja
-    // o link mais próximo de um <li> era o slide da foto, sem preço. Sem
-    // preço à vista, o item de lista mais próximo.
+    // The card is the smallest ancestor with photo and price (up to 6 levels); without a price, the nearest list item.
     let card: Element | null = null;
     for (
       let n: Element | null = a, depth = 0;
@@ -1487,8 +1380,7 @@ export async function measureSitePageInPage(
       top(a) - top(b) ||
       a.getBoundingClientRect().left - b.getBoundingClientRect().left,
   );
-  // Card escondido num carrossel (fora da tela na horizontal) não conta na
-  // primeira tela nem na linha.
+  // A card hidden in a carousel does not count.
   const onScreenX = (el: Element): boolean => {
     const r = el.getBoundingClientRect();
     return r.right > 0 && r.left < vw;
@@ -1506,7 +1398,7 @@ export async function measureSitePageInPage(
   const sample = cards.slice(0, 4);
   const someCard = (test: (c: Element) => boolean): boolean | null =>
     sample.length === 0 ? null : sample.some(test);
-  // Vitrine = o ancestral mais próximo de um card que junta 3+ cards.
+  // Showcase = the nearest ancestor of a card that gathers 3+ cards.
   const shelfOf = (c: Element): Element | null => {
     for (
       let n: Element | null = c.parentElement, depth = 0;
@@ -1523,7 +1415,7 @@ export async function measureSitePageInPage(
     cards.map(shelfOf).filter((n): n is Element => n !== null),
   ).size;
 
-  // Partes.
+  // Parts.
   const searchField =
     Array.from(
       document.querySelectorAll(
@@ -1569,7 +1461,7 @@ export async function measureSitePageInPage(
   }
   let firstShelf: Element | null = null;
   if (firstCard) {
-    // O título da vitrine, se houver um logo acima do primeiro card.
+    // The showcase title, if there is a heading above the first card.
     let heading: Element | null = null;
     for (const h of Array.from(document.querySelectorAll("h2, h3, h4"))) {
       if (!visible(h)) continue;
@@ -1583,8 +1475,7 @@ export async function measureSitePageInPage(
   const totalMatch = bodyText.match(
     /(\d{1,3}(?:[.,]\d{3})*|\d+)\s+(produtos?|resultados?|itens|items|results?|peças)\b/i,
   );
-  // Só conta "nenhum resultado" sem card na página: uma loja deixa o texto do
-  // estado vazio no DOM mesmo com 970 resultados (16/11).
+  // Only count "no results" without cards: the empty-state text can stay in the DOM.
   const noResults =
     cards.length === 0 &&
     /(nenhum (produto|resultado)|não encontramos|nao encontramos|0 (produtos|resultados)|sem resultados|no results|não achamos)/i.test(
@@ -1601,7 +1492,7 @@ export async function measureSitePageInPage(
     if (!resultsEl || top(el) < top(resultsEl)) resultsEl = el;
   }
 
-  // Filtro fixo ao rolar: rola a metade e vê se o botão continua na tela.
+  // Sticky filter on scroll: scroll halfway and check whether the button stays on screen.
   let stickyFilter: boolean | null = null;
   let stickyHeader: boolean | null = null;
   if (!opts?.skipScroll) {
@@ -1627,8 +1518,7 @@ export async function measureSitePageInPage(
     await new Promise((r) => setTimeout(r, 300));
   }
 
-  // Rótulo pra exibir: sem sub-árvore escondida (tooltip). Mesmo corpo de
-  // `labelTextOf` (revisão, 14/11).
+  // Display label without hidden subtrees (tooltips); same body as `labelTextOf`.
   const hiddenNode = (n: TextTreeNode): boolean => {
     const st = getComputedStyle(n as unknown as Element);
     return st.display === "none" || st.visibility === "hidden";
@@ -1649,7 +1539,7 @@ export async function measureSitePageInPage(
     walk(node);
     return out.replace(/\s+/g, " ").trim();
   };
-  // O que está na primeira tela, em ordem, em texto curto.
+  // What is on the first screen, in order, as short text.
   const outline: string[] = [];
   const seen = new Set<string>();
   for (const el of all) {
@@ -1658,7 +1548,7 @@ export async function measureSitePageInPage(
     const tag = el.tagName.toLowerCase();
     const isLeaf = el.children.length === 0;
     if (tag === "img" && r.width * r.height > window.innerWidth * 120) {
-      // Carrossel empilha N fotos no mesmo lugar; uma linha basta.
+      // A carousel stacks N photos in the same spot; one line is enough.
       const line = `[imagem ${Math.round(r.width)}×${Math.round(r.height)} em y=${Math.round(r.top)}]`;
       if (!seen.has(line)) {
         seen.add(line);
@@ -1770,7 +1660,7 @@ export async function measureSitePageInPage(
 
 // ── Design system ────────────────────────────────────────────────────────────
 
-/** Espelho de DesignSystem (types.ts) sem os campos que o servidor preenche. */
+/** Mirror of DesignSystem (types.ts) without the fields the server fills in. */
 export interface ExtractedDesignSystem {
   css_variables: Record<string, string>;
   palette: Array<{ color: string; uses: number }>;
@@ -1789,13 +1679,11 @@ export interface ExtractedDesignSystem {
 }
 
 /**
- * Lê o design system da página aberta: variáveis CSS, paleta por uso, fontes,
- * tipografia de corpo/título/preço/link e o estilo dos componentes que um
- * mockup de PDP mais reusa (botão, chip de tamanho, selo, campo).
+ * Reads the page's design system: CSS variables, palette, fonts, typography and
+ * the style of the components a PDP mockup reuses (button, size chip, badge, field).
  */
 export function extractDesignSystemInPage(): ExtractedDesignSystem {
-  // Rolagem de quem rola a página (a janela ou o <body>, numa loja; 14/11).
-  // Mesmo corpo de `pageScrollerInPage`.
+  // Window or <body> scroller; same body as `pageScrollerInPage`.
   const pageScroller = (): Element | null => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -1805,7 +1693,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -1831,10 +1719,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
     const s = getComputedStyle(el);
     return s.visibility !== "hidden" && s.display !== "none";
   };
-  // Texto visível, sem o conteúdo de SCRIPT/STYLE/NOSCRIPT/TEMPLATE: sites
-  // TanStack embutem o JSON do evento de analytics DENTRO do botão, e o
-  // textContent de "Adicionar à sacola" passava de 40 caracteres (14/11).
-  // Mesmo corpo de `visibleTextOf` (testado fora do navegador).
+  // Visible text minus SCRIPT/STYLE/NOSCRIPT/TEMPLATE; same body as `visibleTextOf`.
   const visibleText = (node: Node): string => {
     let out = "";
     const walk = (n: typeof node): void => {
@@ -1869,8 +1754,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
     }
     return parts.join(" > ");
   };
-  // `rounded-full` do Tailwind vira 9999px, e calc() devolve 3.35544e+07px.
-  // Pro prompt e pra tela isso é "pílula", não um número.
+  // Tailwind's `rounded-full` computes to ~3.35544e+07px; report it as "pill".
   const radius = (r: string): string =>
     /e\+|^\d{4,}/.test(r) || Number.parseFloat(r) >= 999 ? "9999px" : r;
   const textStyle = (el: Element | null): Record<string, string> | null => {
@@ -1908,7 +1792,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
     .filter(visible)
     .slice(0, 4000);
 
-  // Variáveis CSS: o Chrome enumera custom properties no computed style.
+  // CSS variables: Chrome enumerates custom properties in the computed style.
   const vars: Record<string, string> = {};
   const rootStyle = getComputedStyle(document.documentElement);
   for (let i = 0; i < rootStyle.length && Object.keys(vars).length < 80; i++) {
@@ -1918,7 +1802,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
     if (value && value.length < 80) vars[name] = value;
   }
 
-  // Paleta e fontes por frequência.
+  // Palette and fonts by frequency.
   const colors = new Map<string, number>();
   const fonts = new Map<string, number>();
   const radii = new Map<string, number>();
@@ -1951,7 +1835,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
       .sort((a, b) => b[1] - a[1])
       .slice(0, n);
 
-  // Componentes.
+  // Components.
   const buyWords = /(adicionar|comprar|sacola|carrinho|add to (bag|cart)|buy)/i;
   const buttons = all.filter((el) => {
     const tag = el.tagName.toLowerCase();
@@ -2008,7 +1892,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
         /^(text|email|tel|search|)$/.test(el.getAttribute("type") ?? ""),
     ) ?? null;
 
-  // Tipografia.
+  // Typography.
   const h1 = all.find((el) => el.tagName.toLowerCase() === "h1") ?? null;
   const money = /(R\$|US\$|\$|€|£)\s?\d/;
   const price =
@@ -2036,7 +1920,7 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
         visibleText(el).length < 40,
     ) ?? null;
 
-  // Bloco de compra: união de preço e botão (e do que estiver entre eles).
+  // Buy block: the union of price and button (and whatever is between them).
   let buyBox: ExtractedDesignSystem["buy_box"] = null;
   if (price && primary) {
     const a = price.getBoundingClientRect();
@@ -2079,19 +1963,15 @@ export function extractDesignSystemInPage(): ExtractedDesignSystem {
   };
 }
 
-// ── Trecho do DOM pro mockup ─────────────────────────────────────────────────
+// ── DOM excerpt for the mockup ───────────────────────────────────────────────
 
-/**
- * HTML resumido do miolo da PDP (do preço até a recomendação), pro modelo
- * escrever um patch com as classes reais da loja. Sem script, sem svg, atributos
- * só class/id/role/aria, texto encurtado — cabe no prompt.
- */
+/** Condensed HTML of the PDP core (price to recommendation) for the mockup patch: no script/svg, only class/id/role/aria attributes, short text. */
 export function domExcerptInPage(selector: string | null): string {
   const anchor =
     (selector ? document.querySelector(selector) : null) ??
     document.querySelector("main") ??
     document.body;
-  // Sobe até um ancestral grande o bastante pra conter o bloco de compra.
+  // Climb to an ancestor big enough to contain the buy block.
   let root: Element = anchor;
   for (let i = 0; i < 4 && root.parentElement; i++) {
     if (root.getBoundingClientRect().height > window.innerHeight * 0.8) break;
@@ -2136,12 +2016,12 @@ export function domExcerptInPage(selector: string | null): string {
   return out.join("").slice(0, 10_000);
 }
 
-// ── Injetar o patch ──────────────────────────────────────────────────────────
+// ── Inject the patch ─────────────────────────────────────────────────────────
 
 export interface MockupPatch {
-  /** CSS adicionado à página (pode sobrescrever classes da loja). */
+  /** CSS added to the page (can override the store's classes). */
   css: string;
-  /** Inserções de HTML relativas a um elemento existente. */
+  /** HTML insertions relative to an existing element. */
   inserts: Array<{
     selector: string;
     position:
@@ -2152,26 +2032,21 @@ export interface MockupPatch {
       | "replace";
     html: string;
   }>;
-  /** Elementos a esconder (ex.: o bloco antigo que o novo substitui). */
+  /** Elements to hide (e.g. the old block the new one replaces). */
   hide: string[];
-  /** Rolar até aqui antes do print "Depois" (px do topo). */
+  /** Scroll here before the "After" screenshot (px from the top). */
   scroll_to: number | null;
 }
 
 /**
- * Aplica o patch na página real. Devolve quantas mudanças pegaram — o servidor
- * recusa o "Depois" se nada pegou, porque aí o print seria igual ao "Antes" e
- * mentiria que a mudança está ali.
- *
- * CSS só conta quando a regra casa com algum elemento, medido DEPOIS das
- * inserções (a regra pode estilizar o que o patch acabou de inserir). Contar
- * "CSS não vazio" deixou passar, em 05/11, um patch só com classes que não
- * existiam na página: o Depois saiu idêntico ao Antes.
+ * Applies the patch to the real page and returns how many changes took effect;
+ * the server rejects an "After" where nothing did. A CSS rule only counts if it
+ * matches an element after the insertions.
  */
 export function applyPatchInPage(patch: MockupPatch): {
   applied: number;
   missing: string[];
-  /** Seletores do CSS que não casaram com nada (até 10). */
+  /** CSS selectors that matched nothing (up to 10). */
   css_unmatched: string[];
 } {
   const style = document.createElement("style");
@@ -2207,8 +2082,7 @@ export function applyPatchInPage(patch: MockupPatch): {
       missing.push(selector);
     }
   }
-  // Estado (:hover, :disabled…) e pseudo-elemento (::placeholder) não casam
-  // no querySelector; o que interessa é se o elemento-base existe.
+  // State (:hover…) and pseudo-elements do not match in querySelector; check the base element.
   const statePseudo =
     /::?(hover|focus|focus-visible|focus-within|active|visited|disabled|checked|target|placeholder|before|after|first-letter|first-line|selection|marker|-webkit-[\w-]+)(\([^)]*\))?/g;
   const cssUnmatched: string[] = [];
@@ -2225,7 +2099,7 @@ export function applyPatchInPage(patch: MockupPatch): {
         if (hit) applied += 1;
         else if (cssUnmatched.length < 10) cssUnmatched.push(rule.selectorText);
       } else if ("cssRules" in rule) {
-        // @media / @supports: conta as regras de dentro.
+        // @media / @supports: count the rules inside.
         visit((rule as CSSGroupingRule).cssRules);
       }
     }
@@ -2234,21 +2108,16 @@ export function applyPatchInPage(patch: MockupPatch): {
   return { applied, missing, css_unmatched: cssUnmatched };
 }
 
-// ── Mapa de blocos pro mockup ────────────────────────────────────────────────
+// ── Block map for the mockup ─────────────────────────────────────────────────
 
 /**
- * Os blocos grandes das duas primeiras telas, com seletor e geometria (px do
- * topo, altura, largura), em texto pro prompt do mockup.
- *
- * O trecho do DOM do mockup começa no bloco de compra; a galeria de fotos, que
- * é o que ocupa a primeira tela de uma PDP no celular, ficava fora dele. Sem
- * saber o seletor e a altura da foto, o modelo prometia "foto menor, compra na
- * primeira tela" e entregava um bloco novo ABAIXO da foto (H3 de 05/11).
+ * The large blocks of the first two screens as text for the mockup prompt:
+ * selector and geometry. The photo gallery is included because the DOM excerpt starts at the buy block.
  */
 export interface LayoutBlock {
-  /** Seletor — posição — tamanho, em texto pro prompt. */
+  /** Selector — position — size, as text for the prompt. */
   line: string;
-  /** O `class` inteiro do elemento: é por ele que o código da loja é achado. */
+  /** The element's full `class`: it is how the store's code is found. */
   class_name: string;
 }
 
@@ -2256,8 +2125,7 @@ export function layoutOutlineInPage(): LayoutBlock[] {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const box = (el: Element) => el.getBoundingClientRect();
-  // Rolagem de quem rola a página (a janela ou o <body>, numa loja; 14/11).
-  // Mesmo corpo de `pageScrollerInPage`.
+  // Window or <body> scroller; same body as `pageScrollerInPage`.
   const pageScroller = (): Element | null => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -2267,7 +2135,7 @@ export function layoutOutlineInPage(): LayoutBlock[] {
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -2302,8 +2170,7 @@ export function layoutOutlineInPage(): LayoutBlock[] {
   };
   const same = (a: DOMRect, b: DOMRect) =>
     Math.abs(a.height - b.height) < 4 && Math.abs(a.width - b.width) < 4;
-  // Seletor curto que aponta só pra este elemento: id quando dá, senão
-  // tag.classes com :nth-of-type onde há irmão do mesmo tipo.
+  // Short selector for only this element: id if possible, else tag.classes with :nth-of-type.
   const selectorOf = (el: Element): string => {
     const parts: string[] = [];
     let node: Element | null = el;
@@ -2332,7 +2199,7 @@ export function layoutOutlineInPage(): LayoutBlock[] {
       try {
         if (document.querySelectorAll(sel).length === 1) return sel;
       } catch {
-        /* seletor inválido: continua subindo */
+        /* invalid selector: keep climbing */
       }
       node = parent;
     }
@@ -2351,11 +2218,11 @@ export function layoutOutlineInPage(): LayoutBlock[] {
     const media = tag === "img" || tag === "picture" || tag === "video";
     const big = r.width >= vw * 0.5 && r.height >= 40;
     if (!big && !(media && r.width * r.height >= vw * vh * 0.15)) continue;
-    // Wrapper do mesmo tamanho do pai não acrescenta nada: fica o de fora.
+    // A wrapper the same size as its parent adds nothing: keep the outer one.
     const parent = el.parentElement;
     if (parent && parent !== document.body && same(box(parent), r)) continue;
     const fixed = getComputedStyle(el).position;
-    // innerText, não textContent: este traz o CSS de <style> inline junto.
+    // innerText, not textContent: the latter brings inline <style> CSS along.
     const text = ((el as HTMLElement).innerText ?? "")
       .replace(/\s+/g, " ")
       .trim()
@@ -2371,16 +2238,12 @@ export function layoutOutlineInPage(): LayoutBlock[] {
     .map((l) => ({ line: l.text, class_name: l.class_name }));
 }
 
-// ── Achar PDP, vitrine e busca numa loja qualquer (benchmark) ────────────────
+// ── Find PDP, showcase and search in an arbitrary store (benchmark) ──────────
 
 /**
- * Os links da página como a cliente os vê: href absoluto, em que parte da
- * página estão (menu, cabeçalho, conteúdo, rodapé), o texto e se têm foto. Quem
- * decide o que é PDP ou vitrine é `classifyStoreLinks` (store-discovery.ts),
- * fora da página. `text` é o começo do texto visível do conteúdo, pra dizer se
- * uma busca respondeu "nenhum resultado"; `heading` (título, h1, caixa de
- * busca) diz se ela respondeu pelo termo: o menu pode citar o termo em qualquer
- * página.
+ * The page's links as the customer sees them: absolute href, page region, text
+ * and whether they have a photo. `classifyStoreLinks` decides PDP vs showcase outside the page.
+ * `text` and `heading` tell whether a search answered "no results" and for the term.
  */
 export function storeLinksInPage(): {
   origin: string;
@@ -2449,11 +2312,7 @@ export function storeLinksInPage(): {
   };
 }
 
-/**
- * O que acha a busca da loja: os formulários (action como está no HTML, inputs
- * com nome) e o começo do HTML, onde a plataforma deixa rastro. A escolha da
- * rota é `searchRoutes` (store-discovery.ts).
- */
+/** What finds the store's search: forms (action, named inputs) and the start of the HTML; `searchRoutes` picks the route. */
 export function searchHintsInPage(): {
   pageUrl: string;
   forms: Array<{
@@ -2485,11 +2344,7 @@ export function searchHintsInPage(): {
   };
 }
 
-/**
- * A página aberta é uma PDP? JSON-LD `Product`/`ProductGroup` (o Shopify usa o
- * segundo; `@type` pode vir em array ou dentro de `@graph`), microdata
- * schema.org/Product ou og:type product.
- */
+/** Is the open page a PDP? JSON-LD `Product`/`ProductGroup`, schema.org/Product microdata or og:type product. */
 export function isProductPageInPage(): boolean {
   for (const s of Array.from(
     document.querySelectorAll('script[type="application/ld+json"]'),
@@ -2502,11 +2357,7 @@ export function isProductPageInPage(): boolean {
   return /product/i.test(og?.getAttribute("content") ?? "");
 }
 
-/**
- * O pedaço da página que `classifyBotWall` (browser.ts) precisa pra dizer se é
- * um muro anti-robô: quantos links, o começo do HTML e do texto. A decisão fica
- * fora da página pra ser testável.
- */
+/** What `classifyBotWall` (browser.ts) needs to detect an anti-bot wall: link count and the start of the HTML and text. */
 export function wallSnapshotInPage(): {
   links: number;
   html: string;
@@ -2519,28 +2370,16 @@ export function wallSnapshotInPage(): {
   };
 }
 
-// ── Dar nome aos elementos do heatmap ────────────────────────────────────────
+// ── Name the heatmap elements ────────────────────────────────────────────────
 
 /**
- * Para cada `root|el` pedido (do `hmElements` do Deco Analytics), o que aquele
- * elemento é nesta página: tag, texto e posição. O coletor só manda o hash do
- * caminho até o elemento; aqui se calcula o MESMO hash no DOM vivo e se casa.
+ * For each requested `root|el` (Deco Analytics `hmElements`), what that element
+ * is on this page: tag, text, position. The collector sends only a path hash, so
+ * the SAME hash is computed on the live DOM and matched.
  *
- * O algoritmo é cópia do `shared/anchor.ts` do repo decocms/analytics
- * (ANCHOR_VERSION 1), que é a única definição de "qual elemento foi clicado":
- * root = `section[data-manifest-key]` (chave + "#" + ordinal), senão o
- * `data-fs-*` mais externo, senão um id estável, senão body; caminho =
- * `tag[data-fs-x]:n-of-type` do root até o elemento; hash = cyrb53, que o
- * Studio devolve em decimal. Se o analytics subir a versão, isto para de casar
- * (o elemento fica sem rótulo, não com rótulo errado).
- *
- * Cada elemento da página é hasheado, não só os clicáveis: um clique numa
- * imagem ancora na própria imagem. Os que nunca são âncora não casam com nada.
- *
- * O elemento casado ganha `data-ux-anchor="<root>|<el>"`: é por ele que o
- * verificador acha o alvo depois (`[data-ux-anchor="..."]`), sem recalcular o
- * hash a cada passo. As marcas antigas saem antes, porque depois de um clique
- * o DOM pode ter mudado e a mesma chave casar com outro elemento.
+ * Copy of `shared/anchor.ts` in decocms/analytics (ANCHOR_VERSION 1); if the
+ * version bumps, elements go unlabeled rather than mislabeled. Matched elements
+ * get `data-ux-anchor="<root>|<el>"` for the verifier; old marks are cleared first.
  */
 export function elementLabelsInPage(
   wanted: string[],
@@ -2554,8 +2393,7 @@ export function elementLabelsInPage(
     { label: string; y: number; navigates?: string; hidden?: boolean }
   > = {};
   if (want.size === 0) return out;
-  // Rolagem de quem rola a página (a janela ou o <body>, numa loja; 14/11).
-  // Mesmo corpo de `pageScrollerInPage`.
+  // Window or <body> scroller; same body as `pageScrollerInPage`.
   const pageScroller = (): Element | null => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -2565,7 +2403,7 @@ export function elementLabelsInPage(
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -2689,10 +2527,7 @@ export function elementLabelsInPage(
     }
     return parts.reverse().join(">");
   };
-  // Texto visível, sem o conteúdo de SCRIPT/STYLE/NOSCRIPT/TEMPLATE: sites
-  // TanStack embutem o JSON do evento de analytics DENTRO do botão, e o
-  // textContent de "Adicionar à sacola" passava de 40 caracteres (14/11).
-  // Mesmo corpo de `visibleTextOf` (testado fora do navegador).
+  // Visible text minus SCRIPT/STYLE/NOSCRIPT/TEMPLATE; same body as `visibleTextOf`.
   const visibleText = (node: Node): string => {
     let out = "";
     const walk = (n: typeof node): void => {
@@ -2705,8 +2540,7 @@ export function elementLabelsInPage(
     walk(node);
     return out.replace(/\s+/g, " ").trim();
   };
-  // Rótulo pra exibir: sem sub-árvore escondida (tooltip). Mesmo corpo de
-  // `labelTextOf` (revisão, 14/11).
+  // Display label without hidden subtrees (tooltips); same body as `labelTextOf`.
   const hiddenNode = (n: TextTreeNode): boolean => {
     const st = getComputedStyle(n as unknown as Element);
     return st.display === "none" || st.visibility === "hidden";
@@ -2727,7 +2561,7 @@ export function elementLabelsInPage(
     walk(node);
     return out.replace(/\s+/g, " ").trim();
   };
-  // Mesmo corpo de `navigationOf` (testado fora do navegador).
+  // Same body as `navigationOf` (tested outside the browser).
   const navigationOf = (e: ActionNode, here: string): string => {
     let to = "";
     const link = e.closest("a[href]");
@@ -2768,9 +2602,7 @@ export function elementLabelsInPage(
   };
   const describe = (e: Element): string => {
     const attr = (n: string) => (e.getAttribute(n) ?? "").trim();
-    // innerText de elemento escondido (ou SVG) cai no textContent, com o
-    // JSON de <script> junto: o texto visível não depende de renderizar.
-    // Elemento todo escondido não tem rótulo: aí vale o texto inteiro.
+    // innerText of hidden elements falls back to textContent (with <script> JSON): a fully hidden element has no label, so the full text applies.
     let text =
       attr("aria-label") ||
       attr("title") ||
@@ -2812,8 +2644,7 @@ export function elementLabelsInPage(
     };
     const to = navigationOf(e, location.href);
     if (to) entry.navigates = to;
-    // Escondido na carga: está num painel que outro clique abre (a busca
-    // de uma loja). O y dele não é posição na página.
+    // Hidden on load, in a panel another click opens: its y is not a page position.
     const hasBox = rect.width > 0 || rect.height > 0;
     const shown =
       hasBox &&
@@ -2826,17 +2657,15 @@ export function elementLabelsInPage(
   return out;
 }
 
-// ── Verificador de hipóteses ─────────────────────────────────────────────────
+// ── Hypothesis verifier ──────────────────────────────────────────────────────
 
 /**
- * O que um alvo do verificador é e como ele se parece: tag, texto do clicável
- * que o contém, cores, cursor, sublinhado, se está em link/botão/formulário.
- * Serve pro passo `inspect` e pra `forbiddenReason` (verify/safety.ts) decidir
- * se dá pra clicar. Seletor inválido ou que não casa volta `found: false`.
+ * What a verifier target is and looks like: tag, clickable text, colors, cursor,
+ * underline, link/button/form context. Feeds `inspect` and `forbiddenReason`
+ * (verify/safety.ts); an invalid selector returns `found: false`.
  */
 export function elementFactsInPage(selector: string): ElementFacts {
-  // Rótulo pra exibir: sem sub-árvore escondida (tooltip). Mesmo corpo de
-  // `labelTextOf` (revisão, 14/11).
+  // Display label without hidden subtrees (tooltips); same body as `labelTextOf`.
   const hiddenNode = (n: TextTreeNode): boolean => {
     const st = getComputedStyle(n as unknown as Element);
     return st.display === "none" || st.visibility === "hidden";
@@ -2857,8 +2686,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
     walk(node);
     return out.replace(/\s+/g, " ").trim();
   };
-  // Rolagem de quem rola a página (a janela ou o <body>, numa loja; 14/11).
-  // Mesmo corpo de `pageScrollerInPage`.
+  // Window or <body> scroller; same body as `pageScrollerInPage`.
   const pageScroller = (): Element | null => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -2868,7 +2696,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
       const s = getComputedStyle(el);
       if (!/(auto|scroll|overlay)/.test(s.overflowY)) return false;
       if (s.position === "fixed") return false;
-      // Visível e cobrindo a tela: gaveta fora da tela não é a página (revisão, 14/11).
+      // Visible and covering the screen: an off-screen drawer is not the page.
       if (s.display === "none" || s.visibility === "hidden") return false;
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
@@ -2914,10 +2742,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
     return empty;
   }
   if (!el) return empty;
-  // Texto visível, sem o conteúdo de SCRIPT/STYLE/NOSCRIPT/TEMPLATE: sites
-  // TanStack embutem o JSON do evento de analytics DENTRO do botão, e o
-  // textContent de "Adicionar à sacola" passava de 40 caracteres (14/11).
-  // Mesmo corpo de `visibleTextOf` (testado fora do navegador).
+  // Visible text minus SCRIPT/STYLE/NOSCRIPT/TEMPLATE; same body as `visibleTextOf`.
   const visibleText = (node: Node): string => {
     let out = "";
     const walk = (n: typeof node): void => {
@@ -2944,13 +2769,10 @@ export function elementFactsInPage(selector: string): ElementFacts {
   const s = getComputedStyle(el);
   const link = el.closest("a[href]") as HTMLAnchorElement | null;
   const button = el.closest("button, [role='button']");
-  // O texto que decide se é proibido é o do clicável que contém o alvo: um
-  // ícone dentro de "Adicionar à sacola" clica no botão do mesmo jeito.
+  // The forbidden-text check uses the containing clickable's text: an icon inside "Adicionar à sacola" clicks the button.
   const clickable =
     el.closest("button, a[href], [role='button'], label, summary") ?? el;
-  // Texto visível E rótulos, sempre juntos: botão só de ícone tem o <title>
-  // do SVG ("icon-bag") como texto e o "Adicionar à sacola" no aria-label, e
-  // ler o rótulo só com texto vazio liberava o clique (revisão, 14/11).
+  // Visible text AND labels together: an icon-only button has the SVG <title> as text and the real label in aria-label.
   let text = [
     visibleText(clickable),
     attr(clickable, "aria-label"),
@@ -2968,14 +2790,13 @@ export function elementFactsInPage(selector: string): ElementFacts {
   const btn = (
     tag === "button" ? el : el.closest("button")
   ) as HTMLButtonElement | null;
-  // <button> sem type dentro de <form> É submit (padrão do HTML): clicar envia
-  // o formulário. Fora de form o atributo cru basta.
+  // A <button> without type inside a <form> IS a submit (HTML default).
   const type = btn
     ? btn.form
       ? btn.type
       : btn.getAttribute("type")
     : el.getAttribute("type");
-  // Sublinhado de um <a> pai não aparece no computed style do filho.
+  // A parent <a>'s underline does not show in the child's computed style.
   let decoration = "none";
   for (
     let n: Element | null = el, i = 0;
@@ -2988,9 +2809,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
       break;
     }
   }
-  // Invólucro de tamanho zero (o #NewsletterPopup de uma loja mede 390×0
-  // aberto, e quem aparece é o filho fixed): medida, cor e cursor vêm do maior
-  // filho visível. Texto, link e a trava de clique seguem sendo do alvo (14/11).
+  // Zero-height wrapper: size, color and cursor come from the largest visible child; text, link and click guard stay the target's.
   const own = el.getBoundingClientRect();
   const scroller = pageScroller();
   const pageY =
@@ -2998,11 +2817,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
   let shown: Element = el;
   let wrapper: ElementFacts["wrapper"] = null;
   if (own.width < 2 || own.height < 2) {
-    // Só filho que aparece MESMO (revisão, 14/11): acordeão fechado é um
-    // invólucro height:0 overflow:hidden com filhos de tamanho, e eles não
-    // aparecem. Um corte (overflow hidden/clip) entre o filho e o alvo vale,
-    // a não ser que um fixed no caminho escape dele; e o filho tem que cair
-    // dentro do documento (ou da tela, se fixed).
+    // Only children that really show: a closed accordion has sized children under height:0 overflow:hidden. A clip between child and target counts unless a fixed element escapes it, and the child must fall inside the document (or the screen, if fixed).
     const clips = (st: CSSStyleDeclaration) =>
       /(hidden|clip)/.test(`${st.overflow} ${st.overflowX} ${st.overflowY}`);
     const docW = document.documentElement.scrollWidth;
@@ -3034,7 +2849,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
         Number.parseFloat(ks.opacity) === 0
       )
         continue;
-      // Corte no caminho até o alvo (inclusive), abaixo do primeiro fixed.
+      // Clip on the path to the target (inclusive), below the first fixed element.
       let fixed = ks.position === "fixed";
       let clipped = false;
       for (
@@ -3056,7 +2871,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
         if (n === el) break;
       }
       if (clipped) continue;
-      // Dentro da tela (fixed) ou do documento (o resto).
+      // Inside the screen (fixed) or the document (the rest).
       const inside = fixed
         ? kr.right > 0 &&
           kr.bottom > 0 &&
@@ -3094,7 +2909,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
   return {
     found: true,
     tag,
-    // Inteiro: "Adicionar à sacola" depois do 200º caractere ainda proíbe.
+    // Whole text: a forbidden label after the 200th character still counts.
     text,
     label: labelText(el, hiddenNode),
     role: el.getAttribute("role"),
@@ -3102,8 +2917,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
     inLink: Boolean(link),
     inButton: Boolean(button),
     href: link ? link.getAttribute("href") : null,
-    // Sem target no link, vale o do <base target> do documento (HTML: o
-    // atributo do link, mesmo vazio, vence o do base).
+    // Without a link target, the document's <base target> applies (an empty link attribute still wins).
     linkTarget: link
       ? link.hasAttribute("target")
         ? link.getAttribute("target")
@@ -3116,9 +2930,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
       ? hex(getComputedStyle(shown.parentElement).color)
       : "",
     textDecoration: decoration,
-    // Heurística: handler do React/Preact não aparece no DOM. `onclick` é o
-    // caso explícito; cursor pointer fora de link/botão é o sinal de que
-    // alguém tratou o clique (ou de que a página promete um clique que não há).
+    // Heuristic: React/Preact handlers are not in the DOM; `onclick` is explicit, and cursor pointer outside a link/button signals a handled click.
     hasClickHandler:
       typeof (el as HTMLElement).onclick === "function" ||
       el.hasAttribute("onclick") ||
@@ -3135,10 +2947,7 @@ export function elementFactsInPage(selector: string): ElementFacts {
   };
 }
 
-/**
- * Foto do estado em volta do alvo, pra comparar antes/depois de um clique:
- * URL, foco, texto selecionado, hash do HTML do pai e diálogos abertos.
- */
+/** State around the target, to compare before/after a click: URL, focus, selection, parent HTML hash, open dialogs. */
 export function clickSnapshotInPage(selector: string): ClickSnapshot {
   let el: Element | null = null;
   try {
@@ -3146,10 +2955,7 @@ export function clickSnapshotInPage(selector: string): ClickSnapshot {
   } catch {
     el = null;
   }
-  // Pai = <body> num alvo raso: o teto evita hashear megabytes. As marcas do
-  // próprio verificador (data-ux-anchor/hit/choice) saem antes do hash: o
-  // teste de ponto grava uma entre o "antes" e o "depois", e sem tirar o
-  // observe_click nunca diria "nada mudou".
+  // Parent = <body> for a shallow target: cap the size hashed. The verifier's own marks are stripped first so observe_click can say "nothing changed".
   const near = el
     ? (el.parentElement ?? el).outerHTML
         .replace(/\sdata-ux-[\w-]+(="[^"]*")?/g, "")
@@ -3188,12 +2994,9 @@ export function clickSnapshotInPage(selector: string): ClickSnapshot {
 }
 
 /**
- * Acha a primeira opção DISPONÍVEL de tamanho ou de variação (cor), marca com
- * `data-ux-choice` e devolve o rótulo dela; null quando não acha o grupo ou
- * nada está disponível. NÃO clica: o clique sai do lado de fora, pela mesma
- * trava dos outros cliques (proibido + o que está por cima no ponto). O grupo
- * de tamanho usa as mesmas pistas de `measurePdpInPage` (3+ irmãos com texto de
- * tamanho); o de variação, um grupo de miniaturas com pista de cor.
+ * Finds the first AVAILABLE size or variation (color) option, marks it
+ * `data-ux-choice` and returns its label; null if none. Does NOT click: the click
+ * goes through the same guard as the others. Uses the same cues as `measurePdpInPage`.
  */
 export function chooseOptionInPage(kind: "size" | "variant"): string | null {
   const visible = (el: Element): boolean => {
@@ -3208,10 +3011,7 @@ export function chooseOptionInPage(kind: "size" | "variant"): string | null {
   };
   const top = (el: Element): number =>
     Math.round(el.getBoundingClientRect().top + window.scrollY);
-  // Texto visível, sem o conteúdo de SCRIPT/STYLE/NOSCRIPT/TEMPLATE: sites
-  // TanStack embutem o JSON do evento de analytics DENTRO do botão, e o
-  // textContent de "Adicionar à sacola" passava de 40 caracteres (14/11).
-  // Mesmo corpo de `visibleTextOf` (testado fora do navegador).
+  // Visible text minus SCRIPT/STYLE/NOSCRIPT/TEMPLATE; same body as `visibleTextOf`.
   const visibleText = (node: Node): string => {
     let out = "";
     const walk = (n: typeof node): void => {
@@ -3230,10 +3030,7 @@ export function chooseOptionInPage(kind: "size" | "variant"): string | null {
     typeof e.className === "string" ? e.className : "";
   const sizeToken =
     /^(PP|P|M|G|GG|XG|XGG|XS|S|L|XL|XXL|U|UN|ÚNICO|UNICO|\d{2}|\d{1,2}(\.5)?)$/i;
-  // Sem `variant` solto: design system usa "button--variant-primary".
-  // Classe só vale INTEIRA ("color", "swatch"): `text-color-base` do Tailwind
-  // não é grupo de cores. Rótulo (aria-label/title) e a legenda do grupo
-  // ("Cor: Azul") valem por palavra.
+  // No bare `variant` (design systems use "button--variant-primary"); a class counts only WHOLE ("color", "swatch"), labels by word.
   const colorClass =
     /^(cor|cores|colou?rs?|swatch(es)?|variac(ao|oes)|variaç(ão|ões))$/i;
   const colorText = /(\bcor(es)?\b|\bcolou?rs?\b|swatch|varia(ç|c(ao|oes)))/i;
@@ -3323,10 +3120,8 @@ export function chooseOptionInPage(kind: "size" | "variant"): string | null {
 }
 
 /**
- * Rola o alvo pro meio da tela e espera a página reagir à rolagem: barra de
- * compra fixa que aparece ao rolar só existe depois de alguns quadros e da
- * transição dela. Roda ANTES de `clickPointInPage`, em outro evaluate — no
- * mesmo, o teste de ponto via a página de antes da barra entrar.
+ * Scrolls the target to mid-screen and waits for the page to react (a sticky buy
+ * bar needs a few frames). Runs BEFORE `clickPointInPage`, in another evaluate.
  */
 export async function scrollToCenterInPage(selector: string): Promise<boolean> {
   let el: Element | null = null;
@@ -3336,9 +3131,9 @@ export async function scrollToCenterInPage(selector: string): Promise<boolean> {
     el = null;
   }
   if (!el) return false;
-  // "instant": com `scroll-behavior: smooth` a rolagem ainda estaria andando.
+  // "instant": with `scroll-behavior: smooth` the scroll would still be moving.
   el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-  // Dois quadros (com teto: aba escondida não roda rAF) + a transição da barra.
+  // Two frames (capped: hidden tabs skip rAF) plus the bar's transition.
   for (let i = 0; i < 2; i++) {
     await new Promise((r) => {
       requestAnimationFrame(() => r(null));
@@ -3350,12 +3145,9 @@ export async function scrollToCenterInPage(selector: string): Promise<boolean> {
 }
 
 /**
- * Onde o clique vai cair e o que está lá (o alvo já rolado por
- * `scrollToCenterInPage`): pega o centro dele e pergunta à página quem está
- * por cima naquele ponto
- * (`elementFromPoint`). Esse elemento ganha `data-ux-hit`, pra checar se é
- * proibido. `covered` = o ponto cai em algo que não é o alvo nem filho dele
- * (barra de compra fixa por cima, modal) — clicar ali clicaria nele.
+ * Where the click lands and what is there (target already scrolled): takes its
+ * center and finds the element on top (`elementFromPoint`), marked `data-ux-hit`.
+ * `covered` = the point falls on something that is not the target or its child.
  */
 export function clickPointInPage(selector: string): {
   found: boolean;
@@ -3386,51 +3178,36 @@ export function clickPointInPage(selector: string): {
   };
 }
 
-// ── Camadas por cima da página (sonda de pop-up) ─────────────────────────────
+// ── Layers over the page (popup probe) ───────────────────────────────────────
 
-/** Uma camada fixa aberta por cima da página, na 1ª tela. */
+/** An open fixed layer over the page, on the first screen. */
 export interface OverlayReading {
-  /** O texto da camada, até 100 caracteres. */
+  /** The layer's text, up to 100 characters. */
   text: string;
-  /**
-   * Quanto da 1ª tela ela COBRE À VISTA, em %: a caixa com fundo (a dela ou
-   * a do maior filho com fundo). O invólucro do pop-up de uma loja é a tela
-   * inteira e transparente; o que se vê é a caixa de ~65% (19/11).
-   */
+  /** How much of the first screen it VISIBLY covers, in %: the box with a background (its own or the largest child's). */
   area_pct: number;
-  /** Topo e base da parte à vista, na tela (px). */
+  /** Top and bottom of the visible part, on screen (px). */
   top: number;
   bottom: number;
-  /**
-   * A camada inteira (com o fundo transparente) pega a tela quase toda e
-   * recebe o toque: o resto da página não responde enquanto ela está aberta.
-   */
+  /** The whole layer, even if transparent, takes almost the whole screen and receives touches. */
   blocks_page: boolean;
-  /** Uma película semitransparente escurece a tela inteira por trás dela. */
+  /** A semi-transparent film darkens the whole screen behind it. */
   dims_page: boolean;
-  /** É diálogo (`role=dialog`, `aria-modal`, `<dialog>`)? */
+  /** Is it a dialog (`role=dialog`, `aria-modal`, `<dialog>`)? */
   dialog: boolean;
 }
 
 export interface OverlaysReading {
   viewport: { width: number; height: number };
   overlays: OverlayReading[];
-  /**
-   * Por parte: o centro dela está na 1ª tela e uma camada fixa está por cima
-   * (true), está na 1ª tela e nada a cobre (false), ou fora da 1ª tela / não
-   * achada (null).
-   */
+  /** Per part: its center is on the first screen with a fixed layer on top (true), uncovered (false), or off screen/not found (null). */
   covered: Record<string, boolean | null>;
 }
 
 /**
- * Mede as camadas `position: fixed` abertas sobre a 1ª tela, numa página
- * aberta SEM fechar pop-up (keepOverlays). A captura de sempre fecha tudo
- * antes de medir e do print (dismissOverlaysInPage), então "o pop-up de
- * newsletter tampa a 1ª tela" nunca virava fato — a sonda é isto.
- *
- * Camada abaixo de 10% da tela (um selo, um botão de chat) fica de fora. A
- * camada dentro de outra camada também: conta a de fora.
+ * Measures `position: fixed` layers open over the first screen on a page opened
+ * WITHOUT closing pop-ups (keepOverlays). Layers under 10% of the screen are
+ * ignored, and nested layers count only as the outer one.
  */
 export function overlaysInPage(
   partSelectors: Record<string, string>,
@@ -3451,8 +3228,7 @@ export function overlaysInPage(
     const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
     return w * h;
   };
-  // Opacidade do fundo: 0 = transparente; uma película (scrim) fica entre
-  // 0,05 e 0,6; caixa de verdade, acima disso (ou com imagem de fundo).
+  // Background opacity: 0 = transparent, 0.05–0.6 = scrim, above (or with a background image) = a real box.
   const alpha = (el: Element) => {
     const s = getComputedStyle(el);
     if (s.backgroundImage && s.backgroundImage !== "none") return 1;
@@ -3468,8 +3244,7 @@ export function overlaysInPage(
     const r = el.getBoundingClientRect();
     const whole = inView(r);
     if (whole / area < 0.1) continue;
-    // A parte à vista: a própria caixa, se tem fundo; senão o maior filho
-    // com fundo (até 400 filhos olhados).
+    // The visible part: the box itself if it has a background, else the largest child with one (up to 400 examined).
     let seen = opaque(el) ? r : null;
     if (!seen) {
       let best = 0;

@@ -1,39 +1,36 @@
 /**
- * Que rota do Deco Analytics é cada tipo de página. O heatmap responde por
- * rota (`page=/buscar`), e todo payload traz `hmPages`: as rotas mais vistas
- * do site com views e rolagem. Daqui sai a home, a busca e as categorias, sem
- * ninguém digitar nada (numa loja de moda, 16/11: `/`, `/buscar`, `/colecao/promo`,
- * `/novidades`, `/colecao/vestidos`, `/bazar`…).
- *
- * Categoria não é um template: cada vitrine é uma rota. A análise lê o heatmap
- * da mais vista (é a que a captura abre, pra os elementos baterem) e passa as
- * outras como resumo (`PageRoute`).
+ * Which Deco Analytics route is each page type. The heatmap answers per route
+ * (`page=/buscar`) and every payload carries `hmPages`: the site's most-viewed
+ * routes with views and scroll, so home, search and categories need no manual
+ * input. A category is not a template: each listing is a route; the analysis
+ * reads the most-viewed one's heatmap and passes the others as a summary
+ * (`PageRoute`).
  */
 
 import type { HeatmapPayload } from "./ports.ts";
 import type { PageTemplates, UxPageType } from "./types.ts";
 
-/** Uma rota do site com o tráfego dela (somado nos dispositivos). */
+/** A site route with its traffic (summed across devices). */
 export interface PageRoute {
   page: string;
   views: number;
-  /** Rolagem média, % da altura, ponderada por views. */
+  /** Average scroll, % of height, weighted by views. */
   avg_depth: number;
 }
 
-/** Quantas rotas de categoria o perfil guarda. */
+/** How many category routes the profile keeps. */
 const MAX_CATEGORY_ROUTES = 8;
 
 const SEARCH_ROUTE = /^\/(s|busca|buscar|search|pesquisa)(\/|$)/i;
 
-/** Rotas que não são vitrine: conta, carrinho, institucional, blog… */
+/** Routes that are not listings: account, cart, institutional, blog... */
 const NOT_A_LISTING =
   /^\/(checkout|cart|carrinho|sacola|account|conta|minha-conta|login|wishlist|favoritos|lista-de-desejos|institucional|ajuda|atendimento|faq|lojas|nossas-lojas|blog|politica|trocas|sobre|contato|api|_)/i;
 
-/** Rota com parâmetro (`/:product/p`) é template de página de detalhe. */
+/** A route with a parameter (`/:product/p`) is a detail page template. */
 const HAS_PARAM = /\/:/;
 
-/** `hmPages` → rotas somadas nos dispositivos, mais vistas primeiro. */
+/** `hmPages` -> routes summed across devices, most viewed first. */
 export function routesFromPages(
   pages: NonNullable<HeatmapPayload["data"]["hmPages"]>,
 ): PageRoute[] {
@@ -56,7 +53,7 @@ export function routesFromPages(
     .sort((a, b) => b.views - a.views);
 }
 
-/** Home, busca e as categorias mais vistas, a partir das rotas do site. */
+/** Home, search and the most-viewed categories, from the site's routes. */
 export function detectPageTemplates(
   routes: PageRoute[],
   pdpTemplate: string,
@@ -78,7 +75,7 @@ export function detectPageTemplates(
   return { home, busca, categoria, detected_at: now };
 }
 
-/** A rota do heatmap pra este tipo de página. NULL = não há (checkout) ou não achou. */
+/** The heatmap route for this page type. NULL = none (checkout) or not found. */
 export function heatmapRouteFor(
   pageType: UxPageType,
   pdpTemplate: string,
@@ -98,7 +95,7 @@ export function heatmapRouteFor(
   }
 }
 
-/** Rotas detectadas há mais de uma semana são lidas de novo. */
+/** Routes detected more than a week ago are re-read. */
 const TEMPLATES_MAX_AGE_DAYS = 7;
 
 export function templatesAreStale(

@@ -1,23 +1,9 @@
 /**
- * Sondas: o que a página FAZ, medido antes de qualquer hipótese.
- *
- * Até 19/11 a hipótese imaginava o comportamento e só a verificação, depois,
- * conferia. Na PDP de uma loja de moda (16/11) "o 'comprar' sobre a foto barra
- * quem não escolheu tamanho" e "as setas da galeria não respondem" eram
- * palpites, e os dois foram desmentidos (o botão abre uma gaveta; no celular
- * não há seta). É a lição do ARTEMIS: reproduzir antes de afirmar.
- *
- * Duas sondas, em código, sem modelo:
- * - **camadas**: abre a página SEM fechar pop-up, mexe o mouse (o pop-up de
- *   uma loja só abre no primeiro movimento) e mede cada camada fixa sobre a
- *   1ª tela e se ela cobre o preço e o botão de compra. A captura de sempre
- *   fecha tudo antes de medir, então isto nunca tinha virado fato;
- * - **toque**: nos elementos com muito clique morto (que não trocam de página
- *   nem estão escondidos), clica e diz o que mudou, pelo mesmo caminho do
- *   verificador (rastreio bloqueado, sacola/checkout/login proibidos).
- *
- * O resultado vai pra evidência (`evidence.probes`) e vira fato "interação"
- * (facts.ts). Sonda que falha vira resultado com o motivo, nunca erro.
+ * Probes: what the page DOES, measured before any hypothesis (reproduce before
+ * asserting). Two code-only probes: **layers** (fixed overlays over the first
+ * screen and whether they cover price and buy button) and **touch** (click
+ * elements with many dead clicks and report what changed). Failures become
+ * results with the reason, never errors.
  */
 
 import { sleep } from "@decocms/shared/std";
@@ -36,7 +22,7 @@ export type ProbeResult =
       url: string;
       ok: true;
       reading: OverlaysReading;
-      /** Print da 1ª tela com as camadas abertas. */
+      /** First-screen screenshot with the layers open. */
       screenshot_url: string | null;
     }
   | {
@@ -44,12 +30,12 @@ export type ProbeResult =
       device: UxDevice;
       url: string;
       ok: true;
-      /** `root|el` da Deco Analytics. */
+      /** `root|el` from Deco Analytics. */
       key: string;
       label: string;
-      /** O que mudou depois do clique, ou por que não clicou. */
+      /** What changed after the click, or why it did not click. */
       observed: string;
-      /** false = não clicou (proibido, escondido, coberto, não achou). */
+      /** false = did not click (forbidden, hidden, covered, not found). */
       clicked: boolean;
     }
   | {
@@ -62,15 +48,15 @@ export type ProbeResult =
       label?: string;
     };
 
-/** Elementos tocados por dispositivo (cada um abre a página de novo). */
+/** Elements touched per device (each reopens the page). */
 const MAX_TOUCH_PROBES = 2;
-/** A partir disto de clique morto em elemento clicável, vale tocar. */
+/** From this much dead click on a clickable element, it is worth touching. */
 const DEAD_SHARE = 0.3;
 const MIN_CLICKS = 200;
-/** O pop-up que abre com atraso (uma loja, 14/11: >3 s). */
+/** Wait for a pop-up that opens late (seen at over 3 s). */
 const OVERLAY_WAIT_MS = 5_000;
 
-/** A captura de cada tela que mostra a página de sempre (não a de falta). */
+/** Each screen's capture of the usual page (not the missing state). */
 export function primaryCaptures(evidence: DiagnosisEvidence): PageCapture[] {
   const out: PageCapture[] = [];
   for (const device of ["mobile", "desktop"] as const) {
@@ -86,11 +72,7 @@ export function primaryCaptures(evidence: DiagnosisEvidence): PageCapture[] {
   return out;
 }
 
-/**
- * Os elementos a tocar numa tela: muito clique morto em elemento clicável,
- * achado na captura, que não troca de página nem está escondido. Os de mais
- * cliques mortos primeiro. Exportado pra teste.
- */
+/** Elements to touch on a screen: clickable, many dead clicks, not navigating or hidden. Exported for tests. */
 export function touchTargets(
   evidence: DiagnosisEvidence,
   capture: PageCapture,
@@ -113,7 +95,7 @@ export function touchTargets(
     .map(({ key, l }) => ({ key, label: l ? describeElementLabel(l) : key }));
 }
 
-/** Seletores das partes medidas na captura, pra sonda de camadas. */
+/** Selectors of the parts measured in the capture, for the layers probe. */
 function partSelectors(capture: PageCapture): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [part, selector] of Object.entries(capture.selectors ?? {})) {
@@ -125,7 +107,7 @@ function partSelectors(capture: PageCapture): Record<string, string> {
 const message = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
 
-/** Abre sem fechar nada, mexe o mouse, espera o pop-up e mede. */
+/** Opens without closing anything, moves the mouse, waits for the pop-up and measures. */
 async function probeOverlays(opts: {
   browser: BrowserPort;
   capture: PageCapture;
@@ -173,7 +155,7 @@ async function probeOverlays(opts: {
   }
 }
 
-/** Toca num elemento pelo caminho do verificador e diz o que mudou. */
+/** Touches an element the way the verifier does and reports what changed. */
 async function probeTouch(opts: {
   browser: BrowserPort;
   capture: PageCapture;
@@ -226,16 +208,15 @@ async function probeTouch(opts: {
 }
 
 /**
- * Roda as sondas nas capturas de cada tela, uma de cada vez (o navegador é
- * dividido com as outras páginas). Passou do prazo, para e diz quais ficaram
- * de fora.
+ * Runs the probes on each screen's capture, one at a time (the browser is
+ * shared). Past the deadline it stops and says which were left out.
  */
 export async function runProbes(opts: {
   browser: BrowserPort;
   evidence: DiagnosisEvidence;
   media: MediaStore | null;
   keyPrefix: string;
-  /** Até quando uma sonda pode começar (ms epoch). */
+  /** Until when a probe may start (ms epoch). */
   deadline: number;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<ProbeResult[]> {

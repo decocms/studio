@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import type { StudioContext } from "@/core/studio-context";
+import { hasEngineModel } from "@/plan-engine/adapters/llm";
 import { orgMediaStore } from "@/plan-engine/adapters/media";
 import { codeAccessFor } from "@/plan-engine/adapters/repo";
 import type {
@@ -15,7 +16,8 @@ import type {
 } from "@/plan-engine/contract";
 import { startUxDiagnosisWorkflow } from "@/plan-engine/dbos-ux-diagnosis";
 import { PAGE_TYPE_ORDER } from "@/plan-engine/page-types";
-import { buildSetup } from "@/plan-engine/setup";
+import { NO_AI_MODEL } from "@/plan-engine/ports";
+import { AI_PROVIDER_NEED, buildSetup } from "@/plan-engine/setup";
 import type {
   DiagnosisEvidence,
   SiteProfile,
@@ -90,6 +92,20 @@ function requestedPages(input: z.infer<typeof StartInputSchema>): UxPageType[] {
   return [input.page_type ?? "pdp"];
 }
 
+/** Refuses before any spend when the org has no model: every run needs `smart`. */
+async function modelRefusal(ctx: StudioContext) {
+  try {
+    if (await hasEngineModel(ctx)) return null;
+  } catch (err) {
+    return { status: "error" as const, error: errorOf(err) };
+  }
+  return {
+    status: "error" as const,
+    error: NO_AI_MODEL,
+    needs: [AI_PROVIDER_NEED],
+  };
+}
+
 /** The member the run reads and spends as. */
 function principalOf(ctx: StudioContext): string {
   const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
@@ -123,6 +139,8 @@ export const PLAN_UX_DIAGNOSIS_START = defineTool({
     }
     const input = parsed.data;
     const store = ctx.storage.planEngine;
+    const noModel = await modelRefusal(ctx);
+    if (noModel) return noModel;
 
     // The store comes from Studio on every run; a failed read keeps the profile.
     let synced: Awaited<ReturnType<typeof syncProfileFromStudio>>;
@@ -269,6 +287,7 @@ const VerifyOutputSchema = z.union([
     status: z.literal("error"),
     error: z.string(),
     running_diagnosis_id: z.string().optional(),
+    needs: z.array(Row).optional(),
   }),
 ]);
 
@@ -387,6 +406,8 @@ export const PLAN_UX_HYPOTHESES_VERIFY = defineTool({
               : "o diagnóstico não tem hipóteses pra verificar",
         };
       }
+      const noModel = await modelRefusal(ctx);
+      if (noModel) return noModel;
 
       await store.reapStaleDiagnoses(org.id);
       // The lock is per page: a whole-site run keeps the other pages running.

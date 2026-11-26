@@ -1,36 +1,17 @@
 /**
- * O design system pelo código da loja: o repositório do site ligado à org,
- * lido pelos provedores de git do Studio (verify/code-source.ts).
- *
- * O render (capture.ts) diz o que aparece na tela; o código diz como a loja
- * CHAMA cada coisa — `bg-primary`, `--rounded-btn`, `etc-t2-pure`. É isso que
- * faz o mockup reusar a classe da loja em vez de colar um hex.
- *
- * ## O que se lê (teto fixo de arquivos e bytes)
- *
- *   tailwind.config.*                  cores, fontes e raios nomeados
- *   CSS de entrada (tailwind.css, src/styles/*.css, …)
- *                                      só as declarações `--var: valor`
- *   .deco/blocks/site.json             as props das sections de Theme (cores
- *                                      do daisyUI, raio de botão), sem modelo
- *   .deco/blocks/*theme*.json          o mesmo, no bloco de tema solto
- *   sections/Theme/Theme.tsx           como as props viram variável CSS
- *
- * Os caminhos são os do repo como estão: `src/styles/...` numa loja TanStack,
- * `styles/...` quando o código mora na raiz; as listas abaixo cobrem os dois.
- * As lojas TanStack (Tailwind v4) não têm tailwind.config: o tema vem do CSS e
- * do bloco de tema. A leitura não fixa o commit, então o `commit` vira a hora
- * da leitura.
+ * The store's design system from its linked repository: how the code NAMES each thing (`bg-primary`,
+ * `--rounded-btn`), so a mockup reuses the store's classes instead of pasting hex values.
  */
 
 import { z } from "zod";
 import { extractJsonObject } from "./json.ts";
-import type {
-  FsLister,
-  Llm,
-  LlmUsage,
-  RepoEntry,
-  RepoReader,
+import {
+  type FsLister,
+  type Llm,
+  type LlmUsage,
+  type RepoEntry,
+  type RepoReader,
+  rethrowNoAiModel,
 } from "./ports.ts";
 import type { CodeTokens } from "./types.ts";
 
@@ -46,35 +27,35 @@ const THEME_SECTIONS = [
 ];
 const SITE_BLOCK = ".deco/blocks/site.json";
 const BLOCKS_DIR = ".deco/blocks";
-/** O nome que o template da deco dá ao tema; o da loja, se houver, vem antes. */
+/** The theme name deco's template uses; the store's own theme, if any, wins. */
 const TEMPLATE_THEME = /^fashion theme\.json$/i;
-/** Blocos de tema soltos lidos; um só vale (chooseThemeBlock). */
+/** Loose theme blocks read; only one counts (chooseThemeBlock). */
 const MAX_THEME_CANDIDATES = 4;
 
-/** `site.json` ou um bloco de tema solto: os dois viram props de Theme. */
+/** `site.json` or a loose theme block: both become Theme props. */
 const isThemeBlock = (path: string) =>
   path === SITE_BLOCK || path.startsWith(`${BLOCKS_DIR}/`);
 
-// ── Leitura do repo ──────────────────────────────────────────────────────────
+// ── Reading the repo ─────────────────────────────────────────────────────────
 
 interface RepoFile {
   path: string;
   text: string;
 }
 
-/** De onde o tema é lido: o repo do site. */
+/** Where the theme is read from: the site's repo. */
 interface ThemeSource {
-  /** Filhos diretos de `dir` ("" = raiz). A raiz falhar é erro. */
+  /** Direct children of `dir` ("" = root). A failing root is an error. */
   list(dir: string): Promise<RepoEntry[]>;
-  /** null = não veio. */
+  /** null = not returned. */
   read(path: string): Promise<string | null>;
-  /** Pastas além das de CSS que vale listar, se a primeira parte existir na raiz. */
+  /** Folders besides the CSS ones worth listing, when their first segment exists at the root. */
   extraDirs: string[];
-  /** O commit lido; a leitura não o fixa, então é a hora da leitura. */
+  /** The commit read; the read does not pin one, so it is the read time. */
   commit(): string | null;
 }
 
-/** O repo do site; sem commit, vale a hora da leitura. */
+/** The site's repo; without a commit, the read time stands in. */
 function repoThemeSource(
   list: FsLister,
   read: RepoReader,
@@ -88,10 +69,7 @@ function repoThemeSource(
   };
 }
 
-/**
- * Lê do repo o conjunto fixo de arquivos de tema. Um arquivo que não volta só
- * fica de fora; a listagem da raiz falhar (ou vir vazia) é que é erro.
- */
+/** Reads the fixed set of theme files; a missing file is skipped, only a failed or empty root is an error. */
 async function readThemeFiles(
   source: ThemeSource,
 ): Promise<{ commit: string | null; files: RepoFile[]; missed: string[] }> {
@@ -126,7 +104,7 @@ async function readThemeFiles(
     }),
   );
   files.sort((a, b) => paths.indexOf(a.path) - paths.indexOf(b.path));
-  // Um tema só: os outros blocos soltos foram lidos pra achar referência.
+  // One theme only: the other loose blocks were read to find references.
   const theme = chooseThemeBlock(files);
   return {
     commit: source.commit(),
@@ -135,10 +113,7 @@ async function readThemeFiles(
   };
 }
 
-/**
- * Quais arquivos ler, dado o que a listagem achou. Fica de fora o CSS gerado
- * (um `static/tailwind.css` de centenas de KB é saída do build, não fonte).
- */
+/** Which files to read from the listing; generated CSS (a large `static/tailwind.css`) is build output and stays out. */
 export function pickThemePaths(
   entries: readonly RepoEntry[],
   rootDirs: ReadonlySet<string>,
@@ -163,12 +138,12 @@ export function pickThemePaths(
     .slice(0, 2);
   out.push(...css.map((e) => e.path));
   if (rootDirs.has(".deco")) {
-    // Listado, o site.json só entra se existir; sem listagem de blocos, é pedido às cegas.
+    // With a blocks listing, site.json is read only if listed; without one, it is requested blind.
     const blocks = files.filter((e) => e.path.startsWith(`${BLOCKS_DIR}/`));
     if (blocks.length === 0 || blocks.some((e) => e.path === SITE_BLOCK)) {
       out.push(SITE_BLOCK);
     }
-    // Blocos de tema soltos (TanStack): todos lidos, o do template por último, e no máximo um vale.
+    // Loose theme blocks (TanStack): all read, the template's last, and at most one counts.
     out.push(
       ...blocks
         .filter((e) => e.path !== SITE_BLOCK)
@@ -192,7 +167,7 @@ export function pickThemePaths(
   return out;
 }
 
-/** Bloco de tema solto em .deco/blocks (o site.json não é um). */
+/** A loose theme block in .deco/blocks (site.json is not one). */
 const isLooseThemeBlock = (path: string) => {
   const name = path.split("/").pop() ?? "";
   return (
@@ -203,7 +178,7 @@ const isLooseThemeBlock = (path: string) => {
   );
 };
 
-/** "Loja Theme.json" → "Loja Theme" (o nome que um bloco usa pra referenciar). */
+/** "Store Theme.json" → "Store Theme" (the name another block references it by). */
 function blockName(path: string): string {
   const file = (path.split("/").pop() ?? "").replace(/\.json$/, "");
   try {
@@ -214,16 +189,8 @@ function blockName(path: string): string {
 }
 
 /**
- * Qual bloco de tema solto vale (null = nenhum). Um só: misturar o "Fashion
- * theme" do template com o da loja dava à loja uma cor que ela não usa. Ordem:
- *   1. o que outro bloco lido referencia (`"__resolveType": "<nome>"`) — um
- *      site.json que aponta `theme` pro "Fashion theme";
- *   2. nenhum, se o site.json já traz o tema inline, e os blocos soltos ficam
- *      sobrando;
- *   3. o que não é o do template; o do template só se for o único.
- *
- * Só conta referência nos blocos que já foram lidos (site.json e os próprios
- * temas): varrer os milhares de blocos de uma loja grande não cabe na leitura.
+ * The loose theme block that counts (null = none), so the template's theme never mixes into the store's:
+ * one a read block references, else none when site.json inlines the theme, else the non-template one.
  */
 export function chooseThemeBlock(files: readonly RepoFile[]): string | null {
   const themes = files.filter((f) => isLooseThemeBlock(f.path));
@@ -246,9 +213,9 @@ export function chooseThemeBlock(files: readonly RepoFile[]): string | null {
   return (themes.find((t) => !isTemplate(t)) ?? themes[0])?.path ?? null;
 }
 
-// ── O que sai sem modelo ─────────────────────────────────────────────────────
+// ── Without the model ─────────────────────────────────────────────────────────
 
-/** Declarações `--nome: valor;` de um CSS, na ordem, sem repetir nome. */
+/** A CSS file's `--name: value;` declarations, in order, without repeating a name. */
 export function cssVariablesOf(css: string): Record<string, string> {
   const out: Record<string, string> = {};
   const clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -261,10 +228,7 @@ export function cssVariablesOf(css: string): Record<string, string> {
   return out;
 }
 
-/**
- * As props das sections de Theme no `site.json` (cores do daisyUI, raio de
- * botão…), achatadas em `grupo.chave → valor`. É o tema que o CMS publica.
- */
+/** The Theme sections' props in `site.json` (daisyUI colors, button radius…) flattened to `group.key → value`. */
 export function themePropsOf(siteJson: string): Record<string, string> {
   let parsed: unknown;
   try {
@@ -301,14 +265,14 @@ export function themePropsOf(siteJson: string): Record<string, string> {
   return out;
 }
 
-// ── O modelo ─────────────────────────────────────────────────────────────────
+// ── The model ────────────────────────────────────────────────────────────────
 
 function forPrompt(file: RepoFile): string {
   if (file.path.endsWith(".css")) {
     const vars = Object.entries(cssVariablesOf(file.text))
       .map(([k, v]) => `${k}: ${v};`)
       .join("\n");
-    // As variáveis inteiras + o começo do arquivo (é onde mora o @theme/@layer base).
+    // All variables plus the file's start (where @theme/@layer base lives).
     return `${vars}\n\n/* começo do arquivo */\n${file.text.slice(0, 4_000)}`.slice(
       0,
       MAX_PROMPT_CHARS_PER_FILE,
@@ -322,7 +286,7 @@ function forPrompt(file: RepoFile): string {
 
 const asText = (v: unknown) => String(v ?? "");
 
-/** Os `n` primeiros itens de uma lista; os que não têm `name` em texto saem. */
+/** The first `n` items of a list; items without a text `name` are dropped. */
 const listOf = <T>(item: z.ZodType<T>, n: number) =>
   z.unknown().transform((v): T[] =>
     Array.isArray(v)
@@ -362,12 +326,11 @@ const ModelTokensSchema = z.object({
 });
 
 /**
- * Lê o repo e devolve os tokens. A parte determinística (variáveis do CSS e
- * props do Theme) sai mesmo se o modelo falhar; o modelo só nomeia cores,
- * fontes, raios e diz as convenções de classe.
+ * Reads the repo and returns the tokens. CSS variables and Theme props come out even when the model fails;
+ * the model only names colors, fonts and radii and states the class conventions.
  */
 export async function extractCodeTokens(opts: {
-  /** O repo, com os caminhos como estão; `repo` = como ele aparece nos relatos. */
+  /** The repo with its paths as they are; `repo` = how reports name it. */
   code: { list: FsLister; read: RepoReader; repo: string };
   llm: Llm;
   now: string;
@@ -386,7 +349,7 @@ export async function extractCodeTokens(opts: {
     if (f.path.endsWith(".css"))
       Object.assign(cssVariables, cssVariablesOf(f.text));
   }
-  // site.json e no máximo um bloco solto (chooseThemeBlock); o primeiro vence.
+  // site.json and at most one loose block (chooseThemeBlock); the first wins.
   const theme: Record<string, string> = {};
   for (const f of files) {
     if (!isThemeBlock(f.path)) continue;
@@ -441,6 +404,7 @@ No máximo 20 cores, 6 fontes, 8 raios. Não invente o que não está nos arquiv
       tokens.conventions = parsed.conventions;
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     tokens.model_error = err instanceof Error ? err.message : String(err);
   }
   return tokens;

@@ -1,17 +1,7 @@
 /**
- * O teste recomendado de uma hipótese pronta: controle, variante, métrica
- * primária, secundárias, guardrails, e a conta de amostra e duração.
- *
- * O sistema só PROPÕE o A/B; quem roda é a equipe. A conta é toda nossa — o
- * modelo só disse a etapa e o efeito esperado:
- *
- *   n por grupo = (z₀,₉₇₅·√(2p̄(1−p̄)) + z₀,₈·√(p₁(1−p₁)+p₂(1−p₂)))² / (p₂−p₁)²
- *
- * bicaudal, α 5%, poder 80%. Linha de base p₁ = a etapa medida no
- * dispositivo; efeito mínimo = o esperado pela hipótese, nunca abaixo de 3%
- * relativo (efeito minúsculo vira teste eterno). Tráfego elegível = quem passa
- * pela etapa × a fração que a mudança atinge (relevance.ts): só entra na conta
- * quem é exposto à diferença.
+ * A ready hypothesis's recommended test: control, variant, metrics, guardrails,
+ * and the sample and duration calculation. The system only PROPOSES the A/B;
+ * the math is ours (two-sided, α 5%, power 80%, minimum effect 3% relative).
  */
 
 import { measureMetric, UX_METRICS, type UxMetricKey } from "./metrics.ts";
@@ -25,16 +15,16 @@ import type {
   UxOpportunity,
 } from "./types.ts";
 
-const Z_ALPHA = 1.959964; // bicaudal, α = 5%
-const Z_POWER = 0.841621; // poder 80%
-/** Efeito mínimo relativo: abaixo disso o teste não termina. */
+const Z_ALPHA = 1.959964; // two-sided, α = 5%
+const Z_POWER = 0.841621; // power 80%
+/** Minimum relative effect: below it the test never ends. */
 const MIN_RELATIVE_EFFECT = 0.03;
-/** Sem efeito dito, meio ponto. */
+/** With no stated effect, half a point. */
 const DEFAULT_EFFECT_PP = 0.5;
 const MIN_WEEKS = 2;
 const MAX_WEEKS = 8;
 
-/** Amostra por grupo pra detectar p1 → p2. Infinity se não há diferença. */
+/** Sample per group to detect p1 → p2. Infinity if there is no difference. */
 export function sampleSizePerGroup(p1: number, p2: number): number {
   const d = Math.abs(p2 - p1);
   if (!(d > 0) || p1 <= 0 || p1 >= 1 || p2 <= 0 || p2 >= 1) {
@@ -46,7 +36,7 @@ export function sampleSizePerGroup(p1: number, p2: number): number {
   return Math.ceil(((a + b) * (a + b)) / (d * d));
 }
 
-/** O menor efeito (absoluto) que `perGroup` pessoas por grupo detectam. */
+/** The smallest absolute effect that `perGroup` people per group detect. */
 export function detectableEffect(p1: number, perGroup: number): number | null {
   if (!(perGroup > 0) || p1 <= 0 || p1 >= 1) return null;
   let lo = 1e-5;
@@ -60,7 +50,7 @@ export function detectableEffect(p1: number, perGroup: number): number | null {
   return hi;
 }
 
-/** O que mais olhar, por parte da página. */
+/** What else to look at, per page part. */
 const SECONDARY_BY_AREA: Partial<Record<UxArea, string[]>> = {
   tamanho: ["toques no seletor de tamanho", "aberturas do guia de medidas"],
   botao_compra: ["cliques no botão de compra"],
@@ -92,19 +82,19 @@ export interface ExperimentDesign {
   secundarias: string[];
   guardrails: string[];
   metodo: string;
-  /** Linha de base da métrica primária (0–1) e quantos passam pela etapa por semana. */
+  /** Baseline of the primary metric (0-1) and how many pass the stage per week. */
   baseline: number;
   weekly_at_step: number;
-  /** Fração do tráfego que a mudança atinge (relevância), 0–1. */
+  /** Fraction of traffic the change reaches (relevance), 0-1. */
   exposure: number;
   weekly_eligible: number;
-  /** Efeito mínimo detectável que o teste persegue, em pp. */
+  /** Minimum detectable effect the test targets, in pp. */
   mde_pp: number;
   direction: "sobe" | "desce";
   n_per_group: number;
   weeks: number;
   measurable: boolean;
-  /** O menor efeito que 4 semanas detectam, em pp. NULL = nem com tudo. */
+  /** The smallest effect 4 weeks detect, in pp. NULL = not even with everything. */
   mde_4_weeks_pp: number | null;
   limitacoes: string[];
 }
