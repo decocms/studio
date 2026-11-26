@@ -1,3 +1,4 @@
+import { redactSecretConfiguration } from "@decocms/shared/sdk";
 import type { ConnectionEntity } from "./schema";
 
 /**
@@ -14,5 +15,12 @@ export function toPublicConnection(
   connection: ConnectionEntity,
 ): PublicConnectionEntity {
   const { connection_token: token, ...rest } = connection;
-  return { ...rest, has_connection_token: !!token };
+  return {
+    ...rest,
+    configuration_state: redactSecretConfiguration(
+      rest.configuration_state,
+      rest.configuration_secret_fields,
+    ),
+    has_connection_token: !!token,
+  };
 }

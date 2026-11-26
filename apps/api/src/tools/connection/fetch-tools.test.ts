@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildConnectionRequestHeaders,
-  fetchScopesFromMCP,
+  fetchConfigurationFromMCP,
   fetchToolsFromMCP,
 } from "./fetch-tools";
 
@@ -74,19 +74,48 @@ describe("buildConnectionRequestHeaders", () => {
   });
 });
 
-describe("fetchScopesFromMCP", () => {
+describe("fetchConfigurationFromMCP", () => {
   it("returns scopes when every element is a string", async () => {
-    const scopes = await fetchScopesFromMCP(
+    const { scopes } = await fetchConfigurationFromMCP(
       fakeClient(JSON.stringify({ scopes: ["CONFIG::READ"] })),
     );
     expect(scopes).toEqual(["CONFIG::READ"]);
   });
 
   it("rejects a response whose scopes array holds a non-string element", async () => {
-    const scopes = await fetchScopesFromMCP(
+    const { scopes } = await fetchConfigurationFromMCP(
       fakeClient(JSON.stringify({ scopes: ["CONFIG::READ", 42] })),
     );
     expect(scopes).toBeNull();
+  });
+
+  it("returns the state schema's secret fields", async () => {
+    const { secretFields } = await fetchConfigurationFromMCP(
+      fakeClient(
+        JSON.stringify({
+          stateSchema: {
+            type: "object",
+            properties: {
+              accountName: { type: "string" },
+              appToken: { type: "string", format: "password" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(secretFields).toEqual(["appToken"]);
+  });
+
+  it("returns no secret fields for a schema without them", async () => {
+    const { secretFields } = await fetchConfigurationFromMCP(
+      fakeClient(JSON.stringify({ stateSchema: "not a schema" })),
+    );
+    expect(secretFields).toEqual([]);
+  });
+
+  it("returns null for both when the call fails", async () => {
+    const result = await fetchConfigurationFromMCP(fakeClient("not json"));
+    expect(result).toEqual({ scopes: null, secretFields: null });
   });
 });
 

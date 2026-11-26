@@ -33,6 +33,7 @@ import { DownstreamTokenStorage } from "../../storage/downstream-token";
 import * as fetchToolsModule from "./fetch-tools";
 import { getSettings, setGlobalSettings } from "../../settings";
 import { orderIngestId } from "../../monitoring/order-ingest-install";
+import { SECRET_CONFIGURATION_PLACEHOLDER } from "@decocms/shared/sdk";
 
 // Create a mock BoundAuthClient for tests
 const createMockBoundAuth = (): BoundAuthClient =>
@@ -415,6 +416,107 @@ describe("Connection Tools", () => {
       expect(preserved?.title).toBe("Original Duplicate Subject");
       expect(preserved?.connection_url).toBe(
         "https://original-duplicate-subject.invalid/mcp",
+      );
+    });
+  });
+
+  describe("COLLECTION_CONNECTIONS_UPDATE (secret configuration)", () => {
+    it("returns secrets redacted and keeps them when the placeholder comes back", async () => {
+      const connection = await ctx.storage.connections.create({
+        id: "conn_secret_config",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "VTEX",
+        connection_type: "HTTP",
+        connection_url: "https://secret-config.invalid/mcp",
+        connection_token: null,
+        tools: null,
+        configuration_state: { accountName: "store", appToken: "old-token" },
+      });
+      const callTool = vi.fn().mockResolvedValue({});
+      setMockMcpClient({ callTool });
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+        secretFields: ["appToken"],
+      });
+
+      // The form sends back what it read: the placeholder for the secret.
+      const result = await COLLECTION_CONNECTIONS_UPDATE.execute(
+        {
+          id: connection.id,
+          data: {
+            configuration_state: {
+              accountName: "other-store",
+              appToken: SECRET_CONFIGURATION_PLACEHOLDER,
+            },
+          },
+        },
+        ctx,
+      );
+
+      expect(result.item.configuration_secret_fields).toEqual(["appToken"]);
+      expect(result.item.configuration_state).toEqual({
+        accountName: "other-store",
+        appToken: SECRET_CONFIGURATION_PLACEHOLDER,
+      });
+      const stored = await ctx.storage.connections.findById(connection.id);
+      expect(stored?.configuration_state).toEqual({
+        accountName: "other-store",
+        appToken: "old-token",
+      });
+      const callback = callTool.mock.calls.find(
+        ([call]) => call?.name === "ON_MCP_CONFIGURATION",
+      )?.[0];
+      expect(callback?.arguments.state.appToken).toBe("old-token");
+
+      const fetched = await COLLECTION_CONNECTIONS_GET.execute(
+        { id: connection.id },
+        ctx,
+      );
+      expect(fetched.item?.configuration_state?.appToken).toBe(
+        SECRET_CONFIGURATION_PLACEHOLDER,
+      );
+
+      await COLLECTION_CONNECTIONS_UPDATE.execute(
+        {
+          id: connection.id,
+          data: {
+            configuration_state: {
+              accountName: "other-store",
+              appToken: "new-token",
+            },
+          },
+        },
+        ctx,
+      );
+      const rotated = await ctx.storage.connections.findById(connection.id);
+      expect(rotated?.configuration_state?.appToken).toBe("new-token");
+    });
+
+    it("keeps the stored secret field list when MCP_CONFIGURATION is unavailable", async () => {
+      const connection = await ctx.storage.connections.create({
+        id: "conn_secret_config_offline",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "VTEX offline",
+        connection_type: "HTTP",
+        connection_url: "https://secret-config-offline.invalid/mcp",
+        connection_token: null,
+        tools: null,
+        configuration_state: { appToken: "token" },
+        configuration_secret_fields: ["appToken"],
+      });
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue(null);
+
+      const result = await COLLECTION_CONNECTIONS_UPDATE.execute(
+        { id: connection.id, data: { title: "Renamed" } },
+        ctx,
+      );
+
+      expect(result.item.configuration_secret_fields).toEqual(["appToken"]);
+      expect(result.item.configuration_state?.appToken).toBe(
+        SECRET_CONFIGURATION_PLACEHOLDER,
       );
     });
   });

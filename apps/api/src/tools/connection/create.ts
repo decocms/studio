@@ -4,6 +4,7 @@
  * Create a new MCP connection (organization-scoped) with collection binding compliance.
  */
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { restoreSecretConfiguration } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
@@ -139,7 +140,10 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
     const configurationScopes = fetchResult?.scopes?.length
       ? fetchResult.scopes
       : (connectionData.configuration_scopes ?? null);
-    const configurationState = connectionData.configuration_state ?? null;
+    // Nothing is stored yet, so a copied connection's placeholders are dropped.
+    const configurationState = connectionData.configuration_state
+      ? restoreSecretConfiguration(connectionData.configuration_state, null)
+      : null;
 
     if (configurationState && configurationScopes?.length) {
       injectSelfSentinel(
@@ -163,6 +167,7 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       tools: null,
       configuration_state: configurationState,
       configuration_scopes: configurationScopes,
+      configuration_secret_fields: fetchResult?.secretFields ?? null,
     });
 
     const credentialGrants =

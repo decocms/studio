@@ -8,6 +8,7 @@ import {
 import type { StudioDatabase } from "../database";
 import { ConnectionStorage } from "./connection";
 import { CredentialVault } from "../encryption/credential-vault";
+import { SECRET_CONFIGURATION_PLACEHOLDER } from "@decocms/shared/sdk";
 
 describe("ConnectionStorage", () => {
   let database: StudioDatabase;
@@ -24,6 +25,56 @@ describe("ConnectionStorage", () => {
 
   afterAll(async () => {
     await closeTestPgDatabase(database);
+  });
+
+  describe("secret configuration fields", () => {
+    it("redacts secret values on public reads only", async () => {
+      const created = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "VTEX",
+        connection_type: "HTTP",
+        connection_url: "https://vtex.example.com/mcp",
+        configuration_state: { accountName: "store", appToken: "real-token" },
+        configuration_secret_fields: ["appToken"],
+      });
+
+      const full = await storage.findById(created.id);
+      expect(full?.configuration_state).toEqual({
+        accountName: "store",
+        appToken: "real-token",
+      });
+      expect(full?.configuration_secret_fields).toEqual(["appToken"]);
+
+      const publicItem = await storage.findPublicById(created.id);
+      expect(publicItem?.configuration_state).toEqual({
+        accountName: "store",
+        appToken: SECRET_CONFIGURATION_PLACEHOLDER,
+      });
+
+      const { items: listed } = await storage.listPublic("org_123");
+      const listedItem = listed.find((c) => c.id === created.id);
+      expect(listedItem?.configuration_state?.appToken).toBe(
+        SECRET_CONFIGURATION_PLACEHOLDER,
+      );
+    });
+
+    it("leaves rows without a secret field list unredacted", async () => {
+      const created = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "Legacy",
+        connection_type: "HTTP",
+        connection_url: "https://legacy.example.com/mcp",
+        configuration_state: { appToken: "legacy-token" },
+      });
+
+      const publicItem = await storage.findPublicById(created.id);
+      expect(publicItem?.configuration_secret_fields).toBeNull();
+      expect(publicItem?.configuration_state).toEqual({
+        appToken: "legacy-token",
+      });
+    });
   });
 
   describe("create", () => {

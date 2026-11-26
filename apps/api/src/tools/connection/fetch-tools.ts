@@ -10,6 +10,7 @@ import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { secretFieldsFromStateSchema } from "@decocms/shared/sdk";
 import { getSettings } from "../../settings";
 import {
   createNoRedirectFetch,
@@ -40,6 +41,8 @@ export interface ConnectionForToolFetch {
 export interface FetchedMCPData {
   tools: ToolDefinition[] | null;
   scopes: string[] | null;
+  /** Null when MCP_CONFIGURATION is missing or failed: callers keep what they stored. */
+  secretFields?: string[] | null;
 }
 
 /**
@@ -152,17 +155,11 @@ function mapListedTools(
 }
 
 /**
- * Try to fetch configuration scopes from the MCP_CONFIGURATION tool.
- * Returns null if the tool is not implemented, the call fails, or the
- * response doesn't actually hold an array of scope strings — a downstream
- * MCP server is untrusted input, and every scope here later hits
- * `scope.split("::")` in parseScope, so a non-string element would otherwise
- * crash connection create/update with an unhandled TypeError instead of
- * failing closed.
+ * Scopes and secret fields from MCP_CONFIGURATION (null when it fails); non-string scopes are dropped because parseScope splits them.
  */
-export async function fetchScopesFromMCP(
+export async function fetchConfigurationFromMCP(
   client: Client,
-): Promise<string[] | null> {
+): Promise<{ scopes: string[] | null; secretFields: string[] | null }> {
   try {
     const configResult = await withTimeout(
       client.callTool({ name: "MCP_CONFIGURATION", arguments: {} }),
@@ -175,19 +172,22 @@ export async function fetchScopesFromMCP(
       );
       if (textContent && "text" in textContent) {
         const config = JSON.parse(String(textContent.text));
-        if (
-          Array.isArray(config.scopes) &&
+        const scopes =
+          Array.isArray(config?.scopes) &&
           config.scopes.length > 0 &&
           config.scopes.every((scope: unknown) => typeof scope === "string")
-        ) {
-          return config.scopes as string[];
-        }
+            ? (config.scopes as string[])
+            : null;
+        return {
+          scopes,
+          secretFields: secretFieldsFromStateSchema(config?.stateSchema),
+        };
       }
     }
   } catch {
     // MCP_CONFIGURATION not implemented or failed — not all MCPs support it
   }
-  return null;
+  return { scopes: null, secretFields: null };
 }
 
 /**
@@ -251,9 +251,9 @@ async function fetchToolsFromRemoteMCP(
       relaxOutputSchema: true,
     });
 
-    const scopes = await fetchScopesFromMCP(client);
+    const { scopes, secretFields } = await fetchConfigurationFromMCP(client);
 
-    return { tools, scopes };
+    return { tools, scopes, secretFields };
   } catch (error) {
     console.error(
       `Failed to fetch tools from ${options.label} connection ${connection.id}:`,
@@ -363,9 +363,9 @@ async function fetchToolsFromStdioMCP(
       relaxOutputSchema: false,
     });
 
-    const scopes = await fetchScopesFromMCP(client);
+    const { scopes, secretFields } = await fetchConfigurationFromMCP(client);
 
-    return { tools, scopes };
+    return { tools, scopes, secretFields };
   } catch (error) {
     console.error(
       `Failed to fetch tools from STDIO connection ${connection.id}:`,
