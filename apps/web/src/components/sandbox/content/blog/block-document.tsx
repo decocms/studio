@@ -15,12 +15,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { useT } from "@/i18n/use-t.ts";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import {
+  blockComponentName,
   type BlogBlockType,
   customBlogSectionPaths,
   discoverBlogBlockTypes,
@@ -34,10 +36,6 @@ import {
   uid,
   type BlockItem,
 } from "./block-items";
-
-export function asBlocks(value: unknown): RawBlock[] {
-  return Array.isArray(value) ? (value as RawBlock[]) : [];
-}
 
 /**
  * A slim insert affordance in the gap between two blocks: invisible until the
@@ -83,6 +81,9 @@ export function BlockDocument({
   previewBaseUrl,
   onSaveReferencedBlock,
   emptyMessage = "No content yet. Add your first block below.",
+  allowBlocks,
+  dense = false,
+  addLabel,
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
@@ -99,13 +100,24 @@ export function BlockDocument({
   /** Where the generic editor persists edits to a field pointing at a saved block. */
   onSaveReferencedBlock?: ReferencedBlockSaveFn;
   emptyMessage?: string;
+  /** Component names the pickers are limited to. Unset offers every blog block. */
+  allowBlocks?: readonly string[];
+  /** A document nested in another block: narrow rows and a quiet add button. */
+  dense?: boolean;
+  /** What the add button says, when "Add block" would not tell documents apart. */
+  addLabel?: string;
 }) {
   const t = useT();
   const hideDefaults = useHideDefaultBlogBlocks();
-  const blockTypes = discoverBlogBlockTypes(meta, {
+  const discovered = discoverBlogBlockTypes(meta, {
     hideDefaults,
     customPaths: decofile ? customBlogSectionPaths(decofile) : [],
   });
+  const blockTypes = allowBlocks
+    ? discovered.filter((type) =>
+        allowBlocks.includes(blockComponentName(type.resolveType)),
+      )
+    : discovered;
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     seedBlockItems(value),
@@ -176,7 +188,7 @@ export function BlockDocument({
   };
 
   return (
-    <div className="mt-2">
+    <div className={cn(!dense && "mt-2")}>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -200,13 +212,14 @@ export function BlockDocument({
                 sandboxRef={sandboxRef}
                 previewBaseUrl={previewBaseUrl}
                 onSaveReferencedBlock={onSaveReferencedBlock}
+                dense={dense}
               />
             </div>
           ))}
         </SortableContext>
       </DndContext>
 
-      {blocks.length === 0 && (
+      {blocks.length === 0 && emptyMessage && (
         <p className="px-3 pb-1 pt-2 text-sm text-muted-foreground">
           {emptyMessage}
         </p>
@@ -218,10 +231,15 @@ export function BlockDocument({
       >
         <button
           type="button"
-          className="mt-1 flex w-full items-center gap-2 rounded-md py-2 pl-14 pr-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+          className={cn(
+            "flex cursor-pointer items-center rounded-md text-muted-foreground transition-colors hover:text-foreground",
+            dense
+              ? "ml-6 gap-1.5 py-1 text-xs"
+              : "mt-1 w-full gap-2 py-2 pl-14 pr-2 text-sm hover:bg-accent",
+          )}
         >
-          <Plus size={16} />
-          {t("sandbox.blockDocument.addBlock")}
+          <Plus size={dense ? 13 : 16} />
+          {addLabel ?? t("sandbox.blockDocument.addBlock")}
         </button>
       </BlockPicker>
     </div>

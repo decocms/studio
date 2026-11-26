@@ -1,5 +1,10 @@
 import { type RawBlock } from "./blocks/block-registry";
 
+/** Read a stored section list, tolerating a missing or malformed value. */
+export function asBlocks(value: unknown): RawBlock[] {
+  return Array.isArray(value) ? (value as RawBlock[]) : [];
+}
+
 /**
  * A block plus a stable client-side id. The id keys the dnd-kit sortable rows
  * and the React list; it is never persisted (the caller owns only the block).

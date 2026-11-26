@@ -94,6 +94,11 @@ export default defineConfig({
             find: /^.*\/use-blocks-v8-project$/,
             replacement: stub("use-blocks-v8-project.ts"),
           },
+          // The blog block document reads an org flag via useProjectContext(): off here.
+          {
+            find: /^@\/hooks\/use-hide-default-blog-blocks$/,
+            replacement: stub("use-hide-default-blog-blocks.ts"),
+          },
           // Editor uploads PUT to the org filesystem via useProjectContext(), which a bare mount lacks.
           {
             find: /^@\/components\/markdown-editor\/use-file-upload$/,

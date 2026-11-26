@@ -1104,6 +1104,11 @@ const KNOWN_BLOG_BLOCK_CATALOG: Record<
     description: "Horizontal divider",
     iconName: "Divider",
   },
+  FAQ: {
+    title: "FAQ",
+    description: "Expandable questions and answers",
+    iconName: "MessageQuestionSquare",
+  },
   Cta: {
     title: "Call to action",
     description: "Button linking to a URL",

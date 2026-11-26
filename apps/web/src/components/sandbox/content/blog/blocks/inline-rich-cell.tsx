@@ -3,19 +3,13 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
+import {
+  EDITOR_LINK_CLASS,
+  EDITOR_PLACEHOLDER_CLASS,
+} from "@/components/sections-editor/editor-classes";
 import { toInlineHtml } from "@/components/sections-editor/inline-html";
 import type { LinkSource } from "@/components/sections-editor/rich-text-link-control";
 import { InlineMarksToolbar } from "./marks-toolbar";
-
-/** Placeholder only sets `data-placeholder`; no global ProseMirror stylesheet renders it. */
-const PLACEHOLDER_CLASS = [
-  "[&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
-  "[&_p.is-editor-empty:first-child::before]:text-muted-foreground/40",
-  "[&_p.is-editor-empty:first-child::before]:float-left",
-  "[&_p.is-editor-empty:first-child::before]:h-0",
-  "[&_p.is-editor-empty:first-child::before]:pointer-events-none",
-].join(" ");
 
 /**
  * A single cell of inline rich text, stored as inline HTML with no block
@@ -69,7 +63,7 @@ export function InlineRichCell({
         class: cn(
           "focus:outline-none",
           EDITOR_LINK_CLASS,
-          PLACEHOLDER_CLASS,
+          EDITOR_PLACEHOLDER_CLASS,
           className,
         ),
       },

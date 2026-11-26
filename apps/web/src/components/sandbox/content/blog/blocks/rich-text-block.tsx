@@ -8,7 +8,10 @@ import {
   RichTextLinkControl,
   ToolbarButton,
 } from "@/components/sections-editor/rich-text-link-control";
-import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
+import {
+  EDITOR_LINK_CLASS,
+  EDITOR_PLACEHOLDER_CLASS,
+} from "@/components/sections-editor/editor-classes";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { useLinkSources } from "./link-pickers";
 
@@ -69,6 +72,7 @@ export function RichTextBlock({
           "prose prose-sm dark:prose-invert max-w-none focus:outline-none",
           "leading-relaxed [&_p]:my-0",
           EDITOR_LINK_CLASS,
+          EDITOR_PLACEHOLDER_CLASS,
         ),
       },
     },

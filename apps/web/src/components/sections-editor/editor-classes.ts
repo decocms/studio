@@ -14,6 +14,18 @@ export const EDITOR_LINK_CLASS =
   "[&_a]:underline-offset-2 [&_a]:rounded-sm [&_a]:bg-primary/5 [&_a]:px-0.5";
 
 /**
+ * The Placeholder extension only sets `data-placeholder` on an empty paragraph.
+ * No stylesheet draws it, so an editor that wants the hint spells it out here.
+ */
+export const EDITOR_PLACEHOLDER_CLASS = [
+  "[&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
+  "[&_p.is-editor-empty:first-child::before]:text-muted-foreground/40",
+  "[&_p.is-editor-empty:first-child::before]:float-left",
+  "[&_p.is-editor-empty:first-child::before]:h-0",
+  "[&_p.is-editor-empty:first-child::before]:pointer-events-none",
+].join(" ");
+
+/**
  * Block structure an author picks from the toolbar — heading levels, lists,
  * quotes. Tailwind's preflight renders `h2` and `ul` like a paragraph, so
  * without these a "Título 2" looks identical to the text around it.

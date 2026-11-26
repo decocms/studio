@@ -30,6 +30,7 @@ export function BlockRow({
   sandboxRef,
   previewBaseUrl,
   onSaveReferencedBlock,
+  dense = false,
 }: {
   id: string;
   block: RawBlock;
@@ -41,6 +42,8 @@ export function BlockRow({
   sandboxRef?: SandboxConfig | null;
   previewBaseUrl?: string | null;
   onSaveReferencedBlock?: ReferencedBlockSaveFn;
+  /** A row of a document nested in another block: a narrow gutter, no hover fill. */
+  dense?: boolean;
 }) {
   const t = useT();
   const {
@@ -60,20 +63,30 @@ export function BlockRow({
         transition,
       }}
       className={cn(
-        "group/row relative rounded-md py-1.5 pl-12 pr-2 transition-colors hover:bg-accent",
+        "relative rounded-md [&:hover>[data-row-control]]:opacity-100",
+        dense
+          ? "py-0.5 pl-6 pr-1"
+          : "py-1.5 pl-12 pr-2 transition-colors hover:bg-accent",
         isDragging && "opacity-50",
       )}
     >
       <button
         type="button"
         aria-label={t("sandbox.blockRow.dragToReorder")}
-        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100 rounded-lg"
+        data-row-control
+        className={cn(
+          "absolute flex cursor-grab items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing",
+          dense ? "left-0 top-0.5 h-5 w-5" : "left-1 top-1.5 h-6 w-6",
+        )}
         {...attributes}
         {...listeners}
       >
         <DotsGrid size={14} />
       </button>
-      <div className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity group-hover/row:opacity-100">
+      <div
+        data-row-control
+        className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity"
+      >
         <Button
           variant="ghost"
           size="icon-xs"

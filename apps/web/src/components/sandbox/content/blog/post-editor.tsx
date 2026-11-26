@@ -74,7 +74,8 @@ import {
 import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { asBlocks, BlockDocument } from "./block-document";
+import { BlockDocument } from "./block-document";
+import { asBlocks } from "./block-items";
 import { LegacyContentEditor } from "./legacy-content/legacy-content-editor";
 import {
   AddButton,
