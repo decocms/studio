@@ -1,15 +1,8 @@
 /**
- * Os tipos de página que o diagnóstico analisa. Até 16/11 era só a PDP; agora
- * o mesmo motor (dados → oportunidades → hipóteses → verificação → dossiê)
- * roda em cada tipo, e "o site inteiro" é um de cada ao mesmo tempo.
- *
- * Tudo o que muda de uma página pra outra mora aqui: o que dizer ao modelo,
- * as partes que a captura mede, as áreas onde a oportunidade pode cair, a
- * métrica que o teste acompanha e o que fica de guardrail. O resto do código
- * pergunta ao `PAGE_TYPES[tipo]` em vez de escrever "PDP".
- *
- * Carrinho e checkout são da VTEX (fora do site deco): sem heatmap, sem print
- * e sem benchmark — o diagnóstico deles é só funil do GA4 + conhecimento.
+ * The page types the diagnosis analyzes. Everything that varies per page lives
+ * here (prompt wording, captured parts, areas, test metric, guardrails), so the
+ * rest of the code asks `PAGE_TYPES[type]` instead of hardcoding "PDP".
+ * Cart and checkout belong to VTEX: no heatmap, screenshot or benchmark.
  */
 
 import type { UxMetricKey } from "./metrics.ts";
@@ -17,25 +10,25 @@ import type { UxArea, UxPageType, UxPart } from "./types.ts";
 
 export interface PageTypeSpec {
   key: UxPageType;
-  /** Nome na tela ("Categoria"). */
+  /** Display name ("Categoria"). */
   label: string;
-  /** Nome no meio da frase ("a categoria", "a PDP"). */
+  /** Name inside a sentence ("a categoria", "a PDP"). */
   noun: string;
-  /** O que é a página, pro prompt. */
+  /** What the page is, for the prompt. */
   description: string;
-  /** As partes desta página, na ordem em que aparecem (e `pagina_geral`). */
+  /** This page's parts, in the order they appear (and `pagina_geral`). */
   areas: UxArea[];
-  /** Partes que a captura mede nesta página → como dizer em texto. */
+  /** Parts the capture measures on this page → how to say them in text. */
   parts: Partial<Record<UxPart, string>>;
-  /** Sem captura, heatmap nem benchmark: só funil do GA4 e conhecimento. */
+  /** No capture, heatmap or benchmark: only the GA4 funnel and knowledge. */
   dataOnly: boolean;
-  /** A etapa que o teste acompanha quando a hipótese não diz outra. */
+  /** The stage the test tracks when the hypothesis names no other. */
   defaultMetric: UxMetricKey;
-  /** "A home como está hoje" — o controle do teste. */
+  /** "The home as it is today": the test control. */
   control: string;
-  /** O que não pode piorar num teste desta página, além do de sempre. */
+  /** What must not get worse in a test of this page, besides the usual. */
   guardrails: string[];
-  /** Dica do que olhar, pro passo 4 do método do prompt. */
+  /** Hint on what to look at, for step 4 of the prompt's method. */
   focus: string;
 }
 
@@ -181,22 +174,19 @@ export const PAGE_TYPES: Record<UxPageType, PageTypeSpec> = {
 const isPageType = (v: unknown): v is UxPageType =>
   typeof v === "string" && Object.hasOwn(PAGE_TYPES, v);
 
-/** Tipo de página de um valor qualquer (linha antiga sem valor = PDP). */
+/** Page type of any value (an old row with no value = PDP). */
 export const asPageType = (v: unknown): UxPageType =>
   isPageType(v) ? v : "pdp";
 
 export const pageSpec = (t: UxPageType | null | undefined): PageTypeSpec =>
   PAGE_TYPES[asPageType(t)];
 
-/**
- * Todas as partes de todos os tipos → texto. Parte que aparece em mais de um
- * tipo (filtro, 1º card) fica com o texto do primeiro na ordem.
- */
+/** All parts of all types → text; a part in several types keeps the first one's text. */
 export const PART_WORD: Record<UxPart, string> = Object.assign(
   {},
   ...[...PAGE_TYPE_ORDER].reverse().map((t) => PAGE_TYPES[t].parts),
 ) as Record<UxPart, string>;
 
-/** Texto da parte nesta página (o 1º card da busca é "primeiro resultado"). */
+/** Text of the part on this page (the search's 1st card is "primeiro resultado"). */
 export const partWord = (t: UxPageType, part: UxPart): string =>
   pageSpec(t).parts[part] ?? PART_WORD[part] ?? part;

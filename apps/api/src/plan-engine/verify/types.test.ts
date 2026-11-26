@@ -51,10 +51,10 @@ const v: HypothesisVerification = {
 };
 
 describe("verification codec", () => {
-  test("ida e volta devolve o mesmo objeto", () => {
+  test("round trip returns the same object", () => {
     expect(decodeVerification(encodeVerification(v))).toEqual(v);
   });
-  test("base_confidence vai e volta; ausente ou inválida some", () => {
+  test("base_confidence round-trips; absent or invalid disappears", () => {
     const withBase = { ...v, base_confidence: 0.5 };
     expect(decodeVerification(encodeVerification(withBase))).toEqual(withBase);
     expect(decodeVerification(encodeVerification(v))?.base_confidence).toBe(
@@ -64,10 +64,10 @@ describe("verification codec", () => {
       decodeVerification(JSON.stringify({ ...v, base_confidence: "alta" })),
     ).toEqual(v);
   });
-  test("encode de null é null", () => {
+  test("encode of null is null", () => {
     expect(encodeVerification(null)).toBeNull();
   });
-  test("JSON inválido, null e veredito desconhecido viram null", () => {
+  test("invalid JSON, null and an unknown verdict become null", () => {
     expect(decodeVerification("{")).toBeNull();
     expect(decodeVerification(null)).toBeNull();
     expect(decodeVerification('{"verdict":"talvez"}')).toBeNull();

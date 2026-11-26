@@ -1,10 +1,8 @@
 /**
- * Conhecimento geral de conversão, curado à mão. Vale pras duas lojas e muda
- * por PR, não em tempo de execução: o modelo nunca escreve aqui.
- *
- * Regra de entrada: cada número foi conferido no texto da fonte (15/11/2026),
- * e a entrada diz o que a fonte NÃO prova. Fonte que não deu pra conferir não
- * entra (ex.: "53% abandonam se demora 3 s", que circula sem o texto original).
+ * Hand-curated general conversion knowledge. It changes by PR, not at runtime:
+ * the model never writes here. Every number was checked against the source
+ * text, and each entry states what the source does NOT prove; sources that
+ * could not be checked do not get in.
  */
 
 import { EXISTING_TRECHOS, SITE_ENTRIES } from "./curated-site.ts";
@@ -22,11 +20,11 @@ type Curated = Omit<
   | "trecho"
 >;
 
-/** Entrada curada com o trecho literal da fonte (obrigatório desde 16/11). */
+/** A curated entry with the source's literal excerpt (required). */
 export type CuratedInput = Curated & { trecho: string };
 
 const CURATED_AT = "2026-11-15T00:00:00Z";
-/** As do site inteiro (curated-site.ts) entraram em 16/11. */
+/** The whole-site ones (curated-site.ts). */
 const SITE_CURATED_AT = "2026-11-16T00:00:00Z";
 
 const ENTRIES: Curated[] = [

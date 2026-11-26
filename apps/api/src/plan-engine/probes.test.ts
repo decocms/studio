@@ -26,9 +26,7 @@ const capture = (
   ...over,
 });
 
-// A PDP de uma loja em 19/11, medida pela sonda num Chrome local
-// (scripts/ux-page-probe.ts --overlays): o pop-up de cadastro abre no
-// primeiro movimento do mouse, com película na tela inteira.
+// A PDP measured by the probe in a local Chrome (scripts/ux-page-probe.ts --overlays): the signup pop-up opens on the first mouse move, with a full-screen overlay.
 const probeMobile: ProbeResult = {
   kind: "camadas",
   device: "mobile",
@@ -61,7 +59,7 @@ const probeDesktop: ProbeResult = {
   },
 };
 
-describe("fatos das sondas", () => {
+describe("probe facts", () => {
   const facts = buildFacts(
     makeEvidence({
       captures: [capture("mobile"), capture("desktop")],
@@ -90,7 +88,7 @@ describe("fatos das sondas", () => {
   );
   const probe = facts.filter((f) => f.kind === "interacao");
 
-  test("o pop-up vira fato medido, com área à vista, película e bloqueio", () => {
+  test("the pop-up becomes a measured fact, with visible area, overlay and blocking", () => {
     const [layer] = probe;
     expect(layer!.measured).toBe(true);
     expect(layer!.device).toBe("mobile");
@@ -99,7 +97,7 @@ describe("fatos das sondas", () => {
     );
   });
 
-  test("parte coberta (ou não) pela camada vira fato; fora da 1ª tela, não", () => {
+  test("a part covered (or not) by the layer becomes a fact; outside the first screen, it does not", () => {
     const texts = probe.map((f) => f.text);
     expect(texts).toContain(
       "preço: COBERTO por uma camada fixa ao abrir a página",
@@ -107,7 +105,7 @@ describe("fatos das sondas", () => {
     expect(texts.filter((t) => t.startsWith("preço:"))).toHaveLength(1);
   });
 
-  test("o toque e a sonda que falhou também viram fato, com o motivo", () => {
+  test("the touch and the failed probe also become facts, with the reason", () => {
     const texts = probe.map((f) => f.text);
     expect(texts).toContain(
       'tocar em button "Next item" (y=40px): observe_click: nada mudou: mesma URL, sem diálogo',
@@ -115,7 +113,7 @@ describe("fatos das sondas", () => {
     expect(texts).toContain("a sonda de camadas não rodou: timeout");
   });
 
-  test("a camada que muda entre as telas é observação da perda de dispositivo", () => {
+  test("a layer that changes between screens is an observation of the device loss", () => {
     const [first] = contrastObservations(facts);
     expect(first!.text).toBe(
       "ao abrir a página sem fechar nada: no celular, uma camada fixa cobre 61,2% da 1ª tela; no computador, uma camada fixa cobre 14,4% da 1ª tela",
@@ -124,7 +122,7 @@ describe("fatos das sondas", () => {
   });
 });
 
-describe("o que tocar", () => {
+describe("what to touch", () => {
   const behaviour = (elements: DevicePdpBehaviour["elements"]) =>
     ({
       ...makeEvidence().pdp_behaviour[0],
@@ -140,7 +138,7 @@ describe("o que tocar", () => {
     funnel: null,
   });
 
-  test("só clicável com muito morto, achado, que não navega nem está escondido", () => {
+  test("only clickable with many dead clicks, found, not navigating or hidden", () => {
     const c = capture("mobile", {
       element_labels: {
         "Product|1": { label: 'button "Next"', y: 40 },
@@ -171,7 +169,7 @@ describe("o que tocar", () => {
     ]);
   });
 
-  test("a captura de cada tela é a da página de sempre, não a de falta", () => {
+  test("each screen's capture is the usual page, not the missing state", () => {
     const out = primaryCaptures(
       makeEvidence({
         captures: [

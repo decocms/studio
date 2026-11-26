@@ -1,22 +1,6 @@
 /**
- * As oportunidades, em código: cada uma é uma perda medida COM comparação
- * (losses.ts), sem nenhum modelo no caminho.
- *
- * Até 19/11 um modelo escolhia a perda e escrevia "observações", resumo,
- * área e confiança. A observação vinha interpretada ("a seta… parece não
- * responder", PDP de uma loja de moda, 16/11) e o prompt das hipóteses mandava cada uma
- * virar hipótese. O resumo enquadrava as hipóteses, a área decidia a base de
- * conhecimento antes de existir causa, e a confiança dele ordenava a tela.
- * Agora:
- * - a perda só entra com comparação (celular x computador, segmento x resto).
- *   "No computador, 74% não põem no carrinho" não diz se isso é muito;
- * - a mistura de público (canal, nova × recorrente) é descontada do gap: o
- *   que sobra (o resíduo) é o que a página precisa explicar. Resíduo abaixo
- *   de MIN_RESIDUAL_PP: a perda é do tráfego e não vira oportunidade;
- * - as observações são o que MUDA entre as telas, lido dos fatos (facts.ts):
- *   posição na 1ª tela, fato da página, clique morto do mesmo elemento. É o
- *   que se vê, com o id do fato; a causa é trabalho da hipótese;
- * - a ordem é dinheiro do resíduo × confiabilidade dos dados.
+ * Opportunities, in code: each is a loss measured WITH a comparison (losses.ts),
+ * ranked by residual money × data reliability. No model in the path.
  */
 
 import { sourceLabel } from "./claims.ts";
@@ -35,42 +19,31 @@ import type {
   UxSourceRef,
 } from "./types.ts";
 
-/** Quantas oportunidades vão pra tela (as demais viram reserva). */
+/** How many opportunities go to the screen (the rest become reserves). */
 const MAX_OPPORTUNITIES = 2;
 
-/** Quantas observações por oportunidade. */
+/** How many observations per opportunity. */
 const MAX_OBSERVATIONS = 4;
 
-/**
- * Abaixo disso (pp), o que sobra do gap entre as telas depois de descontar a
- * mistura de público não é da página: a perda é do tráfego.
- */
+/** Below this (pp), the gap left after discounting the audience mix is the traffic's, not the page's. */
 export const MIN_RESIDUAL_PP = 1;
 
-/**
- * O lado que perde converte no máximo isto do outro pra ser oportunidade de
- * dispositivo (a mesma régua do segmento, SEGMENT_MAX_RATIO). Com amostra de
- * centenas de milhares, 49,4% x 51,3% fica fora do ruído e não é problema de
- * tela nenhuma (categoria e busca de uma loja de moda, 16/11, no replay de 19/11).
- */
+/** The losing side must convert at most this share of the other to count as a device loss. */
 const DEVICE_MAX_RATIO = 0.9;
 
-/** O valor da oportunidade é por este tanto de pp (o teto é o resíduo inteiro). */
+/** The opportunity value is per this many pp (the cap is the whole residual). */
 const VALUE_STEP_PP = 1;
 
-/** Diferença de cobertura (pp) das camadas sobre a 1ª tela entre as telas que conta. */
+/** Coverage difference (pp) of the layers over the first screen between screens that counts. */
 const LAYER_GAP_PP = 20;
 
-/** Diferença de clique morto (pp) do mesmo elemento entre as telas que conta. */
+/** Dead-click difference (pp) of the same element between screens that counts. */
 const DEAD_GAP_PP = 20;
 
 export interface OpportunitiesResult {
   summary: DiagnosisSummary;
   opportunities: OpportunityDraft[];
-  /**
-   * As que ficaram de fora só por valor, na ordem de valor. Entram no lugar
-   * de uma escolhida cujas hipóteses caem todas.
-   */
+  /** Left out by value alone; they replace a chosen opportunity whose hypotheses all fall. */
   reserves: OpportunityDraft[];
 }
 
@@ -87,20 +60,16 @@ const pctWord = (r: number) =>
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 export interface LossResidual {
-  /** A perda inteira em pp. */
+  /** The whole loss in pp. */
   gap_pp: number;
-  /** O que sobra pra página explicar, em pp. */
+  /** What is left for the page to explain, in pp. */
   residual_pp: number;
-  /** A dimensão de público que mais explica o gap, e quanto (0–1). */
+  /** The audience dimension that best explains the gap, and how much (0-1). */
   mix: { dim: "canal" | "visitante"; share: number } | null;
   drilldown: Drilldown | null;
 }
 
-/**
- * Quanto da perda sobra pra página depois de descontar a mistura de público.
- * Só a perda de dispositivo tem mistura a descontar: a de segmento já é o
- * público. Exportado pra teste.
- */
+/** Share of the loss left for the page after discounting the audience mix (device losses only). Exported for tests. */
 export function lossResidual(
   loss: MeasuredLoss,
   evidence: DiagnosisEvidence,
@@ -123,16 +92,11 @@ export function lossResidual(
   };
 }
 
-/** Página capturada que mostra o estado de falta (não a página de sempre). */
+/** A captured page that shows the missing state (not the usual page). */
 const isShortageGroup = (group: string) =>
   /GRADE QUEBRADA|ESGOTADO/.test(group);
 
-/**
- * O que muda entre as telas, lido dos fatos: a mesma parte numa tela dentro
- * da 1ª tela e na outra fora; o mesmo fato da página com valor diferente; o
- * mesmo elemento com clique morto muito diferente. Só a primeira captura de
- * cada tela que não está em falta. Exportado pra teste.
- */
+/** What differs between screens (part position, page fact, dead click), from the facts. Exported for tests. */
 export function contrastObservations(facts: UxFact[]): UxObservation[] {
   const firstGroup = (device: UxDevice) =>
     facts.find(
@@ -147,7 +111,7 @@ export function contrastObservations(facts: UxFact[]): UxObservation[] {
   };
   const out: UxObservation[] = [];
 
-  // Página real: posição e fatos da página, pela parte antes do ":".
+  // Real page: position and page facts, from the part before the ":".
   if (groups.mobile && groups.desktop) {
     const byLabel = (device: UxDevice) => {
       const m = new Map<string, UxFact>();
@@ -182,7 +146,7 @@ export function contrastObservations(facts: UxFact[]): UxObservation[] {
     }
   }
 
-  // Elementos com o mesmo rótulo nas duas telas e clique morto bem diferente.
+  // Elements with the same label on both screens and a very different dead click.
   const elements = (device: UxDevice) => {
     const m = new Map<string, { fact: UxFact; dead: number }>();
     for (const f of facts) {
@@ -205,7 +169,7 @@ export function contrastObservations(facts: UxFact[]): UxObservation[] {
       facts: [m.fact.id, d.fact.id],
     });
   }
-  // Camadas sobre a 1ª tela (sonda): a maior de cada tela, ou "nenhuma".
+  // Layers over the first screen (probe): the largest of each screen, or "none".
   const layer = (device: UxDevice) => {
     let best: { fact: UxFact; pct: number } | null = null;
     for (const f of facts) {
@@ -236,7 +200,7 @@ export function contrastObservations(facts: UxFact[]): UxObservation[] {
   return out.slice(0, MAX_OBSERVATIONS);
 }
 
-/** A perda medida como o primeiro número do "baseado em". */
+/** The measured loss as the first number of the "based on" text. */
 function lossSource(loss: MeasuredLoss): UxSourceRef {
   const m = loss.measured;
   const value = loss.premise
@@ -253,7 +217,7 @@ function lossSource(loss: MeasuredLoss): UxSourceRef {
   };
 }
 
-/** O resumo da oportunidade, em código: a perda, a mistura e o que sobra. */
+/** The opportunity summary, in code: the loss, the mix and what is left. */
 function lossSummary(loss: MeasuredLoss, r: LossResidual): string {
   if (loss.control === "segmento" && loss.premise) {
     const name = SEGMENT_WORD[loss.premise.key] ?? loss.premise.key;
@@ -268,7 +232,7 @@ function lossSummary(loss: MeasuredLoss, r: LossResidual): string {
 
 const RELIABILITY_WEIGHT = { alta: 0.8, media: 0.6, baixa: 0.3 };
 
-/** A mesma etapa (a da PDP no GA4 e no Deco Analytics é uma só). */
+/** The same stage (the PDP stage in GA4 and Deco Analytics is a single one). */
 const SAME_STEP: UxMetricKey[][] = [
   ["produto_carrinho", "pdp_carrinho"],
   ["pagina_produto", "lista_produto"],
@@ -284,10 +248,9 @@ interface Ranked {
 }
 
 /**
- * As perdas → oportunidades: só as com comparação, com o resíduo, as
- * observações de contraste, a conta e a confiabilidade. As 2 de maior valor
- * vão pra tela, sem duas da mesma etapa no mesmo dispositivo; o resto vira
- * reserva. Tudo que fica de fora vira limite, com o motivo.
+ * Losses → opportunities: only those with a comparison. The 2 of highest value
+ * go to the screen (never two of the same stage and device); the rest become
+ * reserves or limits, with the reason.
  */
 export function opportunitiesFromLosses(
   evidence: DiagnosisEvidence,
@@ -344,8 +307,7 @@ export function opportunitiesFromLosses(
       window_days: loss.measured.window_days,
       step: loss.measured.label,
       deviceWord,
-      // A régua é 1 pp: quanto vale cada ponto. Quanto a mudança fecha é
-      // da hipótese (efeito esperado), não da perda; o teto é o resíduo.
+      // The ruler is 1 pp; the effect the change closes belongs to the hypothesis.
       delta_pp: Math.min(VALUE_STEP_PP, r.residual_pp),
       gap_pp: r.residual_pp,
       purchase: purchaseRateAfter(evidence, loss.measured.key, loss.device),
@@ -368,7 +330,7 @@ export function opportunitiesFromLosses(
       drilldown: r.drilldown,
       observations: loss.control === "dispositivo" ? observations : [],
     };
-    // Dado que não se sustenta vai pro fim; sem conta, atrás das com conta.
+    // Unsupported data goes last; without a calculation, behind those with one.
     const score =
       reliability.level === "baixa"
         ? -2 + confidence
@@ -391,8 +353,7 @@ export function opportunitiesFromLosses(
       reserves.push(c);
     }
   }
-  // As da mesma etapa entram como reserva no fim: se a escolhida cair, a
-  // outra leitura da mesma perda ainda pode explicar.
+  // Same-stage losses go last as reserves, in case the chosen one falls.
   const opportunities = picked.map((c, i) => ({ ...c.draft, rank: i + 1 }));
 
   if (repeated.length > 0) {
@@ -443,7 +404,7 @@ export function opportunitiesFromLosses(
 const brl = (v: number) =>
   `R$ ${Math.round(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
 
-/** A manchete, em código: as perdas escolhidas e quanto valem. */
+/** The headline, in code: the chosen losses and what they are worth. */
 function headline(opportunities: OpportunityDraft[], _pdp: boolean): string {
   if (opportunities.length === 0) {
     return "Nenhuma perda com comparação nesta página: nem celular x computador nem um público fica fora do ruído (ou o tráfego explica a diferença).";

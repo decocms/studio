@@ -8,7 +8,7 @@ import {
 import type { DevicePdpBehaviour, PageCapture } from "./types.ts";
 
 describe("foldNote", () => {
-  test("diz se a parte está na 1ª tela, pela altura da tela", () => {
+  test("says whether the part is on the 1st screen, by screen height", () => {
     expect(foldNote(699, 844)).toBe("699px (na 1ª tela, que vai até 844px)");
     expect(foldNote(1200, 844)).toBe(
       "1200px (abaixo da 1ª tela: 356px de rolagem)",
@@ -17,7 +17,7 @@ describe("foldNote", () => {
   });
 });
 
-describe("tabela de elementos: o que o elemento faz (busca de uma loja de moda, 16/11)", () => {
+describe("element table: what the element does (a fashion store's search)", () => {
   const b = {
     device: "mobile",
     views: 307_883,
@@ -63,18 +63,18 @@ describe("tabela de elementos: o que o elemento faz (busca de uma loja de moda, 
     ],
   });
 
-  test("o envio diz pra onde leva e que o morto é a página demorando", () => {
+  test("the submit says where it leads and that the dead click is the page being slow", () => {
     const [submit, open] = elementsForPrompt(ev, b);
     expect(submit).toContain('button "Search term" → leva pra /buscar');
     expect(submit).toContain("escondido na carga");
     expect(submit).not.toContain("y=0");
     expect(submit).toContain("mortos 56.1% (troca de página");
-    // A lupa muda a própria página: o morto fica sem ressalva.
+    // The magnifier changes the page itself: the dead click carries no caveat.
     expect(open).toContain('label "open search" (y=40px)');
     expect(open).not.toContain("troca de página");
   });
 
-  test("describeElementLabel: elemento comum fica como era", () => {
+  test("describeElementLabel: a plain element stays as it was", () => {
     expect(describeElementLabel({ label: 'button "comprar"', y: 900 })).toBe(
       'button "comprar" (y=900px)',
     );

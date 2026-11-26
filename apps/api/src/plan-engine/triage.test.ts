@@ -18,7 +18,7 @@ const fact = (
   text,
 });
 
-// A PDP de uma loja de moda (16/11), reduzida.
+// A fashion store's PDP, reduced.
 const book = factIndex([
   fact("F1", "funil", "mobile", "add_to_cart: 9.9% de view_item"),
   fact("F2", "funil", "desktop", "add_to_cart: 25.8% de view_item"),
@@ -74,25 +74,25 @@ const input = (t: HypothesisTree, over: Record<string, unknown> = {}) => ({
 });
 
 describe("triage", () => {
-  test("a hipótese do tamanho, com fato da página e contraste real, passa", () => {
+  test("the size hypothesis, with a page fact and a real contrast, passes", () => {
     expect(
       triage(input(tree({ fatos_contraste: ["F3", "F4"] })), book),
     ).toBeNull();
   });
 
-  test("sem fato a favor cai", () => {
+  test("without a supporting fact it is dropped", () => {
     expect(triage(input(tree({ a_favor: [claim([])] })), book)).toContain(
       "nenhum fato a favor",
     );
   });
 
-  test("só número de funil é sintoma; tráfego pode", () => {
+  test("a funnel number alone is a symptom; traffic can be one", () => {
     const t = tree({ a_favor: [claim(["F1", "F2"])] });
     expect(triage(input(t), book)).toContain("sintoma");
     expect(triage(input({ ...t, category: "trafego" }), book)).toBeNull();
   });
 
-  test("sem fato de página no livro (checkout), funil basta", () => {
+  test("without a page fact in the book (checkout), the funnel is enough", () => {
     const funnelOnly = factIndex(
       [...book.values()].filter((f) => f.kind === "funil"),
     );
@@ -101,7 +101,7 @@ describe("triage", () => {
     ).toBeNull();
   });
 
-  test("contraste que é igual nas duas telas cai", () => {
+  test("a contrast that is the same on both screens is dropped", () => {
     expect(
       triage(
         input(
@@ -112,14 +112,14 @@ describe("triage", () => {
     ).toContain("igual nas duas telas (barra de compra fixa ao rolar: não)");
   });
 
-  test("mesma categoria, alvo e fatos de outra já aceita: repetida", () => {
+  test("same category, target and facts as one already accepted: repeated", () => {
     const t = tree();
     const key = triageKey(t);
     expect(key).toBe("ux|part:size_selector|F3");
     expect(triage(input(t), book, key ? [key] : [])).toContain("repete");
   });
 
-  test("'não responde' cai quando a sonda tocou e a página reagiu", () => {
+  test("'does not respond' is dropped when the probe touched and the page reacted", () => {
     const t = tree({
       causa: "as setas da galeria não respondem ao toque",
       a_favor: [claim(["F7"])],

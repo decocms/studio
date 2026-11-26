@@ -1,18 +1,8 @@
 /**
- * O ciclo de vida de uma hipótese — onde ela está entre "alguém pensou nisso"
- * e "pronta pra um A/B".
- *
- *   gerada → em_investigacao → condicao_confirmada → relevancia_avaliada
- *          → pronta_para_experimento
- *   saídas: refutada · inconclusiva · bloqueada · sem_relevancia
- *
- * O ponto do motor: CONDIÇÃO confirmada não é CAUSA confirmada. O verificador
- * mostra que o botão está abaixo da dobra; só um A/B mostra que isso derruba a
- * conversão. Por isso o nível causal é sempre "não testado" aqui.
- *
- * `status` (pending/approved/dismissed) continua sendo a decisão da pessoa; o
- * ciclo é onde a evidência chegou. Aprovar só vale depois da condição
- * confirmada (`canApprove`).
+ * A hypothesis's lifecycle, from generated to ready for an A/B. A confirmed
+ * CONDITION is not a confirmed CAUSE: only an A/B shows the latter, so the
+ * causal level is always "not tested" here. `status` stays the person's
+ * decision; the lifecycle is how far the evidence got.
  */
 
 import type { UxHypothesis, UxOpportunity } from "./types.ts";
@@ -47,7 +37,7 @@ export interface LifecycleEntry {
   reason: string;
 }
 
-/** De onde cada estado pode ir. "Verificar de novo" volta pra investigação. */
+/** Where each state can go. "Verify again" returns to investigation. */
 const NEXT: Record<Lifecycle, Lifecycle[]> = {
   gerada: ["em_investigacao", "refutada", "bloqueada"],
   em_investigacao: [
@@ -76,11 +66,7 @@ const NEXT: Record<Lifecycle, Lifecycle[]> = {
 const canMove = (from: Lifecycle, to: Lifecycle) =>
   from === to || NEXT[from].includes(to);
 
-/**
- * Leva a hipótese pra `to`, registrando o porquê. Transição que a tabela não
- * permite não muda nada (devolve null): um passo atrasado da Workflow não pode
- * desfazer o que já andou.
- */
+/** Moves the hypothesis to `to`; a transition the table forbids returns null, so a late Workflow step cannot undo progress. */
 export function advance(
   current: { lifecycle: Lifecycle; lifecycle_log: LifecycleEntry[] },
   to: Lifecycle,
@@ -96,11 +82,11 @@ export function advance(
   };
 }
 
-/** Runs que contam: o juiz não disse que medem outra coisa que não a causa. */
+/** Runs that count: the judge did not say they measure something other than the cause. */
 const counted = (runs: CheckRun[]) =>
   runs.filter((r) => r.measures_cause !== false);
 
-/** O estado que um veredito do verificador produz. */
+/** The state a verifier verdict produces. */
 export function lifecycleFromVerification(
   v: HypothesisVerification,
 ): Lifecycle {
@@ -113,14 +99,13 @@ export function lifecycleFromVerification(
       ? "condicao_confirmada"
       : "inconclusiva";
   }
-  // Nada rodou (sem navegador, sem repo, plano vazio): faltou acesso, não
-  // evidência.
+  // Nothing ran: access was missing, not evidence
   return v.runs.length === 0 || v.runs.every((r) => r.outcome === "nao_testou")
     ? "bloqueada"
     : "inconclusiva";
 }
 
-/** O estado de uma hipótese gravada antes do ciclo existir (lifecycle NULL). */
+/** The state of a hypothesis stored before the lifecycle existed. */
 export function lifecycleOf(
   h: Pick<UxHypothesis, "verification"> & { lifecycle?: Lifecycle | null },
 ): Lifecycle {
@@ -128,25 +113,22 @@ export function lifecycleOf(
   return h.verification ? lifecycleFromVerification(h.verification) : "gerada";
 }
 
-/** Estados em que a hipótese caiu de vez nesta rodada. */
+/** States where the hypothesis dropped for good in this round. */
 const isNegative = (s: Lifecycle) => s === "refutada" || s === "sem_relevancia";
 
-/** A condição já foi vista na página (ou nos dados). */
+/** The condition has already been seen on the page (or in the data). */
 const CONFIRMED: Lifecycle[] = [
   "condicao_confirmada",
   "relevancia_avaliada",
   "pronta_para_experimento",
 ];
 
-/**
- * Aprovar pra teste exige a hipótese pronta: condição confirmada, relevância
- * pelo menos média, teste mensurável e dados confiáveis (priority.ts).
- */
+/** Approving needs a ready hypothesis: confirmed condition, relevance at least medium, measurable test, reliable data. */
 const APPROVABLE: Lifecycle[] = ["pronta_para_experimento"];
 
 export const canApprove = (s: Lifecycle) => APPROVABLE.includes(s);
 
-// ── Os quatro níveis de validação ────────────────────────────────────────────
+// ── The four validation levels ───────────────────────────────────────────────
 
 export type LevelResult =
   | "confirmada"
@@ -156,13 +138,13 @@ export type LevelResult =
   | "nao_testada";
 
 export interface HypothesisValidation {
-  /** A condição existe? (página no ar, ou os dados pra hipótese de tráfego) */
+  /** Does the condition exist? */
   existencia: LevelResult;
-  /** Como está implementado? (código da loja) */
+  /** How is it implemented? (store code) */
   implementacao: LevelResult;
-  /** Importa pro problema? (relevance.ts, PR F) */
+  /** Does it matter for the problem? (relevance.ts) */
   relevancia: "alta" | "media" | "baixa" | "sem_relevancia" | "nao_avaliada";
-  /** Mudar isso muda a conversão? Só um A/B responde. */
+  /** Does changing it change conversion? Only an A/B answers. */
   causal: "nao_testado";
 }
 
@@ -193,7 +175,7 @@ export function validationOf(
   };
 }
 
-// ── Quando parar de investigar uma oportunidade ──────────────────────────────
+// ── When to stop investigating an opportunity ────────────────────────────────
 
 export type StopReason =
   | "achou_causa_candidata"
@@ -204,16 +186,12 @@ export type StopReason =
 
 export interface OpportunityOutcome {
   stop: StopReason;
-  /** Saiu da lista principal (nenhuma hipótese de pé); fica em "sem causa". */
+  /** Left the main list (no hypothesis standing); stays under "no cause". */
   retired: boolean;
   note: string;
 }
 
-/**
- * Por que a investigação desta oportunidade parou. O sistema não é obrigado a
- * achar uma causa: "evidências esgotadas" e "dados insuficientes" são
- * respostas, não falhas.
- */
+/** Why the investigation stopped. "Evidence exhausted" and "insufficient data" are answers, not failures. */
 export function stopReasonOf(
   opportunity: Pick<UxOpportunity, "reliability">,
   hypotheses: Array<
@@ -224,9 +202,7 @@ export function stopReasonOf(
   >,
 ): OpportunityOutcome {
   const states = hypotheses.map(lifecycleOf);
-  // "Confirmada" é a condição existir (o código não tem sticky), não a causa.
-  // Em 16/11 (categoria de uma loja de moda) a tela disse "achamos uma causa candidata" com
-  // o revisor respondendo que ela NÃO explica a perda.
+  // "Confirmed" means the condition exists, not that it explains the loss
   const confirmed = hypotheses.filter((_, i) => CONFIRMED.includes(states[i]!));
   if (confirmed.some((h) => h.review?.explica_o_gap !== "nao")) {
     return {

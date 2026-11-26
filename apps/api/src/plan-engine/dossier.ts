@@ -1,11 +1,8 @@
 /**
- * O dossiê de uma hipótese: o que se afirma, o que sustenta, o que contradiz,
- * até onde foi validado e o teste recomendado — com o tipo de cada afirmação.
- *
- * É o produto final da investigação: quem lê precisa ver de onde veio cada
- * conclusão e o que ainda falta. Função pura (markdown), usada pela tela
- * ("Copiar dossiê"), pela tool `get_ux_dossier` e pelo revisor independente,
- * que lê SÓ isto — não o raciocínio que gerou a hipótese.
+ * A hypothesis dossier: what is claimed, what supports it, what contradicts
+ * it, how far it was validated and the recommended test, with each claim's
+ * kind. Pure function (markdown) used by the screen, the `get_ux_dossier`
+ * tool and the independent reviewer, who reads ONLY this.
  */
 
 import { CLAIM_WORD } from "./claims.ts";
@@ -36,7 +33,7 @@ const pct = (v: number, digits = 1) =>
   `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: digits })}%`;
 const int = (v: number) => Math.round(v).toLocaleString("pt-BR");
 
-/** A conclusão, em uma frase, pelo estado — nunca afirma causa. */
+/** The conclusion, in one sentence, by state — never asserts a cause. */
 export function conclusionOf(
   h: Pick<UxHypothesis, "verification" | "lifecycle" | "experiment">,
 ): string {
@@ -60,11 +57,7 @@ export function conclusionOf(
   }
 }
 
-/**
- * "O gap se repete?" numa linha: o revisor só lê o dossiê, e sem isto ele
- * propunha "é o tráfego pago" como explicação mais simples quando os recortes
- * já mostravam o gap dentro de cada canal (numa loja, 15/11).
- */
+/** "Does the gap repeat?" in one line: the reviewer reads only the dossier, so it needs this to see the gap inside each channel. */
 function drilldownLine(o: UxOpportunity): string {
   const d = o.drilldown;
   if (!d) return "";
@@ -87,14 +80,11 @@ function drilldownLine(o: UxOpportunity): string {
 export function buildDossier(input: {
   hypothesis: UxHypothesis;
   opportunity: UxOpportunity | null;
-  /**
-   * O livro de fatos do diagnóstico: cada afirmação traz os dados que cita.
-   * O revisor independente lê o dado, não a frase do modelo sobre ele.
-   */
+  /** The diagnosis facts ledger: the reviewer reads the data, not the model's sentence about it. */
   facts?: UxFact[];
-  /** A revisão independente; ausente quando o dossiê é o que o revisor lê. */
+  /** The independent review; absent when the dossier is what the reviewer reads. */
   review?: HypothesisReview | null;
-  /** A meta da rodada, como contexto. Ausente = o dossiê de sempre. */
+  /** The round's goal, as context. Absent = the usual dossier. */
   objective?: string | null;
 }): string {
   const { hypothesis: h, opportunity: o } = input;

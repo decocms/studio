@@ -1,15 +1,9 @@
 /**
- * Das evidências às hipóteses — o passo que a análise manual fazia na cabeça.
- *
- * O prompt carrega o MÉTODO dos relatórios (pdp-oportunidades e companhia),
- * não um gabarito de respostas: comparar mobile com desktop (mesma loja, outra
- * tela; o app é outro público), achar a etapa de maior perda, recortar por
- * dispositivo/seção/produto, olhar a página de verdade e o que os concorrentes
- * fazem, e escrever cada hipótese no formato fixo com a conta do dinheiro.
- *
- * O que o modelo NÃO decide: a aritmética (money.ts recalcula) e a ordem (rank
- * = valor × confiança, calculado aqui). Hipótese sem número na evidência ou sem
- * conta válida é descartada — e o descarte vira um "limite" na tela, não some.
+ * From evidence to hypotheses. The prompt carries the METHOD of the reports,
+ * not an answer key. The model does NOT decide the arithmetic (money.ts
+ * recomputes it) or the order (rank = value x confidence, computed here); a
+ * hypothesis without a number in the evidence or without a valid calculation
+ * is dropped and shows up as a "limit" on screen.
  */
 
 import type {
@@ -19,11 +13,7 @@ import type {
   PageCapture,
 } from "./types.ts";
 
-/**
- * Estoque do produto do print, em palavras. Uma PDP com a grade quebrada mostra
- * "Avise-me" e tamanhos apagados; sem o aviso, o modelo trata isso como a PDP
- * de sempre.
- */
+/** The screenshot product's stock, in words; without it the model treats a broken size grid as a normal PDP. */
 export function stockNote(stock: PageCapture["stock"]): string {
   switch (stock) {
     case "alive":
@@ -37,11 +27,7 @@ export function stockNote(stock: PageCapture["stock"]): string {
   }
 }
 
-/**
- * Uma linha por elemento do heatmap, com o rótulo que a captura do mesmo
- * dispositivo achou. Sem rótulo, fica a seção e "elemento não achado na
- * página": é melhor que um nome inventado.
- */
+/** One line per heatmap element, labeled by the same device's capture; without a label, say so rather than invent a name. */
 export function elementsForPrompt(
   ev: DiagnosisEvidence,
   b: DevicePdpBehaviour,
@@ -64,18 +50,13 @@ export function elementsForPrompt(
       e.funnel && e.funnel.visitors > 0
         ? `${pct(e.funnel.carted, e.funnel.visitors)} foi ao carrinho${pageCart !== null ? ` (página: ${(pageCart * 100).toFixed(1)}%)` : ""}`
         : "sem funil";
-    // Morto num elemento que troca de página = a página nova levou mais
-    // de 1 s (ou o envio vazio não saiu, de propósito). Não é botão quebrado.
+    // Dead on a page-navigating element means the new page took over 1 s, not a broken button.
     const dead = `mortos ${pct(e.dead_interactive, e.clicks)}${l?.navigates && e.dead_interactive > 0 ? " (troca de página: morto aqui é a página nova demorando > 1 s, não falha)" : ""}`;
     return `${what} · ${e.clicks} cliques · ${dead} · ${cart}`;
   });
 }
 
-/**
- * O rótulo de um elemento como o prompt lê: o que é, pra onde leva, e onde
- * está. O y de um elemento escondido na carga (num painel que outro clique
- * abre) é 0 e não é posição: sai no lugar dele "escondido na carga".
- */
+/** An element's label as the prompt reads it: what it is, where it leads, where it is; a load-hidden element's y is 0, so "escondido na carga" replaces it. */
 export function describeElementLabel(l: ElementLabel): string {
   const to = l.navigates ? ` → leva pra ${l.navigates}` : "";
   const where = l.hidden
@@ -84,10 +65,7 @@ export function describeElementLabel(l: ElementLabel): string {
   return `${l.label}${to} (${where})`;
 }
 
-/**
- * Posição de uma parte contra a altura da tela: "699px (na 1ª tela, que vai
- * até 844px)". Exportado pra teste.
- */
+/** A part's position against the screen height: "699px (na 1ª tela, que vai até 844px)". Exported for tests. */
 export function foldNote(y: number | null, viewportHeight: number): string {
   if (y == null) return "não achado";
   return y < viewportHeight

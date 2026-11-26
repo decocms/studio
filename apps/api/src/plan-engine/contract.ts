@@ -1,12 +1,8 @@
 /**
- * O contrato das tools que o Plan do Studio consome. O Studio espelha estes
- * tipos em Zod e trata qualquer outro formato como erro, então mudar um campo
- * aqui é mudar o contrato: o lado do Studio tem que mudar junto.
- *
- * Toda tool também pode devolver `ToolError` (`{ error }`); a de começar a
- * análise devolve `{ status: "error", error }`. URLs de imagem de uma org
- * (`capture_url`, `before_url`, `after_url`, `screenshot_url`…) saem assinadas
- * e valem 1 h (api/services/media-signing.ts).
+ * The contract of the tools Studio's Plan consumes. Studio mirrors these types
+ * in Zod and treats any other shape as an error, so changing a field here
+ * changes the contract. Every tool may also return `ToolError` (`{ error }`);
+ * org image URLs are signed and valid for 1 h (api/services/media-signing.ts).
  */
 
 import type { ExperimentDesign } from "./experiment.ts";
@@ -31,15 +27,15 @@ export interface ToolError {
   error: string;
 }
 
-// ── O que o cliente tem que dar (setup.ts) ───────────────────────────────────
+// ── What the client must provide (setup.ts) ──────────────────────────────────
 
 export type { GapOwner, SetupKey };
 
 export interface SetupNeed {
   key: SetupKey;
-  /** Só o domínio impede a análise de começar. */
+  /** Only the domain stops the analysis from starting. */
   blocking: boolean;
-  /** Concorrentes: a lista que o motor checou, pro cliente confirmar. */
+  /** Competitors: the list the engine checked, for the client to confirm. */
   suggested?: string[] | null;
 }
 
@@ -48,7 +44,7 @@ export interface StoreSetup {
   current: { domain: string | null; competitors: string[] };
 }
 
-/** Uma lacuna com dono; `message` é o mesmo texto da linha em `gaps`. */
+/** A gap with an owner; `message` is the same text as the line in `gaps`. */
 export interface GapDetail {
   source: SourceGap["source"];
   owner: GapOwner;
@@ -61,7 +57,7 @@ export interface GapDetail {
 export interface StartedDiagnosis {
   page_type: UxPageType;
   diagnosis_id: string;
-  /** A página já tinha uma análise rodando na org: é ela, não uma nova. */
+  /** The page already had an analysis running in the org: it is that one, not a new one. */
   already_running: boolean;
 }
 
@@ -75,7 +71,7 @@ export type StartUxDiagnosisOutput =
       status: "error";
       error: string;
       needs_domain?: true;
-      /** Junto com `needs_domain`: o que falta, no formato de `StoreSetup.needs`. */
+      /** With `needs_domain`: what is missing, in `StoreSetup.needs` format. */
       needs?: SetupNeed[];
     };
 
@@ -83,23 +79,23 @@ export type StartUxDiagnosisOutput =
 
 export interface SiteRunSummary {
   site_run_id: string;
-  /** A meta com que a rodada começou (não muda se a meta for trocada depois). */
+  /** The goal the run started with (unchanged if the goal is changed later). */
   goal_id: string | null;
   objective_statement: string | null;
   started_at: string;
-  /** running: alguma página roda; done: alguma terminou; error: todas falharam. */
+  /** running: some page runs; done: some finished; error: all failed. */
   status: DiagnosisStatus;
   pages: UxPageType[];
 }
 
 export interface ListUxSiteRunsOutput {
-  /** Da mais nova para a mais antiga. */
+  /** Newest to oldest. */
   runs: SiteRunSummary[];
 }
 
 // ── get_ux_store_view ────────────────────────────────────────────────────────
 
-/** As fontes que a tela nomeia, nesta ordem. */
+/** The sources the screen names, in this order. */
 export const STORE_SOURCES = [
   "GA4",
   "Deco Analytics",
@@ -111,31 +107,31 @@ export type StoreSource = (typeof STORE_SOURCES)[number];
 
 export interface StoreFunnelPoint {
   device: UxDevice;
-  /** Quem chega à etapa da página, por semana. */
+  /** Who reaches the page's step, per week. */
   people_week: number;
-  /** 0–1: de quem chega, quantos passam para a etapa seguinte. */
+  /** 0-1: of those who arrive, how many move on to the next step. */
   advance_rate: number;
 }
 
 export interface StorePage {
   page_type: UxPageType;
-  /** A análise mais nova da página (a que `status` descreve). */
+  /** The page's newest analysis (the one `status` describes). */
   diagnosis_id: string;
-  /** Quando terminou a análise cujos resultados aparecem. */
+  /** When the analysis whose results are shown finished. */
   analysed_at: string;
   status: DiagnosisStatus;
-  /** Etapa da análise mais nova; null quando ela terminou. */
+  /** Stage of the newest analysis; null when it finished. */
   stage: string | null;
-  /** Progresso se roda; a mensagem de erro se falhou; null se terminou. */
+  /** Progress if running; the error message if failed; null if finished. */
   progress_note: string | null;
-  /** [] quando a análise não tem funil desta página (e `gaps` diz o porquê). */
+  /** [] when the analysis has no funnel for this page (and `gaps` says why). */
   funnel: StoreFunnelPoint[];
-  /** Print da primeira tela (celular, ou computador), assinado. */
+  /** Signed first-screen screenshot (mobile, or desktop). */
   capture_url: string | null;
   observations: string[];
-  /** Fontes que não responderam, nomeadas ("GA4: …"). */
+  /** Sources that did not answer, named ("GA4: ..."). */
   gaps: string[];
-  /** As mesmas lacunas de `gaps`, na mesma ordem, com dono. */
+  /** The same gaps as `gaps`, same order, with an owner. */
   gap_details: GapDetail[];
 }
 
@@ -154,14 +150,14 @@ export interface StoreOpportunity extends UxOpportunity {
 
 export interface StoreView {
   pages: StorePage[];
-  /** Até 2, por money.monthly_value desc e depois confidence desc. */
+  /** Up to 2, by money.monthly_value desc then confidence desc. */
   top: StoreOpportunity[];
-  /** As demais, na mesma ordem. */
+  /** The rest, in the same order. */
   others: StoreOpportunity[];
-  /** Fontes que trouxeram dado em ao menos uma página. */
+  /** Sources that brought data on at least one page. */
   sources: StoreSource[];
   running: boolean;
-  /** O que o cliente tem que dar: do perfil e das lacunas das páginas acima. */
+  /** What the client must provide: from the profile and the pages' gaps above. */
   setup: StoreSetup;
 }
 
@@ -199,7 +195,7 @@ export interface UpdateUxHypothesisStatusOutput {
   hypothesis: UxHypothesis;
 }
 
-/** A entrada de conhecimento citada, no formato do contrato. */
+/** The cited knowledge entry, in the contract's format. */
 export function citationOf(e: KnowledgeEntry): KnowledgeCitation {
   return {
     id: e.id,

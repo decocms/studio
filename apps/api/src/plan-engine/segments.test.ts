@@ -21,14 +21,13 @@ const ref = {
   compare_to: "desktop" as const,
 };
 
-describe("drilldown (loja de moda, uma semana)", () => {
+describe("drilldown (fashion store, one week)", () => {
   const m = measureMetric(sample, ref);
   const d = drilldown(m, sample.segments);
 
-  test("gap total e gap com a mistura de canais do computador", () => {
+  test("total gap and gap with the desktop channel mix", () => {
     expect(m?.gap_pp).toBe(12.98);
-    // Com a mistura de canais do computador, o celular iria a ~13%: o mix
-    // explica uma parte, a maior parte do gap fica.
+    // With the desktop channel mix mobile would reach ~13%: the mix explains part of the gap, most remains
     expect(d?.mix_adjusted_gap_pp.canal).toBeCloseTo(10.4, 0);
     const mix = d ? mixExplainedShare(d) : null;
     expect(mix?.dim).toBe("canal");
@@ -36,20 +35,20 @@ describe("drilldown (loja de moda, uma semana)", () => {
     expect(mix?.share).toBeLessThan(0.3);
   });
 
-  test("se repete: o computador ganha em quase todo canal com amostra", () => {
-    // "outros" e "social" são os canais em que o celular vai melhor.
+  test("repeats: desktop wins in almost every channel with a sample", () => {
+    // "outros" and "social" are the channels where mobile does better
     expect(d?.consistency.canal).toEqual({ same: 5, total: 7 });
     expect(d?.consistency.visitante).toEqual({ same: 2, total: 2 });
   });
 
-  test("cada recorte guarda as duas taxas e a fatia", () => {
+  test("each slice keeps both rates and the share", () => {
     const social = d?.cuts.find((c) => c.key === "social_pago");
     expect(social?.share).toBeCloseTo(0.5, 1);
     expect(social?.rate).toBeCloseTo(0.0506, 3);
     expect(social?.comp_rate).toBeCloseTo(0.0835, 3);
   });
 
-  test("a confiabilidade mostra a comparação justa e a repetição", () => {
+  test("reliability shows the fair comparison and the repetition", () => {
     const r = assessReliability({
       evidence: sample,
       device: "mobile",
@@ -65,8 +64,8 @@ describe("drilldown (loja de moda, uma semana)", () => {
   });
 });
 
-describe("drilldown sem o que recortar", () => {
-  test("etapa do Deco Analytics, sem comparação ou sem recortes: null", () => {
+describe("drilldown with nothing to slice", () => {
+  test("Deco Analytics stage, without comparison or without slices: null", () => {
     const pdp = measureMetric(sample, { ...ref, key: "pdp_carrinho" });
     expect(drilldown(pdp, sample.segments)).toBeNull();
     const alone = measureMetric(sample, { ...ref, compare_to: null });
@@ -75,10 +74,9 @@ describe("drilldown sem o que recortar", () => {
   });
 });
 
-describe("mix que explica o gap", () => {
-  test("o gap some quando o celular tem a mistura do computador: atenção", () => {
-    // Cada canal converte igual nas duas telas; o celular só tem mais
-    // tráfego do canal fraco.
+describe("mix that explains the gap", () => {
+  test("the gap disappears when mobile has desktop's mix: attention", () => {
+    // Each channel converts the same on both screens; mobile just has more weak-channel traffic
     const seg = (key: string, platform: string, n: number, rate: number) => ({
       dim: "canal" as const,
       key,
@@ -132,7 +130,7 @@ describe("mix que explica o gap", () => {
 });
 
 describe("segmentsForPrompt", () => {
-  test("uma linha por canal, maior fatia do celular primeiro", () => {
+  test("one line per channel, largest mobile share first", () => {
     const lines = segmentsForPrompt(sampleSegments, 7);
     expect(lines[0]).toContain("Recortes do GA4");
     const firstChannel = lines.findIndex((l) =>
@@ -144,8 +142,8 @@ describe("segmentsForPrompt", () => {
   });
 });
 
-describe("segmentPremise (outra loja, 15/11)", () => {
-  // viu produto → carrinho por canal: mídia paga x o resto, nas duas telas.
+describe("segmentPremise", () => {
+  // Viewed product → cart by channel: paid media vs the rest, on both screens
   const seg = (key: string, platform: string, n: number, hits: number) => ({
     dim: "canal" as const,
     key,
@@ -182,7 +180,7 @@ describe("segmentPremise (outra loja, 15/11)", () => {
   });
   const m = measureMetric(ev, ref);
 
-  test("mídia paga converte 3% no celular contra 7% do resto", () => {
+  test("paid media converts 3% on mobile against 7% for the rest", () => {
     const p = segmentPremise(m, cuts, { dim: "canal", key: "midia_paga" });
     expect(p?.rate).toBeCloseTo(0.03, 3);
     expect(p?.rest_rate).toBeCloseTo(0.0697, 3);
@@ -190,7 +188,7 @@ describe("segmentPremise (outra loja, 15/11)", () => {
     expect(p?.comp_rest_rate).toBeCloseTo(0.168, 3);
   });
 
-  test("segmento que não existe nos recortes não vale", () => {
+  test("a segment that does not exist in the slices does not count", () => {
     expect(parseSegmentRef({ dim: "canal", key: "tv" }, cuts)).toBeNull();
     expect(parseSegmentRef({ dim: "canal", key: "midia_paga" }, cuts)).toEqual({
       dim: "canal",

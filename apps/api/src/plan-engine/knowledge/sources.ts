@@ -1,10 +1,7 @@
 /**
- * De onde vem cada artigo da curadoria: a editora (vira a pasta na tela) e o
- * título original (conferido na página em 16/11/2026). Só a tela lê isto; o
- * prompt continua lendo `fonte` (select.ts).
- *
- * Entrada curada nova precisa de artigo aqui: o teste (knowledge.test.ts)
- * quebra se uma `fonte_url` ficar sem.
+ * Where each curated article comes from: the publisher (the folder on screen) and
+ * the original title. Only the screen reads this; the prompt reads `fonte`
+ * (select.ts). A new curated entry needs an article here (knowledge.test.ts checks).
  */
 
 export type PublisherKey =
@@ -20,11 +17,11 @@ export type PublisherKey =
 export interface Publisher {
   key: PublisherKey;
   nome: string;
-  /** Domínio mostrado na pasta; null = grupo de várias fontes. */
+  /** Domain shown on the folder; null = group of several sources. */
   dominio: string | null;
 }
 
-/** Na ordem das pastas. */
+/** In folder order. */
 export const PUBLISHERS: Publisher[] = [
   { key: "baymard", nome: "Baymard Institute", dominio: "baymard.com" },
   { key: "nngroup", nome: "Nielsen Norman Group", dominio: "nngroup.com" },
@@ -42,7 +39,7 @@ export const PUBLISHERS: Publisher[] = [
 
 export interface ArticleSource {
   editora: PublisherKey;
-  /** Título original, no idioma da fonte. */
+  /** Original title, in the source's language. */
   titulo: string;
 }
 
@@ -51,7 +48,7 @@ const a = (editora: PublisherKey, titulo: string): ArticleSource => ({
   titulo,
 });
 
-/** Por `fonte_url` (várias entradas podem sair do mesmo artigo). */
+/** By `fonte_url` (several entries can come from the same article). */
 export const ARTICLES: Record<string, ArticleSource> = {
   // Baymard
   "https://baymard.com/lists/cart-abandonment-rate": a(
@@ -167,7 +164,7 @@ export const ARTICLES: Record<string, ArticleSource> = {
     "Horizontal Attention Leans Left",
   ),
 
-  // Google (web.dev e Think with Google)
+  // Google (web.dev and Think with Google)
   "https://www.thinkwithgoogle.com/_qs/documents/9757/Milliseconds_Make_Millions_report_hQYAbZJ.pdf":
     a("google", "Milliseconds Make Millions (Deloitte, 2020)"),
   "https://web.dev/articles/lcp": a("google", "Largest Contentful Paint (LCP)"),
@@ -221,7 +218,7 @@ export const ARTICLES: Record<string, ArticleSource> = {
     "Understanding Success Criterion 2.5.5: Target Size",
   ),
 
-  // Pesquisa acadêmica
+  // Academic research
   "https://doi.org/10.1037/0022-3514.79.6.995": a(
     "academico",
     "When Choice is Demotivating: Can One Desire Too Much of a Good Thing?",
@@ -239,7 +236,7 @@ export const ARTICLES: Record<string, ArticleSource> = {
     "Price Salience and Product Choice",
   ),
 
-  // Outras
+  // Others
   "https://www.uxmatters.com/mt/archives/2013/02/how-do-users-really-hold-mobile-devices.php":
     a("outras", "How Do Users Really Hold Mobile Devices?"),
   "https://erikrunyon.com/2013/01/carousel-interaction-stats/": a(
