@@ -289,7 +289,7 @@ export const monitor = {
   "monitor.powers.search": "Search clicks and queries",
   "monitor.loadError": "Couldn't read the monitors",
   "monitor.vtex.description":
-    "Your VTEX account and an app key with OMS read and Feed v3 and Hook Admin. Use a key only this monitor uses.",
+    "Your VTEX account and an app key with OMS read and Feed v3 / Hook Admin. Use a key only this monitor uses.",
   "monitor.vtex.existing":
     "Watches the orders of this VTEX connection. Its key must be one only this monitor uses.",
   "monitor.vtex.account": "Account name",
@@ -297,6 +297,10 @@ export const monitor = {
   "monitor.vtex.appToken": "App token",
   "monitor.vtex.rejected":
     "VTEX refused this key. Check the account name, app key and app token.",
+  "monitor.vtex.missingPermission":
+    "This key lacks VTEX permission for {permissions}. Add it to the key's access profile and try again.",
+  "monitor.vtex.permission.oms": "OMS (view orders)",
+  "monitor.vtex.permission.hook": "Feed v3 / Hook Admin",
   "monitor.vtex.connecting": "Connecting…",
   "monitor.vtex.unavailable": "Order monitoring isn't available here",
   "monitor.action.revert": "Roll back",

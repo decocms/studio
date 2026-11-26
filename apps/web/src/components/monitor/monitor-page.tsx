@@ -439,6 +439,7 @@ export function MonitorPage({
           (source) => ({
             source,
             state: stateOf(source),
+            projectId: scopeId,
           }),
         )}
         link={connectLink(orgSlug, scopeId)}
@@ -486,6 +487,7 @@ export function MonitorPage({
                 (source) => ({
                   source,
                   state: stateOf(source),
+                  projectId: scopeId,
                   // On the Overview a store is what alerts come from.
                   meta:
                     source === "orders"
