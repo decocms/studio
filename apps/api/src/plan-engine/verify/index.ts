@@ -3,7 +3,7 @@
  * Everything comes through `VerifyDeps`, so ordering and outcome rules test without network or Chrome.
  */
 
-import type { Llm, LlmUsage } from "../ports.ts";
+import { type Llm, type LlmUsage, rethrowNoAiModel } from "../ports.ts";
 import type {
   DiagnosisEvidence,
   UxHypothesis,
@@ -273,6 +273,7 @@ export async function verifyHypothesis(
           : base.confidence,
     };
   } catch (e) {
+    rethrowNoAiModel(e);
     return inconclusive(
       `a verificação falhou: ${e instanceof Error ? e.message : String(e)}`,
     );

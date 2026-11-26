@@ -218,6 +218,8 @@ export interface SourceGap {
 /** What Plan asks of the customer, in this order. */
 export type SetupKey =
   | "domain"
+  /** Connect an AI provider: without a model no analysis runs. */
+  | "ai_provider"
   | "competitors"
   | "analytics_install"
   | "bigquery"

@@ -19,6 +19,7 @@ import {
   generateOpportunityHypotheses,
 } from "../opportunities.ts";
 import { pageSpec } from "../page-types.ts";
+import { rethrowNoAiModel } from "../ports.ts";
 import type {
   BenchmarkPdp,
   DiagnosisEvidence,
@@ -245,6 +246,7 @@ export async function hypothesesStep(
       await store.updateDiagnosis(orgId, id, { summary });
     }
   } catch (err) {
+    rethrowNoAiModel(err);
     // A failed batch leaves its opportunities without hypotheses, and says why.
     const message = err instanceof Error ? err.message : String(err);
     if (summary) {

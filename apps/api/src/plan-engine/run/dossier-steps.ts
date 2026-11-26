@@ -20,6 +20,7 @@ import {
   validationOf,
 } from "../lifecycle.ts";
 import { isReady, priorityOf, referenceValue } from "../priority.ts";
+import { rethrowNoAiModel } from "../ports.ts";
 import { computeRelevance, type HypothesisRelevance } from "../relevance.ts";
 import {
   type HypothesisReview,
@@ -270,6 +271,7 @@ export async function reviewStep(
       now,
     });
   } catch (err) {
+    rethrowNoAiModel(err);
     const summary = (await run.store.getDiagnosis(run.orgId, run.id))?.summary;
     if (summary) {
       summary.limits.push(

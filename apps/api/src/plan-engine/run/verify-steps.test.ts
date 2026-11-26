@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { evidence } from "../fixtures/evidence.ts";
+import { NO_AI_MODEL, noAiModelGap } from "../ports.ts";
 import type {
   DiagnosisSummary,
   UxHypothesis,
   UxOpportunity,
 } from "../types.ts";
 import {
+  failPatch,
   fallenAfterVerify,
   hypothesisDeadline,
   rerunFailedPatch,
@@ -182,5 +185,45 @@ describe("fallenAfterVerify with the lifecycle", () => {
       {},
     );
     expect(fallen.map((f) => f.id)).toEqual([`${D}:o1`]);
+  });
+});
+
+describe("failPatch", () => {
+  test("a lost model ends the run with its message and the customer's gap", () => {
+    const patch = failPatch(
+      { evidence: evidence(), summary: null },
+      false,
+      NO_AI_MODEL,
+    );
+    expect(patch).toMatchObject({
+      status: "error",
+      error: NO_AI_MODEL,
+      finished: true,
+    });
+    expect(patch.evidence?.gaps).toContainEqual(noAiModelGap());
+  });
+
+  test("a lost model on verify again keeps the result and adds the gap once", () => {
+    const patch = failPatch(
+      {
+        evidence: evidence({ gaps: [noAiModelGap()] }),
+        summary: { headline: "h", limits: [] },
+      },
+      true,
+      NO_AI_MODEL,
+    );
+    expect(patch.status).toBe("done");
+    expect(patch.summary?.limits).toEqual([
+      `A verificação de novo falhou: ${NO_AI_MODEL}`,
+    ]);
+    expect(
+      patch.evidence?.gaps.filter((g) => g.key === "ai_provider"),
+    ).toHaveLength(1);
+  });
+
+  test("any other failure leaves the evidence alone", () => {
+    expect(
+      failPatch({ evidence: evidence(), summary: null }, false, "boom"),
+    ).toEqual({ status: "error", error: "boom", finished: true });
   });
 });

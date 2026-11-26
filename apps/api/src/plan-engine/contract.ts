@@ -33,7 +33,7 @@ export type { GapOwner, SetupKey };
 
 export interface SetupNeed {
   key: SetupKey;
-  /** Only the domain stops the analysis from starting. */
+  /** Only the domain and the AI provider stop the analysis from starting. */
   blocking: boolean;
   /** Competitors: the list the engine checked, for the client to confirm. */
   suggested?: string[] | null;
@@ -71,7 +71,7 @@ export type StartUxDiagnosisOutput =
       status: "error";
       error: string;
       needs_domain?: true;
-      /** With `needs_domain`: what is missing, in `StoreSetup.needs` format. */
+      /** What is missing (the domain, an AI provider), in `StoreSetup.needs` format. */
       needs?: SetupNeed[];
     };
 

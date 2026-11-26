@@ -146,6 +146,8 @@ export function buildStoreView(input: {
   goalId?: string | null;
   /** The store profile; null = the store has no domain yet. */
   profile: SiteProfile | null;
+  /** False = the org has no AI model, so setup asks for a provider. */
+  hasModel?: boolean;
 }): StoreView {
   const chosen = choosePageDiagnoses(input.diagnoses, input.goalId);
   const resultIds = new Map<string, UxPageType>();
@@ -245,6 +247,6 @@ export function buildStoreView(input: {
     others: included.slice(2),
     sources: STORE_SOURCES.filter((s) => sources.has(s)),
     running: pages.some((p) => p.status === "running"),
-    setup: buildSetup(input.profile, pageGaps),
+    setup: buildSetup(input.profile, pageGaps, input.hasModel),
   };
 }

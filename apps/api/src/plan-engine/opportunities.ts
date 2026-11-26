@@ -35,7 +35,13 @@ import {
   type UxMetricKey,
 } from "./metrics.ts";
 import { pageSpec } from "./page-types.ts";
-import type { Llm, LlmContentPart, LlmTier, LlmUsage } from "./ports.ts";
+import {
+  type Llm,
+  type LlmContentPart,
+  type LlmTier,
+  type LlmUsage,
+  rethrowNoAiModel,
+} from "./ports.ts";
 import { type DataReliability, SEGMENT_WORD } from "./reliability.ts";
 import {
   CATEGORY_WORD,
@@ -751,6 +757,7 @@ Responda SÓ este JSON:
       opts.onUsage,
     );
   } catch (err) {
+    rethrowNoAiModel(err);
     return {
       ...result,
       dropped: [

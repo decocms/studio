@@ -5,7 +5,7 @@
  * git providers, object storage, the org's BigQuery connection, analytics).
  */
 
-import type { UxDevice } from "./types.ts";
+import type { SourceGap, UxDevice } from "./types.ts";
 
 /**
  * The class of model a call needs: `thinking` for judgement over images and
@@ -42,13 +42,38 @@ export interface LlmRequest {
 
 /**
  * One chat completion; resolves to the model's text. Rejects when the answer
- * is empty or was cut at `maxTokens`; `onUsage` hears every billed call,
- * those included.
+ * is empty or was cut at `maxTokens` (`onUsage` hears every billed call, those
+ * included), and with `NoAiModelError` when the org has no model for the tier.
  */
 export type Llm = (
   request: LlmRequest,
   onUsage?: (usage: LlmUsage) => void,
 ) => Promise<string>;
+
+/** Why a run cannot start, or stopped, when the org has no model for it. */
+export const NO_AI_MODEL =
+  "nenhum modelo de IA conectado: conecte um provedor de IA nas configurações da organização para rodar a análise";
+
+/** The org has no model for the engine: the customer connects a provider. */
+export class NoAiModelError extends Error {
+  constructor() {
+    super(NO_AI_MODEL);
+    this.name = "NoAiModelError";
+  }
+}
+
+/** A missing model ends the run; every other model failure degrades one step. */
+export function rethrowNoAiModel(err: unknown): void {
+  if (err instanceof NoAiModelError) throw err;
+}
+
+/** The gap a run ends with when its model is gone, so Plan asks for a provider. */
+export const noAiModelGap = (): SourceGap => ({
+  source: "studio",
+  error: NO_AI_MODEL,
+  owner: "customer",
+  key: "ai_provider",
+});
 
 /** A page opened at a device's viewport. */
 export interface BrowserPage {

@@ -4589,6 +4589,7 @@ export interface StudioToolIO {
           status: "error";
           error: string;
           running_diagnosis_id?: string | undefined;
+          needs?: object[] | undefined;
         };
   };
   COLLECTION_VIRTUAL_MCP_CREATE: {

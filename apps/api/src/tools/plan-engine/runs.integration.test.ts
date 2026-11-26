@@ -27,6 +27,7 @@ import { buildDbosConfig } from "../../dbos/config";
 import { CredentialVault } from "../../encryption/credential-vault";
 import { registerPlanUxDiagnosisWorkflow } from "../../plan-engine/dbos-ux-diagnosis";
 import { evidence } from "../../plan-engine/fixtures/evidence";
+import { NO_AI_MODEL } from "../../plan-engine/ports";
 import { setPlanEngineContextFactory } from "../../plan-engine/run/engine-run";
 import type { OpportunityDraft } from "../../plan-engine/types";
 import { AIProviderKeyStorage } from "../../storage/ai-provider-keys";
@@ -72,6 +73,15 @@ const JUDGE_ANSWER = JSON.stringify({
   runs: [],
 });
 
+const NO_TIERS = {
+  fast: null,
+  smart: null,
+  thinking: null,
+  image: null,
+  web_search: null,
+  deep_research: null,
+};
+
 const opportunity: OpportunityDraft = {
   rank: 1,
   area: "tamanho",
@@ -108,6 +118,7 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
   let organizationSettings: OrganizationSettingsStorage;
   let storage: Record<string, unknown>;
   let keyId = "";
+  let dropModelOnRun: string | null = null;
   const prompts: string[] = [];
 
   /** The model at the provider boundary: answers by which step is asking. */
@@ -172,13 +183,13 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
   const waitFor = (workflowId: string) =>
     DBOS.retrieveWorkflow(workflowId).getResult();
 
-  async function seedFinishedDiagnosis() {
-    await planEngine.upsertSiteProfile(ORG, { domain: "loja.example" });
-    const d = await planEngine.insertDiagnosis(ORG, {
+  async function seedFinishedDiagnosis(org = ORG) {
+    await planEngine.upsertSiteProfile(org, { domain: "loja.example" });
+    const d = await planEngine.insertDiagnosis(org, {
       domain: "loja.example",
       site_run_id: "run_1",
     });
-    await planEngine.updateDiagnosis(ORG, d.id, {
+    await planEngine.updateDiagnosis(org, d.id, {
       status: "done",
       stage: "done",
       finished: true,
@@ -186,11 +197,11 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
       summary: { headline: "h", limits: [] },
       cost_usd: 0.5,
     });
-    const o = await planEngine.putOpportunityAt(ORG, d.id, opportunity);
-    await planEngine.replaceOpportunityHypotheses(ORG, d.id, o.id, [
+    const o = await planEngine.putOpportunityAt(org, d.id, opportunity);
+    await planEngine.replaceOpportunityHypotheses(org, d.id, o.id, [
       hypothesis,
     ]);
-    const [h] = await planEngine.listHypotheses(ORG, d.id);
+    const [h] = await planEngine.listHypotheses(org, d.id);
     if (!h) throw new Error("expected a hypothesis");
     return { d, o, h };
   }
@@ -244,13 +255,22 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
     );
     registerPlanUxDiagnosisWorkflow();
     await DBOS.launch();
-    setPlanEngineContextFactory(async (orgId, userId) =>
-      userId === USER_ID ? makeCtx(orgId) : null,
-    );
+    setPlanEngineContextFactory(async (orgId, userId) => {
+      if (userId !== USER_ID) return null;
+      // The org loses its model after the tool's preflight, as the run opens.
+      if (orgId === dropModelOnRun) {
+        await organizationSettings.upsert(orgId, {
+          flags: { plan_page_enabled: true, plan_engine_native: true },
+          simple_mode: { tiers: NO_TIERS },
+        });
+      }
+      return makeCtx(orgId);
+    });
   });
 
   beforeEach(async () => {
     prompts.length = 0;
+    dropModelOnRun = null;
     await sql`
       TRUNCATE plan_ux_site_profiles, plan_ux_diagnoses, plan_ux_opportunities,
                plan_ux_hypotheses, plan_ux_knowledge, plan_cost_events
@@ -275,6 +295,75 @@ describe("PLAN_UX run tools and planUxDiagnosisWorkflow", () => {
   afterAll(async () => {
     await DBOS.shutdown();
     await closeTestPgDatabase(database);
+  });
+
+  /** What a refused start or verification left behind for `org`. */
+  async function spendOf(org: string) {
+    const { rows } = await sql<{ id: string }>`
+      SELECT id FROM plan_cost_events WHERE organization_id = ${org}
+    `.execute(database.db);
+    return rows;
+  }
+
+  describe("an org with no AI provider", () => {
+    const refusal = {
+      status: "error" as const,
+      error: NO_AI_MODEL,
+      needs: [{ key: "ai_provider", blocking: true }],
+    };
+
+    it("a diagnosis start creates no run and spends nothing", async () => {
+      // OTHER has no provider key: its smart slot points at ORG's key.
+      await planEngine.upsertSiteProfile(OTHER, { domain: "loja.example" });
+      const out = await PLAN_UX_DIAGNOSIS_START.handler(
+        { todas: true },
+        makeCtx(OTHER),
+      );
+      expect(out).toEqual(refusal);
+      expect(await planEngine.listDiagnoses(OTHER)).toEqual([]);
+      expect(await planEngine.listSiteRuns(OTHER, { limit: 20 })).toEqual([]);
+      expect(await spendOf(OTHER)).toEqual([]);
+      expect(prompts).toEqual([]);
+    });
+
+    it("verifying again leaves the diagnosis as it was and spends nothing", async () => {
+      const { d } = await seedFinishedDiagnosis(OTHER);
+      const out = await PLAN_UX_HYPOTHESES_VERIFY.handler(
+        { diagnosis_id: d.id },
+        makeCtx(OTHER),
+      );
+      expect(out).toEqual(refusal);
+      const after = await planEngine.getDiagnosis(OTHER, d.id);
+      expect(after?.status).toBe("done");
+      expect(after?.stage).toBe("done");
+      expect(await spendOf(OTHER)).toEqual([]);
+      expect(prompts).toEqual([]);
+    });
+
+    it("a model lost mid-run ends it with the same message and the provider gap", async () => {
+      const { d } = await seedFinishedDiagnosis();
+      dropModelOnRun = ORG;
+      const out = await PLAN_UX_HYPOTHESES_VERIFY.handler(
+        { diagnosis_id: d.id },
+        makeCtx(),
+      );
+      if (out.status !== "running") throw new Error(JSON.stringify(out));
+      await expect(waitFor(out.instance_id)).rejects.toThrow(NO_AI_MODEL);
+
+      const after = await planEngine.getDiagnosis(ORG, d.id);
+      expect(after?.status).toBe("done");
+      expect(after?.summary?.limits).toEqual([
+        `A verificação de novo falhou: ${NO_AI_MODEL}`,
+      ]);
+      expect(after?.evidence?.gaps).toContainEqual({
+        source: "studio",
+        error: NO_AI_MODEL,
+        owner: "customer",
+        key: "ai_provider",
+      });
+      expect(prompts).toEqual([]);
+      expect(await spendOf(ORG)).toEqual([]);
+    }, 60_000);
   });
 
   describe("PLAN_UX_DIAGNOSIS_START", () => {

@@ -435,4 +435,20 @@ describe("buildStoreView", () => {
       }).setup.needs,
     ).toEqual([{ key: "domain", blocking: true, suggested: null }]);
   });
+
+  test("an org without an AI model is asked for a provider; the rest is unchanged", () => {
+    const input = {
+      profile: null,
+      diagnoses: [diagnosis("d-pdp", "pdp", { evidence: evidence() })],
+      opportunities: [],
+      hypotheses: [],
+    };
+    const withModel = buildStoreView(input);
+    const without = buildStoreView({ ...input, hasModel: false });
+    expect(without.setup.needs).toEqual([
+      { key: "domain", blocking: true, suggested: null },
+      { key: "ai_provider", blocking: true },
+    ]);
+    expect({ ...without, setup: null }).toEqual({ ...withModel, setup: null });
+  });
 });

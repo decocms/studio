@@ -12,6 +12,7 @@ import {
   type ListUxSiteRunsOutput,
   type UpdateUxHypothesisStatusOutput,
 } from "@/plan-engine/contract";
+import { hasEngineModel } from "@/plan-engine/adapters/llm";
 import { buildDossier } from "@/plan-engine/dossier";
 import { factBook } from "@/plan-engine/facts";
 import { CURATED_KNOWLEDGE } from "@/plan-engine/knowledge/curated";
@@ -250,6 +251,16 @@ export const PLAN_UX_SITE_RUN_LIST = defineTool({
   },
 });
 
+/** Only a missing model asks for a provider; a failed check keeps the view as it was. */
+async function modelForSetup(ctx: StudioContext): Promise<boolean> {
+  try {
+    return await hasEngineModel(ctx);
+  } catch (err) {
+    console.warn(`[plan-engine] AI model check failed: ${errorOf(err)}`);
+    return true;
+  }
+}
+
 export const PLAN_UX_STORE_VIEW = defineTool({
   name: "PLAN_UX_STORE_VIEW",
   description:
@@ -286,8 +297,8 @@ export const PLAN_UX_STORE_VIEW = defineTool({
           withResults.push(c.results.id);
         }
       }
-      const [diagnoses, opportunities, hypotheses, profile] = await Promise.all(
-        [
+      const [diagnoses, opportunities, hypotheses, profile, hasModel] =
+        await Promise.all([
           Promise.all([...ids].map((id) => store.getDiagnosis(org.id, id))),
           Promise.all(
             withResults.map((id) => store.listOpportunities(org.id, id)),
@@ -296,14 +307,15 @@ export const PLAN_UX_STORE_VIEW = defineTool({
             withResults.map((id) => store.listHypotheses(org.id, id)),
           ),
           store.getSiteProfile(org.id),
-        ],
-      );
+          modelForSetup(ctx),
+        ]);
       return buildStoreView({
         diagnoses: diagnoses.filter((d): d is UxDiagnosis => d !== null),
         opportunities: opportunities.flat(),
         hypotheses: hypotheses.flat(),
         goalId,
         profile,
+        hasModel,
       });
     } catch (err) {
       return { error: errorOf(err) };
