@@ -43,7 +43,7 @@ Na dúvida entre dois, escolha o mais baixo. "parcial" é a resposta normal pra 
 
 const ANSWERS = ["sim", "parcial", "nao"] as const;
 
-/** Resposta do modelo → revisões por id. Exportado pra teste. Nunca lança. */
+/** The model's answer as reviews by id. Exported for tests. Never throws. */
 export function parseReviews(
   raw: string,
   ids: string[],

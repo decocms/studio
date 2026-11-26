@@ -117,7 +117,7 @@ export const UX_METRICS: Record<UxMetricKey, MetricDef> = {
   },
 };
 
-/** Eventos do GA4 que alguma métrica usa: o funil lê só estes. */
+/** GA4 events some metric uses: the funnel reads only these. */
 export const GA4_METRIC_EVENTS: string[] = [
   ...new Set(
     Object.values(UX_METRICS).flatMap((d) =>

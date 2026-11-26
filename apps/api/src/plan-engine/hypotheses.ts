@@ -17,10 +17,10 @@ import type {
   UxPart,
 } from "./types.ts";
 
-/** O passo de julgamento: modelo forte, com visão. */
+/** The judgement step: a strong model, with vision. */
 export const HYPOTHESES_MODEL: LlmTier = "thinking";
 
-/** As evidências em texto curto — tabelas, não JSON cru. */
+/** The evidence as short text: tables, not raw JSON. */
 export function evidenceForPrompt(ev: DiagnosisEvidence): string {
   const lines: string[] = [];
   const pct = (a: number, b: number) =>
@@ -79,7 +79,7 @@ export function evidenceForPrompt(ev: DiagnosisEvidence): string {
     if (b.sections.length > 0) {
       lines.push("- seções (alcance / tempo médio / CTR):");
       for (const s of b.sections) {
-        // CTR acima de 100%: seção por cima da página (pop-up), o alcance não diz quantos a viram.
+        // CTR above 100%: the section sits over the page (pop-up), so reach does not say how many saw it.
         lines.push(
           `  - ${s.section}: ${s.reach_pct}% / ${s.avg_seconds}s / ${s.ctr_pct}%${s.ctr_pct > 100 ? ` — fica POR CIMA da página: o alcance não vale; ${s.clicks} cliques em ${b.views} visualizações` : ""}`,
         );
@@ -129,7 +129,7 @@ export function evidenceForPrompt(ev: DiagnosisEvidence): string {
 
   for (const c of ev.captures) {
     const pos = c.positions;
-    // A conta da dobra sai daqui, não do modelo (que lia % de rolagem como posição).
+    // The fold math comes from here, not the model (it read scroll % as a position).
     const px = (v: number | null | undefined) =>
       foldNote(v ?? null, c.viewport.height);
     lines.push(
@@ -178,7 +178,7 @@ export function evidenceForPrompt(ev: DiagnosisEvidence): string {
   return lines.join("\n");
 }
 
-/** Rótulos dos fatos medidos fora da PDP (measureSitePageInPage). */
+/** Labels for the facts measured outside the PDP (measureSitePageInPage). */
 const FACT_LABEL: Record<string, string> = {
   cards_above_fold: "cards de produto na primeira tela",
   cards_per_row: "cards por linha",

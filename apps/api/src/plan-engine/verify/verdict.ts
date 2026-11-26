@@ -1,8 +1,6 @@
 /**
- * Veredito da verificação. O modelo compara o que o navegador viu (`observed`)
- * com o `confirms_if`/`refutes_if` de cada teste e sugere um veredito geral;
- * quem decide de verdade é o código (`parseJudgment`): o modelo já disse
- * "confirmada" com um teste que desmentia, então a palavra final nunca é dele.
+ * Verification verdict. The model compares what the browser saw with each check's
+ * `confirms_if`/`refutes_if` and suggests a verdict; the code (`parseJudgment`) has the final word.
  */
 
 import { parseJson, text } from "../opportunities.ts";
@@ -25,11 +23,11 @@ export interface JudgeResult {
   summary: string;
   runs: CheckRun[];
   rewrite: RewriteDraft | null;
-  /** Só com o veredito desmentida (ou reescrita): o que investigar agora. */
+  /** Only with a "desmentida" (or "reescrita") verdict: what to investigate next. */
   novas_linhas?: string[];
 }
 
-/** Confirmada: confidence = min(CONFIRM_CEILING, confidence + CONFIRM_BOOST). */
+/** Confirmed: confidence = min(CONFIRM_CEILING, confidence + CONFIRM_BOOST). */
 export const CONFIRM_BOOST = 0.2;
 export const CONFIRM_CEILING = 0.9;
 
@@ -61,7 +59,7 @@ const inconclusive = (why: string, runs: CheckRun[]): JudgeResult => ({
   rewrite: null,
 });
 
-/** Resumo montado no código quando o modelo não escreveu um: cita o teste que decidiu. */
+/** Summary built in code when the model wrote none: cites the deciding check. */
 function summaryFrom(run: CheckRun, verdict: Verdict): string {
   const what = run.outcome === "desmente" ? "desmentida" : "confirmada";
   const base = `${what === "desmentida" ? "Desmentida" : "Confirmada"} pelo teste ${run.check.id} ("${run.check.claim}")`;
@@ -69,9 +67,8 @@ function summaryFrom(run: CheckRun, verdict: Verdict): string {
 }
 
 /**
- * Exportado pra teste. Nunca lança: saída ilegível vira `inconclusiva` com os
- * runs como vieram. As regras valem nesta ordem e o modelo só opina nos testes
- * `nao_decidiu` (um `nao_testou` ou um run de repo já decidido não muda).
+ * Exported for tests. Never throws: unreadable output becomes `inconclusiva` with the runs as given.
+ * The model only judges `nao_decidiu` checks; a `nao_testou` or an already decided repo run stays.
  */
 export function parseJudgment(
   raw: string,
@@ -99,7 +96,7 @@ function judge(
     return inconclusive(err instanceof Error ? err.message : String(err), runs);
   }
   const byId = new Map<string, CheckOutcome>();
-  // Teste que não mede a causa (mede o sintoma) sai dos DOIS lados da conta.
+  // A check that measures the symptom, not the cause, counts on NEITHER side.
   const offCause = new Set<string>();
   if (Array.isArray(parsed.runs)) {
     for (const r of parsed.runs as Array<Record<string, unknown>>) {
@@ -111,7 +108,7 @@ function judge(
   const judged = runs.map((r) => {
     const o = byId.get(r.check.id);
     const run = r.outcome === "nao_decidiu" && o ? { ...r, outcome: o } : r;
-    // Guarda o "não mede a causa": os níveis de validação também o pulam.
+    // Keep the off-cause flag: validation levels skip it too.
     return offCause.has(r.check.id) ? { ...run, measures_cause: false } : run;
   });
   const novasLinhas = (
@@ -120,7 +117,7 @@ function judge(
     .map((l) => text(l))
     .filter(Boolean)
     .slice(0, 3);
-  // Sem isto, um teste do sintoma contra um que desmente a causa virava conflito.
+  // Otherwise a symptom check against one refuting the cause would become a conflict.
   const counted = judged.filter((r) => !offCause.has(r.check.id));
   const desmente = counted.find((r) => r.outcome === "desmente");
   const confirma = counted.find((r) => r.outcome === "confirma");
@@ -137,7 +134,7 @@ function judge(
       ? ` (não contam, medem outra coisa que não a causa: ${set(discarded)})`
       : "";
   const modelVerdict = text(parsed.verdict);
-  // O resumo do modelo só vale se o veredito final for o que ele disse.
+  // The model's summary only holds if the final verdict is the one it gave.
   const summaryIf = (final: Verdict) =>
     modelVerdict === final ? text(parsed.summary) : "";
   if (!desmente && !confirma) {
@@ -151,7 +148,7 @@ function judge(
       rewrite: null,
     };
   }
-  // Um que confirma e um que desmente é conflito, não derrota.
+  // One confirming and one refuting is a conflict, not a defeat.
   if (desmente && confirma) {
     return {
       verdict: "inconclusiva",
@@ -216,13 +213,13 @@ function runsForPrompt(runs: CheckRun[]): string {
     .join("\n\n");
 }
 
-/** Pede o veredito ao modelo. Falha de rede sobe pro chamador; JSON ruim vira inconclusiva. */
+/** Asks the model for the verdict. Network errors propagate; bad JSON becomes inconclusive. */
 export async function judgeVerification(opts: {
   llm: Llm;
   hypothesis: UxHypothesis;
   runs: CheckRun[];
   allowRewrite: boolean;
-  /** Rolagem e altura da página medidas no diagnóstico (ver scrollForPrompt). */
+  /** Scroll and page height measured in the diagnosis (see scrollForPrompt). */
   scroll?: string;
   onUsage: (u: LlmUsage) => void;
 }): Promise<JudgeResult> {
@@ -252,11 +249,8 @@ ${opts.allowRewrite ? "" : 'Reescrita não é permitida desta vez: não use "ree
 }
 
 /**
- * Rolagem por dispositivo (Deco Analytics) e altura da página capturada, pro
- * juiz e o plano traduzirem "y=2353" em "50% da página, que só 29% alcançam".
- * Em 14/11 o plano escreveu "confirma se a vitrine estiver abaixo de 3500px",
- * um número solto, e a vitrine em y=2353 (50% da página) ficou "não decidiu"
- * com o dado que decidia (29% chegam a 50%) na mão do diagnóstico.
+ * Per-device scroll and captured page height, so the judge and the plan can turn
+ * "y=2353" into "50% of the page, which only 29% reach" instead of a bare pixel threshold.
  */
 export function scrollForPrompt(evidence: {
   pdp_behaviour: Array<{
@@ -275,13 +269,13 @@ export function scrollForPrompt(evidence: {
   for (const b of evidence.pdp_behaviour) {
     const c = evidence.captures.find((x) => x.device === b.device);
     const height = c?.page_height;
-    // A altura da tela é a dobra: "abaixo da dobra" se decide com ela, não com o alcance.
+    // Screen height is the fold: "below the fold" is decided by it, not by reach.
     const screen = c?.viewport?.height;
     lines.push(
       `- ${b.device}: chegam a 25%/50%/75% da página: ${b.reach.p25}% / ${b.reach.p50}% / ${b.reach.p75}%; rolagem média ${b.avg_depth_pct}%; a 1ª tela mostra ${b.avg_fold_pct}% da página${height ? `; altura da página capturada: ${height}px` : ""}${screen ? `; altura da tela (a dobra): ${screen}px` : ""}`,
     );
   }
-  // Sem rolagem do aparelho, a altura da tela de toda captura ainda decide a dobra.
+  // Without device scroll data, each capture's screen height still decides the fold.
   for (const c of evidence.captures) {
     if (evidence.pdp_behaviour.some((b) => b.device === c.device)) continue;
     if (!c.viewport?.height) continue;

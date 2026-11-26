@@ -8,5 +8,5 @@ export function normalizeDomain(raw: string): string | null {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s) ? s : null;
 }
 
-/** Quantas lojas o benchmark compara. */
+/** How many stores the benchmark compares. */
 export const MAX_COMPETITORS = 5;

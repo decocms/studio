@@ -18,13 +18,13 @@ const plan = (checks: unknown[], extra: Record<string, unknown> = {}) =>
   JSON.stringify({ checks, ...extra });
 
 describe("parsePlan", () => {
-  test("corta em 4 testes", () => {
+  test("truncates to 4 tests", () => {
     const r = parsePlan(plan(Array.from({ length: 6 }, () => live())), ctx);
     expect(r.checks.length).toBe(4);
     expect(r.checks.map((c) => c.id)).toEqual(["c1", "c2", "c3", "c4"]);
   });
 
-  test("op fora da lista derruba o teste", () => {
+  test("an op outside the list drops the test", () => {
     const r = parsePlan(
       plan([live({ steps: [{ op: "eval", code: "alert(1)" }] })]),
       ctx,
@@ -33,7 +33,7 @@ describe("parsePlan", () => {
     expect(r.dropped[0]).toContain("passo");
   });
 
-  test("elemento fora das capturas derruba o teste", () => {
+  test("an element missing from the captures drops the test", () => {
     const r = parsePlan(
       plan([
         live({
@@ -47,7 +47,7 @@ describe("parsePlan", () => {
     expect(r.dropped[0]).toContain("x|1");
   });
 
-  test("elemento conhecido passa", () => {
+  test("a known element passes", () => {
     const r = parsePlan(
       plan([
         live({
@@ -59,7 +59,7 @@ describe("parsePlan", () => {
     expect(r.checks.length).toBe(1);
   });
 
-  test("insere open quando falta", () => {
+  test("inserts open when missing", () => {
     const r = parsePlan(
       plan([
         live({
@@ -71,7 +71,7 @@ describe("parsePlan", () => {
     expect(r.checks[0]?.steps[0]).toEqual({ op: "open" });
   });
 
-  test("wait é limitado a 8000 ms", () => {
+  test("wait is capped at 8000 ms", () => {
     const r = parsePlan(
       plan([live({ steps: [{ op: "wait", ms: 20000 }] })]),
       ctx,
@@ -80,14 +80,14 @@ describe("parsePlan", () => {
     expect(w).toEqual({ op: "wait", ms: 8000 });
   });
 
-  test("passa de 8 passos (contando o open) derruba com motivo", () => {
+  test("over 8 steps (counting open) drops with a reason", () => {
     const steps = Array.from({ length: 8 }, () => ({ op: "reload" }));
     const r = parsePlan(plan([live({ steps })]), ctx);
     expect(r.checks.length).toBe(0);
     expect(r.dropped[0]).toContain("passo");
   });
 
-  test("lista vazia traz o untestable", () => {
+  test("an empty list carries untestable", () => {
     const r = parsePlan(
       plan([], { untestable: "preferência da cliente" }),
       ctx,
@@ -96,7 +96,7 @@ describe("parsePlan", () => {
     expect(r.untestable).toBe("preferência da cliente");
   });
 
-  test("repo sem question derruba; com question passa", () => {
+  test("repo without question drops; with question passes", () => {
     const bad = parsePlan(
       plan([live({ stage: "repo", steps: [], question: "" })]),
       ctx,
@@ -112,7 +112,7 @@ describe("parsePlan", () => {
     expect(ok.checks[0]?.steps).toEqual([]);
   });
 
-  test("stage inválido, live sem passos e confirms_if vazio derrubam", () => {
+  test("invalid stage, live without steps and empty confirms_if drop", () => {
     const r = parsePlan(
       plan([
         live({ stage: "xx" }),
@@ -126,12 +126,12 @@ describe("parsePlan", () => {
     expect(r.dropped.length).toBe(4);
   });
 
-  test("JSON inválido lança", () => {
+  test("invalid JSON throws", () => {
     expect(() => parsePlan("nada", ctx)).toThrow();
   });
 });
 
-test("inválidos não gastam vaga dos válidos", () => {
+test("invalid tests do not take slots from valid ones", () => {
   const bad = () => live({ stage: "xx" });
   const r = parsePlan(plan([bad(), bad(), bad(), bad(), live()]), ctx);
   expect(r.checks.length).toBe(1);
@@ -140,7 +140,7 @@ test("inválidos não gastam vaga dos válidos", () => {
 });
 
 describe("validateSteps", () => {
-  test("descarta campos extras: só sobra o vocabulário fechado", () => {
+  test("drops extra fields: only the closed vocabulary remains", () => {
     const r = validateSteps(
       [
         {
@@ -159,7 +159,7 @@ describe("validateSteps", () => {
     });
   });
 
-  test("parte inexistente é rejeitada", () => {
+  test("an unknown part is rejected", () => {
     const r = validateSteps(
       [{ op: "click", target: { kind: "part", part: "foo" } }],
       ctx,
@@ -167,15 +167,15 @@ describe("validateSteps", () => {
     expect("error" in r).toBe(true);
   });
 
-  test("operação com alvo sem alvo é rejeitada", () => {
+  test("a target op without a target is rejected", () => {
     expect("error" in validateSteps([{ op: "click" }], ctx)).toBe(true);
   });
 
-  test("devolve erro pra não-array", () => {
+  test("returns an error for a non-array", () => {
     expect("error" in validateSteps("x", ctx)).toBe(true);
   });
 
-  test("keep_overlays booleano no open e no reload é preservado", () => {
+  test("a boolean keep_overlays on open and reload is kept", () => {
     const r = validateSteps(
       [
         { op: "open", keep_overlays: true },
@@ -191,7 +191,7 @@ describe("validateSteps", () => {
     });
   });
 
-  test("keep_overlays de outro tipo some; o resto do passo continua fechado", () => {
+  test("keep_overlays of another type is dropped; the rest of the step stays closed", () => {
     const r = validateSteps(
       [
         { op: "open", keep_overlays: "true", code: "x" },
@@ -205,7 +205,7 @@ describe("validateSteps", () => {
     });
   });
 
-  test("o open auto-inserido é sem keep_overlays", () => {
+  test("the auto-inserted open has no keep_overlays", () => {
     const r = validateSteps([{ op: "reload", keep_overlays: true }], ctx);
     expect(r).toEqual({
       steps: [{ op: "open" }, { op: "reload", keep_overlays: true }],
@@ -213,9 +213,9 @@ describe("validateSteps", () => {
   });
 });
 
-// 14/11: dobra = altura da tela; fundo = alcance.
-describe("regra de posição do plano", () => {
-  test("separa dobra (altura da tela) de fundo (alcance), com exemplo de cada", () => {
+// Fold = screen height; bottom = reach.
+describe("plan position rule", () => {
+  test("separates fold (screen height) from bottom (reach), with an example of each", () => {
     const dobra = PLAN_SYSTEM.split("\n").find((l) =>
       l.includes('"abaixo da dobra"'),
     );
@@ -232,7 +232,7 @@ describe("regra de posição do plano", () => {
 });
 
 describe("validateSteps: gesture", () => {
-  test("aceita gesture e descarta os campos extras", () => {
+  test("accepts gesture and drops extra fields", () => {
     const r = validateSteps(
       [
         { op: "open", keep_overlays: true },
@@ -256,15 +256,15 @@ describe("validateSteps: gesture", () => {
     });
   });
 
-  test("o plano explica o pop-up que abre no primeiro gesto", () => {
+  test("the plan explains pop-ups that open on the first gesture", () => {
     expect(PLAN_SYSTEM).toContain('{"op":"gesture"}');
     expect(PLAN_SYSTEM).toContain('"keep_overlays":true');
   });
 });
 
-// 14/11: clicar no "comprar" é sempre bloqueado; o teste só gastava uma abertura.
-describe("clique no botão de compra", () => {
-  test("click e observe_click no buy_button derrubam o teste com o motivo", () => {
+// Clicking buy is always blocked, so the test is dropped upfront instead of wasting a page open.
+describe("clicking the buy button", () => {
+  test("click and observe_click on buy_button drop the test with the reason", () => {
     for (const op of ["click", "observe_click"]) {
       const r = validateSteps(
         [{ op, target: { kind: "part", part: "buy_button" } }],
@@ -273,7 +273,7 @@ describe("clique no botão de compra", () => {
       expect("error" in r && r.error).toContain("pergunte ao código");
     }
   });
-  test("inspect e screenshot do buy_button continuam valendo", () => {
+  test("inspect and screenshot of buy_button stay valid", () => {
     const r = validateSteps(
       [
         { op: "inspect", target: { kind: "part", part: "buy_button" } },

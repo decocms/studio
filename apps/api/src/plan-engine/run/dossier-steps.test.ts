@@ -21,14 +21,14 @@ const r = (level: HypothesisRelevance["level"]) =>
   ({ level, affected_pct: 80, affected_week: 9_000 }) as HypothesisRelevance;
 
 describe("afterRelevance", () => {
-  test("condição confirmada → relevância avaliada, e o nível vai pra validação", () => {
+  test("condition confirmed → relevance evaluated, and the level goes into validation", () => {
     const out = afterRelevance(h("condicao_confirmada"), r("alta"), "t");
     expect(out?.lifecycle).toBe("relevancia_avaliada");
     expect(out?.validation.relevancia).toBe("alta");
     expect(out?.lifecycle_log[0]?.reason).toContain("80%");
   });
 
-  test("pouca gente → sem relevância; quem não tem a condição confirmada não anda", () => {
+  test("few people → no relevance; without a confirmed condition it does not move", () => {
     expect(
       afterRelevance(h("condicao_confirmada"), r("sem_relevancia"), "t")
         ?.lifecycle,
@@ -36,7 +36,7 @@ describe("afterRelevance", () => {
     expect(afterRelevance(h("gerada"), r("alta"), "t")).toBeNull();
   });
 
-  test("só as de condição confirmada (ou já avaliadas) entram na conta", () => {
+  test("only confirmed-condition (or already evaluated) ones count", () => {
     expect(needsRelevance(h("condicao_confirmada"))).toBe(true);
     expect(needsRelevance(h("relevancia_avaliada"))).toBe(true);
     expect(needsRelevance(h("inconclusiva"))).toBe(false);
@@ -44,7 +44,7 @@ describe("afterRelevance", () => {
 });
 
 describe("planFor", () => {
-  test("relevância avaliada + mensurável + dados ok → pronta pro teste", async () => {
+  test("evaluated relevance + measurable + reliable data → ready for the test", async () => {
     const hyp = {
       lifecycle: "relevancia_avaliada",
       lifecycle_log: [],
@@ -112,13 +112,13 @@ describe("applyReview", () => {
     reviewed_at: "t",
   });
 
-  test("não explica: sai de pronta e perde a prioridade de teste", async () => {
+  test("does not explain: leaves ready and loses the test priority", async () => {
     const out = applyReview(ready, review("nao"), "t");
     expect(out.lifecycle?.lifecycle).toBe("relevancia_avaliada");
     expect(out.priority?.teste).toBeNull();
   });
 
-  test("parcial corta 20%; sim não mexe; nunca promove", async () => {
+  test("parcial cuts 20%; sim keeps it; never promotes", async () => {
     expect(applyReview(ready, review("parcial"), "t").priority?.teste).toBe(
       0.4,
     );
@@ -128,7 +128,7 @@ describe("applyReview", () => {
   });
 });
 
-describe("mockup desligado", () => {
+describe("mockup off", () => {
   const opp = (rank: number) =>
     ({ id: `o${rank}`, rank, outcome: null }) as unknown as UxOpportunity;
   const prop = (
@@ -150,7 +150,7 @@ describe("mockup desligado", () => {
       ...over,
     }) as unknown as UxHypothesis;
 
-  test("só as prontas sem Depois e sem motivo recebem a lacuna", async () => {
+  test("only ready ones with no After and no reason get the gap", async () => {
     expect(MOCKUP_OFF).toBe("mockup desligado");
     const ids = mockupGapIds(
       [opp(1)],
@@ -169,7 +169,7 @@ describe("mockup desligado", () => {
     expect(ids).toEqual(["pronta"]);
   });
 
-  test("sem oportunidade viva não há o que marcar", async () => {
+  test("with no live opportunity there is nothing to mark", async () => {
     expect(
       mockupGapIds([], [prop("pronta", "pronta_para_experimento")]),
     ).toEqual([]);

@@ -1,10 +1,6 @@
 /**
- * Plano de verificação: o modelo escolhe até 4 testes que decidem a CAUSA de
- * uma hipótese, escritos com `confirms_if`/`refutes_if` ANTES de ver o
- * resultado. Ele só monta passos da lista fixa e aponta alvos nossos (elemento
- * da Deco Analytics ou parte da página); nada de código nem seletor livre.
- * Aqui o plano é parseado e validado; quem roda é o navegador (Task 4) e o repo
- * (Task 5).
+ * Verification plan: the model picks up to 4 tests that decide a hypothesis's CAUSE, writing `confirms_if`/`refutes_if`
+ * BEFORE seeing the result, from fixed steps and our targets only. This parses and validates it; browser and repo run it.
  */
 
 import {
@@ -31,13 +27,13 @@ import {
   type VerifyTarget,
 } from "./types.ts";
 
-/** O mesmo da revisão contraditória: é raciocínio sobre texto e números. */
+/** Same as the adversarial review: reasoning over text and numbers. */
 export const VERIFY_MODEL: LlmTier = "smart";
 
 export interface PlanContext {
-  /** Chaves "root|el" que a captura rotulou (element_labels de qualquer captura). */
+  /** "root|el" keys the capture labeled (element_labels from any capture). */
   elementKeys: Set<string>;
-  /** Partes do tipo de página analisado. Ausente = as da PDP. */
+  /** Parts of the analyzed page type. Absent = the PDP's. */
   parts?: ReadonlyArray<UxPart>;
 }
 
@@ -56,9 +52,9 @@ const TARGET_OPS = [
   "observe_click",
   "screenshot",
 ];
-/** Sem campo nenhum além de `op` (o resto do que o modelo mandar cai). */
+/** No field besides `op` (anything else the model sends is dropped). */
 const BARE_OPS = ["choose_size", "choose_variant", "gesture"];
-/** Abrem a página; o único campo a mais é o booleano `keep_overlays`. */
+/** Open the page; the only extra field is the boolean `keep_overlays`. */
 const PAGE_OPS = ["open", "reload"];
 
 function parseTarget(raw: unknown, ctx: PlanContext): VerifyTarget | string {
@@ -78,9 +74,8 @@ function parseTarget(raw: unknown, ctx: PlanContext): VerifyTarget | string {
 }
 
 /**
- * Valida a lista de passos (a mesma regra vale pro teste que o repo pede ao
- * navegador, Task 5). `open` entra como primeiro passo se faltar, e ele conta
- * no limite de MAX_STEPS: passar disso derruba, não trunca em silêncio.
+ * Validates the steps (also for the test the repo asks of the browser). A missing `open` is prepended and counts
+ * toward MAX_STEPS: exceeding it rejects the test instead of silently truncating.
  */
 export function validateSteps(
   steps: unknown,
@@ -114,7 +109,7 @@ export function validateSteps(
       if (typeof target === "string") {
         return { error: `passo ${i + 1} (${op}): ${target}` };
       }
-      // O navegador nunca clica em comprar: o que o botão faz, quem responde é o código.
+      // The browser never clicks buy: the code answers what the button does.
       if (
         (op === "click" || op === "observe_click") &&
         target.kind === "part" &&
@@ -138,7 +133,7 @@ export function validateSteps(
   return { steps: out };
 }
 
-/** Exportado pra teste. Lança se o modelo não devolveu JSON. */
+/** Exported for tests. Throws if the model did not return JSON. */
 export function parsePlan(raw: string, ctx: PlanContext): ParsedPlan {
   const parsed = parseJson(raw, "plano de verificação");
   const list = Array.isArray(parsed.checks)
@@ -146,7 +141,7 @@ export function parsePlan(raw: string, ctx: PlanContext): ParsedPlan {
     : [];
   const dropped: string[] = [];
   const valid: Omit<VerifyCheck, "id">[] = [];
-  // Valida tudo e só então corta: teste inválido não gasta vaga dos válidos.
+  // Validate everything before truncating, so invalid tests do not take slots from valid ones.
   for (const c of list) {
     const claim = text(c.claim) || "(sem descrição)";
     const drop = (why: string) => dropped.push(`"${claim}": ${why}`);
@@ -210,7 +205,7 @@ function elementKeysOf(evidence: DiagnosisEvidence): Set<string> {
   return keys;
 }
 
-/** O prompt do plano pra este tipo de página (as partes e o nome mudam). */
+/** The plan prompt for this page type (parts and name vary). */
 function planSystem(pageType: UxPageType = "pdp"): string {
   const spec = pageSpec(pageType);
   const name = spec.key === "pdp" ? "PDP" : spec.label.toLowerCase();
@@ -265,7 +260,7 @@ function targetsForPrompt(evidence: DiagnosisEvidence): string {
   return lines.join("\n");
 }
 
-/** Pede o plano ao modelo. Falha de rede/JSON sobe pro chamador. */
+/** Asks the model for the plan. Network/JSON failures propagate to the caller. */
 export async function planVerification(opts: {
   llm: Llm;
   hypothesis: UxHypothesis;

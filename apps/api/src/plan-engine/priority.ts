@@ -57,7 +57,7 @@ const combine = (weights: number[]) =>
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-/** Valor de referência do impacto: 10% da receita mensal medida (todos os canais). */
+/** Impact reference value: 10% of measured monthly revenue (all channels). */
 export function referenceValue(
   evidence: DiagnosisEvidence,
   opportunities: Pick<UxOpportunity, "money">[],

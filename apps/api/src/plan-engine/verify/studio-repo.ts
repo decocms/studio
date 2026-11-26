@@ -28,13 +28,13 @@ export function parseRepoUrl(
 export interface RepoIdentity {
   provider: RepoProvider;
   host: string;
-  /** `owner/nome` (no GitLab, `grupo/sub/projeto`). */
+  /** `owner/name` (on GitLab, `group/sub/project`). */
   path: string;
-  /** O id do repositório no Studio (`metadata.repository.repositoryId`). */
+  /** The repository's id in Studio (`metadata.repository.repositoryId`). */
   repository_id?: string;
 }
 
-/** `owner/nome` ou uma URL do repositório; sem host, GitHub. */
+/** `owner/name` or a repository URL; without a host, GitHub. */
 function parseCodeRepo(raw: string): { host: string; path: string } | null {
   const t = raw.trim();
   if (t.includes("://")) return parseRepoUrl(t);
@@ -45,8 +45,8 @@ function parseCodeRepo(raw: string): { host: string; path: string } | null {
 }
 
 /**
- * O repositório da loja: o `code_repo` do perfil (o override) ou o do projeto
- * do site no Studio (`sources.repository`). Sem provedor/host, GitHub.
+ * The store's repository: the profile's `code_repo` (the override) or the site project's in Studio
+ * (`sources.repository`). Without provider/host, GitHub.
  */
 export function repoIdentityOf(
   profile: Pick<SiteProfile, "code_repo" | "sources"> | null,

@@ -1,23 +1,9 @@
 /**
- * De cada oportunidade às hipóteses do porquê. A oportunidade em si é uma
- * perda medida em código (loss-opportunities.ts); aqui o modelo só propõe a
- * causa.
- *
- *   1. `generateOpportunityHypotheses`: um lote de oportunidades por chamada.
- *      Pra cada uma, de 0 a 3 hipóteses: por que acontece → o que os dados
- *      mostrariam se fosse isso, e se mostram → o que fazer → quais lojas do
- *      benchmark já fazem assim. Toda afirmação cita os fatos (facts.ts) e o
- *      código confere.
- *   2. `challengeHypotheses`: outra chamada tenta derrubar cada hipótese com os
- *      mesmos fatos. Em 12/11 saiu "reordenar os tamanhos" apoiada em clique
- *      morto e raiva da página INTEIRA, num print de produto quase esgotado,
- *      enquanto os produtos de grade quebrada convertiam mais que os outros.
- *   3. Oportunidade que fica sem nenhuma hipótese de pé sai da tela, e a
- *      próxima reserva tenta o lugar dela (ver `fallenReason`).
- *
- * O que o modelo NÃO decide: a perda, a conta (money.ts), a ordem, o rótulo de
- * "fato" (claims.ts) e quais lojas existem — loja que não foi capturada nesta
- * análise é descartada.
+ * From each measured opportunity (loss-opportunities.ts) to the hypotheses of
+ * why: one call writes up to 3 per opportunity citing facts that code checks,
+ * another tries to knock them down, and an opportunity left with none gives its
+ * slot to a reserve (`fallenReason`). The model never decides the loss, the
+ * money, the order, the "fato" label or which stores exist.
  */
 
 import type { HypothesisDraft } from "../storage/plan-engine.ts";
@@ -70,16 +56,15 @@ import type {
   UxPageType,
 } from "./types.ts";
 
-/** Teto de hipóteses do porquê por oportunidade (o modelo pode dar menos). */
+/** Cap on hypotheses per opportunity (the model may give fewer). */
 const MAX_HYPOTHESES_PER_OPPORTUNITY = 3;
 
-/** Oportunidades por chamada (e por step da Workflow) no passo das hipóteses. */
+/** Opportunities per call (and per workflow step) in the hypotheses step. */
 export const HYPOTHESES_BATCH = 4;
 
 /**
- * Quantas reservas tentam o lugar de uma oportunidade que caiu. Cada tentativa
- * é uma chamada de hipóteses + uma de revisão; sem reserva que pare de pé, a
- * vaga fica vazia (uma oportunidade honesta vale mais que duas com uma falsa).
+ * How many reserves try the slot of a fallen opportunity (each try costs a
+ * hypotheses call plus a review call). With none standing, the slot stays empty.
  */
 export const MAX_REPLACEMENT_TRIES = 2;
 
@@ -102,7 +87,7 @@ export function parseJson(raw: string, what: string): Record<string, unknown> {
   }
 }
 
-/** Os prints da nossa PDP (primeira tela dos dois, página inteira do celular). */
+/** Our page's screenshots (first screen on both devices, full page on mobile). */
 async function pageImages(
   evidence: DiagnosisEvidence,
   mediaUrl: (url: string) => Promise<string> = async (url) => url,
@@ -128,12 +113,12 @@ async function pageImages(
   return parts;
 }
 
-/** A linha do rodapé de uma oportunidade que saiu da tela. */
+/** The footer line for an opportunity that left the screen. */
 export function fallenLimit(title: string, reason: string): string {
   return `Tiramos "${title}" da tela: nenhuma hipótese parou de pé (${reason}).`;
 }
 
-/** O rodapé das reservas que não entraram na tela. */
+/** The footer for reserves that did not make the screen. */
 export function reservesLimit(reserves: OpportunityDraft[]): string | null {
   return reserves.length > 0
     ? `Também vimos, com menos valor, e ficaram de fora: ${reserves.map((o) => `"${o.title}"`).join("; ")}.`
@@ -141,9 +126,8 @@ export function reservesLimit(reserves: OpportunityDraft[]): string | null {
 }
 
 /**
- * A métrica medida e a confiabilidade, numa linha pro prompt das hipóteses e
- * da revisão: o modelo escreve a causa sabendo se o próprio problema se
- * sustenta. Vazio quando a oportunidade não tem nenhum dos dois.
+ * The measured metric and data reliability in one prompt line, so the model
+ * knows whether the problem itself holds. Empty when the opportunity has neither.
  */
 function measuredForPrompt(
   m: MeasuredMetric | null | undefined,
@@ -172,7 +156,7 @@ function measuredForPrompt(
   return parts.length > 0 ? ` [${parts.join("; ")}]` : "";
 }
 
-// ── 2. Hipóteses de cada oportunidade ────────────────────────────────────────
+// ── 2. Hypotheses for each opportunity ───────────────────────────────────────
 
 const HYPOTHESES_SYSTEM_PDP = `Você é analista sênior de CRO e UX de e-commerce. Para cada oportunidade de uma página de produto (PDP), monte a ÁRVORE de hipóteses do porquê: explicações concorrentes DA PERDA que a oportunidade mede (o título dela), cada uma com o que a apoia, o que a contradiz e como provar que ela está errada.
 
@@ -237,9 +221,8 @@ REGRAS:
 - Não proponha mudar preço, frete ou estoque — só como a página os mostra.`;
 
 /**
- * O prompt das hipóteses pra este tipo de página (a PDP fica como era). Com a
- * meta da rodada, ela entra no fim como contexto; sem meta, o prompt é o mesmo
- * de antes, byte a byte.
+ * The hypotheses prompt for this page type. The round's goal, if any, is
+ * appended as context; without one the prompt is byte-identical to the base.
  */
 export function hypothesesSystem(
   pageType: UxPageType = "pdp",
@@ -250,7 +233,7 @@ export function hypothesesSystem(
   return goal ? `${base}\n\n${objectiveSection(goal)}` : base;
 }
 
-/** A meta escrita pela equipe: contexto pra escolher, nunca dado nem conta. */
+/** The team's written goal: context for choosing, never data or arithmetic. */
 function objectiveSection(goal: string): string {
   return `META DA LOJA NESTA RODADA (texto da equipe, entre aspas; é contexto, não dado):
 "${goal.replace(/\s+/g, " ")}"
@@ -300,22 +283,19 @@ function pageHypothesesSystem(pageType: UxPageType): string {
 }
 
 export interface OpportunityHypothesesResult {
-  /** id da oportunidade → hipóteses validadas, já reordenadas. */
+  /** Opportunity id → validated hypotheses, already re-ranked. */
   byOpportunity: Map<string, HypothesisDraft[]>;
-  /** As que caíram e por quê. Vira "limite" na tela, não some. */
+  /** The dropped ones and why; shown as a "limite" on screen, not hidden. */
   dropped: string[];
-  /** As mesmas de `dropped`, por id da oportunidade (a falha da revisão não entra). */
+  /** Same as `dropped`, by opportunity id (a review failure is not included). */
   droppedBy: Map<string, string[]>;
-  /** Por oportunidade: as categorias sem hipótese e por quê. */
+  /** Per opportunity: the categories with no hypothesis and why. */
   discarded?: Map<string, DiscardedCategory[]>;
 }
 
 /**
- * Por que a oportunidade ficou sem nenhuma hipótese de pé, ou null se ficou
- * com alguma. Em 13/11 uma loja mostrou em 1º lugar "preço empurrado por
- * 4 banners", com R$ 1,18 mi/mês, e a revisão tinha derrubado a única hipótese
- * com os números da própria oportunidade (o preço estava em y=699 numa tela de
- * 844). Oportunidade assim não vai pra tela: a premissa dela não parou de pé.
+ * Why the opportunity has no standing hypothesis, or null if it has one. Such an
+ * opportunity stays off the screen: its premise did not hold up.
  */
 export function fallenReason(
   result: OpportunityHypothesesResult,
@@ -329,9 +309,8 @@ export function fallenReason(
 }
 
 /**
- * As hipóteses de um lote de oportunidades: uma chamada escreve, outra tenta
- * derrubar (challengeHypotheses). Devolve o mapa id da oportunidade →
- * hipóteses que ficaram de pé, e as que caíram.
+ * Hypotheses for a batch of opportunities: one call writes, another tries to
+ * knock them down (challengeHypotheses). Returns the standing and dropped ones.
  */
 export async function generateOpportunityHypotheses(opts: {
   llm: Llm;
@@ -339,25 +318,19 @@ export async function generateOpportunityHypotheses(opts: {
   evidence: DiagnosisEvidence;
   opportunities: UxOpportunity[];
   onUsage: (u: LlmUsage) => void;
-  /** Base de conhecimento (loja + curada); escolhe pelas partes em jogo. */
+  /** Knowledge base (store + curated); selected by the parts in play. */
   knowledge?: KnowledgeEntry[];
-  /**
-   * Por oportunidade: as causas que já caíram, com o motivo (reinvestigate.ts).
-   * A rodada nova não pode repetir nem reescrever nenhuma delas.
-   */
+  /** Per opportunity: causes that already fell, with the reason; the new round must not repeat them. */
   tried?: Map<string, string[]>;
-  /** A meta da rodada (`objective_statement`): contexto no prompt. */
+  /** The round's goal (`objective_statement`): context in the prompt. */
   objective?: string | null;
-  /**
-   * Assina as URLs dos prints da org: o modelo baixa a imagem pela rota de
-   * mídia, que só serve objeto de org com assinatura. Ausente = como estão.
-   */
+  /** Signs screenshot URLs, since the media route only serves signed org objects. Absent = as is. */
   mediaUrl?: (url: string) => Promise<string>;
 }): Promise<OpportunityHypothesesResult> {
   const { evidence, opportunities } = opts;
   const spec = pageSpec(evidence.page_type);
   const knowledge = selectKnowledge({
-    // Veredito de uma página que mudou vai como histórico (validity.ts).
+    // A verdict on a page that has since changed goes in as history (validity.ts).
     entries: markStale(opts.knowledge ?? [], evidence),
     areas: opportunities.map((o) => o.area),
     pageType: spec.key,
@@ -462,9 +435,8 @@ Responda SÓ este JSON:
 }
 
 /**
- * A prova de que a causa muda entre as telas: os fatos citados existem, há
- * ao menos um do celular e um do computador, e os números da frase estão
- * neles. Devolve os ids, ou o motivo de cair.
+ * Proof that the cause differs between devices: cited facts exist, include one
+ * mobile and one desktop fact, and back the sentence's numbers. Ids or a drop reason.
  */
 function deviceContrast(
   why: string,
@@ -485,16 +457,16 @@ function deviceContrast(
   return g.facts.map((f) => f.id);
 }
 
-/** A mesma etapa (a da PDP no GA4 e no Deco Analytics é uma só). */
+/** Keys that name the same funnel step across analytics sources. */
 const SAME_STEP: UxMetricKey[][] = [
   ["produto_carrinho", "pdp_carrinho"],
-  // Abrir um produto da página = clicar num produto da vitrine dela.
+  // Opening a product from the page = clicking a product in its shelf.
   ["pagina_produto", "lista_produto"],
 ];
 const sameStep = (a: UxMetricKey, b: UxMetricKey) =>
   a === b || SAME_STEP.some((g) => g.includes(a) && g.includes(b));
 
-/** Sem dado pra conferir a previsão, a hipótese não passa disso. */
+/** Confidence cap for a hypothesis whose prediction has no data to check. */
 const UNCHECKED_CONFIDENCE = 0.4;
 
 const asCheck = (v: unknown): "apoia" | "contradiz" | "sem_dado" => {
@@ -507,7 +479,7 @@ const asCheck = (v: unknown): "apoia" | "contradiz" | "sem_dado" => {
   return "sem_dado";
 };
 
-/** Exportado pra teste. */
+/** Exported for tests. */
 export function parseOpportunityHypotheses(
   raw: string,
   opportunities: UxOpportunity[],
@@ -541,7 +513,7 @@ export function parseOpportunityHypotheses(
         reason,
       ]);
     };
-    // O modelo numera pela posição; depois das que caem, as relações seguem o rank novo.
+    // The model numbers by position; after drops, relations follow the new rank.
     const newRank = new Map<number, number>();
     for (const [index, h] of (Array.isArray(r.hypotheses)
       ? r.hypotheses
@@ -554,7 +526,7 @@ export function parseOpportunityHypotheses(
         continue;
       }
       const title = tree.causa;
-      // Oportunidade de um segmento: a causa tem que pesar mais nele.
+      // Segment opportunity: the cause must weigh more on that segment.
       const segment = opportunity.metric?.segment;
       const whySegment = text(x.por_que_no_segmento);
       if (segment && !whySegment) {
@@ -564,7 +536,7 @@ export function parseOpportunityHypotheses(
         continue;
       }
       if (segment) tree.por_que_no_segmento = whySegment;
-      // A hipótese mede a etapa da oportunidade, ou é de outra.
+      // The hypothesis measures the opportunity's step, or it belongs elsewhere.
       const own = opportunity.metric?.key ?? null;
       if (own) {
         const said = tree.metrica.key;
@@ -576,7 +548,7 @@ export function parseOpportunityHypotheses(
         }
         tree.metrica = { ...tree.metrica, key: own };
       }
-      // Perda de dispositivo só se explica pelo que muda entre as telas.
+      // A device loss is only explained by what differs between devices.
       const whyDevice = text(x.por_que_no_dispositivo);
       if (opportunity.metric?.control === "dispositivo") {
         if (!whyDevice) {
@@ -585,7 +557,7 @@ export function parseOpportunityHypotheses(
           );
           continue;
         }
-        // A diferença entre as telas tem que estar nos fatos, dos dois lados.
+        // The device difference must be in the facts, on both sides.
         const contrast = deviceContrast(
           whyDevice,
           x.fatos_contraste ?? x.fatos_dispositivo,
@@ -611,7 +583,7 @@ export function parseOpportunityHypotheses(
         );
         continue;
       }
-      // Portão em código antes de gastar verificação (triage.ts).
+      // Code gate before spending verification (triage.ts).
       const gate = triage(
         {
           title,
@@ -692,9 +664,9 @@ export function parseOpportunityHypotheses(
   return { byOpportunity: out, dropped, droppedBy, discarded };
 }
 
-// ── 3. Revisão contraditória ─────────────────────────────────────────────────
+// ── 3. Adversarial review ────────────────────────────────────────────────────
 
-/** Só texto e um modelo mais barato: é conferir número, não olhar print. */
+/** Text only and a cheaper model: it checks numbers, not screenshots. */
 const CHALLENGE_MODEL: LlmTier = "smart";
 
 const CHALLENGE_SYSTEM = `Você revisa hipóteses de CRO com ceticismo. Seu trabalho é tentar DERRUBAR cada hipótese usando só os dados abaixo — não melhorá-la.
@@ -730,10 +702,8 @@ interface ReviewTarget {
 }
 
 /**
- * Tenta derrubar cada hipótese com os próprios dados. Derrubada sai (e vira
- * "limite"); fraca fica com confiança no teto de sem-dado e o motivo junto da
- * evidência. Se a revisão falhar, as hipóteses seguem como estavam e a falha
- * vira limite: a revisão é um filtro, não um passo de que a análise dependa.
+ * Tries to knock down each hypothesis with the data: "derrubada" drops, "fraca" is capped.
+ * If the review fails, hypotheses pass unchanged: it is a filter, not a dependency.
  */
 async function challengeHypotheses(opts: {
   llm: Llm;
@@ -741,7 +711,7 @@ async function challengeHypotheses(opts: {
   opportunities: UxOpportunity[];
   result: OpportunityHypothesesResult;
   onUsage: (u: LlmUsage) => void;
-  /** O mesmo bloco de conhecimento que as hipóteses viram. */
+  /** The same knowledge block the hypotheses saw. */
   knowledgeText?: string;
 }): Promise<OpportunityHypothesesResult> {
   const { result } = opts;
@@ -792,7 +762,7 @@ Responda SÓ este JSON:
   return applyChallenge(raw, targets, result);
 }
 
-/** A favor / contra com os fatos citados, pra quem revisa conferir no livro. */
+/** For / against with cited facts, so the reviewer can check the fact book. */
 function claimsWithFacts(tree: HypothesisTree): string {
   const line = (c: UxClaim) =>
     `- ${c.text}${c.facts && c.facts.length > 0 ? ` [${c.facts.join(", ")}]` : ""} (${CLAIM_WORD[c.label]})`;
@@ -802,7 +772,7 @@ function claimsWithFacts(tree: HypothesisTree): string {
   ].join("\n");
 }
 
-/** Exportado pra teste. */
+/** Exported for tests. */
 export function applyChallenge(
   raw: string,
   targets: ReviewTarget[],
@@ -859,15 +829,11 @@ export function applyChallenge(
     }
     byOpportunity.set(opportunityId, renumber(kept));
   }
-  // `...result` mantém as categorias descartadas da árvore.
+  // `...result` keeps the tree's discarded categories.
   return { ...result, byOpportunity, dropped, droppedBy };
 }
 
-/**
- * Rank 1..n de novo depois que a revisão derruba alguma, e as ligações da
- * árvore ("concorre com H2") seguem o rank novo; a ligação com uma derrubada
- * some.
- */
+/** Re-ranks 1..n after drops; tree relations follow the new rank and links to dropped ones vanish. */
 function renumber(kept: HypothesisDraft[]): HypothesisDraft[] {
   const newRank = new Map(kept.map((h, i) => [h.rank, i + 1]));
   return kept.map((h, i) => ({
@@ -886,10 +852,10 @@ function renumber(kept: HypothesisDraft[]): HypothesisDraft[] {
   }));
 }
 
-/** `www.loja.com` e `loja.com` são a mesma loja. */
+/** `www.loja.com` and `loja.com` are the same store. */
 const bareDomain = (d: string) => d.replace(/^www\./, "");
 
-/** Só loja capturada nesta análise; o resto é citação de memória e cai. */
+/** Only stores captured in this analysis; anything else is cited from memory and drops. */
 function parseBenchmark(
   v: unknown,
   urlOf: Map<string, string>,
