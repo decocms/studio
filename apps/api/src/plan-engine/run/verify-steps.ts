@@ -7,7 +7,7 @@
  */
 
 import { type DiagnosisPatch, retiredId } from "@/storage/plan-engine";
-import { codeAccessFor } from "../adapters/unavailable.ts";
+import { codeAccessFor } from "../adapters/repo.ts";
 import {
   type CostCollector,
   costTotal,
@@ -37,18 +37,26 @@ import type {
   DiagnosisEvidence,
   DiagnosisSummary,
   OpportunityDraft,
-  SourceGap,
   UxHypothesis,
   UxOpportunity,
 } from "../types.ts";
+import { lazyCodeReader } from "../verify/code-source.ts";
 import {
   liveDeps,
   planJudgeDeps,
+  repoDeps,
   type VerifyDeps,
   verificationBase,
   verifyHypothesis,
 } from "../verify/index.ts";
 import { elementKeysOf } from "../verify/plan.ts";
+import {
+  loadRepoSnapshot,
+  type RepoSnapshot,
+  repoSnapshotKey,
+} from "../verify/repo.ts";
+import { withRepoSnapshot } from "../verify/repo-snapshot.ts";
+import type { RepoReader } from "../ports.ts";
 import type {
   CheckRun,
   HypothesisVerification,
@@ -106,18 +114,6 @@ export function rerunFailedPatch(
         }
       : {}),
   };
-}
-
-/** The evidence with the gap, without repeating one collect already wrote. */
-function withGap(
-  evidence: DiagnosisEvidence,
-  gap: SourceGap,
-): DiagnosisEvidence {
-  return evidence.gaps.some(
-    (g) => g.source === gap.source && g.error === gap.error,
-  )
-    ? evidence
-    : { ...evidence, gaps: [...evidence.gaps, gap] };
 }
 
 /** The limits line with the refuted hypotheses. */
@@ -259,19 +255,27 @@ function liveChecks(
   };
 }
 
-/** The store's code, as this run can test it: not yet. */
-const unavailableRepo: Pick<VerifyDeps, "repo"> = {
-  repo: async (check) => ({
-    run: {
-      check,
-      outcome: "nao_testou",
-      observed: "o repositório não foi lido nesta rodada",
-      screenshot_url: null,
-      source_ref: null,
-    },
-    followup: null,
-  }),
-};
+/** The store's code for the code tests: the round's snapshot, and the repo for a file it lacks. */
+interface RunCode {
+  snapshot: RepoSnapshot | null;
+  read: RepoReader | undefined;
+}
+
+/** Read once per step: the snapshot from the run's media, the repo opened on the first file asked for. */
+async function runCode(
+  run: EngineRun,
+  evidence: DiagnosisEvidence,
+): Promise<RunCode> {
+  const key = evidence.repo_snapshot_key;
+  const [snapshot, profile] = await Promise.all([
+    run.media && key ? loadRepoSnapshot(run.media, key) : null,
+    run.store.getSiteProfile(run.orgId),
+  ]);
+  return {
+    snapshot,
+    read: lazyCodeReader(codeAccessFor(run.ctx, run.orgId, profile)),
+  };
+}
 
 /**
  * Verifies one hypothesis and writes the outcome: keeps it (with the
@@ -283,6 +287,7 @@ async function verifyAndApply(opts: {
   h: UxHypothesis;
   opportunity: UxOpportunity;
   evidence: DiagnosisEvidence;
+  code: RunCode;
   onUsage: CostCollector["llm"];
   /** Until when a test may start (ms epoch). */
   deadline: number;
@@ -297,7 +302,14 @@ async function verifyAndApply(opts: {
       evidence,
       onUsage: opts.onUsage,
     }),
-    ...unavailableRepo,
+    ...repoDeps({
+      llm: run.llm,
+      snapshot: opts.code.snapshot,
+      ctx: { elementKeys: elementKeysOf(evidence) },
+      onUsage: opts.onUsage,
+      read: opts.code.read,
+      timeLeft,
+    }),
     live: liveChecks(run, evidence, h.id),
     now: () => new Date().toISOString(),
     timeLeft,
@@ -437,7 +449,7 @@ async function learnFromVerdict(
   }
 }
 
-/** The store's code for the code tests; without a path to it, the named gap. */
+/** The store's code for the code tests; without a path to it, the owned gap. */
 export async function repoSnapshotStep(run: EngineRun): Promise<void> {
   const { store, orgId, id } = run;
   // A storage hiccup here does not stop verification: code tests read "not tested".
@@ -454,7 +466,12 @@ export async function repoSnapshotStep(run: EngineRun): Promise<void> {
       stage: "verify",
       progress_note: "lendo o código da loja",
     });
-    const next = withGap(evidence, codeAccessFor(profile).gap);
+    const next = await withRepoSnapshot({
+      evidence,
+      access: codeAccessFor(run.ctx, orgId, profile),
+      media: run.media,
+      key: repoSnapshotKey(id),
+    });
     await store.updateDiagnosis(orgId, id, { evidence: next });
   } catch (err) {
     console.warn(
@@ -511,6 +528,7 @@ export async function verifyStep(
     h,
     opportunity,
     evidence,
+    code: await runCode(run, evidence),
     onUsage: c.llm,
     deadline,
   });
@@ -646,6 +664,7 @@ export async function reinvestigateStep(
         o.id,
         drafts,
       );
+      const code = await runCode(run, evidence);
       const fresh = toInvestigate(
         proposalsInOrder([o], await store.listHypotheses(orgId, id)).filter(
           (h) => ids.includes(h.id),
@@ -658,6 +677,7 @@ export async function reinvestigateStep(
           h,
           opportunity: o,
           evidence,
+          code,
           onUsage: c.llm,
           deadline: hypothesisDeadline(
             stepDeadline,
@@ -775,6 +795,7 @@ export async function replaceStep(
         stage: "verify",
         progress_note: `verificando "${saved.title}", que entra no lugar de "${f.title}"`,
       });
+      const code = await runCode(run, evidence);
       const all = proposalsInOrder(
         [saved],
         await store.listHypotheses(orgId, id),
@@ -787,6 +808,7 @@ export async function replaceStep(
           h,
           opportunity: saved,
           evidence,
+          code,
           onUsage: c.llm,
           deadline: hypothesisDeadline(
             stepDeadline,

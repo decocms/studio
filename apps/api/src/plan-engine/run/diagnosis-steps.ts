@@ -6,7 +6,7 @@
 
 import { orgHeatmap, orgLake } from "../adapters/analytics.ts";
 import { orgBigQuery } from "../adapters/bigquery.ts";
-import { codeAccessFor } from "../adapters/unavailable.ts";
+import { codeAccessFor } from "../adapters/repo.ts";
 import {
   captureCompetitorPage,
   captureCompetitorPdp,
@@ -84,7 +84,8 @@ export async function collectStep(
     vtex: profile.domain ? { publicHost: profile.domain } : null,
     onScan: costs.scan,
   });
-  result.evidence.gaps.push(codeAccessFor(profile).gap);
+  const access = codeAccessFor(ctx, orgId, profile);
+  if (access.kind === "gap") result.evidence.gaps.push(access.gap);
   // Routes read now serve the next runs too.
   if (result.page_templates) {
     await store

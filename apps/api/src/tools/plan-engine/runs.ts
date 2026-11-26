@@ -7,7 +7,8 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import type { StudioContext } from "@/core/studio-context";
-import { codeAccessFor } from "@/plan-engine/adapters/unavailable";
+import { orgMediaStore } from "@/plan-engine/adapters/media";
+import { codeAccessFor } from "@/plan-engine/adapters/repo";
 import type {
   StartedDiagnosis,
   StartUxDiagnosisOutput,
@@ -15,8 +16,15 @@ import type {
 import { startUxDiagnosisWorkflow } from "@/plan-engine/dbos-ux-diagnosis";
 import { PAGE_TYPE_ORDER } from "@/plan-engine/page-types";
 import { buildSetup } from "@/plan-engine/setup";
-import type { UxDiagnosis, UxPageType } from "@/plan-engine/types";
+import type {
+  DiagnosisEvidence,
+  SiteProfile,
+  UxDiagnosis,
+  UxPageType,
+} from "@/plan-engine/types";
 import { reverifyBlock } from "@/plan-engine/verify/index";
+import { repoSnapshotKey } from "@/plan-engine/verify/repo";
+import { refreshRepoSnapshot } from "@/plan-engine/verify/repo-snapshot";
 import { getSettings } from "@/settings";
 import { engineOrg, errorOf, Row } from "./gate";
 import { syncProfileFromStudio } from "./profile";
@@ -264,15 +272,30 @@ const VerifyOutputSchema = z.union([
   }),
 ]);
 
-/** What the code tests read this round, said for the tool's answer. */
-function repoSnapshotNote(
-  diagnosis: UxDiagnosis,
-  profile: Parameters<typeof codeAccessFor>[0],
-): string {
-  const fallback = diagnosis.evidence?.repo_snapshot_key
-    ? "vale o snapshot da rodada"
-    : "os testes de código saem 'não deu pra testar'";
-  return `${codeAccessFor(profile).gap.error}: ${fallback}`;
+/**
+ * Reads the store's code again for this round, with this call's organization,
+ * and says what the code tests read; failing never blocks verification.
+ */
+async function repoSnapshotNote(
+  ctx: StudioContext,
+  orgId: string,
+  diagnosisId: string,
+  evidence: DiagnosisEvidence,
+  profile: SiteProfile | null,
+): Promise<string> {
+  const store = ctx.storage.planEngine;
+  const refreshed = await refreshRepoSnapshot({
+    evidence,
+    access: codeAccessFor(ctx, orgId, profile),
+    media: ctx.objectStorage ? orgMediaStore(ctx.objectStorage) : null,
+    key: repoSnapshotKey(diagnosisId),
+  });
+  if (refreshed.evidence) {
+    await store.updateDiagnosis(orgId, diagnosisId, {
+      evidence: refreshed.evidence,
+    });
+  }
+  return refreshed.note;
 }
 
 export const PLAN_UX_HYPOTHESES_VERIFY = defineTool({
@@ -388,7 +411,13 @@ export const PLAN_UX_HYPOTHESES_VERIFY = defineTool({
             "outra verificação ou análise começou agora: espere ela terminar",
         };
       }
-      const repoNote = repoSnapshotNote(diagnosis, profile);
+      const repoNote = await repoSnapshotNote(
+        ctx,
+        org.id,
+        diagnosisId,
+        diagnosis.evidence,
+        profile,
+      ).catch((err) => `snapshot do repo: ${errorOf(err)}`);
       // Each click is a new verification; the tag also separates its spend.
       const runTag = `reverify-${Date.now()}`;
       let instanceId: string;

@@ -2,10 +2,16 @@
  * Orquestração da verificação de UMA hipótese: plano → testes de repo (os
  * `followup` entram na fila do navegador) → testes live → veredito. Tudo entra
  * por `VerifyDeps`, então a ordem e as regras de desfecho testam sem rede nem
- * Chrome. O chamador compõe `planJudgeDeps` com o navegador e o repositório.
+ * Chrome. O chamador compõe `planJudgeDeps`, `liveDeps` e `repoDeps`.
  */
 
-import type { BrowserPort, Llm, LlmUsage, MediaStore } from "../ports.ts";
+import type {
+  BrowserPort,
+  Llm,
+  LlmUsage,
+  MediaStore,
+  RepoReader,
+} from "../ports.ts";
 import type {
   DiagnosisEvidence,
   PageCapture,
@@ -13,7 +19,8 @@ import type {
   UxOpportunity,
 } from "../types.ts";
 import { runLiveCheck } from "./live.ts";
-import { type ParsedPlan, planVerification } from "./plan.ts";
+import { type ParsedPlan, type PlanContext, planVerification } from "./plan.ts";
+import { type RepoSnapshot, runRepoCheck } from "./repo.ts";
 import type { CheckRun, HypothesisVerification, VerifyCheck } from "./types.ts";
 import {
   CONFIRM_BOOST,
@@ -287,6 +294,33 @@ export async function verifyHypothesis(
       `a verificação falhou: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+}
+
+/**
+ * `read` é o repositório da loja: com ele, o modelo pode pedir o arquivo que o
+ * snapshot não trouxe. Sem ele, uma volta só.
+ */
+export function repoDeps(opts: {
+  llm: Llm;
+  snapshot: RepoSnapshot | null;
+  ctx: PlanContext;
+  onUsage: (u: LlmUsage) => void;
+  read?: RepoReader;
+  timeLeft?: () => number;
+}): Pick<VerifyDeps, "repo"> {
+  return {
+    repo: (check, hypothesis) =>
+      runRepoCheck({
+        llm: opts.llm,
+        snapshot: opts.snapshot,
+        check,
+        hypothesis,
+        ctx: opts.ctx,
+        onUsage: opts.onUsage,
+        read: opts.read,
+        timeLeft: opts.timeLeft,
+      }),
+  };
 }
 
 export function planJudgeDeps(opts: {

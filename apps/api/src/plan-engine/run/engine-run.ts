@@ -13,7 +13,7 @@ import {
   type RunBrowser,
   releaseRunBrowser,
 } from "../adapters/run-browser.ts";
-import type { Llm } from "../ports.ts";
+import type { Llm, MediaStore } from "../ports.ts";
 
 export interface EngineRun {
   orgId: string;
@@ -27,6 +27,8 @@ export interface EngineRun {
   store: StudioContext["storage"]["planEngine"];
   knowledge: StudioContext["storage"]["planEngineKnowledge"];
   llm: Llm;
+  /** The org's object storage for the run's media; null when the install has none. */
+  media: MediaStore | null;
   /** A URL the model can fetch a stored capture from. */
   mediaUrl: (path: string) => Promise<string>;
   /** The run's browser, provisioned on the step's first call. */
@@ -92,6 +94,7 @@ function runOn(
     store: ctx.storage.planEngine,
     knowledge: ctx.storage.planEngineKnowledge,
     llm: orgLlm(ctx),
+    media,
     mediaUrl: async (path) => (media ? media.url(path) : path),
     browser: () => {
       browser ??= openRunBrowser({ ctx, orgId, userId, diagnosisId, media });
