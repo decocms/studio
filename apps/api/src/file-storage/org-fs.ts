@@ -86,7 +86,7 @@ export class OrgFsNotFoundError extends Error {
  * landed, a bucket reset under an existing DB — and a missing object is a
  * not-found, not a server fault.
  */
-function isMissingObject(err: unknown): boolean {
+export function isMissingObject(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const e = err as {
     name?: string;

@@ -495,6 +495,170 @@ async function resolveWarehouseSiteId(
   return id ? { status: "registered", id } : { status: "unregistered" };
 }
 
+export interface AnalyticsDataQuery {
+  view?: string;
+  range?: string;
+  /** `view=heatmap` only. */
+  page?: string;
+  device?: string;
+  /** Segment filters, `dim:op:value`. */
+  filters: string[];
+  currency?: string;
+  prop?: string;
+}
+
+/**
+ * The tenant-scoped dashboard views of one of the org's sites, read straight
+ * from the Analytics read surface (NOT the control-plane), or from the org's
+ * customer lake without it. Answers `{ registered, siteId, view, range, data }`
+ * where `data` is the read surface's per-view payload reduced to the keys the
+ * tab reads (`toTenantAnalyticsPayload`), or `{ registered:false }` when the
+ * site has no warehouse id yet. The caller has authenticated `ctx`, which
+ * names the organization.
+ */
+export async function readAnalyticsData(
+  ctx: StudioContext,
+  site: string,
+  query: AnalyticsDataQuery,
+): Promise<{ status: ContentfulStatusCode; body: Record<string, unknown> }> {
+  const reply = (
+    body: Record<string, unknown>,
+    status: ContentfulStatusCode = 200,
+  ) => ({ status, body });
+  const org = requireOrganization(ctx);
+
+  // 404 (not 403) so an unowned slug looks like a non-existent one.
+  const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+  if (access?.kind === "error") {
+    return reply({ error: "Failed to resolve analytics registration" }, 502);
+  }
+  if (!access) return reply({ error: "Site not found in organization" }, 404);
+
+  const {
+    controlplaneRestUrl,
+    controlplaneServiceToken,
+    analyticsDataUrl,
+    analyticsMasterToken,
+  } = getSettings();
+  if (
+    access.kind === "owned" &&
+    (!controlplaneRestUrl || !controlplaneServiceToken)
+  ) {
+    return reply({ error: "Hosting integration is not configured" }, 503);
+  }
+  // Without the read surface, the org's customer lake answers from its rollups.
+  const readSurface = !!analyticsDataUrl && !!analyticsMasterToken;
+  if (!readSurface && !isCustomerLakeConfigured()) {
+    return reply({ error: "Analytics data surface is not configured" }, 503);
+  }
+
+  const view = query.view ?? "overview";
+  if (!ANALYTICS_VIEWS.has(view)) {
+    return reply({ error: `unknown or unavailable view: ${view}` }, 400);
+  }
+  const range = query.range ?? "24h";
+  if (!ANALYTICS_RANGES.has(range)) {
+    return reply({ error: `unknown range: ${range}` }, 400);
+  }
+  const heatmap =
+    view === "heatmap" ? heatmapParams(query.page, query.device) : {};
+  if (!heatmap) {
+    return reply({ error: "invalid heatmap page or device" }, 400);
+  }
+  const segment = segmentParams(query.filters, query.currency, query.prop);
+  if (!segment) return reply({ error: "invalid segment" }, 400);
+
+  // From a slug the org owns, never a client-supplied id; a transient error is a 502, not "unregistered".
+  let siteId = access.kind === "external" ? access.siteId : null;
+  if (!siteId) {
+    const resolution = await resolveWarehouseSiteId(org, site);
+    if (resolution.status === "error") {
+      return reply({ error: "Failed to resolve analytics registration" }, 502);
+    }
+    if (resolution.status === "unregistered") {
+      return reply({ registered: false, view, range });
+    }
+    siteId = resolution.id;
+  }
+
+  if (!readSurface) {
+    // Each lake dimension is its own aggregate: a filter would show unfiltered numbers.
+    if (segment.some(([key]) => key === "f")) {
+      return reply({ error: "Filters need the Analytics read surface" }, 422);
+    }
+    const win = lakeWindow(range);
+    if (!win) return reply({ error: `unknown range: ${range}` }, 400);
+    try {
+      const data = await loadLakeAnalyticsView(org.id, siteId, view, win);
+      return reply({ registered: true, siteId, view, range, data });
+    } catch (err) {
+      console.error(`[analytics] lake ${view} failed for site="${site}":`, err);
+      return reply({ error: "Failed to read Deco Analytics" }, 502);
+    }
+  }
+
+  const upstream = new URL(`${analyticsDataUrl}/data`);
+  upstream.searchParams.set("view", view);
+  upstream.searchParams.set("range", range);
+  upstream.searchParams.set("site", siteId);
+  for (const [key, value] of Object.entries(heatmap)) {
+    upstream.searchParams.set(key, value);
+  }
+  for (const [key, value] of segment) upstream.searchParams.append(key, value);
+
+  let payload: Record<string, unknown> | null;
+  try {
+    const res = await fetch(upstream, {
+      headers: {
+        Authorization: `Bearer ${analyticsMasterToken}`,
+        Accept: "application/json",
+      },
+    });
+    payload = (await res.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!res.ok) {
+      const error =
+        (payload && typeof payload === "object" && "error" in payload
+          ? String((payload as { error: unknown }).error)
+          : null) ?? `Analytics request failed (${res.status})`;
+      const status: ContentfulStatusCode =
+        res.status >= 400 && res.status <= 599
+          ? (res.status as ContentfulStatusCode)
+          : 502;
+      return reply({ error }, status);
+    }
+  } catch (err) {
+    console.error(`[analytics] data proxy error for site="${site}":`, err);
+    return reply({ error: "Failed to reach analytics service" }, 502);
+  }
+
+  if (!payload) {
+    return reply({ error: "analytics returned an empty payload" }, 502);
+  }
+
+  // Our token may name any site: an unscoped payload could be another tenant's numbers.
+  if (!isTenantScoped(payload, siteId)) {
+    console.error(
+      `[analytics] refusing unscoped payload for site="${site}" (${siteId}):`,
+      payload.usageScope,
+    );
+    return reply(
+      { error: "analytics did not scope to this site; refusing to render" },
+      502,
+    );
+  }
+
+  return reply({
+    registered: true,
+    siteId,
+    view,
+    range,
+    data: toTenantAnalyticsPayload(payload, siteId),
+  });
+}
+
 /**
  * Org-scoped routes mounted at `/api/:org/hosting`. Three peer surfaces
  * (Hosting / E2E / Deco Analytics) over the same control-plane connection.
@@ -822,175 +986,24 @@ export const createHostingRoutes = () => {
   });
 
   // GET /api/:org/hosting/:site/analytics/data?view=&range= (+ page, device for
-  // view=heatmap) — the tenant-scoped
-  // dashboard views, read straight from the Analytics read surface (NOT the
-  // control-plane). Answers `{ registered, siteId, view, range, data }` where
-  // `data` is the read surface's per-view payload reduced to the keys the tab
-  // reads (`toTenantAnalyticsPayload`). `{ registered:false }` when the site has no warehouse id yet, so
-  // the tab shows the Configuration section instead of empty charts.
+  // view=heatmap, f/currency/prop for a segment) — see readAnalyticsData.
   app.get("/:site/analytics/data", async (c) => {
     const ctx = c.get("studioContext");
     if (!isAuthenticated(ctx)) {
       return c.json({ error: "Unauthorized" }, 401);
     }
-    const org = requireOrganization(ctx);
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
-
-    // 404 (not 403) so an unowned slug looks like a non-existent one.
-    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
-    if (access?.kind === "error") return registrationLookupFailed(c);
-    if (!access) {
-      return c.json({ error: "Site not found in organization" }, 404);
-    }
-
-    const {
-      controlplaneRestUrl,
-      controlplaneServiceToken,
-      analyticsDataUrl,
-      analyticsMasterToken,
-    } = getSettings();
-    if (
-      access.kind === "owned" &&
-      (!controlplaneRestUrl || !controlplaneServiceToken)
-    ) {
-      return c.json({ error: "Hosting integration is not configured" }, 503);
-    }
-    // Without the read surface, the org's customer lake answers what its
-    // hourly rollups hold.
-    const readSurface = !!analyticsDataUrl && !!analyticsMasterToken;
-    if (!readSurface && !isCustomerLakeConfigured()) {
-      return c.json({ error: "Analytics data surface is not configured" }, 503);
-    }
-
-    const view = c.req.query("view") ?? "overview";
-    if (!ANALYTICS_VIEWS.has(view)) {
-      return c.json({ error: `unknown or unavailable view: ${view}` }, 400);
-    }
-    const range = c.req.query("range") ?? "24h";
-    if (!ANALYTICS_RANGES.has(range)) {
-      return c.json({ error: `unknown range: ${range}` }, 400);
-    }
-    const heatmap =
-      view === "heatmap"
-        ? heatmapParams(c.req.query("page"), c.req.query("device"))
-        : {};
-    if (!heatmap) {
-      return c.json({ error: "invalid heatmap page or device" }, 400);
-    }
-    const segment = segmentParams(
-      c.req.queries("f") ?? [],
-      c.req.query("currency"),
-      c.req.query("prop"),
-    );
-    if (!segment) return c.json({ error: "invalid segment" }, 400);
-
-    // Resolve the warehouse site_id from a slug the org owns — never trust a
-    // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
-    // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
-    // tab reports a data-load failure instead of a misleading Configuration screen.
-    let siteId = access.kind === "external" ? access.siteId : null;
-    if (!siteId) {
-      const resolution = await resolveWarehouseSiteId(org, site);
-      if (resolution.status === "error") {
-        return c.json(
-          { error: "Failed to resolve analytics registration" },
-          502,
-        );
-      }
-      if (resolution.status === "unregistered") {
-        return c.json({ registered: false, view, range });
-      }
-      siteId = resolution.id;
-    }
-
-    if (!readSurface) {
-      // Each lake dimension is its own aggregate, so a filtered read would
-      // show unfiltered numbers under the filter's chip.
-      if (segment.some(([key]) => key === "f")) {
-        return c.json(
-          { error: "Filters need the Analytics read surface" },
-          422,
-        );
-      }
-      const win = lakeWindow(range);
-      if (!win) return c.json({ error: `unknown range: ${range}` }, 400);
-      try {
-        const data = await loadLakeAnalyticsView(org.id, siteId, view, win);
-        return c.json({ registered: true, siteId, view, range, data });
-      } catch (err) {
-        console.error(
-          `[analytics] lake ${view} failed for site="${site}":`,
-          err,
-        );
-        return c.json({ error: "Failed to read Deco Analytics" }, 502);
-      }
-    }
-
-    const upstream = new URL(`${analyticsDataUrl}/data`);
-    upstream.searchParams.set("view", view);
-    upstream.searchParams.set("range", range);
-    upstream.searchParams.set("site", siteId);
-    for (const [key, value] of Object.entries(heatmap)) {
-      upstream.searchParams.set(key, value);
-    }
-    for (const [key, value] of segment)
-      upstream.searchParams.append(key, value);
-
-    let payload: Record<string, unknown> | null;
-    try {
-      const res = await fetch(upstream, {
-        headers: {
-          Authorization: `Bearer ${analyticsMasterToken}`,
-          Accept: "application/json",
-        },
-      });
-      payload = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
-      if (!res.ok) {
-        const error =
-          (payload && typeof payload === "object" && "error" in payload
-            ? String((payload as { error: unknown }).error)
-            : null) ?? `Analytics request failed (${res.status})`;
-        const status: ContentfulStatusCode =
-          res.status >= 400 && res.status <= 599
-            ? (res.status as ContentfulStatusCode)
-            : 502;
-        return c.json({ error }, status);
-      }
-    } catch (err) {
-      console.error(`[analytics] data proxy error for site="${site}":`, err);
-      return c.json({ error: "Failed to reach analytics service" }, 502);
-    }
-
-    if (!payload) {
-      return c.json({ error: "analytics returned an empty payload" }, 502);
-    }
-
-    // The read surface trusts our token to name any site, so verify it actually
-    // scoped to THIS tenant before returning. A payload that isn't tenant-scoped
-    // — or was scoped to a different site — could be someone else's numbers under
-    // this customer's name, which is the one outcome that must never render.
-    if (!isTenantScoped(payload, siteId)) {
-      console.error(
-        `[analytics] refusing unscoped payload for site="${site}" (${siteId}):`,
-        payload.usageScope,
-      );
-      return c.json(
-        { error: "analytics did not scope to this site; refusing to render" },
-        502,
-      );
-    }
-
-    return c.json({
-      registered: true,
-      siteId,
-      view,
-      range,
-      data: toTenantAnalyticsPayload(payload, siteId),
+    const { status, body } = await readAnalyticsData(ctx, site, {
+      view: c.req.query("view"),
+      range: c.req.query("range"),
+      page: c.req.query("page"),
+      device: c.req.query("device"),
+      filters: c.req.queries("f") ?? [],
+      currency: c.req.query("currency"),
+      prop: c.req.query("prop"),
     });
+    return c.json(body, status);
   });
 
   // GET /api/:org/hosting/:site/analytics/globe.js — the live map's renderer.

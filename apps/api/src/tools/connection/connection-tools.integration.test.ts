@@ -114,6 +114,7 @@ describe("Connection Tools", () => {
         planGoals: null as never,
         planEngine: null as never,
         planEngineKnowledge: null as never,
+        planEngineCosts: null as never,
         projectSidebar: null as never,
         aiProviderKeys: null as never,
         secrets: null as never,

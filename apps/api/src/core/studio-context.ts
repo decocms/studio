@@ -310,6 +310,7 @@ import type { UserModelPreferencesStorage } from "../storage/user-model-preferen
 import type { TagStorage } from "../storage/tags";
 import type { SprintStorage } from "../storage/sprints";
 import type { PlanEngineStorage } from "../storage/plan-engine";
+import type { PlanEngineCostStorage } from "../storage/plan-engine-costs";
 import type { PlanEngineKnowledgeStorage } from "../storage/plan-engine-knowledge";
 import type { PlanGoalStorage } from "../storage/plan-goals";
 import type { ProjectSidebarStorage } from "../storage/project-sidebar";
@@ -386,6 +387,7 @@ export interface StudioStorage {
   planGoals: PlanGoalStorage;
   planEngine: PlanEngineStorage;
   planEngineKnowledge: PlanEngineKnowledgeStorage;
+  planEngineCosts: PlanEngineCostStorage;
   projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;

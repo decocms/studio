@@ -101,6 +101,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
       planGoals: null as never,
       planEngine: null as never,
       planEngineKnowledge: null as never,
+      planEngineCosts: null as never,
       aiProviderKeys: null as never,
       secrets: null as never,
       orgFileConfigs: null as never,
