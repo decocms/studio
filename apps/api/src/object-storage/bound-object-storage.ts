@@ -35,11 +35,11 @@ export interface BoundObjectStorage {
   }): Promise<ListObjectsResult>;
   delete(key: string): Promise<void>;
   head(key: string): Promise<HeadObjectResult>;
-  /** Generate a presigned GET URL for the given key. */
+  /** Generate a presigned GET URL for the given key. `signedAt` pins the signature's start, so repeated reads can return the same URL. */
   presignedGetUrl(
     key: string,
     expiresIn?: number,
-    opts?: { requireFetchable?: boolean },
+    opts?: { requireFetchable?: boolean; signedAt?: Date },
   ): Promise<string>;
   /** Generate a presigned PUT URL for the given key. */
   presignedPutUrl(

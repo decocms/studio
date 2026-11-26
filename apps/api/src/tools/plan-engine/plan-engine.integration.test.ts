@@ -22,6 +22,9 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
+import { createBoundObjectStorage } from "../../object-storage/bound-object-storage";
+import type { BoundObjectStorage } from "../../object-storage/bound-object-storage";
+import { S3Service } from "../../object-storage/s3-service";
 import { CURATED_KNOWLEDGE } from "../../plan-engine/knowledge/curated";
 import type { HeatmapReader } from "../../plan-engine/ports";
 import type { OpportunityDraft } from "../../plan-engine/types";
@@ -118,6 +121,7 @@ describe("PLAN_UX tools", () => {
     toolName: string,
     orgId = ORG_A,
     principal: Principal = { kind: "member" },
+    objectStorage: BoundObjectStorage | null = null,
   ): StudioContext {
     const boundAuth = {
       isApiKeyPrincipal: principal.kind === "apiKey",
@@ -146,6 +150,7 @@ describe("PLAN_UX tools", () => {
         organizationSettings,
         virtualMcps,
       },
+      objectStorage,
     } as unknown as StudioContext;
   }
 
@@ -379,6 +384,69 @@ describe("PLAN_UX tools", () => {
       };
       expect((await sync(counting)).profile?.studio_site).toBe("manual");
       expect(probes).toBe(0);
+    });
+  });
+
+  describe("image URLs", () => {
+    // Signing is local: no request reaches this endpoint.
+    const s3 = new S3Service({
+      endpoint: "https://storage.example",
+      bucket: "media",
+      region: "us-east-1",
+      accessKeyId: "test-key",
+      secretAccessKey: "test-secret",
+      forcePathStyle: true,
+    });
+    const path = (id: string) => `ux/${id}/pdp/mobile-fold.jpg`;
+
+    async function seedCapture() {
+      const { d } = await seedAnalysis();
+      await planEngine.updateDiagnosis(ORG_A, d.id, {
+        evidence: {
+          window_days: 7,
+          platform_funnel: [],
+          pdp_behaviour: [],
+          revenue: null,
+          products: [],
+          captures: [
+            { device: "mobile", fold_url: path(d.id), full_url: null } as never,
+          ],
+          benchmark: [],
+          gaps: [],
+        },
+      });
+      return d;
+    }
+
+    it("the store view presigns the org's images for about an hour", async () => {
+      await call(PLAN_UX_SITE_PROFILE_UPDATE, { domain: "www.loja.example" });
+      const d = await seedCapture();
+      const ctx = makeCtx(
+        "PLAN_UX_STORE_VIEW",
+        ORG_A,
+        { kind: "member" },
+        createBoundObjectStorage(s3, ORG_A),
+      );
+      const view = (await PLAN_UX_STORE_VIEW.handler({}, ctx)) as {
+        pages: Array<{ capture_url: string | null }>;
+      };
+      const url = new URL(view.pages[0]?.capture_url ?? "");
+      expect(url.origin).toBe("https://storage.example");
+      expect(url.pathname).toBe(`/media/${ORG_A}/plan-engine/${path(d.id)}`);
+      expect(url.searchParams.get("X-Amz-Expires")).toBe("4200");
+      expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
+
+      const again = (await PLAN_UX_STORE_VIEW.handler({}, ctx)) as typeof view;
+      expect(again.pages[0]?.capture_url).toBe(url.href);
+    });
+
+    it("without object storage the path comes back as it is", async () => {
+      await call(PLAN_UX_SITE_PROFILE_UPDATE, { domain: "www.loja.example" });
+      const d = await seedCapture();
+      const view = (await call(PLAN_UX_STORE_VIEW, {})) as {
+        pages: Array<{ capture_url: string | null }>;
+      };
+      expect(view.pages[0]?.capture_url).toBe(path(d.id));
     });
   });
 

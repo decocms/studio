@@ -5,6 +5,7 @@ import {
   requireOrganization,
   type StudioContext,
 } from "@/core/studio-context";
+import { mediaViewSigner, withMediaUrls } from "@/plan-engine/adapters/media";
 
 /**
  * The organization a Plan engine tool acts for. Refuses unless the org has
@@ -66,3 +67,11 @@ export const WRITE = {
   idempotentHint: true,
   openWorldHint: false,
 } as const;
+
+/** `value` with the engine's image paths as URLs the Plan page can load; paths stay as they are without object storage. */
+export function withOrgMediaUrls<T>(ctx: StudioContext, value: T): Promise<T> {
+  const storage = ctx.objectStorage;
+  return storage
+    ? withMediaUrls(value, mediaViewSigner(storage))
+    : Promise.resolve(value);
+}

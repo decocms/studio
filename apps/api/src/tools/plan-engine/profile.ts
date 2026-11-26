@@ -28,6 +28,7 @@ import {
   RejectedSchema,
   Row,
   WRITE,
+  withOrgMediaUrls,
 } from "./gate";
 
 type Rejected = { domain: string; reason: string };
@@ -151,9 +152,9 @@ export const PLAN_UX_SITE_PROFILE_GET = defineTool({
   handler: async (_input, ctx) => {
     const org = await engineOrg(ctx);
     try {
-      return {
+      return await withOrgMediaUrls(ctx, {
         profile: await ctx.storage.planEngine.getSiteProfile(org.id),
-      };
+      });
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -277,7 +278,10 @@ export const PLAN_UX_SITE_PROFILE_UPDATE = defineTool({
         code_repo: codeRepo,
         code_project_id: codeProjectId,
       });
-      return { profile, ...(warnings.length > 0 ? { warnings } : {}) };
+      return await withOrgMediaUrls(ctx, {
+        profile,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      });
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -296,7 +300,7 @@ export const PLAN_UX_SITE_SOURCES_DETECT = defineTool({
   handler: async (_input, ctx) => {
     const org = await engineOrg(ctx);
     try {
-      return await syncProfileFromStudio(ctx, org);
+      return await withOrgMediaUrls(ctx, await syncProfileFromStudio(ctx, org));
     } catch (err) {
       return { error: errorOf(err) };
     }

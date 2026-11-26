@@ -30,7 +30,15 @@ import {
 } from "@/plan-engine/store-view";
 import type { UxDiagnosis, UxHypothesis } from "@/plan-engine/types";
 import { legacyOpportunities } from "@/storage/plan-engine";
-import { engineOrg, engineOutput, errorOf, READ, Row, WRITE } from "./gate";
+import {
+  engineOrg,
+  engineOutput,
+  errorOf,
+  READ,
+  Row,
+  WRITE,
+  withOrgMediaUrls,
+} from "./gate";
 
 const IdSchema = z.string().min(1).max(256);
 
@@ -79,17 +87,17 @@ export const PLAN_UX_DIAGNOSIS_GET = defineTool({
         opportunities.length === 0 &&
         hypotheses.some((h) => h.kind === "proposta");
       if (legacy) {
-        return {
+        return await withOrgMediaUrls(ctx, {
           diagnosis,
           format: "v1" as const,
           ...legacyOpportunities(hypotheses),
-        };
+        });
       }
       const oppOf = new Map(opportunities.map((o) => [o.id, o]));
       const facts = diagnosis.evidence
         ? factBook(diagnosis.evidence)
         : undefined;
-      return {
+      return await withOrgMediaUrls(ctx, {
         diagnosis,
         format: "v2" as const,
         opportunities,
@@ -107,7 +115,7 @@ export const PLAN_UX_DIAGNOSIS_GET = defineTool({
               }
             : h,
         ),
-      };
+      });
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -161,9 +169,9 @@ export const PLAN_UX_DIAGNOSIS_LIST = defineTool({
     const store = ctx.storage.planEngine;
     try {
       await store.reapStaleDiagnoses(org.id);
-      return {
+      return await withOrgMediaUrls(ctx, {
         diagnoses: await store.listDiagnoses(org.id, input.limit ?? 20),
-      };
+      });
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -211,12 +219,12 @@ export const PLAN_UX_SITE_RUN_GET = defineTool({
             .map((o) => ({ ...o, page_type: d.page_type })),
         ),
       );
-      return {
+      return await withOrgMediaUrls(ctx, {
         site_run_id: input.site_run_id,
         diagnoses,
         opportunities: lists.flat().sort(byValue),
         hidden_elsewhere: hidden,
-      };
+      });
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -298,13 +306,16 @@ export const PLAN_UX_STORE_VIEW = defineTool({
           store.getSiteProfile(org.id),
         ],
       );
-      return buildStoreView({
-        diagnoses: diagnoses.filter((d): d is UxDiagnosis => d !== null),
-        opportunities: opportunities.flat(),
-        hypotheses: hypotheses.flat(),
-        goalId,
-        profile,
-      });
+      return await withOrgMediaUrls(
+        ctx,
+        buildStoreView({
+          diagnoses: diagnoses.filter((d): d is UxDiagnosis => d !== null),
+          opportunities: opportunities.flat(),
+          hypotheses: hypotheses.flat(),
+          goalId,
+          profile,
+        }),
+      );
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -348,9 +359,9 @@ export const PLAN_UX_OPPORTUNITY_GET = defineTool({
             },
           ),
         }));
-      return {
+      return await withOrgMediaUrls(ctx, {
         opportunity: { ...o, hypotheses: detail },
-      } satisfies GetUxOpportunityOutput;
+      } satisfies GetUxOpportunityOutput);
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -426,7 +437,9 @@ export const PLAN_UX_HYPOTHESIS_STATUS_UPDATE = defineTool({
       );
       if (!hypothesis) return { error: "hipótese não encontrada" };
       await learnFromDecision(ctx, org.id, hypothesis);
-      return { hypothesis } satisfies UpdateUxHypothesisStatusOutput;
+      return await withOrgMediaUrls(ctx, {
+        hypothesis,
+      } satisfies UpdateUxHypothesisStatusOutput);
     } catch (err) {
       return { error: errorOf(err) };
     }
@@ -470,7 +483,7 @@ export const PLAN_UX_QUEUE_LIST = defineTool({
           }
         }
       }
-      return { hypotheses: queueOrder(out) };
+      return await withOrgMediaUrls(ctx, { hypotheses: queueOrder(out) });
     } catch (err) {
       return { error: errorOf(err) };
     }
