@@ -1,14 +1,12 @@
-import { useProjectContext, useVirtualMCP, useVirtualMCPActions } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  applyReleaseEdit,
+  type ReleaseEdit,
+} from "@decocms/shared/release-edits";
 import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { runSerializedTask } from "@/lib/serial-task-queue";
-import {
-  addPullRequestRelease,
-  addRelease,
-  markReleaseSandbox,
-  removeRelease,
-  renameReleaseIn,
-} from "./release-edits";
+import { callStudioTool } from "@/lib/studio-tools";
 
 /**
  * Dot colors a named release can take, in assignment order. `success` (green) is
@@ -71,10 +69,6 @@ type ItemData = { item: VirtualMCPEntity | null };
 /** Curated branch-backed release list at `metadata.releases`; discard drops only the entry, leaving the remote branch. */
 export function useReleases(virtualMcpId: string) {
   const vm = useVirtualMCP(virtualMcpId);
-  // Silent: these writes follow a user action (Publish, a rename) that has
-  // its own one toast, or happen in the background (auto-naming a draft).
-  // Callers report a failure themselves when the user can act on it.
-  const actions = useVirtualMCPActions({ silent: true });
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const releases: Release[] = vm?.metadata?.releases ?? [];
@@ -96,39 +90,43 @@ export function useReleases(virtualMcpId: string) {
     return releases;
   };
 
+  const setCacheReleases = (next: Release[]) =>
+    queryClient.setQueriesData<ItemData>(
+      { predicate: (q) => isItemQuery(q.queryKey) },
+      (old) =>
+        old?.item
+          ? {
+              item: {
+                ...old.item,
+                metadata: { ...old.item.metadata, releases: next },
+              },
+            }
+          : old,
+    );
+
   /**
-   * Read-modify-write of the whole `metadata.releases` array. Two writers race
-   * here — the shell auto-names a fresh draft while publish discards the merged
-   * one — and each sends the full array (last write wins), so a naive write
-   * resurrects the just-discarded draft. Serializing per VM (and re-reading the
-   * cache inside the task) makes each edit compose on the previous one's result.
+   * The server applies `edit` to the stored list and answers with it, so an
+   * old copy here can't overwrite other tabs' edits. The cache takes the edit
+   * at once and then the server's list. Edits stay serialized per project so
+   * each optimistic step builds on the previous one.
+   *
+   * Silent: these writes follow a user action (Publish, a rename) that has
+   * its own one toast, or happen in the background (auto-naming a draft).
+   * Callers report a failure themselves when the user can act on it.
    */
-  const write = (reduce: (current: Release[]) => Release[]) =>
+  const write = (edit: ReleaseEdit) =>
     runSerializedTask(`vm-releases:${virtualMcpId}`, async () => {
       const current = readCacheReleases();
-      const next = reduce(current);
+      const next = applyReleaseEdit(current, edit);
       if (next === current) return;
-      queryClient.setQueriesData<ItemData>(
-        { predicate: (q) => isItemQuery(q.queryKey) },
-        (old) =>
-          old?.item
-            ? {
-                item: {
-                  ...old.item,
-                  metadata: { ...old.item.metadata, releases: next },
-                },
-              }
-            : old,
-      );
+      setCacheReleases(next);
       try {
-        await actions.update.mutateAsync({
-          id: virtualMcpId,
-          data: {
-            metadata: { releases: next } as unknown as NonNullable<
-              VirtualMCPEntity["metadata"]
-            >,
-          },
-        });
+        const stored = await callStudioTool(
+          org.slug,
+          "VIRTUAL_MCP_RELEASE_EDIT",
+          { id: virtualMcpId, edit },
+        );
+        setCacheReleases(stored.releases);
       } catch (err) {
         queryClient.invalidateQueries({
           predicate: (q) => isItemQuery(q.queryKey),
@@ -137,20 +135,17 @@ export function useReleases(virtualMcpId: string) {
       }
     });
 
-  const createRelease = (release: Release) =>
-    write((current) => addRelease(current, release));
+  const createRelease = (release: Release) => write({ op: "add", release });
 
   const createPullRequestRelease = (release: Release) =>
-    write((current) => addPullRequestRelease(current, release));
+    write({ op: "add-pull-request", release });
 
   const renameRelease = (branch: string, name: string) =>
-    write((current) => renameReleaseIn(current, branch, name));
+    write({ op: "rename", branch, name });
 
-  const deleteRelease = (branch: string) =>
-    write((current) => removeRelease(current, branch));
+  const deleteRelease = (branch: string) => write({ op: "remove", branch });
 
-  const markSandbox = (branch: string) =>
-    write((current) => markReleaseSandbox(current, branch));
+  const markSandbox = (branch: string) => write({ op: "mark-sandbox", branch });
 
   return {
     releases,

@@ -7809,6 +7809,50 @@ export interface StudioToolIO {
       } | null;
     };
   };
+  VIRTUAL_MCP_RELEASE_EDIT: {
+    input: {
+      id: string;
+      edit:
+        | {
+            op: "add";
+            release: {
+              branch: string;
+              name: string;
+              color: string;
+              createdBy?: string | undefined;
+              createdAt?: string | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
+              preview?: "pull-request" | undefined;
+            };
+          }
+        | {
+            op: "add-pull-request";
+            release: {
+              branch: string;
+              name: string;
+              color: string;
+              createdBy?: string | undefined;
+              createdAt?: string | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
+              preview?: "pull-request" | undefined;
+            };
+          }
+        | { op: "rename"; branch: string; name: string }
+        | { op: "remove"; branch: string }
+        | { op: "mark-sandbox"; branch: string };
+    };
+    output: {
+      releases: {
+        branch: string;
+        name: string;
+        color: string;
+        createdBy?: string | undefined;
+        createdAt?: string | undefined;
+        runtime?: "cms" | "sandbox" | undefined;
+        preview?: "pull-request" | undefined;
+      }[];
+    };
+  };
   VIRTUAL_MCP_LAST_USED_LIST: {
     input: { ids: string[] };
     output: {

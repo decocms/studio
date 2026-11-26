@@ -850,7 +850,7 @@ const releasesMetadataField = z
   .nullable()
   .optional()
   .describe(
-    "Curated list of named, branch-backed releases shown in the version switcher. The base branch ('No ar') is derived, not stored here.",
+    "Curated list of named, branch-backed releases shown in the version switcher. The base branch ('No ar') is derived, not stored here. Edit it with VIRTUAL_MCP_RELEASE_EDIT; an update writes the rest of the metadata and keeps the stored list.",
   );
 
 /**
