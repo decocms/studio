@@ -123,7 +123,7 @@ describe("parseOpportunityHypotheses", () => {
               a_favor: [{ texto: "sinal", fatos: ["F3"], tipo: "inferencia" }],
               benchmark: [
                 { domain: "www.rival.example", what_they_do: "barra fixa" },
-                { domain: "reformation.com", what_they_do: "barra fixa" },
+                { domain: "concorrente-exemplo.com.br", what_they_do: "barra fixa" },
               ],
             },
           ],
