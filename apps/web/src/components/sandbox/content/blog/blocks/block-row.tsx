@@ -60,20 +60,24 @@ export function BlockRow({
         transition,
       }}
       className={cn(
-        "group/row relative rounded-md py-1.5 pl-12 pr-2 transition-colors hover:bg-accent",
+        "relative rounded-md py-1.5 pl-12 pr-2 transition-colors hover:bg-accent [&:hover>[data-row-control]]:opacity-100",
         isDragging && "opacity-50",
       )}
     >
       <button
         type="button"
         aria-label={t("sandbox.blockRow.dragToReorder")}
-        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100 rounded-lg"
+        data-row-control
+        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground active:cursor-grabbing rounded-lg"
         {...attributes}
         {...listeners}
       >
         <DotsGrid size={14} />
       </button>
-      <div className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity group-hover/row:opacity-100">
+      <div
+        data-row-control
+        className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity"
+      >
         <Button
           variant="ghost"
           size="icon-xs"

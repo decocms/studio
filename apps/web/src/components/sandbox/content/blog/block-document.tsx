@@ -21,6 +21,7 @@ import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-re
 import { useT } from "@/i18n/use-t.ts";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import {
+  blockComponentName,
   type BlogBlockType,
   customBlogSectionPaths,
   discoverBlogBlockTypes,
@@ -34,10 +35,6 @@ import {
   uid,
   type BlockItem,
 } from "./block-items";
-
-export function asBlocks(value: unknown): RawBlock[] {
-  return Array.isArray(value) ? (value as RawBlock[]) : [];
-}
 
 /**
  * A slim insert affordance in the gap between two blocks: invisible until the
@@ -83,6 +80,7 @@ export function BlockDocument({
   previewBaseUrl,
   onSaveReferencedBlock,
   emptyMessage = "No content yet. Add your first block below.",
+  allowBlocks,
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
@@ -99,13 +97,20 @@ export function BlockDocument({
   /** Where the generic editor persists edits to a field pointing at a saved block. */
   onSaveReferencedBlock?: ReferencedBlockSaveFn;
   emptyMessage?: string;
+  /** Component names the pickers are limited to. Unset offers every blog block. */
+  allowBlocks?: readonly string[];
 }) {
   const t = useT();
   const hideDefaults = useHideDefaultBlogBlocks();
-  const blockTypes = discoverBlogBlockTypes(meta, {
+  const discovered = discoverBlogBlockTypes(meta, {
     hideDefaults,
     customPaths: decofile ? customBlogSectionPaths(decofile) : [],
   });
+  const blockTypes = allowBlocks
+    ? discovered.filter((type) =>
+        allowBlocks.includes(blockComponentName(type.resolveType)),
+      )
+    : discovered;
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     seedBlockItems(value),

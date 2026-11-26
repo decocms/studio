@@ -62,6 +62,11 @@ export function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+/** An anchor id holds no whitespace: a space anywhere makes `#id` stop matching. */
+export function normalizeAnchorId(raw: string): string {
+  return raw.replace(/\s+/g, "");
+}
+
 /**
  * InlineText with an explicit "this is editable" affordance: a hover/focus
  * background box plus an always-dimmed pencil icon that brightens on hover.
