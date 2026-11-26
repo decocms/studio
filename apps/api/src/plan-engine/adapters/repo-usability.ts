@@ -74,10 +74,8 @@ export async function repositoryUsability(
 }
 
 /**
- * The org's repository for an identity. `findByRef` matches on host and path
- * alone, so the provider is checked here: two providers can share a host in a
- * self-managed deployment, and answering with the wrong one would credential a
- * read against a repository the caller did not name.
+ * The org's repository for an identity. `findByRef` matches host and path only, so the provider is checked
+ * here: two providers can share a self-managed host, and the wrong one would credential an unnamed repository.
  */
 export async function findLinkedRepository(
   repositories: Pick<RepositoryStorage, "findByRef">,

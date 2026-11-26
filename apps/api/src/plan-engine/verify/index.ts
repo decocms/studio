@@ -292,10 +292,7 @@ export async function verifyHypothesis(
   }
 }
 
-/**
- * `read` é o repositório da loja: com ele, o modelo pode pedir o arquivo que o
- * snapshot não trouxe. Sem ele, uma volta só.
- */
+/** With `read` (the store's repo) the model may ask for a file the snapshot lacks; without it, one round. */
 export function repoDeps(opts: {
   llm: Llm;
   snapshot: RepoSnapshot | null;

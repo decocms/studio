@@ -1,17 +1,6 @@
 /**
- * Etapa de repositório do verificador: um snapshot do código da loja (as
- * seções da página e o que elas importam) e uma pergunta ao modelo sobre ele.
- *
- * Os caminhos são os do espelho (`src/` tirado: `src/sections/X.tsx` mora em
- * `sections/X.tsx`); quem lê o repositório resolve `X` e `src/X`.
- *
- * Citação de arquivo fora do que foi lido nunca confirma nem desmente: o
- * modelo pode inventar um caminho com cara de verdade, e só o que foi lido vale.
- *
- * O snapshot tem teto (25 arquivos), e os testes de repo saíam "os arquivos
- * fornecidos não incluem ClosedPopup / useCart / Header". Com o repo à mão, o
- * modelo pode pedir até 6 arquivos numa primeira volta (`need_files`); a
- * segunda responde e não pede mais.
+ * The verifier's repository stage: a snapshot of the store's code (the page's sections and what they import)
+ * and one question to the model about it. Paths are the mirror's (`src/` stripped); only files read can decide.
  */
 
 import { z } from "zod";
@@ -29,21 +18,18 @@ import { type PlanContext, VERIFY_MODEL, validateSteps } from "./plan.ts";
 import type { CheckOutcome, CheckRun, VerifyCheck } from "./types.ts";
 
 export interface RepoSnapshot {
-  /** O repo lido (`owner/nome`). */
+  /** The repo read (`owner/name`). */
   repo: string;
-  /** Quando o snapshot foi lido (a leitura não expõe o commit). */
+  /** When the snapshot was read (the read does not expose the commit). */
   synced_at: string;
   files: Array<{ path: string; text: string }>;
-  /**
-   * O arquivo (dentro de `files`) que é o bloco de página da PDP no CMS: a
-   * ordem das seções da página está no `sections` dele. Ausente = não achado.
-   */
+  /** The file in `files` that is the page's CMS block, whose `sections` hold the order. Absent = not found. */
   page_block?: string;
 }
 
 export const SNAPSHOT_MAX_FILES = 25;
 export const SNAPSHOT_MAX_BYTES = 400_000;
-/** Teto de leituras (404 e arquivo grande demais contam). */
+/** Read ceiling (404s and oversized files count). */
 export const SNAPSHOT_MAX_READS = SNAPSHOT_MAX_FILES * 8;
 
 /** "Product/ProductDetails" → "sections/Product/ProductDetails.tsx". */
@@ -53,10 +39,7 @@ export function sectionPath(section: string): string {
 }
 
 const CODE_EXT = /\.(tsx?|jsx?)$/;
-/**
- * Extensão de arquivo que não é código. Lista fechada: "Product.Gallery" é um
- * componente sem extensão, não um arquivo ".Gallery".
- */
+/** Non-code file extensions. A closed list: "Product.Gallery" is an extensionless component, not a ".Gallery" file. */
 const ASSET_EXT =
   /\.(css|scss|sass|less|json|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|eot|mp4|webm|mp3|txt|md|html?|ya?ml)$/i;
 const IMPORT_RE =
@@ -73,10 +56,8 @@ function normalize(path: string): string {
 }
 
 /**
- * Imports locais do arquivo, como caminhos candidatos na raiz do repo.
- * Relativos e `~/` entram; pacote de terceiros não. Sem extensão, a resolução
- * é uma suposição: devolve `.tsx`, `.ts`, `/index.tsx` e `/index.ts`, e quem lê
- * fica com o primeiro que existir.
+ * The file's local imports as candidate paths from the repo root (relative and `~/`; no third-party packages).
+ * Without an extension it returns `.tsx`, `.ts`, `/index.tsx` and `/index.ts`; the reader keeps the first that exists.
  */
 export function importsOf(source: string, fromPath: string): string[] {
   const dir = fromPath.split("/").slice(0, -1).join("/");
@@ -102,7 +83,7 @@ export function importsOf(source: string, fromPath: string): string[] {
   return [...new Set(out)];
 }
 
-/** Os mesmos candidatos de `importsOf`, agrupados por import (base sem extensão). */
+/** The same candidates as `importsOf`, grouped by import (extensionless base). */
 function importGroups(source: string, fromPath: string): Map<string, string[]> {
   const groups = new Map<string, string[]>();
   for (const candidate of importsOf(source, fromPath)) {
@@ -114,33 +95,27 @@ function importGroups(source: string, fromPath: string): Map<string, string[]> {
 
 const byteLength = (s: string) => new TextEncoder().encode(s).length;
 
-/** Onde o CMS da deco guarda os blocos (páginas inclusive). */
+/** Where deco's CMS keeps blocks (pages included). */
 export const PAGE_BLOCKS_DIR = ".deco/blocks";
-/** Quantos blocos de página candidatos ler, no máximo, pra achar o da PDP. */
+/** How many candidate page blocks to read, at most, to find the PDP's. */
 const PAGE_BLOCK_MAX_READS = 3;
-/**
- * Teto do bloco compactado. O bloco cru passa de 1 MB em algumas lojas (props
- * de banner, textos) e comeria o teto de 400 KB do snapshot.
- */
+/** Ceiling of the compacted block: a raw block can pass 1 MB and would eat the snapshot's 400 KB ceiling. */
 export const PAGE_BLOCK_MAX_BYTES = 40_000;
 const COMPACT_MAX_DEPTH = 8;
 
-/** Uma seção do bloco compactado: o tipo e o que ela embrulha. */
+/** A section of the compacted block: its type and what it wraps. */
 interface CompactSection {
   section: string;
   title?: string;
-  /** Flag multivariada: a regra de cada variante e as seções dela. */
+  /** Multivariate flag: each variant's rule and its sections. */
   variants?: Array<{ rule: string | null; sections: CompactSection[] }>;
-  /** Lazy/Deferred e afins: as seções de dentro. */
+  /** Lazy/Deferred and similar: the sections inside. */
   sections?: CompactSection[];
-  /** Outras listas de seções nas props (`children` de um embrulho): é ali que a PDP pode morar. */
+  /** Other section lists in the props (a wrapper's `children`): the PDP may live there. */
   slots?: Record<string, CompactSection[]>;
 }
 
-/**
- * `sections` (de página, de Deferred, `value` de variante) vem em lista OU como
- * um objeto só: a página inteira de algumas lojas é uma flag multivariada solta.
- */
+/** `sections` (page, Deferred, variant `value`) comes as a list OR a single object (a loose multivariate flag). */
 const asList = (raw: unknown): unknown[] =>
   Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
 
@@ -191,7 +166,7 @@ function compactSection(raw: unknown, depth: number): CompactSection | null {
   return out;
 }
 
-/** As listas de seções do bloco compactado, com a profundidade de cada uma. */
+/** The compacted block's section lists, with each one's depth. */
 function listsOf(
   sections: CompactSection[],
   depth: number,
@@ -209,12 +184,8 @@ function listsOf(
 }
 
 /**
- * O bloco de página reduzido ao que decide a ordem: `path` e `sections` em
- * ordem, cada uma com o `__resolveType`, o `title` (quando tem), as variantes
- * de flag multivariada, o que Lazy/Deferred embrulham e as outras listas de
- * seções das props. Até PAGE_BLOCK_MAX_BYTES: passando, corta de dentro pra
- * fora (a lista mais funda, do fim pro começo), mantendo a flag de cima, e
- * marca `truncated`.
+ * The page block reduced to what decides order: `path` and its sections with type, title, flag variants and wrapped lists.
+ * Over PAGE_BLOCK_MAX_BYTES it cuts from the inside out (deepest list, last first), keeps the top flag and marks `truncated`.
  */
 export function compactPageBlock(parsed: {
   path?: unknown;
@@ -232,16 +203,12 @@ export function compactPageBlock(parsed: {
     );
   let text = render(false);
   if (byteLength(text) <= PAGE_BLOCK_MAX_BYTES) return text;
-  // Mais funda primeiro; no empate, a que vem depois (as de dentro dela já estão vazias quando chega a vez).
+  // Deepest first; on a tie, the later one (its inner lists are already empty by then).
   const queue = listsOf(sections, 0, []).sort(
     (a, b) => b.depth - a.depth || b.order - a.order,
   );
   let size = byteLength(text);
-  /**
-   * Estimativa barata do que sai a cada corte: o tamanho sem indentação vezes
-   * a proporção da indentação no todo. A conta exata vem quando a estimativa
-   * passa abaixo do teto; se ainda sobra, continua cortando.
-   */
+  /** Cheap estimate of each cut: unindented size times the indentation share; exact once under the ceiling. */
   const ratio = size / byteLength(JSON.stringify({ path, sections }));
   for (const { list } of queue) {
     while (list.length > 0 && size > PAGE_BLOCK_MAX_BYTES) {
@@ -258,15 +225,9 @@ export function compactPageBlock(parsed: {
 }
 
 /**
- * O bloco de página da PDP no CMS. A ordem das seções não está no código: está
- * no `sections` de `.deco/blocks/pages-productpage-*.json` (`path` =
- * `/:slug/p`). Sem ele, o teste de código da hipótese "vitrine no fundo da
- * página" não tinha como decidir.
- *
- * `pages-productpage*` primeiro; senão até 3 `pages-*` com product/produto/pdp
- * no nome, e vale o que tem `path` terminando em `/p`. Pasta que não existe ou
- * nada que case: null. `reads` = quantas leituras gastou. O texto devolvido é o
- * bloco COMPACTADO (`compactPageBlock`), não o arquivo cru.
+ * The PDP's CMS page block, which holds the section order (`pages-productpage-*.json`, `path` = `/:slug/p`).
+ * Tries `pages-productpage*` first, then up to 3 product-named `pages-*` with a `/p` path; null when none.
+ * `reads` counts the reads spent; the text returned is the COMPACTED block.
  */
 export async function findPdpPageBlock(
   list: FsLister,
@@ -297,7 +258,7 @@ export async function findPdpPageBlock(
     const path = typeof parsed.path === "string" ? parsed.path : "";
     const compact = compactPageBlock(parsed);
     if (/\/p\/?$/.test(path)) return { path: e.path, text: compact, reads };
-    // pages-productpage* vale mesmo sem o path esperado (vem primeiro na regra).
+    // pages-productpage* counts even without the expected path (it comes first in the rule).
     if (!fallback && named.includes(e)) {
       fallback = { path: e.path, text: compact };
     }
@@ -305,7 +266,7 @@ export async function findPdpPageBlock(
   return fallback ? { ...fallback, reads } : null;
 }
 
-/** Nome de arquivo de bloco que costuma ser de cada tipo de página. */
+/** Block file names typical of each page type. */
 const PAGE_BLOCK_NAME: Record<
   Exclude<UxPageType, "pdp" | "carrinho_checkout">,
   RegExp
@@ -316,10 +277,8 @@ const PAGE_BLOCK_NAME: Record<
 };
 
 /**
- * O bloco de página do tipo analisado. PDP: `findPdpPageBlock`. Home, busca e
- * categoria: o bloco cujo `path` é a rota analisada (`/`, `/buscar`,
- * `/produtos/vestido`); na categoria vale também a rota genérica (`/*`,
- * `/:slug`) que a renderiza. Nome do arquivo só escolhe a ordem de leitura.
+ * The analyzed page type's block. PDP: `findPdpPageBlock`; otherwise the block whose `path` is the analyzed route,
+ * plus the generic route (`/*`, `/:slug`) for a category. The file name only orders the reads.
  */
 export async function findPageBlock(
   list: FsLister,
@@ -364,10 +323,7 @@ export async function findPageBlock(
   return fallback ? { ...fallback, reads } : null;
 }
 
-/**
- * As seções de produto (`site/sections/Product/...tsx`) que o bloco de página
- * compactado da PDP lista, na ordem, como caminhos do espelho.
- */
+/** The product sections (`site/sections/Product/...tsx`) the compacted PDP block lists, in order, as mirror paths. */
 export function pdpSectionsOfPageBlock(text: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(
@@ -382,18 +338,16 @@ export function pdpSectionsOfPageBlock(text: string): string[] {
 }
 
 /**
- * Começa nas seções da página e segue os imports em largura até o teto de
- * arquivos ou de bytes. Arquivo que não existe é pulado; se NADA foi lido e
- * houve erro de leitura (credencial, provedor), o erro sobe: um snapshot vazio
- * por 401 não pode parecer "repo sem as seções".
+ * Starts at the page's sections and follows imports breadth-first up to the file or byte ceiling; missing files are skipped.
+ * If NOTHING was read and a read failed (credential, provider), the error is raised so a 401 never looks like an empty repo.
  */
 export async function snapshotRepo(opts: {
   read: RepoReader;
   repo: string;
   sections: string[];
-  /** Pra achar o bloco de página (`findPageBlock`). Ausente = sem ele. */
+  /** To find the page block (`findPageBlock`). Absent = without it. */
   list?: FsLister;
-  /** A página analisada (o bloco dela). Ausente = PDP. */
+  /** The analyzed page (its block). Absent = PDP. */
   page?: { type: UxPageType; route: string | null } | null;
 }): Promise<RepoSnapshot> {
   const queue = [...new Set(opts.sections.map(sectionPath))];
@@ -403,7 +357,7 @@ export async function snapshotRepo(opts: {
   let firstError: unknown = null;
   let pageBlock: string | undefined;
   let blockReads = 0;
-  // O bloco de página entra primeiro (é o único lugar com a ordem das seções) e conta nos tetos.
+  // The page block goes first (the only place with the section order) and counts toward the ceilings.
   if (opts.list) {
     try {
       const block = await findPageBlock(opts.list, opts.read, opts.page);
@@ -413,7 +367,7 @@ export async function snapshotRepo(opts: {
         files.push({ path: block.path, text: block.text });
         bytes += size;
         pageBlock = block.path;
-        // A seção clicada pode ser um embrulho e a PDP entrar pelo CMS, não por import: as seções de produto do bloco entram na fila.
+        // The clicked section may be a wrapper with the PDP coming from the CMS: the block's product sections join the queue.
         const isPdp = !opts.page || opts.page.type === "pdp";
         for (const path of isPdp ? pdpSectionsOfPageBlock(block.text) : []) {
           if (seen.has(path)) continue;
@@ -422,13 +376,13 @@ export async function snapshotRepo(opts: {
         }
       }
     } catch (err) {
-      // Só aviso: o bloco é extra, e a falha dele não pode fazer o snapshot lançar.
+      // Only a warning: the block is extra, and its failure must not make the snapshot throw.
       console.warn(
         `[plan-engine] bloco de página: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
-  // Candidatos de um mesmo import sem extensão formam um grupo: o primeiro que abrir resolve.
+  // Candidates of one extensionless import form a group: the first that opens resolves it.
   const groupOf = new Map<string, string>();
   const resolved = new Set<string>();
   let reads = blockReads;
@@ -472,9 +426,9 @@ export async function snapshotRepo(opts: {
   };
 }
 
-// ── Armazenamento ───────────────────────────────────────────────────────────
+// ── Storage ─────────────────────────────────────────────────────────────────
 
-/** O MediaStore da rodada já é da org: a chave só leva o diagnóstico. */
+/** The round's MediaStore is already the org's: the key only carries the diagnosis. */
 export const repoSnapshotKey = (diagnosisId: string) =>
   `ux/${diagnosisId}/repo.json`;
 
@@ -497,7 +451,7 @@ export async function saveRepoSnapshot(
   );
 }
 
-/** null se não existe ou não tem o formato de snapshot. */
+/** null when missing or not shaped like a snapshot. */
 export async function loadRepoSnapshot(
   media: MediaStore,
   key: string,
@@ -516,20 +470,16 @@ export async function loadRepoSnapshot(
   }
 }
 
-/**
- * Lê o repo a partir das seções que a página usa e grava. Snapshot vazio não
- * se grava (lança): sem chave, o teste de repo sai nao_testou sem gastar uma
- * chamada ao modelo.
- */
+/** Reads the repo from the page's sections and stores it. An empty snapshot throws, so the repo test is nao_testou without a model call. */
 export async function storeRepoSnapshot(opts: {
   media: MediaStore;
   key: string;
   read: RepoReader;
-  /** Pra incluir o bloco de página (a ordem das seções). */
+  /** To include the page block (the section order). */
   list?: FsLister;
   repo: string;
   pdp: DevicePdpBehaviour[];
-  /** A página analisada. Ausente = PDP. */
+  /** The analyzed page. Absent = PDP. */
   page?: { type: UxPageType; route: string | null } | null;
 }): Promise<string> {
   const sections = [
@@ -554,7 +504,7 @@ export async function storeRepoSnapshot(opts: {
   return opts.key;
 }
 
-// ── Pergunta ao modelo ──────────────────────────────────────────────────────
+// ── Asking the model ────────────────────────────────────────────────────────
 
 const OUTCOMES: readonly string[] = ["confirma", "desmente", "nao_decidiu"];
 
@@ -613,22 +563,15 @@ export function parseRepoAnswer(
   };
 }
 
-/** Quantos arquivos o modelo pode pedir de uma vez. */
+/** How many files the model may request at once. */
 const NEED_FILES_MAX = 6;
-/**
- * Teto dos pedidos somados. A segunda volta reenvia o snapshot inteiro (até
- * SNAPSHOT_MAX_BYTES); os pedidos por cima disso não podem dobrar o prompt.
- */
+/** Ceiling on the requests combined: the second round resends the whole snapshot, so they must not double the prompt. */
 export const NEED_FILES_MAX_BYTES = 120_000;
-/**
- * A segunda volta só começa com isto de folga: leituras + modelo (120 s). Os
- * candidatos de um pedido são lidos um por um, então as leituras passam de
- * 30 s: 180 s e não 150 s.
- */
+/** Slack needed to start the second round: reads (one candidate at a time, over 30 s) plus the model (120 s). */
 const SECOND_ROUND_MIN_MS = 180_000;
 const NEED_FILES_EXT = /\.(tsx?|jsx?|css|json)$/;
 const NEED_FILES_CODE_EXT = /\.(tsx?|jsx?)$/;
-/** Quantos importados fora do snapshot o prompt lista, no máximo. */
+/** How many imports outside the snapshot the prompt lists, at most. */
 export const MISSING_IMPORTS_MAX = 40;
 
 const REPO_RULES = `Você responde UMA pergunta sobre o código de uma loja, pra decidir uma hipótese de CRO. Só vale o que está nos arquivos abaixo; não suponha o que não está lá.
@@ -641,7 +584,7 @@ Responda SÓ este JSON:
 - "followup_steps" (opcional, só se um passo no navegador decide o que o código não decide): lista de passos { "op": "open"|"click"|"choose_size"|"choose_variant"|"reload"|"scroll_to"|"wait"|"gesture"|"inspect"|"observe_click"|"screenshot", ... }; "open" e "reload" aceitam "keep_overlays": true pra testar pop-up/modal/banner (sem isso a página abre com eles fechados); click, scroll_to, inspect, observe_click e screenshot levam alvo { "kind": "element", "key": "..." } ou { "kind": "part", "part": "price|size_selector|buy_button|shipping|first_recommendation" }. Nunca comprar nem mexer em formulário.
 - Pop-up/banner pode só abrir no primeiro gesto da pessoa (mexer o mouse ou o dedo), e o navegador do teste não mexe sozinho. Se o código mostra isso, teste com { "op": "open", "keep_overlays": true }, { "op": "gesture" } (mexe o mouse no meio da tela, sem clicar) e { "op": "wait", "ms": 8000 } antes de olhar o pop-up.`;
 
-/** Sem o repo à mão pra ler mais arquivos: o prompt de sempre. */
+/** Without the repo at hand to read more files: the usual prompt. */
 const REPO_SYSTEM = REPO_RULES;
 
 const REPO_SYSTEM_ASK = `${REPO_RULES}
@@ -651,10 +594,8 @@ const REPO_SYSTEM_FINAL = `${REPO_RULES}
 - Esta é a segunda volta: os arquivos que você pediu estão abaixo (os que abriram). Decida com eles; não peça mais arquivos.`;
 
 /**
- * Onde procurar um pedido, em ordem: o caminho como veio (se tem extensão),
- * depois `.tsx`, `.ts`, `/index.tsx`, `/index.ts` da base. O modelo copia o
- * import, que vem sem extensão, e o pedido sumia em silêncio. `.css`/`.json`
- * só como vieram.
+ * Where to look for a request, in order: the path as given (with an extension), then the base's `.tsx`, `.ts`,
+ * `/index.tsx`, `/index.ts`, since the model copies extensionless imports. `.css`/`.json` only as given.
  */
 function needCandidates(path: string): string[] {
   if (NEED_FILES_EXT.test(path) && !NEED_FILES_CODE_EXT.test(path)) {
@@ -671,10 +612,8 @@ function needCandidates(path: string): string[] {
 }
 
 /**
- * Os caminhos do `need_files` que dá pra ler: relativos à raiz do repo, sem
- * `..`, sem caminho absoluto, sem extensão ou com extensão de código/estilo/
- * JSON, e fora do que já foi lido (não gasta vaga). Os `src/`, `./` e `~/` do
- * começo saem: os caminhos são os do espelho, e o modelo copia o do import.
+ * The readable `need_files` paths: repo-root relative, no `..` or absolute path, code/style/JSON or no extension,
+ * and not already read. Leading `src/`, `./` and `~/` are stripped to match the mirror's paths.
  */
 export function neededPaths(raw: unknown, have: ReadonlySet<string>): string[] {
   if (!Array.isArray(raw)) return [];
@@ -693,7 +632,7 @@ export function neededPaths(raw: unknown, have: ReadonlySet<string>): string[] {
     if (!path || path.startsWith("/")) continue;
     const hasExt = NEED_FILES_EXT.test(path);
     if (!hasExt && ASSET_EXT.test(path)) continue;
-    // Sem extensão, qualquer candidato já lido conta como lido.
+    // Without an extension, any candidate already read counts as read.
     const known = hasExt
       ? have.has(path)
       : needCandidates(path).some((c) => have.has(c));
@@ -715,10 +654,8 @@ const attempt = (read: RepoReader, path: string): Promise<ReadAttempt> =>
   );
 
 /**
- * O primeiro candidato que abre, um por um e na ordem: com até 6 pedidos em
- * paralelo, nunca passa de 6 leituras ao mesmo tempo. Erro que não é 404 para
- * ali (mais tentativas só gastam tempo). As tentativas contam no tempo, não
- * no teto de arquivos.
+ * The first candidate that opens, one at a time in order, so 6 parallel requests never pass 6 concurrent reads.
+ * A non-404 error stops there; attempts count against time, not the file ceiling.
  */
 async function resolveNeeded(
   read: RepoReader,
@@ -733,26 +670,24 @@ async function resolveNeeded(
 }
 
 /**
- * Lê os arquivos pedidos. Arquivo que não abre (não existe, erro, grande
- * demais) fica de fora com o motivo, que vai pro prompt da segunda volta. O
- * teto é NEED_FILES_MAX_BYTES, somando os pedidos. `files` sai com o caminho
- * que abriu (com extensão), que é o que o modelo cita.
+ * Reads the requested files up to NEED_FILES_MAX_BYTES combined. A file that does not open is left out with the reason
+ * for the second-round prompt; `files` carries the path that opened (with extension), which is what the model cites.
  */
 export async function readNeededFiles(
   read: RepoReader,
   paths: string[],
 ): Promise<{
   files: RepoSnapshot["files"];
-  /** Com o motivo, pro prompt. */
+  /** With the reason, for the prompt. */
   missed: string[];
-  /** Só o caminho pedido, pro relato. */
+  /** Only the requested path, for the report. */
   missedPaths: string[];
 }> {
   const files: RepoSnapshot["files"] = [];
   const missed: string[] = [];
   const missedPaths: string[] = [];
   let bytes = 0;
-  // Em paralelo, e o teto aplicado na ordem do pedido.
+  // In parallel, with the ceiling applied in request order.
   const results = await Promise.all(paths.map((p) => resolveNeeded(read, p)));
   for (const [i, path] of paths.entries()) {
     const r = results[i];
@@ -765,7 +700,7 @@ export async function readNeededFiles(
       miss(r.error !== null ? `não abriu: ${r.error}` : "não existe");
       continue;
     }
-    // "X" e "X.tsx" no mesmo pedido: o arquivo entra uma vez só.
+    // "X" and "X.tsx" in the same request: the file goes in once.
     if (files.some((f) => f.path === r.path)) continue;
     const size = byteLength(r.body);
     if (bytes + size > NEED_FILES_MAX_BYTES) {
@@ -779,10 +714,8 @@ export async function readNeededFiles(
 }
 
 /**
- * Imports locais dos arquivos do snapshot que não estão nele, como caminhos na
- * raiz do repo (sem extensão quando o import não tem), até
- * MISSING_IMPORTS_MAX. O modelo não sabia os caminhos e pedia o do import
- * (`../../components/...`), que não abre: agora escolhe desta lista.
+ * Local imports of snapshot files that are not in it, as repo-root paths (extensionless when the import is), up to
+ * MISSING_IMPORTS_MAX, so the model picks a path that opens instead of the relative import.
  */
 export function missingImports(snapshot: RepoSnapshot): string[] {
   const have = new Set(snapshot.files.map((f) => f.path));
@@ -792,7 +725,7 @@ export function missingImports(snapshot: RepoSnapshot): string[] {
     for (const [base, candidates] of importGroups(f.text, f.path)) {
       if (candidates.some((c) => have.has(c))) continue;
       const shown = candidates.length === 1 ? (candidates[0] ?? base) : base;
-      // Import estranho (espaço, caminho enorme) não vira linha do prompt.
+      // An odd import (spaces, huge path) does not become a prompt line.
       if (/\s/.test(shown) || shown.length > 200) continue;
       if (out.includes(shown)) continue;
       out.push(shown);
@@ -823,10 +756,7 @@ function filesForPrompt(snapshot: RepoSnapshot): string {
   return blocks.join("\n\n");
 }
 
-/**
- * Aviso do prompt sobre o bloco de página: a ordem das seções vem do CMS, não
- * do TSX, e o modelo procurava no TSX.
- */
+/** Prompt note on the page block: the section order comes from the CMS, not the TSX. */
 export function pageBlockNote(snapshot: RepoSnapshot): string {
   if (!snapshot.page_block) return "";
   return `## Ordem das seções da página
@@ -842,9 +772,9 @@ export async function runRepoCheck(opts: {
   hypothesis: UxHypothesis;
   ctx: PlanContext;
   onUsage: (u: LlmUsage) => void;
-  /** O repo, pro arquivo que o snapshot não trouxe. Ausente = uma volta só. */
+  /** The repo, for a file the snapshot lacks. Absent = one round only. */
   read?: RepoReader;
-  /** Quanto falta pro prazo da hipótese (ms); sem tempo, não há segunda volta. */
+  /** Time left until the hypothesis deadline (ms); without enough, no second round. */
   timeLeft?: () => number;
 }): Promise<{ run: CheckRun; followup: VerifyCheck | null }> {
   const { check, snapshot, hypothesis: h, read } = opts;
@@ -884,7 +814,7 @@ ${filesForPrompt(snapshot)}`;
       opts.onUsage,
     );
   try {
-    // A lista de importados só serve pra pedir arquivo: só na primeira volta e só com o repo à mão.
+    // The import list only serves to request files: first round only, and only with the repo at hand.
     const first = await ask(
       read ? REPO_SYSTEM_ASK : REPO_SYSTEM,
       read ? `${question}${missingImportsNote(snapshot)}` : question,
@@ -920,7 +850,7 @@ ${filesForPrompt(snapshot)}`;
     try {
       const second = await ask(REPO_SYSTEM_FINAL, `${question}\n\n${asked}`);
       const r = parseRepoAnswer(second, merged, check, opts.ctx);
-      // O relato diz o que foi lido a mais e o que não abriu.
+      // The report says what else was read and what did not open.
       const notes = [
         extra.files.length > 0
           ? `(li também: ${extra.files.map((f) => f.path).join(", ")})`
@@ -934,7 +864,7 @@ ${filesForPrompt(snapshot)}`;
       return r;
     } catch (err) {
       rethrowNoAiModel(err);
-      // A primeira resposta já valia: a segunda volta quebrar não apaga ela.
+      // The first answer already counts: a broken second round does not erase it.
       const r = parseRepoAnswer(first, snapshot, check, opts.ctx);
       r.run.observed = `${r.run.observed} (a segunda volta falhou: ${err instanceof Error ? err.message : err})`;
       return r;

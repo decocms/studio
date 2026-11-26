@@ -78,7 +78,7 @@ describe("sectionPath / importsOf", () => {
       "sections/Product/ProductDetails.tsx",
     );
   });
-  test("relativo, alias e pacote", () => {
+  test("relative, alias and package", () => {
     expect(
       importsOf('import X from "../../components/product/Title";', FROM),
     ).toContain("components/product/Title.tsx");
@@ -91,7 +91,7 @@ describe("sectionPath / importsOf", () => {
 
 describe("parseRepoAnswer", () => {
   const ans = (o: object) => JSON.stringify(o);
-  test("arquivo fora do snapshot não confirma", () => {
+  test("a file outside the snapshot does not confirm", () => {
     const r = parseRepoAnswer(
       ans({ outcome: "confirma", observed: "o", source_ref: "src/nada.tsx:3" }),
       snap,
@@ -100,7 +100,7 @@ describe("parseRepoAnswer", () => {
     );
     expect(r.run.outcome).toBe("nao_decidiu");
   });
-  test("arquivo presente confirma e mantém a referência", () => {
+  test("a file present confirms and keeps the reference", () => {
     const ref = "src/sections/Product/ProductDetails.tsx:88";
     const r = parseRepoAnswer(
       ans({ outcome: "confirma", observed: "o", source_ref: ref }),
@@ -111,7 +111,7 @@ describe("parseRepoAnswer", () => {
     expect(r.run.outcome).toBe("confirma");
     expect(r.run.source_ref).toBe(ref);
   });
-  test("followup válido vira teste live; inválido some", () => {
+  test("a valid followup becomes a live test; an invalid one is dropped", () => {
     const base = { outcome: "nao_decidiu", observed: "o" };
     const ok = parseRepoAnswer(
       ans({
@@ -137,7 +137,7 @@ describe("parseRepoAnswer", () => {
 });
 
 describe("snapshotRepo", () => {
-  test("segue imports encadeados", async () => {
+  test("follows chained imports", async () => {
     const fs: Record<string, string> = {
       "sections/A.tsx": 'import b from "../components/B";',
       "components/B.tsx": 'import c from "~/sdk/c";',
@@ -154,7 +154,7 @@ describe("snapshotRepo", () => {
       "sdk/c.ts",
     ]);
   });
-  test("respeita SNAPSHOT_MAX_FILES", async () => {
+  test("respects SNAPSHOT_MAX_FILES", async () => {
     const read = async (p: string) => {
       const n = Number(/(\d+)\.tsx$/.exec(p)?.[1] ?? 0);
       return `import x from "~/components/f${n + 1}";`;
@@ -162,7 +162,7 @@ describe("snapshotRepo", () => {
     const s = await snapshotRepo({ read, repo: "r", sections: ["f0"] });
     expect(s.files.length).toBe(SNAPSHOT_MAX_FILES);
   });
-  test("erro de leitura sem nenhum arquivo sobe", async () => {
+  test("a read error with no file read is raised", async () => {
     await expect(
       snapshotRepo({
         read: async () => {
@@ -176,7 +176,7 @@ describe("snapshotRepo", () => {
 });
 
 describe("runRepoCheck", () => {
-  test("sem snapshot é nao_testou", async () => {
+  test("without a snapshot it is nao_testou", async () => {
     const r = await runRepoCheck({
       llm: async () => {
         throw new Error("não devia chamar o modelo");
@@ -192,8 +192,8 @@ describe("runRepoCheck", () => {
   });
 });
 
-describe("snapshotRepo, limites e laços", () => {
-  test("MAX_FILES: a cadeia seguiria além do teto e para exatamente nele", async () => {
+describe("snapshotRepo, limits and loops", () => {
+  test("MAX_FILES: the chain would go past the ceiling and stops exactly at it", async () => {
     const reads: string[] = [];
     const read = async (p: string) => {
       reads.push(p);
@@ -208,7 +208,7 @@ describe("snapshotRepo, limites e laços", () => {
       false,
     );
   });
-  test("MAX_BYTES: arquivo que estoura o teto fica de fora", async () => {
+  test("MAX_BYTES: a file over the ceiling stays out", async () => {
     const big = "x".repeat(SNAPSHOT_MAX_BYTES - 10);
     const fs: Record<string, string> = {
       "sections/A.tsx": `import b from "~/components/B"; //${big.slice(0, SNAPSHOT_MAX_BYTES - 200)}`,
@@ -221,7 +221,7 @@ describe("snapshotRepo, limites e laços", () => {
     });
     expect(s.files.map((f) => f.path)).toEqual(["sections/A.tsx"]);
   });
-  test("ciclo de imports termina", async () => {
+  test("an import cycle terminates", async () => {
     const fs: Record<string, string> = {
       "sections/A.tsx": 'import b from "~/components/B";',
       "components/B.tsx": 'import a from "~/sections/A";',
@@ -233,7 +233,7 @@ describe("snapshotRepo, limites e laços", () => {
     });
     expect(s.files.length).toBe(2);
   });
-  test("arquivo ausente no meio da cadeia é pulado", async () => {
+  test("a missing file mid-chain is skipped", async () => {
     const fs: Record<string, string> = {
       "sections/A.tsx":
         'import m from "~/components/Missing"; import c from "~/sdk/c";',
@@ -246,7 +246,7 @@ describe("snapshotRepo, limites e laços", () => {
     });
     expect(s.files.map((f) => f.path)).toEqual(["sections/A.tsx", "sdk/c.ts"]);
   });
-  test("x.tsx resolve: x.ts e x/index.tsx não são pedidos", async () => {
+  test("x.tsx resolves: x.ts and x/index.tsx are not requested", async () => {
     const reads: string[] = [];
     const fs: Record<string, string> = {
       "sections/A.tsx": 'import x from "~/components/x";',
@@ -262,7 +262,7 @@ describe("snapshotRepo, limites e laços", () => {
     });
     expect(reads).toEqual(["sections/A.tsx", "components/x.tsx"]);
   });
-  test("teto de leituras conta os 404", async () => {
+  test("the read ceiling counts 404s", async () => {
     let n = 0;
     const imports = Array.from(
       { length: 400 },
@@ -276,7 +276,7 @@ describe("snapshotRepo, limites e laços", () => {
     expect(n).toBe(SNAPSHOT_MAX_READS);
     expect(s.files.length).toBe(1);
   });
-  test("seed sem arquivo nenhum devolve snapshot vazio (o chamador decide)", async () => {
+  test("a seed with no file returns an empty snapshot (the caller decides)", async () => {
     const s = await snapshotRepo({
       read: async () => null,
       repo: "r",
@@ -287,7 +287,7 @@ describe("snapshotRepo, limites e laços", () => {
 });
 
 describe("parseRepoAnswer, desmente", () => {
-  test("desmente sem source_ref vira nao_decidiu", () => {
+  test("desmente without source_ref becomes nao_decidiu", () => {
     const r = parseRepoAnswer(
       JSON.stringify({ outcome: "desmente", observed: "o" }),
       snap,
@@ -300,10 +300,10 @@ describe("parseRepoAnswer, desmente", () => {
 });
 
 describe("loadRepoSnapshot", () => {
-  test("a chave é do diagnóstico (o armazenamento já é da org)", () => {
+  test("the key is the diagnosis's (the storage is already the org's)", () => {
     expect(repoSnapshotKey("d1")).toBe("ux/d1/repo.json");
   });
-  test("ausente, inválido e válido", async () => {
+  test("missing, invalid and valid", async () => {
     const { media } = memoryMedia({
       bad: JSON.stringify({ repo: "r", files: [] }),
       notjson: "{",
@@ -314,7 +314,7 @@ describe("loadRepoSnapshot", () => {
     expect(await loadRepoSnapshot(media, "notjson")).toBeNull();
     expect(await loadRepoSnapshot(media, "good")).toEqual(snap);
   });
-  test("o que saveRepoSnapshot grava volta igual", async () => {
+  test("what saveRepoSnapshot writes comes back the same", async () => {
     const { media } = memoryMedia();
     await saveRepoSnapshot(media, "k", { ...snap, page_block: "a.json" });
     expect(await loadRepoSnapshot(media, "k")).toEqual({
@@ -322,7 +322,7 @@ describe("loadRepoSnapshot", () => {
       page_block: "a.json",
     });
   });
-  test("armazenamento que falha é null, não exceção", async () => {
+  test("failing storage is null, not an exception", async () => {
     const media: MediaStore = {
       put: async (p) => p,
       get: async () => {
@@ -341,7 +341,7 @@ describe("storeRepoSnapshot", () => {
       sections: [{ section: "Product/B" }],
     },
   ] as unknown as DevicePdpBehaviour[];
-  test("semeia de elements e sections e grava", async () => {
+  test("seeds from elements and sections and writes", async () => {
     const { media, puts } = memoryMedia();
     const reads: string[] = [];
     const key = await storeRepoSnapshot({
@@ -359,7 +359,7 @@ describe("storeRepoSnapshot", () => {
     expect(reads).toEqual(["sections/Product/A.tsx", "sections/Product/B.tsx"]);
     expect((await loadRepoSnapshot(media, key))?.files).toHaveLength(2);
   });
-  test("sem arquivo nenhum lança e não grava", async () => {
+  test("with no file it throws and writes nothing", async () => {
     const { media, puts } = memoryMedia();
     await expect(
       storeRepoSnapshot({
@@ -374,11 +374,11 @@ describe("storeRepoSnapshot", () => {
   });
 });
 
-// ── runRepoCheck com arquivo pedido na hora ─────────────────────────────────
+// ── runRepoCheck with files requested on demand───────────────────────────────
 
 type Prompts = Array<{ system: string; user: string }>;
 
-/** O modelo responde `answers` na ordem e falha depois; guarda o que cada chamada mandou. */
+/** The model answers `answers` in order and fails after; keeps what each call sent. */
 async function withLlm<T>(
   answers: object[],
   fn: (prompts: Prompts, llm: Llm) => Promise<T>,
@@ -405,8 +405,8 @@ const repoCheckWith = (llm: Llm, read?: RepoReader, timeLeft?: () => number) =>
     timeLeft,
   });
 
-describe("runRepoCheck, tetos e falhas da segunda volta", () => {
-  test("os pedidos somados têm teto próprio (NEED_FILES_MAX_BYTES)", async () => {
+describe("runRepoCheck, ceilings and second-round failures", () => {
+  test("the combined requests have their own ceiling (NEED_FILES_MAX_BYTES)", async () => {
     const big = "x".repeat(Math.floor(NEED_FILES_MAX_BYTES * 0.6));
     await withLlm(
       [
@@ -427,7 +427,7 @@ describe("runRepoCheck, tetos e falhas da segunda volta", () => {
     expect(NEED_FILES_MAX_BYTES).toBe(120_000);
   });
 
-  test("menos de 180 s pro prazo: vale a primeira resposta", async () => {
+  test("under 180 s to the deadline: the first answer stands", async () => {
     const reads: string[] = [];
     const r = await withLlm(
       [
@@ -460,7 +460,7 @@ describe("runRepoCheck, tetos e falhas da segunda volta", () => {
     expect(r.run.observed).toContain("sem tempo pra ler hooks/useCart.ts");
   });
 
-  test("segunda volta que falha: vale a primeira resposta, não nao_testou", async () => {
+  test("a failing second round: the first answer stands, not nao_testou", async () => {
     const r = await withLlm(
       [
         {
@@ -501,8 +501,8 @@ describe("runRepoCheck, tetos e falhas da segunda volta", () => {
   });
 });
 
-describe("runRepoCheck, arquivo pedido na hora", () => {
-  test("pedido atendido e citado vira confirma", async () => {
+describe("runRepoCheck, files requested on demand", () => {
+  test("a served and cited request becomes confirma", async () => {
     const reads: string[] = [];
     const r = await withLlm(
       [
@@ -536,7 +536,7 @@ describe("runRepoCheck, arquivo pedido na hora", () => {
     expect(r.run.source_ref).toBe("components/ClosedPopup.tsx:12");
   });
 
-  test("pedido com .., absoluto ou extensão fora da lista é ignorado", async () => {
+  test("a request with .., an absolute path or an unlisted extension is ignored", async () => {
     const reads: string[] = [];
     const r = await withLlm(
       [
@@ -564,7 +564,7 @@ describe("runRepoCheck, arquivo pedido na hora", () => {
     expect(r.run.outcome).toBe("nao_decidiu");
   });
 
-  test("no máximo 6 por pedido, sem reler o que já está no snapshot", async () => {
+  test("at most 6 per request, without rereading what the snapshot has", async () => {
     const reads: string[] = [];
     const asked = [
       "sections/Product/ProductDetails.tsx",
@@ -586,7 +586,7 @@ describe("runRepoCheck, arquivo pedido na hora", () => {
     );
   });
 
-  test("a segunda volta não pode pedir mais", async () => {
+  test("the second round cannot request more", async () => {
     const reads: string[] = [];
     const r = await withLlm(
       [
@@ -619,7 +619,7 @@ describe("runRepoCheck, arquivo pedido na hora", () => {
     expect(r.run.outcome).toBe("nao_decidiu");
   });
 
-  test("arquivo que não existe (ou que dá erro) não quebra e o modelo é avisado", async () => {
+  test("a missing (or failing) file does not break and the model is told", async () => {
     const r = await withLlm(
       [
         {
@@ -645,7 +645,7 @@ describe("runRepoCheck, arquivo pedido na hora", () => {
     expect(r.run.outcome).toBe("nao_decidiu");
   });
 
-  test("sem reader: uma chamada só, e o prompt de hoje (sem need_files)", async () => {
+  test("without a reader: one call, and the usual prompt (no need_files)", async () => {
     await withLlm(
       [
         {
@@ -663,7 +663,7 @@ describe("runRepoCheck, arquivo pedido na hora", () => {
     );
   });
 
-  test("o modelo recebe o tier de verificação e o onUsage", async () => {
+  test("the model gets the verification tier and onUsage", async () => {
     const seen: Array<{ tier: string; onUsage: boolean }> = [];
     const onUsage = () => {};
     await runRepoCheck({
@@ -681,8 +681,8 @@ describe("runRepoCheck, arquivo pedido na hora", () => {
   });
 });
 
-describe("snapshotRepo, vagas", () => {
-  test("arquivo importado por duas seções ocupa uma vaga só", async () => {
+describe("snapshotRepo, slots", () => {
+  test("a file imported by two sections takes one slot", async () => {
     const reads: string[] = [];
     const fs: Record<string, string> = {
       "sections/A.tsx": 'import c from "~/components/C";',
@@ -706,7 +706,7 @@ describe("snapshotRepo, vagas", () => {
   });
 });
 
-// ── Bloco de página da PDP (ordem das seções) ───────────────────────────────
+// ── The PDP page block (section order) ──────────────────────────────────────
 
 const PDP_BLOCK = JSON.stringify({
   name: "Product Page",
@@ -725,7 +725,7 @@ const blockEntry = (name: string) => ({
   size: 1,
 });
 
-describe("findPageBlock (fora da PDP)", () => {
+describe("findPageBlock (outside the PDP)", () => {
   const files: Record<string, string> = {
     ".deco/blocks/pages-home-1.json": JSON.stringify({
       path: "/",
@@ -745,12 +745,12 @@ describe("findPageBlock (fora da PDP)", () => {
     Object.keys(files).map((p) => blockEntry(p.split("/").pop() as string));
   const read: RepoReader = async (path) => files[path] ?? null;
 
-  test("home: o bloco com path /", async () => {
+  test("home: the block with path /", async () => {
     const block = await findPageBlock(list, read, { type: "home", route: "/" });
     expect(block?.path).toBe(".deco/blocks/pages-home-1.json");
   });
 
-  test("categoria: a rota exata vale mais que a genérica", async () => {
+  test("category: the exact route beats the generic one", async () => {
     const exact = await findPageBlock(list, read, {
       type: "categoria",
       route: "/produtos/vestido",
@@ -763,7 +763,7 @@ describe("findPageBlock (fora da PDP)", () => {
     expect(generic?.path).toBe(".deco/blocks/pages-Categoria-2.json");
   });
 
-  test("checkout não tem bloco; sem página é a PDP de sempre", async () => {
+  test("checkout has no block; without a page it is the PDP", async () => {
     expect(
       await findPageBlock(list, read, {
         type: "carrinho_checkout",
@@ -777,7 +777,7 @@ describe("findPageBlock (fora da PDP)", () => {
 });
 
 describe("findPdpPageBlock", () => {
-  test("pages-productpage* vem primeiro", async () => {
+  test("pages-productpage* comes first", async () => {
     const reads: string[] = [];
     const block = await findPdpPageBlock(
       async (dir) =>
@@ -797,7 +797,7 @@ describe("findPdpPageBlock", () => {
     expect(reads).toEqual([".deco/blocks/pages-productpage-ce48.json"]);
   });
 
-  test("sem productpage: o pages-* com produto no nome e path em /p", async () => {
+  test("no productpage: the pages-* with product in the name and a /p path", async () => {
     const files: Record<string, string> = {
       ".deco/blocks/pages-Bazar%2520Produtos-4.json": JSON.stringify({
         path: "/sale/validacao",
@@ -816,7 +816,7 @@ describe("findPdpPageBlock", () => {
     expect(block?.reads).toBe(2);
   });
 
-  test("lê no máximo 3 candidatos", async () => {
+  test("reads at most 3 candidates", async () => {
     let reads = 0;
     const block = await findPdpPageBlock(
       async () =>
@@ -830,7 +830,7 @@ describe("findPdpPageBlock", () => {
     expect(reads).toBe(3);
   });
 
-  test("JSON quebrado não derruba; sem pasta é null", async () => {
+  test("broken JSON does not break it; no folder is null", async () => {
     expect(
       await findPdpPageBlock(
         async () => [blockEntry("pages-productpage-1.json")],
@@ -846,14 +846,14 @@ describe("findPdpPageBlock", () => {
   });
 });
 
-describe("snapshotRepo com o bloco de página", () => {
+describe("snapshotRepo with the page block", () => {
   const files: Record<string, string> = {
     ".deco/blocks/pages-productpage-1.json": PDP_BLOCK,
     "sections/Product/ProductDetails.tsx": "export default 1",
   };
   const read: RepoReader = async (p) => files[p] ?? null;
 
-  test("entra primeiro e marca page_block", async () => {
+  test("goes first and sets page_block", async () => {
     const s = await snapshotRepo({
       read,
       list: async () => [blockEntry("pages-productpage-1.json")],
@@ -867,7 +867,7 @@ describe("snapshotRepo com o bloco de página", () => {
     expect(s.page_block).toBe(".deco/blocks/pages-productpage-1.json");
   });
 
-  test("conta no teto de bytes", async () => {
+  test("counts toward the byte ceiling", async () => {
     const compact = compactPageBlock(JSON.parse(PDP_BLOCK));
     const big = "x".repeat(SNAPSHOT_MAX_BYTES - compact.length + 1);
     const s = await snapshotRepo({
@@ -883,7 +883,7 @@ describe("snapshotRepo com o bloco de página", () => {
     ]);
   });
 
-  test("listagem que falha não derruba as seções", async () => {
+  test("a failing listing does not drop the sections", async () => {
     const s = await snapshotRepo({
       read,
       list: async () => {
@@ -898,8 +898,8 @@ describe("snapshotRepo com o bloco de página", () => {
     expect(s.page_block).toBeUndefined();
   });
 
-  test("listagem que falha não vira o erro do snapshot", async () => {
-    // Sem seção, o snapshot volta vazio (quem decide é storeRepoSnapshot): a listagem falhar não faz lançar.
+  test("a failing listing does not become the snapshot's error", async () => {
+    // Without sections the snapshot comes back empty (storeRepoSnapshot decides): a failed listing does not throw.
     const s = await snapshotRepo({
       read: async () => null,
       list: async () => {
@@ -911,7 +911,7 @@ describe("snapshotRepo com o bloco de página", () => {
     expect(s.files).toEqual([]);
   });
 
-  test("bloco cru de 1 MB entra compactado", async () => {
+  test("a 1 MB raw block goes in compacted", async () => {
     const huge = JSON.stringify({
       path: "/:slug/p",
       sections: [
@@ -939,7 +939,7 @@ describe("snapshotRepo com o bloco de página", () => {
     expect(s.page_block).toBe(".deco/blocks/pages-productpage-1.json");
     expect(s.files[0]?.text.length).toBeLessThan(2_000);
     expect(s.files[0]?.text).toContain("Complete Seu Look");
-    // A seção clicada, mais a de produto que o bloco lista (BannerPDP).
+    // The clicked section, plus the product section the block lists (BannerPDP).
     expect(s.files.map((f) => f.path)).toEqual([
       ".deco/blocks/pages-productpage-1.json",
       "sections/Product/ProductDetails.tsx",
@@ -947,7 +947,7 @@ describe("snapshotRepo com o bloco de página", () => {
     ]);
   });
 
-  test("sem lister: igual a antes", async () => {
+  test("without a lister: unchanged", async () => {
     const s = await snapshotRepo({
       read,
       repo: "acme/loja-exemplo",
@@ -958,8 +958,8 @@ describe("snapshotRepo com o bloco de página", () => {
   });
 });
 
-describe("prompt do teste de código com o bloco de página", () => {
-  test("diz qual arquivo é o bloco e que a ordem está nele", async () => {
+describe("code test prompt with the page block", () => {
+  test("names the block file and says the order is in it", async () => {
     const withBlock: RepoSnapshot = {
       ...snap,
       files: [
@@ -991,11 +991,11 @@ describe("prompt do teste de código com o bloco de página", () => {
     );
   });
 
-  test("sem bloco, nada de aviso", () => {
+  test("without a block, no note", () => {
     expect(pageBlockNote(snap)).toBe("");
   });
 
-  test("o bloco citado decide (está no snapshot)", () => {
+  test("the cited block decides (it is in the snapshot)", () => {
     const withBlock: RepoSnapshot = {
       ...snap,
       files: [{ path: ".deco/blocks/pages-productpage-1.json", text: "{}" }],
@@ -1014,7 +1014,7 @@ describe("prompt do teste de código com o bloco de página", () => {
     expect(run.outcome).toBe("confirma");
   });
 
-  test("loadRepoSnapshot aceita page_block e recusa de tipo errado", async () => {
+  test("loadRepoSnapshot accepts page_block and rejects a wrong type", async () => {
     const { media } = memoryMedia({
       ok: JSON.stringify({ ...snap, page_block: "a.json" }),
       wrong: JSON.stringify({ ...snap, page_block: 3 }),
@@ -1026,7 +1026,7 @@ describe("prompt do teste de código com o bloco de página", () => {
 });
 
 describe("compactPageBlock", () => {
-  test("ordem, flags multivariadas e Lazy, sem as props", () => {
+  test("order, multivariate flags and Lazy, without the props", () => {
     const out = JSON.parse(
       compactPageBlock({
         path: "/:slug/p",
@@ -1083,7 +1083,7 @@ describe("compactPageBlock", () => {
     });
   });
 
-  test("passa do teto: corta as últimas seções e marca truncated", () => {
+  test("over the ceiling: cuts the last sections and marks truncated", () => {
     const sections = Array.from({ length: 2000 }, (_, i) => ({
       __resolveType: `site/sections/Bloco${i}-${"x".repeat(40)}.tsx`,
     }));
@@ -1097,8 +1097,8 @@ describe("compactPageBlock", () => {
   });
 });
 
-describe("compactPageBlock, sections em objeto (flag multivariada solta)", () => {
-  // A página inteira é UMA flag multivariada, e a PDP mora no `children` de um embrulho.
+describe("compactPageBlock, sections as an object (loose multivariate flag)", () => {
+  // The whole page is ONE multivariate flag, and the PDP lives in a wrapper's `children`.
   const LOOSE_FLAG_SHAPE = {
     path: "/:slug/p",
     sections: {
@@ -1141,7 +1141,7 @@ describe("compactPageBlock, sections em objeto (flag multivariada solta)", () =>
     },
   };
 
-  test("a flag vira a única seção, com as variantes e o que elas embrulham", () => {
+  test("the flag becomes the only section, with its variants and what they wrap", () => {
     const out = JSON.parse(compactPageBlock(LOOSE_FLAG_SHAPE));
     expect(out.sections).toHaveLength(1);
     const flag = out.sections[0];
@@ -1165,11 +1165,11 @@ describe("compactPageBlock, sections em objeto (flag multivariada solta)", () =>
     expect(flag.variants[1].sections[0].slots.brandSections).toEqual([
       { section: "Header Global " },
     ]);
-    // Loader (objeto solto) não é lista de seções.
+    // A loader (loose object) is not a section list.
     expect(JSON.stringify(out)).not.toContain("PDP Loader");
   });
 
-  test("value de variante em objeto também vira lista", () => {
+  test("a variant value as an object also becomes a list", () => {
     const out = JSON.parse(
       compactPageBlock({
         path: "/:slug/p",
@@ -1189,7 +1189,7 @@ describe("compactPageBlock, sections em objeto (flag multivariada solta)", () =>
     ]);
   });
 
-  test("uma flag só gigante: corta por dentro, mantém a flag", () => {
+  test("one giant flag: cuts inside, keeps the flag", () => {
     const lazy = (i: number) => ({
       __resolveType: "website/sections/Rendering/Lazy.tsx",
       section: {
@@ -1215,19 +1215,19 @@ describe("compactPageBlock, sections em objeto (flag multivariada solta)", () =>
     expect(out.sections).toHaveLength(1);
     expect(out.sections[0].section).toBe("website/flags/multivariate.ts");
     expect(out.sections[0].variants).toHaveLength(2);
-    // O mais fundo sai primeiro: o que o Lazy embrulha, do fim pro começo.
+    // The deepest goes first: what the Lazy wraps, last to first.
     const first = out.sections[0].variants[0].sections;
     expect(first.length).toBeGreaterThan(0);
     expect(first[0].section).toBe("website/sections/Rendering/Lazy.tsx");
-    // Não corta mais que o necessário: sobra perto do teto.
+    // Cuts no more than needed: it ends near the ceiling.
     expect(new TextEncoder().encode(text).length).toBeGreaterThan(
       PAGE_BLOCK_MAX_BYTES * 0.8,
     );
   });
 });
 
-// O modelo copiava o import sem extensão ("components/x/Y") e o pedido sumia em silêncio.
-describe("need_files sem extensão", () => {
+// The model copies extensionless imports ("components/x/Y"); those requests must still resolve.
+describe("need_files without an extension", () => {
   const reader =
     (exists: Record<string, string>, reads: string[] = []): RepoReader =>
     async (p) => {
@@ -1235,7 +1235,7 @@ describe("need_files sem extensão", () => {
       return exists[p] ?? null;
     };
 
-  test("neededPaths aceita sem extensão e ainda recusa asset", () => {
+  test("neededPaths accepts no extension and still rejects assets", () => {
     expect(
       neededPaths(
         [
@@ -1254,13 +1254,13 @@ describe("need_files sem extensão", () => {
     ]);
   });
 
-  test("sem extensão, já no snapshot com .tsx: não gasta vaga", () => {
+  test("no extension, already in the snapshot as .tsx: takes no slot", () => {
     expect(
       neededPaths(["components/A"], new Set(["components/A.tsx"])),
     ).toEqual([]);
   });
 
-  test("resolve .tsx", async () => {
+  test("resolves .tsx", async () => {
     const reads: string[] = [];
     const r = await readNeededFiles(
       reader({ "components/A.tsx": "a" }, reads),
@@ -1270,7 +1270,7 @@ describe("need_files sem extensão", () => {
     expect(r.missed).toEqual([]);
   });
 
-  test("resolve /index.tsx, e .ts vem antes de /index", async () => {
+  test("resolves /index.tsx, and .ts comes before /index", async () => {
     const r = await readNeededFiles(
       reader({ "components/B/index.tsx": "b", "hooks/c.ts": "c" }),
       ["components/B", "hooks/c"],
@@ -1281,7 +1281,7 @@ describe("need_files sem extensão", () => {
     ]);
   });
 
-  test("com extensão: o caminho como veio primeiro, sozinho", async () => {
+  test("with an extension: the path as given first, alone", async () => {
     const reads: string[] = [];
     const r = await readNeededFiles(
       reader({ "components/A.tsx": "a" }, reads),
@@ -1291,14 +1291,14 @@ describe("need_files sem extensão", () => {
     expect(r.files.map((f) => f.path)).toEqual(["components/A.tsx"]);
   });
 
-  test("extensão errada (.ts pedido, .tsx no repo) ainda resolve", async () => {
+  test("wrong extension (.ts requested, .tsx in the repo) still resolves", async () => {
     const r = await readNeededFiles(reader({ "components/A.tsx": "a" }), [
       "components/A.ts",
     ]);
     expect(r.files.map((f) => f.path)).toEqual(["components/A.tsx"]);
   });
 
-  test("nenhum candidato abre: não existe, e o erro vence o 404", async () => {
+  test("no candidate opens: missing, and the error beats the 404", async () => {
     const r = await readNeededFiles(
       async (p) => {
         if (p === "components/Boom.tsx") throw new Error("HTTP 500");
@@ -1314,7 +1314,7 @@ describe("need_files sem extensão", () => {
     expect(r.missedPaths).toEqual(["components/Nada", "components/Boom"]);
   });
 
-  test("X e X.tsx no mesmo pedido entram uma vez", async () => {
+  test("X and X.tsx in one request go in once", async () => {
     const r = await readNeededFiles(reader({ "components/A.tsx": "a" }), [
       "components/A",
       "components/A.tsx",
@@ -1322,7 +1322,7 @@ describe("need_files sem extensão", () => {
     expect(r.files.length).toBe(1);
   });
 
-  test("pedido com ~/ e com src/ sem extensão, de ponta a ponta", async () => {
+  test("requests with ~/ and src/ without an extension, end to end", async () => {
     const reads: string[] = [];
     const r = await withLlm(
       [
@@ -1369,7 +1369,7 @@ describe("need_files sem extensão", () => {
     expect(r.run.observed).toContain("(não abriu: components/Sumido)");
   });
 
-  test("sem pedido, o observed não muda", async () => {
+  test("without a request, observed is unchanged", async () => {
     const r = await withLlm(
       [{ outcome: "nao_decidiu", observed: "nada a pedir" }],
       (_, llm) => repoCheckWith(llm, async () => null),
@@ -1378,14 +1378,14 @@ describe("need_files sem extensão", () => {
   });
 });
 
-describe("lista de importados fora do snapshot", () => {
+describe("imports outside the snapshot", () => {
   const snapWith = (files: RepoSnapshot["files"]): RepoSnapshot => ({
     repo: "acme/loja-exemplo",
     synced_at: "t",
     files,
   });
 
-  test("resolve relativo e ~/, tira o que já está, sem extensão duplicada", () => {
+  test("resolves relative and ~/, drops what is present, no duplicate extension", () => {
     const list = missingImports(
       snapWith([
         {
@@ -1411,7 +1411,7 @@ import s from "./x.css";`,
     ]);
   });
 
-  test("respeita o teto", () => {
+  test("respects the ceiling", () => {
     const text = Array.from(
       { length: MISSING_IMPORTS_MAX + 10 },
       (_, i) => `import X${i} from "~/components/c${i}";`,
@@ -1421,7 +1421,7 @@ import s from "./x.css";`,
     expect(MISSING_IMPORTS_MAX).toBe(40);
   });
 
-  test("vai só no prompt da primeira volta, e só com o repo à mão", async () => {
+  test("only in the first-round prompt, and only with the repo at hand", async () => {
     const withImport: RepoSnapshot = {
       ...snap,
       files: [
@@ -1465,8 +1465,8 @@ import s from "./x.css";`,
   });
 });
 
-describe("need_files e importados, revisão", () => {
-  test("candidatos um por um: nunca mais de 6 leituras ao mesmo tempo", async () => {
+describe("need_files and imports, review", () => {
+  test("candidates one at a time: never more than 6 concurrent reads", async () => {
     let inFlight = 0;
     let peak = 0;
     const reads: string[] = [];
@@ -1485,7 +1485,7 @@ describe("need_files e importados, revisão", () => {
     expect(peak).toBeLessThanOrEqual(6);
   });
 
-  test("para no primeiro que abre", async () => {
+  test("stops at the first that opens", async () => {
     const reads: string[] = [];
     await readNeededFiles(
       async (p) => {
@@ -1497,7 +1497,7 @@ describe("need_files e importados, revisão", () => {
     expect(reads).toEqual(["components/A.tsx", "components/A.ts"]);
   });
 
-  test("nome com ponto (Product.Gallery) é componente, não extensão", () => {
+  test("a dotted name (Product.Gallery) is a component, not an extension", () => {
     expect(
       neededPaths(
         ["components/product/Product.Gallery", "components/x/logo.svg"],
@@ -1517,7 +1517,7 @@ describe("need_files e importados, revisão", () => {
     expect(list).toEqual(["components/product/Product.Gallery"]);
   });
 
-  test("X/index.ts no snapshot conta como presente", () => {
+  test("X/index.ts in the snapshot counts as present", () => {
     const list = missingImports({
       repo: "acme/loja-exemplo",
       synced_at: "t",
@@ -1529,7 +1529,7 @@ describe("need_files e importados, revisão", () => {
     expect(list).toEqual([]);
   });
 
-  test("import com espaço ou caminho enorme não entra na lista", () => {
+  test("an import with spaces or a huge path stays off the list", () => {
     const long = `components/${"a".repeat(220)}`;
     const list = missingImports({
       repo: "acme/loja-exemplo",
@@ -1545,9 +1545,9 @@ describe("need_files e importados, revisão", () => {
   });
 });
 
-// A seção clicada pode ser um embrulho; a de produto vem do CMS.
+// The clicked section may be a wrapper; the product section comes from the CMS.
 describe("pdpSectionsOfPageBlock", () => {
-  test("pega as seções de produto do bloco compactado, na ordem, sem repetir", () => {
+  test("takes the compacted block's product sections, in order, without repeats", () => {
     const block = JSON.stringify({
       path: "/:slug/p",
       sections: [

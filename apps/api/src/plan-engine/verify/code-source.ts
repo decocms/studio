@@ -1,11 +1,7 @@
 /**
- * How a run reads the store's code, and the owned gap when it cannot.
- *
- * The code is the site project's repository, read with the run's organization
- * linked repository and provider account (adapters/repo.ts). The snapshot and
- * `need_files` use mirror paths (`src/` dropped: `src/sections/X.tsx` lives at
- * `sections/X.tsx`); the theme uses the repo's paths as they are. The tree is
- * read once per view and resolves both: `X` first, then `src/X`.
+ * How a run reads the store's code (adapters/repo.ts opens it), and the owned gap when it cannot.
+ * The snapshot and `need_files` use mirror paths (`src/` dropped); the theme uses the repo's paths as they are.
+ * The tree is read once per view and resolves both: `X` first, then `src/X`.
  */
 
 import {
