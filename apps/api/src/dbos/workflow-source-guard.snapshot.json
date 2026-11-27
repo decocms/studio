@@ -16,7 +16,7 @@
   "notifications/dbos-digest.ts": "cf3de868c0e85d8c7dec44b229e97f63640c18c19d454afceccc66c3d317f6fa",
   "plan-engine/dbos-ux-diagnosis.ts": "43c1ce8e75723b0b62f88fc4e305029c806f22505c4c2dc01ba531d101b80847",
   "sandbox/dbos-credential-push.ts": "8f65b9f8f8dba7989281f5ce4d7921b587f2d0d06a422dd0caa4085cd6ade439",
-  "tools/channels/dbos-hub-forwarder.ts": "e40727216fc0c0f4fccd5f4ac6b89fcf658e4f4a6f256bf3b37bf4ac8d3ec364",
+  "tools/channels/dbos-hub-forwarder.ts": "df96d7661c2a16f07b62c22c9884d0a8879681ea633b320d45a4f9bdb3a038e1",
   "tools/demo-board/dbos-demo-board-reset.ts": "65a4235e5fe596b9e2d0de7830480bfc397e022d85f3fb437fb596cb9d13bf37",
   "tools/task-board/dbos-archive-sweep.ts": "fe2db3802dd291f4d9ad5369a21c28854403bd2756518d9b48c1fcda4f100000",
   "tools/task-board/dbos-github-read.ts": "02f8d9e13cdca01a7e7a6ad00767229b7bf83443a4d773e836fad6aca95020f5",

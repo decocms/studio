@@ -45,7 +45,9 @@ describe("hub forwarder", () => {
   };
 
   const syncOf = async (id: string): Promise<ChannelSourceSync> => {
-    const found = (await channels.listSourceSyncs()).find((c) => c.id === id);
+    const found = (await channels.listSourceSyncs([orgId])).find(
+      (c) => c.id === id,
+    );
     if (!found) throw new Error("no sync row");
     return found;
   };
@@ -112,6 +114,13 @@ describe("hub forwarder", () => {
       .orderBy("external_id")
       .execute();
 
+  const setFlag = (org: string, on: boolean) =>
+    sql`
+      INSERT INTO organization_settings ("organizationId", flags, "createdAt", "updatedAt")
+      VALUES (${org}, ${JSON.stringify({ channels_enabled: on })}::jsonb, now(), now())
+      ON CONFLICT ("organizationId") DO UPDATE SET flags = excluded.flags
+    `.execute(database.db);
+
   beforeAll(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
@@ -120,6 +129,7 @@ describe("hub forwarder", () => {
       INSERT INTO "organization" (id, name, slug, "createdAt")
       VALUES (${orgId}, ${orgId}, ${orgId}, ${new Date().toISOString()})
     `.execute(database.db);
+    await setFlag(orgId, true);
 
     const sourceUrl = new URL(
       process.env.DATABASE_URL ??
@@ -337,5 +347,35 @@ describe("hub forwarder", () => {
     expect(
       (await channels.getConnection(orgId, id))?.sync.last_error,
     ).toBeNull();
+  });
+
+  test("copies only into orgs deco listed, and only while their flag is on", async () => {
+    const { id } = await connect();
+    // Another org connects the same account id: not on deco's list, it gets nothing.
+    const other = "org_channels_forwarder_other";
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${other}, ${other}, ${other}, ${new Date().toISOString()})
+    `.execute(database.db);
+    await setFlag(other, true);
+    const mine = (await channels.listSourceSyncs([orgId])).find(
+      (c) => c.id === id,
+    );
+    if (!mine) throw new Error("own connection not listed");
+    const copy = await channels.createConnection({
+      organizationId: other,
+      source: "whatsapp",
+      externalId: mine.externalId,
+    });
+    if (!copy) throw new Error("other connection not created");
+    const listed = await channels.listSourceSyncs([orgId]);
+    expect(listed.some((c) => c.id === copy.connection.id)).toBe(false);
+    expect(listed.some((c) => c.id === id)).toBe(true);
+    expect(await channels.listSourceSyncs([])).toEqual([]);
+
+    // On the list but with the flag off: nothing either.
+    await setFlag(orgId, false);
+    expect((await channels.listSourceSyncs([orgId])).length).toBe(0);
+    await setFlag(orgId, true);
   });
 });

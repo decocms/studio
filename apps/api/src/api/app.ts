@@ -1705,6 +1705,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   setChannelsHubForwarderRuntime({
     db: database.db,
     sourceDatabaseUrl: getSettings().channelsSourceDatabaseUrl,
+    sourceOrgIds: getSettings().channelsSourceOrgIds,
   });
 
   // Daily: demo orgs' boards back to their capture.
@@ -2019,7 +2020,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
-  registerChannelsHubForwarderWorkflow();
+  // Not scheduled at all without the hub: no idle run every minute.
+  if (getSettings().channelsSourceDatabaseUrl) {
+    registerChannelsHubForwarderWorkflow();
+  }
   registerDemoBoardResetWorkflow();
   registerOrderMonitorWorkflow();
   registerOrderIngestBackfillWorkflow();

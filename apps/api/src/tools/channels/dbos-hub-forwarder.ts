@@ -5,7 +5,8 @@
  * replay iterates the recorded list, and each connection's leg is its own
  * step that never throws, so one broken connection doesn't stop the others.
  *
- * A no-op without CHANNELS_SOURCE_DATABASE_URL. Runtime deps come from a
+ * A no-op without CHANNELS_SOURCE_DATABASE_URL, and it only copies into the
+ * orgs deco listed in CHANNELS_SOURCE_ORG_IDS that have `channels_enabled` on. Runtime deps come from a
  * module-level registry wired by app boot via `setChannelsHubForwarderRuntime`
  * BEFORE `DBOS.launch()`.
  */
@@ -22,6 +23,8 @@ const HUB_FORWARDER_CRONTAB = "* * * * *";
 export interface ChannelsHubForwarderRuntime {
   db: Kysely<Database>;
   sourceDatabaseUrl: string | undefined;
+  /** The only orgs it copies into (CHANNELS_SOURCE_ORG_IDS). */
+  sourceOrgIds: string[];
 }
 
 let runtime: ChannelsHubForwarderRuntime | null = null;
@@ -65,11 +68,11 @@ async function hubForwarderWorkflowFn(
   _currentTime: Date,
 ): Promise<void> {
   // Env-derived, identical on every pod — deterministic across replays.
-  const { db, sourceDatabaseUrl } = requireRuntime();
-  if (!sourceDatabaseUrl) return;
+  const { db, sourceDatabaseUrl, sourceOrgIds } = requireRuntime();
+  if (!sourceDatabaseUrl || sourceOrgIds.length === 0) return;
 
   const connections = await DBOS.runStep(
-    () => new ChannelsStorage(db).listSourceSyncs(),
+    () => new ChannelsStorage(db).listSourceSyncs(sourceOrgIds),
     { name: "listChannelConnections" },
   );
   // ponytail: every connection every tick, one after another (each capped at

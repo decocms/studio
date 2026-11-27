@@ -208,7 +208,9 @@ const mirroredAt = (t: string) =>
   `to_char(${t}.mirrored_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 /**
- * After the cursor ($2, $3), in an order Postgres and JS agree on ("C").
+ * After the cursor ($2, $3), in an order Postgres and JS agree on ("C"). The
+ * plain `mirrored_at >= $2` is what the (mirrored_at, id) index can range
+ * over; the row comparison alone (with COLLATE "C") can't use it.
  *
  * ponytail: a hub transaction stamps mirrored_at at its start, so a row can
  * commit behind a cursor that already passed it. Rows younger than a minute
@@ -217,7 +219,8 @@ const mirroredAt = (t: string) =>
 const next = (t: string) =>
   `${t}.mirrored_at < now() - interval '1 minute'
     AND ($2::timestamptz IS NULL
-      OR (${t}.mirrored_at, ${t}.id COLLATE "C") > ($2::timestamptz, $3::text))`;
+      OR (${t}.mirrored_at >= $2::timestamptz
+        AND (${t}.mirrored_at, ${t}.id COLLATE "C") > ($2::timestamptz, $3::text)))`;
 
 /**
  * The next rows of one hub connection after `cursor`. Explicit columns only:

@@ -353,6 +353,11 @@ export interface Settings {
   /** The channels hub's Postgres (CHANNELS_SOURCE_DATABASE_URL), read by the
    *  hub forwarder job. Unset = the job does nothing. */
   channelsSourceDatabaseUrl: string | undefined;
+  /** Studio org ids the hub forwarder may copy into (CHANNELS_SOURCE_ORG_IDS,
+   *  comma-separated). The link to the hub is deco's decision, never an org's:
+   *  a connection elsewhere with the same account id gets nothing. Empty =
+   *  the job does nothing. */
+  channelsSourceOrgIds: string[];
   /** How many store diagnoses an org may start in 24 h with the built-in
    *  engine (PLAN_ENGINE_MAX_DAILY_STARTS, default 10; 0 = none). Each page
    *  of a run counts. */

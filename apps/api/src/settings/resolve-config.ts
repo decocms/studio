@@ -446,6 +446,10 @@ export function resolveConfig(
     planDiagnosisMcpUrl: envVars.PLAN_DIAGNOSIS_MCP_URL || undefined,
     channelsSourceDatabaseUrl:
       envVars.CHANNELS_SOURCE_DATABASE_URL || undefined,
+    channelsSourceOrgIds: (envVars.CHANNELS_SOURCE_ORG_IDS ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
     planEngineMaxDailyStarts: toNonNegativeIntegerOrDefault(
       "PLAN_ENGINE_MAX_DAILY_STARTS",
       envVars.PLAN_ENGINE_MAX_DAILY_STARTS,
