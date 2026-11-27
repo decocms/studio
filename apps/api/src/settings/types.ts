@@ -378,6 +378,13 @@ export interface Settings {
   /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
   siteTokenSigningKey: string | undefined;
   /**
+   * Hosts of the sites editor's MCP connections (`SITES_CONNECTION_HOSTS`,
+   * comma-separated, default `sites.decocms.com`). Only a token Studio issued
+   * to a connection at one of them is accepted alone on
+   * `GET /api/:org/sites/:site/access`.
+   */
+  sitesConnectionHosts: string[];
+  /**
    * The Cloudflare zone serving the delivery bucket and a token with Zone →
    * Cache Purge on it: latest.json is purged after every write. Unset = the
    * purge is skipped with a warning (local/dev/tests).

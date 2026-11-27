@@ -662,3 +662,20 @@ describe("resolveConfig plan diagnosis engine URL", () => {
     ).toBeUndefined();
   });
 });
+
+describe("sitesConnectionHosts", () => {
+  it("defaults to sites.decocms.com", () => {
+    expect(resolveConfig({}).sitesConnectionHosts).toEqual([
+      "sites.decocms.com",
+    ]);
+  });
+
+  it("reads a comma-separated SITES_CONNECTION_HOSTS, lowercased", () => {
+    expect(
+      resolveConfig({
+        SITES_CONNECTION_HOSTS:
+          " sites.decocms.com, Sites-PR.deco-cx.workers.dev ,",
+      }).sitesConnectionHosts,
+    ).toEqual(["sites.decocms.com", "sites-pr.deco-cx.workers.dev"]);
+  });
+});

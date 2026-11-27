@@ -27,18 +27,31 @@ const OTHER_ORG = "org_456";
 const USER = "user_1";
 const OUTSIDER = "user_outsider";
 
-function studioToken(organizationId: string, extra: { aud?: "channels" } = {}) {
+/** The sites editor's MCP connection in each organization, and another one. */
+const SITES_CONNECTION = "conn_sites";
+const OTHER_ORG_SITES_CONNECTION = "conn_sites_456";
+const OTHER_HOST_CONNECTION = "conn_elsewhere";
+
+function studioToken(
+  organizationId: string,
+  extra: { aud?: "channels"; connectionId?: string } = {},
+) {
+  const { connectionId, ...rest } = extra;
   return issueStudioToken({
     sub: USER,
     user: { id: USER },
     metadata: {
       studioUrl: "http://test",
-      connectionId: "conn_sites",
+      connectionId:
+        connectionId ??
+        (organizationId === OTHER_ORG
+          ? OTHER_ORG_SITES_CONNECTION
+          : SITES_CONNECTION),
       organizationId,
       organizationSlug: organizationId,
     },
     permissions: {},
-    ...extra,
+    ...rest,
   });
 }
 
@@ -71,6 +84,38 @@ describe("GET /api/:org/sites/:site/access", () => {
       VALUES ('mem_1', ${USER}, ${ORG}, 'user', ${now}),
              ('mem_2', ${USER}, ${OTHER_ORG}, 'admin', ${now})
     `.execute(database.db);
+
+    await database.db
+      .insertInto("connections")
+      .values(
+        (
+          [
+            [SITES_CONNECTION, ORG, "https://sites.decocms.com/mcp"],
+            [
+              OTHER_ORG_SITES_CONNECTION,
+              OTHER_ORG,
+              "https://sites.decocms.com/mcp",
+            ],
+            [
+              OTHER_HOST_CONNECTION,
+              ORG,
+              "https://mcp.example.com/sites.decocms.com",
+            ],
+          ] as const
+        ).map(([id, organization_id, connection_url]) => ({
+          id,
+          organization_id,
+          created_by: USER,
+          title: id,
+          connection_type: "HTTP" as const,
+          connection_url,
+          status: "active" as const,
+          pinned: false,
+          created_at: now,
+          updated_at: now,
+        })),
+      )
+      .execute();
 
     const projects = new VirtualMCPStorage(database.db);
     const project = await projects.create(ORG, USER, {
@@ -143,7 +188,7 @@ describe("GET /api/:org/sites/:site/access", () => {
     expect(await res.json()).toEqual(expected());
   });
 
-  it("200 for an x-studio-token alone, with the member's current role", async () => {
+  it("200 for an x-studio-token alone, issued to the sites connection, with the member's current role", async () => {
     const res = await get(`/api/${ORG}/sites/acme/access`, {
       "x-studio-token": await studioToken(ORG),
     });
@@ -157,6 +202,36 @@ describe("GET /api/:org/sites/:site/access", () => {
       "x-studio-token": await studioToken(OTHER_ORG),
     });
     expect(res.status).toBe(403);
+  });
+
+  it("401 for an x-studio-token issued to a connection at another host", async () => {
+    const res = await get(`/api/${ORG}/sites/acme/access`, {
+      "x-studio-token": await studioToken(ORG, {
+        connectionId: OTHER_HOST_CONNECTION,
+      }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("401 for an x-studio-token whose sites connection is in another org", async () => {
+    const res = await get(`/api/${ORG}/sites/acme/access`, {
+      "x-studio-token": await studioToken(ORG, {
+        connectionId: OTHER_ORG_SITES_CONNECTION,
+      }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("401 for an x-studio-token whose sites connection was deleted", async () => {
+    const token = await studioToken(ORG);
+    await database.db
+      .deleteFrom("connections")
+      .where("id", "=", SITES_CONNECTION)
+      .execute();
+    const res = await get(`/api/${ORG}/sites/acme/access`, {
+      "x-studio-token": token,
+    });
+    expect(res.status).toBe(401);
   });
 
   it("401 for an x-studio-token that is a channels token, or not Studio's", async () => {

@@ -472,6 +472,12 @@ export function resolveConfig(
     deliveryPublicOrigin: envVars.DELIVERY_PUBLIC_ORIGIN,
     deliveryKeyPrefix: envVars.DELIVERY_KEY_PREFIX,
     siteTokenSigningKey: envVars.DECO_SITE_TOKEN_SIGNING_KEY,
+    sitesConnectionHosts: (
+      envVars.SITES_CONNECTION_HOSTS || "sites.decocms.com"
+    )
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
     cfDeliveryZoneId: envVars.CF_DELIVERY_ZONE_ID,
     cfPurgeApiToken: envVars.CF_PURGE_API_TOKEN,
   };

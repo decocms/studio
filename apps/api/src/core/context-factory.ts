@@ -989,6 +989,30 @@ export function isStudioTokenOnlyRoute(req: Request): boolean {
   }
 }
 
+/**
+ * Whether `connectionId` is a connection of `organizationId` whose URL host
+ * is one of `sitesConnectionHosts` (the sites editor's MCP server).
+ */
+async function isSitesConnection(
+  db: Kysely<Database>,
+  connectionId: string,
+  organizationId: string,
+): Promise<boolean> {
+  const row = await db
+    .selectFrom("connections")
+    .select("connection_url")
+    .where("id", "=", connectionId)
+    .where("organization_id", "=", organizationId)
+    .executeTakeFirst();
+  if (!row?.connection_url) return false;
+  try {
+    const { host } = new URL(row.connection_url);
+    return getSettings().sitesConnectionHosts.includes(host.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 async function authenticateRequest(
   req: Request,
   auth: BetterAuthInstance,
@@ -1283,6 +1307,9 @@ async function authenticateRequest(
   // - it must name an organization; `resolveOrgFromPath` then refuses (403)
   //   one other than `:org` (`tokenOrganizationId`) and a non-member;
   // - never a channels token, which is only handed to the channels service;
+  // - only a token Studio issued to a sites editor connection
+  //   (`isSitesConnection`): Studio sends this header to every connection it
+  //   calls, and a third-party MCP server must not replay it here;
   // - the user's current member role (re-read, not the token's snapshot)
   //   and that role's permissions, so a custom role's project scope applies.
   if (!authHeader && isStudioTokenOnlyRoute(req)) {
@@ -1292,10 +1319,14 @@ async function authenticateRequest(
           verifyStudioToken(token),
         )
       : undefined;
+    const organizationId = payload?.metadata?.organizationId;
+    const connectionId = payload?.metadata?.connectionId;
     if (
       payload?.sub &&
-      payload.metadata?.organizationId &&
-      payload.aud !== CHANNELS_TOKEN_AUDIENCE
+      organizationId &&
+      connectionId &&
+      payload.aud !== CHANNELS_TOKEN_AUDIENCE &&
+      (await isSitesConnection(db, connectionId, organizationId))
     ) {
       return authenticateStudioJwt(payload, db, timings, memberRoleCache, true);
     }
