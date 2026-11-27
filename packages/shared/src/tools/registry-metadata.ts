@@ -406,6 +406,7 @@ const ALL_TOOL_NAMES = [
   "CHANNELS_CONNECTION_CREATE",
   "CHANNELS_CONNECTION_ROTATE_TOKEN",
   "CHANNELS_CONNECTION_LIST",
+  "CHANNELS_CONNECTION_GET",
   "CHANNELS_CONNECTION_DELETE",
   "CHANNELS_CONVERSATION_LIST",
   "CHANNELS_MESSAGE_LIST",
@@ -1845,6 +1846,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Connections",
   },
   {
+    name: "CHANNELS_CONNECTION_GET",
+    description: "Get a channel connection with its counts and sync state",
+    category: "Connections",
+  },
+  {
     name: "CHANNELS_CONNECTION_DELETE",
     description: "Delete a channel connection and everything it brought in",
     category: "Connections",
@@ -2325,11 +2331,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CHANNEL_ACCOUNT_CONNECT",
       "CHANNEL_ACCOUNT_LIST",
       "CHANNEL_ACCOUNT_DISCONNECT",
-      // The org's channels are the org's: every member reads them.
-      "CHANNELS_CONNECTION_LIST",
-      "CHANNELS_CONVERSATION_LIST",
-      "CHANNELS_MESSAGE_LIST",
-      "CHANNELS_MESSAGE_SEARCH",
       // Every member sees the org's alerts and can ack them.
       "ALERTS_LIST",
       "ALERT_ACK",
@@ -2425,6 +2426,22 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CHANNELS_CONNECTION_DELETE",
     ],
     dangerous: true,
+  },
+  // Every role gets it by default (USER_ROLE_CAPABILITY_IDS); a custom role
+  // can leave it out.
+  {
+    id: "channels:read",
+    label: "Read channels",
+    description:
+      "See channel connections and read and search their conversations",
+    section: "Connections & Agents",
+    tools: [
+      "CHANNELS_CONNECTION_LIST",
+      "CHANNELS_CONNECTION_GET",
+      "CHANNELS_CONVERSATION_LIST",
+      "CHANNELS_MESSAGE_LIST",
+      "CHANNELS_MESSAGE_SEARCH",
+    ],
   },
   {
     id: "agents:manage",
@@ -2697,6 +2714,7 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
 const USER_ROLE_CAPABILITY_IDS: string[] = [
   "agents:manage",
   "connections:manage",
+  "channels:read",
   "assets:manage",
   "repositories:connect",
   "changes:propose",

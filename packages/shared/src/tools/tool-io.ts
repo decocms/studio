@@ -675,6 +675,25 @@ export interface StudioToolIO {
       }[];
     };
   };
+  CHANNELS_CONNECTION_GET: {
+    input: { id: string };
+    output: {
+      connection: {
+        id: string;
+        source: string;
+        external_id: string;
+        name: string | null;
+        kind: string | null;
+        created_by: string | null;
+        created_at: string;
+        updated_at: string;
+        last_event_at: string | null;
+      };
+      counts: { conversations: number; messages: number; people: number };
+      last_event_at: string | null;
+      sync: { source_cursor_at: string | null; last_error: string | null };
+    };
+  };
   CHANNELS_CONNECTION_DELETE: {
     input: { id: string };
     output: { deleted: boolean };

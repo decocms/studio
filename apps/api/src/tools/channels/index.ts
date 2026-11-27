@@ -154,6 +154,39 @@ export const CHANNELS_CONNECTION_LIST = defineTool({
   },
 });
 
+export const CHANNELS_CONNECTION_GET = defineTool({
+  name: "CHANNELS_CONNECTION_GET",
+  description:
+    "Get a channel connection: how many conversations, messages and people it holds, its last event, and where its copy from the channels hub stands.",
+  annotations: {
+    title: "Get Channel Connection",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: z.object({ id: z.string().min(1).max(100) }),
+  outputSchema: z.object({
+    connection: ConnectionSchema,
+    counts: z.object({
+      conversations: z.number(),
+      messages: z.number(),
+      people: z.number(),
+    }),
+    last_event_at: z.string().nullable(),
+    sync: z.object({
+      source_cursor_at: z.string().nullable(),
+      last_error: z.string().nullable(),
+    }),
+  }),
+  handler: async (input, ctx) => {
+    const org = await channelsOrg(ctx);
+    const detail = await ctx.storage.channels.getConnection(org.id, input.id);
+    if (!detail) throw new Error(NOT_FOUND);
+    return detail;
+  },
+});
+
 export const CHANNELS_CONNECTION_DELETE = defineTool({
   name: "CHANNELS_CONNECTION_DELETE",
   description:

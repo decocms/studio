@@ -350,6 +350,9 @@ export interface Settings {
    *  `connection_url` of each org's plan-diagnosis connection. No default:
    *  unset = the PLAN_DIAGNOSIS_* tools report the service as unset. */
   planDiagnosisMcpUrl: string | undefined;
+  /** The channels hub's Postgres (CHANNELS_SOURCE_DATABASE_URL), read by the
+   *  hub forwarder job. Unset = the job does nothing. */
+  channelsSourceDatabaseUrl: string | undefined;
   /** How many store diagnoses an org may start in 24 h with the built-in
    *  engine (PLAN_ENGINE_MAX_DAILY_STARTS, default 10; 0 = none). Each page
    *  of a run counts. */
