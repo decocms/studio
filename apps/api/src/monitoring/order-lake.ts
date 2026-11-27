@@ -31,32 +31,46 @@ const inRange = (col: string) => `${col} < ${AT}
          OR ${col} BETWEEN ${AT} - INTERVAL 365 DAY AND ${AT} - INTERVAL 363 DAY)
     AND days_ago IN (${DAYS_AGO.join(", ")})`;
 
+// The tenant profile cuts results at 1000 rows, at an arbitrary block, and
+// days × 96 buckets passes that: return one row per day with the buckets as
+// arrays, which `queryBuckets` turns back into one row per bucket.
+const byDay = (sql: string, cols: string[], keys = "days_ago") =>
+  `SELECT ${keys}, ${["bucket", ...cols].map((c) => `groupArray(${c}) AS ${c}`).join(", ")}
+  FROM (${sql}) GROUP BY ${keys}`;
+
 // FINAL: `orders` replaces on `version`, so an order that went paid → canceled
 // would otherwise count twice. Every created order counts, whatever its status now.
 // An empty source_status is a VTEX incomplete order (checkout never completed),
 // which VTEX's own order list leaves out.
-const ORDERS_SQL = `
+const ORDERS_SQL = byDay(
+  `
   SELECT ${daysAgo("created_at")} AS days_ago, ${bucket("created_at")} AS bucket,
     count() AS placed, sum(total) AS revenue, sum(item_count) AS items,
     any(currency) AS currency
   FROM customer_lake.orders FINAL
   WHERE connection_id = {conn:String} AND source_status != ''
     AND ${inRange("created_at")}
-  GROUP BY days_ago, bucket`;
+  GROUP BY days_ago, bucket`,
+  ["placed", "revenue", "items", "currency"],
+);
 
 // uniqExact absorbs hook retries that wrote the same event twice.
-const EVENTS_SQL = `
+const EVENTS_SQL = byDay(
+  `
   SELECT ${daysAgo("changed_at")} AS days_ago, ${bucket("changed_at")} AS bucket,
     uniqExactIf(order_id, status = 'canceled' AND source_status != 'payment-denied') AS canceled,
     uniqExactIf(order_id, source_status = 'payment-denied') AS denied
   FROM customer_lake.order_events
   WHERE connection_id = {conn:String} AND ${inRange("changed_at")}
-  GROUP BY days_ago, bucket`;
+  GROUP BY days_ago, bucket`,
+  ["canceled", "denied"],
+);
 
 // Chart only, for reference days before the install's first event:
 // `updated_at` is an order's last change, which for a canceled order is usually
 // the cancellation but can be a later refund, so it skews late.
-const APPROX_CANCELS_SQL = `
+const APPROX_CANCELS_SQL = byDay(
+  `
   SELECT ${daysAgo("updated_at")} AS days_ago, ${bucket("updated_at")} AS bucket,
     countIf(source_status != 'payment-denied') AS canceled,
     countIf(source_status = 'payment-denied') AS denied
@@ -64,7 +78,9 @@ const APPROX_CANCELS_SQL = `
   WHERE connection_id = {conn:String}
     AND (status = 'canceled' OR source_status = 'payment-denied')
     AND ${inRange("updated_at")}
-  GROUP BY days_ago, bucket`;
+  GROUP BY days_ago, bucket`,
+  ["canceled", "denied"],
+);
 
 // `order_events` starts at the install (backfill writes only `orders`).
 const FIRST_EVENT_SQL = `
@@ -80,13 +96,17 @@ const BACKFILL_SQL = `
   GROUP BY days_ago`;
 
 // Chart only. Three days back covers D-1's local day across a 25-hour DST day.
-const CHANNELS_SQL = `
+const CHANNELS_SQL = byDay(
+  `
   SELECT sales_channel AS channel, ${daysAgo("created_at")} AS days_ago,
     ${bucket("created_at")} AS bucket, count() AS placed
   FROM customer_lake.orders FINAL
   WHERE connection_id = {conn:String} AND source_status != '' AND created_at < ${AT}
     AND created_at >= ${AT} - INTERVAL 3 DAY AND days_ago IN (0, 1)
-  GROUP BY channel, days_ago, bucket`;
+  GROUP BY channel, days_ago, bucket`,
+  ["placed"],
+  "channel, days_ago",
+);
 
 const CHANNEL_NAMES_SQL = `
   SELECT channel_id, name FROM customer_lake.sales_channels FINAL
@@ -95,6 +115,23 @@ const CHANNEL_NAMES_SQL = `
 const TIMEZONE_SQL = `
   SELECT timezone FROM customer_lake.connections FINAL
   WHERE connection_id = {conn:String} LIMIT 1`;
+
+/** A `byDay` query's rows, one per bucket again. */
+async function queryBuckets(
+  organizationId: string,
+  sql: string,
+  params: Record<string, string>,
+): Promise<Record<string, unknown>[]> {
+  const rows = await queryCustomerLake(organizationId, sql, params);
+  return rows.flatMap((row) => {
+    const buckets = Array.isArray(row.bucket) ? row.bucket : [];
+    return buckets.map((_, i) =>
+      Object.fromEntries(
+        Object.entries(row).map(([k, v]) => [k, Array.isArray(v) ? v[i] : v]),
+      ),
+    );
+  });
+}
 
 /** ClickHouse's DateTime64 text form, in UTC. */
 function toLakeTime(at: Date): string {
@@ -250,8 +287,8 @@ export async function loadStoreDay(
   const params = { conn: connectionId, tz: timezone, at: toLakeTime(at) };
   const [orders, events, [first], backfill, approx, channels] =
     await Promise.all([
-      queryCustomerLake(organizationId, ORDERS_SQL, params),
-      queryCustomerLake(organizationId, EVENTS_SQL, params),
+      queryBuckets(organizationId, ORDERS_SQL, params),
+      queryBuckets(organizationId, EVENTS_SQL, params),
       queryCustomerLake(organizationId, FIRST_EVENT_SQL, params),
       // Without it every day with orders counts as in, as before backfills were tracked.
       queryCustomerLake(organizationId, BACKFILL_SQL, params).catch((err) => {
@@ -262,7 +299,7 @@ export async function loadStoreDay(
       }),
       // Chart only: don't sink the real orders/events data over this.
       opts.approximate
-        ? queryCustomerLake(organizationId, APPROX_CANCELS_SQL, params).catch(
+        ? queryBuckets(organizationId, APPROX_CANCELS_SQL, params).catch(
             (err) => {
               console.warn("[order-monitor] approximate cancels read failed", {
                 error: err instanceof Error ? err.message : String(err),
@@ -329,7 +366,7 @@ async function loadChannels(
   params: Record<string, string>,
 ): Promise<NonNullable<StoreDay["channels"]>> {
   const [rows, names] = await Promise.all([
-    queryCustomerLake(organizationId, CHANNELS_SQL, params),
+    queryBuckets(organizationId, CHANNELS_SQL, params),
     // Names are a label, not data: without them the UI shows the channel id.
     queryCustomerLake(organizationId, CHANNEL_NAMES_SQL, params).catch(
       (err) => {
