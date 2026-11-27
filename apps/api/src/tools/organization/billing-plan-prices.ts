@@ -42,7 +42,7 @@ const CACHE_TTL_MS = 10 * 60_000;
 const PARTIAL_CACHE_TTL_MS = 30_000;
 let cache: { at: number; prices: PlanPrice[]; ttlMs: number } | null = null;
 
-async function loadPlanPrices(): Promise<PlanPrice[]> {
+export async function loadPlanPrices(): Promise<PlanPrice[]> {
   if (cache && Date.now() - cache.at < cache.ttlMs) return cache.prices;
 
   // ONE price per plan, and specifically the one `priceIdForPlan` would sell.

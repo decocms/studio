@@ -161,6 +161,10 @@ export interface Settings {
   stripeTopupProductId: string | undefined;
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
+  /** Who hears about every "Add to my invoice" plan change
+   *  (STUDIO_INVOICE_UPGRADE_NOTIFY_EMAIL). Unset → no email; the gateway's
+   *  pending list is still the record finance bills from. */
+  invoiceUpgradeNotifyEmail: string | undefined;
 
   /**
    * Master switch for tiered plans (STUDIO_PLANS_ENABLED, default off). Off →

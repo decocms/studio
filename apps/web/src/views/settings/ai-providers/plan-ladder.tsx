@@ -117,7 +117,12 @@ export function isStaffManagedPlan(planId: string | null | undefined): boolean {
 }
 
 // TODO: confirm contact address
-export const SALES_CONTACT_HREF = "mailto:sales@deco.cx";
+export const SALES_CONTACT_EMAIL = "sales@deco.cx";
+
+/** A Gmail compose tab, not `mailto:`: on a machine with no mail app set up a
+ *  mailto link does nothing, and the address stays written beside it for
+ *  anyone on another client. */
+export const SALES_CONTACT_HREF = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(SALES_CONTACT_EMAIL)}`;
 
 /**
  * Cheapest-first, which is the order every rung here is derived from.

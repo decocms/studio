@@ -717,7 +717,6 @@ export const settings = {
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
   "settings.planUsage.changePlan": "Change plan",
-  "settings.planUsage.changed": "Plan updated",
   "settings.planUsage.changeFailed": "Couldn't change plan: {message}",
   "settings.planUsage.feature.cms": "CMS",
   "settings.planUsage.feature.chat": "Superagent chat",
@@ -738,10 +737,20 @@ export const settings = {
   "settings.plans.custom.cta": "Talk to us",
   "settings.plans.managed": "Your plan: {plan}. Contact us to change it.",
   "settings.plans.invoice.cta": "Add to my invoice",
+  "settings.plans.invoice.hint": "Starts today · billed on your deco invoice",
+  "settings.plans.invoice.payByCard": "Pay by card instead",
+  "settings.plans.invoice.trialByCard": "Or try it free by card",
+  "settings.plans.invoice.title": "Add {plan} to your invoice?",
   "settings.plans.invoice.confirm":
-    "{plan} will be added to your next invoice. Switch now?",
+    "{plan} starts now and goes on your next deco invoice. No card needed.",
+  "settings.plans.invoice.confirmPrice":
+    "{plan} starts now, and {price} a month goes on your next deco invoice. No card needed.",
   "settings.plans.invoice.cancel": "Cancel",
-  "settings.plans.invoice.switch": "Switch plan",
+  "settings.plans.invoice.switch": "Add {plan}",
+  "settings.plans.invoice.added": "{plan} is on. It goes on your next invoice.",
+  "settings.plans.invoice.current": "Billed on your deco invoice",
+  "settings.plans.invoice.changeByContact":
+    "Your plan is on your invoice, so deco makes this change.",
   "settings.paywall.bullets.kanban.1":
     "Agents that do the work and move the cards",
   "settings.paywall.bullets.kanban.2": "A board the whole team shares",

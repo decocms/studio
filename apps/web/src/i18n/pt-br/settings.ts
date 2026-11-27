@@ -735,7 +735,6 @@ export const settings = {
     "Não foi possível abrir a cobrança: {message}",
   "settings.planUsage.subscribe": "Assinar",
   "settings.planUsage.changePlan": "Mudar de plano",
-  "settings.planUsage.changed": "Plano atualizado",
   "settings.planUsage.changeFailed":
     "Não foi possível trocar o plano: {message}",
   "settings.planUsage.feature.cms": "CMS",
@@ -757,10 +756,21 @@ export const settings = {
   "settings.plans.custom.cta": "Fale com a gente",
   "settings.plans.managed": "Seu plano: {plan}. Fale com a gente para mudá-lo.",
   "settings.plans.invoice.cta": "Adicionar à minha fatura",
+  "settings.plans.invoice.hint": "Começa hoje · cobrado na sua fatura da deco",
+  "settings.plans.invoice.payByCard": "Pagar com cartão",
+  "settings.plans.invoice.trialByCard": "Ou testar grátis no cartão",
+  "settings.plans.invoice.title": "Adicionar o {plan} à sua fatura?",
   "settings.plans.invoice.confirm":
-    "O plano {plan} será adicionado à sua próxima fatura. Mudar agora?",
+    "O {plan} começa agora e entra na sua próxima fatura da deco. Não precisa de cartão.",
+  "settings.plans.invoice.confirmPrice":
+    "O {plan} começa agora, e {price} por mês entram na sua próxima fatura da deco. Não precisa de cartão.",
   "settings.plans.invoice.cancel": "Cancelar",
-  "settings.plans.invoice.switch": "Mudar de plano",
+  "settings.plans.invoice.switch": "Adicionar o {plan}",
+  "settings.plans.invoice.added":
+    "{plan} ativado. Ele entra na sua próxima fatura.",
+  "settings.plans.invoice.current": "Cobrado na sua fatura da deco",
+  "settings.plans.invoice.changeByContact":
+    "Seu plano está na sua fatura, então a deco faz essa troca.",
   "settings.paywall.bullets.kanban.1":
     "Agentes que fazem o trabalho e movem os cards",
   "settings.paywall.bullets.kanban.2":
