@@ -5,6 +5,7 @@
  */
 
 import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { resolveCallerProjectScope } from "../../core/project-scope";
@@ -20,6 +21,7 @@ import { requireConnectionsInOrganization } from "./require-connections-in-org";
 import { pinnedSiteSlugOnRename } from "./pin-site-slug";
 import { assertSiteSlugUnchanged } from "./site-slug-guard";
 import { claimProjectFolderFor } from "./project-folder-ensure";
+import { linkProjectSite } from "./link-project-site";
 import {
   blocksV8SwitchPatch,
   refuseBlocksV8MetadataWrite,
@@ -194,6 +196,18 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
         ...blocksV8Patch,
         by: userId,
       });
+      // The v8 editor reads and writes the hosted CMS, which is keyed by the
+      // project's site: link the one it names (its title, for projects that
+      // never stored a slug) when the switch turns on, or the editor has
+      // nothing to load. A project already linked keeps its site.
+      if (blocksV8) {
+        await linkProjectSite(ctx, {
+          organizationId: organization.id,
+          projectId: input.id,
+          metadata: { siteSlug: resolveAgentSiteSlug(virtualMcp) },
+          by: userId,
+        });
+      }
       virtualMcp =
         (await ctx.storage.virtualMcps.findById(input.id)) ?? virtualMcp;
     }

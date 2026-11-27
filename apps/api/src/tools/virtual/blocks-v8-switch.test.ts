@@ -44,6 +44,15 @@ function setup(role: string, metadata: Record<string, unknown> | null) {
       return true;
     },
   };
+  // "acme" is this org's, not linked yet.
+  const links: Array<{ slug: string; projectId: string }> = [];
+  const orgSites = {
+    getByProject: async () => null,
+    getBySlug: async () => ({ organizationId: ORG, projectId: null }),
+    link: async (l: { slug: string; projectId: string }) => {
+      links.push({ slug: l.slug, projectId: l.projectId });
+    },
+  };
   const ctx = {
     auth: {
       user: { id: "usr_1", role },
@@ -52,14 +61,18 @@ function setup(role: string, metadata: Record<string, unknown> | null) {
     },
     organization: { id: ORG, slug: "acme", name: "Acme", role },
     access: { check: async () => {}, getRole: () => role },
-    storage: { virtualMcps },
+    storage: {
+      virtualMcps,
+      orgSites,
+      orgFileConfigs: { list: async () => [], create: async () => ({}) },
+    },
   } as unknown as StudioContext;
   const update = (data: Record<string, unknown>) =>
     COLLECTION_VIRTUAL_MCP_UPDATE.handler(
       { id: row.id, data } as never,
       ctx,
     ) as Promise<{ item: { metadata: Record<string, unknown> | null } }>;
-  return { row, writes, update, ctx };
+  return { row, writes, update, ctx, links };
 }
 
 describe("the Blocks v8 site switch on COLLECTION_VIRTUAL_MCP_UPDATE", () => {
@@ -76,6 +89,9 @@ describe("the Blocks v8 site switch on COLLECTION_VIRTUAL_MCP_UPDATE", () => {
         { kind: "patch", value: { set: { blocksV8: true }, unset: [] } },
         { kind: "patch", value: { set: {}, unset: ["blocksV8"] } },
       ]);
+      // Turning it on links the site the project names (here its title), so
+      // the hosted CMS has a site to edit; turning it off links nothing.
+      expect(t.links).toEqual([{ slug: "acme", projectId: "vir_1" }]);
     }
   });
 
