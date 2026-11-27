@@ -234,6 +234,7 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.uploading": "Uploading…",
   "sectionsEditor.imageField.urlPlaceholder": "https://...",
   "sectionsEditor.inlineUnionField.branchFallback": "Option {index}",
+  "sectionsEditor.inlineUnionField.inlineList": "Inline list",
   "sectionsEditor.inlineUnionField.selectPlaceholder": "Select...",
   "sectionsEditor.locationField.cityDefault": "City",
   "sectionsEditor.locationField.cityHelperText":

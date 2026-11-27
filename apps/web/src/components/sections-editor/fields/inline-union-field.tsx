@@ -127,9 +127,11 @@ export function InlineUnionField(props: FieldProps) {
                 value={String(index)}
               >
                 {stripMustacheTokens(branch.title) ||
-                  t("sectionsEditor.inlineUnionField.branchFallback", {
-                    index: index + 1,
-                  })}
+                  (branch.schema?.type === "array"
+                    ? t("sectionsEditor.inlineUnionField.inlineList")
+                    : t("sectionsEditor.inlineUnionField.branchFallback", {
+                        index: index + 1,
+                      }))}
               </SelectItem>
             ))}
             {loaderOptions.map((ref, index) => (

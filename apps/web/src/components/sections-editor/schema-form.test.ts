@@ -4,6 +4,7 @@ import { renderField, SchemaForm } from "./schema-form";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import { ArrayField } from "./fields/array-field";
+import { InlineUnionField } from "./fields/inline-union-field";
 import { ImageField } from "./fields/image-field";
 import { BooleanField } from "./fields/boolean-field";
 import { NumberField } from "./fields/number-field";
@@ -169,6 +170,15 @@ describe("renderField – collapsed array with a loader picker", () => {
       value: [{ label: "Home" }],
     });
     expect(typeOf(el)).toBe(ArrayField);
+  });
+
+  test("empty or missing list renders the list beside the loader options", () => {
+    for (const value of [[], undefined, null]) {
+      const el = renderField({ ...baseProps, schema, value });
+      expect(typeOf(el)).toBe(InlineUnionField);
+      const props = (el as { props: { schema: typeof schema } }).props;
+      expect(props.schema.loaderRef).toBe(schema.loaderRef);
+    }
   });
 });
 
