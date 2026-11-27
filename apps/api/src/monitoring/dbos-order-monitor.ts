@@ -44,10 +44,12 @@ import {
 } from "./order-alerts";
 import { emitOrderMonitorEvaluated } from "./order-events";
 import {
+  CALIBRATION_WINDOW_DAYS,
   type ForecastJob,
   forecastJobs,
   forecastStore,
   forecastWorkflowId,
+  localDateBefore,
   type SweptStore,
   type TimestralService,
 } from "./order-forecast";
@@ -61,8 +63,13 @@ const ORDER_MONITOR_CRONTAB = "3,8,13,18,23,28,33,38,43,48,53,58 * * * *";
 /** Each store costs four lake queries; this many stores are read at once. */
 const STORES_PER_BATCH = 20;
 
-/** Forecasts are kept this long after they're computed. */
-const FORECAST_RETENTION_MS = 3 * 24 * 60 * 60_000;
+/**
+ * Forecasts are kept this many local days, at least: calibration reads a
+ * store's rows at the same hour up to CALIBRATION_WINDOW_DAYS back. The cutoff
+ * is a day further back than this from the UTC date, so it holds in any
+ * timezone.
+ */
+const FORECAST_RETENTION_DAYS = CALIBRATION_WINDOW_DAYS;
 
 export interface OrderMonitorRuntime {
   db: Kysely<Database>;
@@ -260,7 +267,10 @@ export async function planForecasts(
     const orgs = [...new Set(stores.map((s) => s.organizationId))];
     await new OrderMonitorStorage(db).deleteForecastsBefore(
       orgs,
-      new Date(at.getTime() - FORECAST_RETENTION_MS),
+      localDateBefore(
+        at.toISOString().slice(0, 10),
+        FORECAST_RETENTION_DAYS + 1,
+      ),
     );
     if (!getSettings().timestralUrl) return [];
     return forecastJobs(stores, at);
@@ -272,21 +282,56 @@ export async function planForecasts(
   }
 }
 
-/** Runs the model for one job and stores what it answers; nothing when it doesn't. Never throws. */
+/**
+ * Runs the model for one job and stores what it answers, with the past days
+ * it backfilled; nothing when it doesn't answer. Never throws.
+ */
 export async function forecastOneStore(
   db: Kysely<Database>,
   service: TimestralService,
   job: ForecastJob,
   loadHistory: () => Promise<HourlyDay[]>,
 ): Promise<void> {
-  const model = await forecastStore(service, job, loadHistory);
+  const storage = new OrderMonitorStorage(db);
+  const model = await forecastStore(service, job, loadHistory, (dates) =>
+    storage.predictedRests(
+      job.organizationId,
+      job.connectionId,
+      job.hour,
+      dates,
+    ),
+  );
   if (!model) return;
+  const computedAt = new Date();
   try {
-    await new OrderMonitorStorage(db).upsertForecast(
+    const { hour, orders, revenue, rest, ratios, backfill } = model;
+    await storage.upsertForecast(
       job.organizationId,
       job.connectionId,
       job.date,
-      { ...model, computedAt: new Date() },
+      {
+        hour,
+        orders,
+        revenue,
+        rest,
+        ratios,
+        computedAt,
+      },
+    );
+    await storage.insertMissingForecasts(
+      job.organizationId,
+      job.connectionId,
+      backfill.map((b) => ({
+        localDate: localDateBefore(job.date, b.daysAgo),
+        forecast: {
+          hour,
+          orders: b.orders,
+          revenue: b.revenue,
+          rest: b.rest,
+          ratios: [],
+          computedAt,
+        },
+      })),
     );
   } catch (err) {
     console.warn("[order-monitor] forecast write failed", {

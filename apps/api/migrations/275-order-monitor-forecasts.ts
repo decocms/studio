@@ -3,7 +3,8 @@ import type { Kysely } from "kysely";
 /**
  * The Monitor's model forecast per store and local hour, written by the
  * order-monitor sweep and read by the day view (monitoring/order-forecast.ts).
- * The sweep deletes rows after a few days.
+ * A row's predicted rest of day calibrates the store's forecasts at the same
+ * hour for the next 28 days; the sweep deletes rows after 35.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
@@ -20,6 +21,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     // The model's median per clock hour from `hour` on.
     .addColumn("orders", "jsonb", (col) => col.notNull())
     .addColumn("revenue", "jsonb", (col) => col.notNull())
+    // The median's total from `hour` on: what later runs calibrate against.
+    .addColumn("orders_rest", "double precision", (col) => col.notNull())
+    .addColumn("revenue_rest", "double precision", (col) => col.notNull())
     // Per calibration day: its actual rest of day ÷ the model's forecast of it.
     .addColumn("ratios", "jsonb", (col) => col.notNull())
     .addColumn("computed_at", "timestamptz", (col) => col.notNull())

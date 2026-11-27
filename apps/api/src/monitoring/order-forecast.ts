@@ -8,10 +8,12 @@
  * a fresh forecast the day view keeps the baseline's projection, and a failed
  * service call skips the service for COOLDOWN_MS.
  *
- * The spread comes from the model's own misses: each of the last 28 days is
- * forecast from the same hour, and how its actual rest of day compared with
- * that forecast scales today's into one path. Backtested, the UI's middle 80%
- * of those paths held ~80% of closes.
+ * The spread comes from the model's own misses: for each of the last 28 days,
+ * how its actual rest of day compared with the forecast stored for it at the
+ * same hour scales today's into one path. Backtested, the UI's middle 80% of
+ * those paths held ~80% of closes. A day without a stored forecast at that
+ * hour (a new store) is forecast along with today, BACKFILL_DAYS_PER_RUN at
+ * most, and stored, so a store's steady state is two series per run.
  */
 
 import type {
@@ -36,6 +38,10 @@ export const CONTEXT_DAYS = 112;
 const OUTAGE_SHARE = 0.25;
 const TRAILING_DAYS = 28;
 const CALIBRATION_DAYS = 28;
+/** Calibration days come from this far back at most; the sweep keeps forecasts at least this long. */
+export const CALIBRATION_WINDOW_DAYS = 35;
+/** Past days without a stored forecast at the hour that one run forecasts along with today. */
+export const BACKFILL_DAYS_PER_RUN = 14;
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 type Hours = (number | null)[];
@@ -50,13 +56,32 @@ export interface TimestralService {
 /** The service failed or timed out, as opposed to the lake or the history. */
 class ForecastServiceError extends Error {}
 
-/** The model's median for the clock hours from `hour` on, and each calibration day's actual ÷ forecast rest of day. */
+type PredictedRest = StoredOrderForecast["rest"];
+
+/**
+ * The model's median for the clock hours from `hour` on and its total, each
+ * calibration day's actual ÷ forecast rest of day, and the past days this run
+ * forecast for want of a stored forecast at `hour`.
+ */
 export interface ModelForecast {
   hour: number;
   orders: number[];
   revenue: number[];
+  rest: PredictedRest;
   ratios: { daysAgo: number; orders: number; revenue: number }[];
+  backfill: {
+    daysAgo: number;
+    orders: number[];
+    revenue: number[];
+    rest: PredictedRest;
+  }[];
 }
+
+/** The local date `days` before `date` (both YYYY-MM-DD). */
+export const localDateBefore = (date: string, days: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) - days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
 const sum = (xs: readonly (number | null)[]) =>
   xs.reduce<number>((s, v) => s + (v ?? 0), 0);
@@ -96,25 +121,15 @@ export function cleanHistory(
 }
 
 /**
- * One batch: today's orders and revenue, then the same pair for each of the
- * last CALIBRATION_DAYS kept days, each series the CONTEXT_DAYS × 24 hours
- * before its day's `hour`, left-padded with nulls to one length. `actual` is
- * each calibration day's rest of day from `hour` on.
+ * The last CALIBRATION_DAYS kept days within CALIBRATION_WINDOW_DAYS, most
+ * recent first, with each one's actual rest of day from `hour` on.
  */
-export function buildRequest(days: (HourlyDay | null)[], hour: number) {
-  const last = days.length - 1;
-  const flat = (m: keyof HourlyDay): Hours =>
-    [...days]
-      .reverse()
-      .flatMap((d) => d?.[m] ?? new Array<null>(24).fill(null));
-  const orders = flat("orders");
-  const revenue = flat("revenue");
-  // Index of day `d`'s `hour` in the flattened series.
-  const end = (d: number) => (last - d) * 24 + hour;
-  const calibration = days
+export function calibrationDays(days: (HourlyDay | null)[], hour: number) {
+  return days
     .map((d, daysAgo) => ({ d, daysAgo }))
     .filter(
-      (x): x is { d: HourlyDay; daysAgo: number } => x.daysAgo > 0 && !!x.d,
+      (x): x is { d: HourlyDay; daysAgo: number } =>
+        x.daysAgo > 0 && x.daysAgo <= CALIBRATION_WINDOW_DAYS && !!x.d,
     )
     .slice(0, CALIBRATION_DAYS)
     .map(({ d, daysAgo }) => ({
@@ -124,9 +139,30 @@ export function buildRequest(days: (HourlyDay | null)[], hour: number) {
         revenue: sum(d.revenue.slice(hour)),
       },
     }));
+}
+
+/**
+ * One batch: the orders and revenue of each day in `forecast` (days ago, 0 =
+ * today), each series the CONTEXT_DAYS × 24 hours before its day's `hour`,
+ * left-padded with nulls to one length.
+ */
+export function buildRequest(
+  days: (HourlyDay | null)[],
+  hour: number,
+  forecast: readonly number[],
+) {
+  const last = days.length - 1;
+  const flat = (m: keyof HourlyDay): Hours =>
+    [...days]
+      .reverse()
+      .flatMap((d) => d?.[m] ?? new Array<null>(24).fill(null));
+  const orders = flat("orders");
+  const revenue = flat("revenue");
+  // Index of day `d`'s `hour` in the flattened series.
+  const end = (d: number) => (last - d) * 24 + hour;
   const context = (s: Hours, d: number) =>
     s.slice(Math.max(0, end(d) - CONTEXT_DAYS * 24), end(d));
-  const series = [0, ...calibration.map((c) => c.daysAgo)].flatMap((d) => [
+  const series = forecast.flatMap((d) => [
     context(orders, d),
     context(revenue, d),
   ]);
@@ -137,7 +173,6 @@ export function buildRequest(days: (HourlyDay | null)[], hour: number) {
       ...s,
     ]),
     horizon: 24 - hour,
-    calibration,
   };
 }
 
@@ -187,32 +222,57 @@ async function callService(
   return median;
 }
 
+/**
+ * Forecasts today and the calibration days `stored` has no forecast for
+ * (BACKFILL_DAYS_PER_RUN at most), and rates each calibration day's actual
+ * rest of day against its stored or backfilled forecast; a day forecast at 0,
+ * or past the backfill cap, gets no ratio.
+ */
 export async function runModel(
   service: TimestralService,
   days: (HourlyDay | null)[],
   hour: number,
+  stored: (daysAgo: number[]) => Promise<Map<number, PredictedRest>>,
 ): Promise<ModelForecast> {
-  const { series, horizon, calibration } = buildRequest(days, hour);
+  const calibration = calibrationDays(days, hour);
   if (calibration.length === 0) throw new Error("no history to forecast from");
+  const known = await stored(calibration.map((c) => c.daysAgo));
+  const missing = calibration
+    .map((c) => c.daysAgo)
+    .filter((d) => !known.has(d))
+    .slice(0, BACKFILL_DAYS_PER_RUN);
+  const { series, horizon } = buildRequest(days, hour, [0, ...missing]);
   const median = await requestForecast(service, series, horizon);
-  const rest = (i: number) => sum(median[i]!.map((v) => Math.max(0, v)));
+  const rest = (i: number): PredictedRest => ({
+    orders: sum(median[i]!.map((v) => Math.max(0, v))),
+    revenue: sum(median[i + 1]!.map((v) => Math.max(0, v))),
+  });
+  const backfill = missing.map((daysAgo, i) => ({
+    daysAgo,
+    orders: median[2 + 2 * i]!,
+    revenue: median[3 + 2 * i]!,
+    rest: rest(2 + 2 * i),
+  }));
+  const predicted = new Map(known);
+  for (const b of backfill) predicted.set(b.daysAgo, b.rest);
   return {
     hour,
     orders: median[0]!,
     revenue: median[1]!,
-    ratios: calibration.flatMap(({ daysAgo, actual }, i) => {
-      const orders = rest(2 + 2 * i);
-      const revenue = rest(3 + 2 * i);
-      return orders > 0 && revenue > 0
+    rest: rest(0),
+    ratios: calibration.flatMap(({ daysAgo, actual }) => {
+      const p = predicted.get(daysAgo);
+      return p && p.orders > 0 && p.revenue > 0
         ? [
             {
               daysAgo,
-              orders: actual.orders / orders,
-              revenue: actual.revenue / revenue,
+              orders: actual.orders / p.orders,
+              revenue: actual.revenue / p.revenue,
             },
           ]
         : [];
     }),
+    backfill,
   };
 }
 
@@ -225,7 +285,7 @@ export async function runModel(
 export function toProjection(
   baseline: OrderMonitorForecast,
   day: StoreDay,
-  model: ModelForecast,
+  model: Pick<ModelForecast, "hour" | "orders" | "revenue" | "ratios">,
 ): OrderMonitorForecast {
   const today = day.days[0];
   const hour = Math.floor(day.done / 4);
@@ -350,11 +410,16 @@ export const forecastWorkflowId = (job: ForecastJob) =>
 const cooldowns = new Map<string, number>();
 const coolingDown = (url: string) => (cooldowns.get(url) ?? 0) > Date.now();
 
-/** The model's forecast for the job; null when it is late, the service is cooling down, or anything fails. Never throws. */
+/**
+ * The model's forecast for the job, calibrated on the forecasts
+ * `loadPredicted` has stored for the job's hour by local date; null when it is
+ * late, the service is cooling down, or anything fails. Never throws.
+ */
 export async function forecastStore(
   service: TimestralService,
   job: ForecastJob,
   loadHistory: () => Promise<HourlyDay[]>,
+  loadPredicted: (dates: string[]) => Promise<Map<string, PredictedRest>>,
 ): Promise<ModelForecast | null> {
   if (
     Date.now() - Date.parse(job.at) > MAX_LAG_MS ||
@@ -367,6 +432,16 @@ export async function forecastStore(
       service,
       cleanHistory(await loadHistory(), job.backfill),
       job.hour,
+      async (daysAgo) => {
+        const dates = daysAgo.map((d) => localDateBefore(job.date, d));
+        const byDate = await loadPredicted(dates);
+        return new Map(
+          daysAgo.flatMap((d, i) => {
+            const p = byDate.get(dates[i]!);
+            return p ? [[d, p] as const] : [];
+          }),
+        );
+      },
     );
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);

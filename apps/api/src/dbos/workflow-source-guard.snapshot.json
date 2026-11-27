@@ -10,7 +10,7 @@
   "harnesses/decopilot/background-tool-workflow.ts": "0bd9c7e8a0f07b6a8dfad7b9d93eb24574994ff308139a3d0f581df0e1fc6711",
   "jira/dbos-jira-trigger-sweep.ts": "649651ee57fde683050a71158bf0248162323875ffb705b39d7a549bddd8f20a",
   "monitoring/dbos-order-ingest-backfill.ts": "48593923ae3bdafe4812f5dd598e7785fd9573d2562204f0774cf6e6786f9de0",
-  "monitoring/dbos-order-monitor.ts": "63e368242428dcb18c2d436a328a2b46422ebff756d7bc583b35809a38d72fdf",
+  "monitoring/dbos-order-monitor.ts": "338136bf5f796a19b0ce5301c52f0e4cedbc9a7790381eead6a1be21ef6b5b64",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
   "monitoring/dbos-traffic-monitor.ts": "589dbf5c9a67be3bdca84dd89a03774cead75ece5970e8c2f8f810eaadc7fc53",
   "notifications/dbos-digest.ts": "cf3de868c0e85d8c7dec44b229e97f63640c18c19d454afceccc66c3d317f6fa",

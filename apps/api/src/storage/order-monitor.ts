@@ -32,6 +32,8 @@ const ForecastRowSchema = z.object({
   hour: z.number().int().min(0).max(23),
   orders: z.array(z.number()),
   revenue: z.array(z.number()),
+  /** The median's total from `hour` on. */
+  rest: z.object({ orders: z.number(), revenue: z.number() }),
   ratios: z.array(
     z.object({ daysAgo: z.number(), orders: z.number(), revenue: z.number() }),
   ),
@@ -41,6 +43,24 @@ const ForecastRowSchema = z.object({
 export interface StoredOrderForecast extends z.infer<typeof ForecastRowSchema> {
   computedAt: Date;
 }
+
+const forecastRow = (
+  organizationId: string,
+  connectionId: string,
+  localDate: string,
+  forecast: StoredOrderForecast,
+) => ({
+  organization_id: organizationId,
+  connection_id: connectionId,
+  local_date: localDate,
+  hour: forecast.hour,
+  orders: JSON.stringify(forecast.orders),
+  revenue: JSON.stringify(forecast.revenue),
+  orders_rest: forecast.rest.orders,
+  revenue_rest: forecast.rest.revenue,
+  ratios: JSON.stringify(forecast.ratios),
+  computed_at: forecast.computedAt,
+});
 
 /**
  * Order-monitor verdicts (migration 255) and model forecasts (migration 275).
@@ -183,6 +203,7 @@ export class OrderMonitorStorage {
       .execute();
   }
 
+  /** Writes the store's forecast for `localDate`, replacing one of the same hour. */
   async upsertForecast(
     organizationId: string,
     connectionId: string,
@@ -191,27 +212,66 @@ export class OrderMonitorStorage {
   ): Promise<void> {
     await this.db
       .insertInto("order_monitor_forecasts")
-      .values({
-        organization_id: organizationId,
-        connection_id: connectionId,
-        local_date: localDate,
-        hour: forecast.hour,
-        orders: JSON.stringify(forecast.orders),
-        revenue: JSON.stringify(forecast.revenue),
-        ratios: JSON.stringify(forecast.ratios),
-        computed_at: forecast.computedAt,
-      })
+      .values(forecastRow(organizationId, connectionId, localDate, forecast))
       .onConflict((oc) =>
         oc
           .columns(["organization_id", "connection_id", "local_date", "hour"])
           .doUpdateSet({
             orders: (eb) => eb.ref("excluded.orders"),
             revenue: (eb) => eb.ref("excluded.revenue"),
+            orders_rest: (eb) => eb.ref("excluded.orders_rest"),
+            revenue_rest: (eb) => eb.ref("excluded.revenue_rest"),
             ratios: (eb) => eb.ref("excluded.ratios"),
             computed_at: (eb) => eb.ref("excluded.computed_at"),
           }),
       )
       .execute();
+  }
+
+  /** Writes forecasts for past local dates, leaving any already stored for the same hour. */
+  async insertMissingForecasts(
+    organizationId: string,
+    connectionId: string,
+    rows: { localDate: string; forecast: StoredOrderForecast }[],
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    await this.db
+      .insertInto("order_monitor_forecasts")
+      .values(
+        rows.map((r) =>
+          forecastRow(organizationId, connectionId, r.localDate, r.forecast),
+        ),
+      )
+      .onConflict((oc) =>
+        oc
+          .columns(["organization_id", "connection_id", "local_date", "hour"])
+          .doNothing(),
+      )
+      .execute();
+  }
+
+  /** The predicted rest of day stored for the store's `hour` on each of `localDates` that has one. */
+  async predictedRests(
+    organizationId: string,
+    connectionId: string,
+    hour: number,
+    localDates: string[],
+  ): Promise<Map<string, StoredOrderForecast["rest"]>> {
+    if (localDates.length === 0) return new Map();
+    const rows = await this.db
+      .selectFrom("order_monitor_forecasts")
+      .select(["local_date", "orders_rest", "revenue_rest"])
+      .where("organization_id", "=", organizationId)
+      .where("connection_id", "=", connectionId)
+      .where("local_date", "in", localDates)
+      .where("hour", "=", hour)
+      .execute();
+    return new Map(
+      rows.map((r) => [
+        r.local_date,
+        { orders: r.orders_rest, revenue: r.revenue_rest },
+      ]),
+    );
   }
 
   /** The store's forecast from the latest hour of its local day; null when there is none or it doesn't parse. */
@@ -222,29 +282,42 @@ export class OrderMonitorStorage {
   ): Promise<StoredOrderForecast | null> {
     const row = await this.db
       .selectFrom("order_monitor_forecasts")
-      .select(["hour", "orders", "revenue", "ratios", "computed_at"])
+      .select([
+        "hour",
+        "orders",
+        "revenue",
+        "orders_rest",
+        "revenue_rest",
+        "ratios",
+        "computed_at",
+      ])
       .where("organization_id", "=", organizationId)
       .where("connection_id", "=", connectionId)
       .where("local_date", "=", localDate)
       .orderBy("hour", "desc")
       .limit(1)
       .executeTakeFirst();
-    const parsed = ForecastRowSchema.safeParse(row);
+    const parsed = ForecastRowSchema.safeParse(
+      row && {
+        ...row,
+        rest: { orders: row.orders_rest, revenue: row.revenue_rest },
+      },
+    );
     return row && parsed.success
       ? { ...parsed.data, computedAt: row.computed_at }
       : null;
   }
 
-  /** Deletes the orgs' forecasts computed before `before`. */
+  /** Deletes the orgs' forecasts for local dates before `localDate` (YYYY-MM-DD). */
   async deleteForecastsBefore(
     organizationIds: string[],
-    before: Date,
+    localDate: string,
   ): Promise<void> {
     if (organizationIds.length === 0) return;
     await this.db
       .deleteFrom("order_monitor_forecasts")
       .where("organization_id", "in", organizationIds)
-      .where("computed_at", "<", before)
+      .where("local_date", "<", localDate)
       .execute();
   }
 

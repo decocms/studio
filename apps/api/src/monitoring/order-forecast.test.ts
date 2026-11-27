@@ -1,14 +1,16 @@
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import type { OrderMonitorForecast } from "@decocms/shared/order-monitor";
 import {
+  BACKFILL_DAYS_PER_RUN,
   buildRequest,
   CONTEXT_DAYS,
+  calibrationDays,
   cleanHistory,
   type ForecastJob,
   forecastJobs,
   forecastStore,
   forecastWorkflowId,
-  type ModelForecast,
+  localDateBefore,
   requestForecast,
   runModel,
   toProjection,
@@ -103,8 +105,17 @@ describe("buildRequest", () => {
     }));
   const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
+  const calibrated = (days: (HourlyDay | null)[], hour: number) => {
+    const calibration = calibrationDays(days, hour);
+    const { series } = buildRequest(days, hour, [
+      0,
+      ...calibration.map((c) => c.daysAgo),
+    ]);
+    return { series, calibration };
+  };
+
   it("ends today's series at the hour under way and forecasts the rest of the day", () => {
-    const { series, horizon } = buildRequest(tagged(), 10);
+    const { series, horizon } = buildRequest(tagged(), 10, [0]);
     expect(horizon).toBe(14);
     const [orders, revenue] = series;
     expect(orders).toHaveLength(CONTEXT_DAYS * 24);
@@ -115,7 +126,7 @@ describe("buildRequest", () => {
   });
 
   it("gives each of the last 28 days the full context, ending at its own hour", () => {
-    const { series, calibration } = buildRequest(tagged(), 10);
+    const { series, calibration } = calibrated(tagged(), 10);
     expect(calibration.map((c) => c.daysAgo)).toEqual(
       Array.from({ length: 28 }, (_, i) => i + 1),
     );
@@ -133,7 +144,7 @@ describe("buildRequest", () => {
   it("left-pads a calibration day past a dropped one, whose context runs out of history", () => {
     const days = tagged();
     days[2] = null;
-    const { series, calibration } = buildRequest(days, 10);
+    const { series, calibration } = calibrated(days, 10);
     expect(calibration.map((c) => c.daysAgo)).toEqual([
       1,
       ...Array.from({ length: 27 }, (_, i) => i + 3),
@@ -154,10 +165,25 @@ describe("buildRequest", () => {
     );
   });
 
+  it("calibrates on kept days no more than 35 days back", () => {
+    const days = tagged();
+    for (let d = 1; d <= 30; d++) days[d] = null;
+    expect(calibrationDays(days, 10).map((c) => c.daysAgo)).toEqual([
+      31, 32, 33, 34, 35,
+    ]);
+  });
+
+  it("sends only the days asked for, in order", () => {
+    const { series } = buildRequest(tagged(), 10, [0, 5]);
+    expect(series).toHaveLength(4);
+    expect(series[2]!.at(-1)).toBe(5 * 100 + 10);
+    expect(series[3]!.at(-1)).toBe(-(5 * 100 + 10));
+  });
+
   it("sends a missing day as nulls", () => {
     const days = tagged();
     days[30] = null;
-    const [orders] = buildRequest(days, 0).series;
+    const [orders] = buildRequest(days, 0, [0]).series;
     const start = (CONTEXT_DAYS - 30) * 24;
     expect(orders!.slice(start, start + 24)).toEqual(new Array(24).fill(null));
     expect(orders![start + 24]).toBe(29 * 100 + 1);
@@ -167,7 +193,7 @@ describe("buildRequest", () => {
 describe("toProjection", () => {
   // At 10:30: buckets 40 and 41 of hour 10 are in, 1 order and 100 each.
   const day = storeDay(42);
-  const model: ModelForecast = {
+  const model: Parameters<typeof toProjection>[2] = {
     hour: 10,
     orders: hours(5).slice(10),
     revenue: hours(500).slice(10),
@@ -228,6 +254,7 @@ describe("toProjection", () => {
 let mode: "ok" | "500" | "malformed" | "short" | "slow" = "ok";
 let value = 2;
 let hits = 0;
+let lastSeries = 0;
 let lastAuth: string | null = null;
 const server = Bun.serve({
   port: 0,
@@ -239,6 +266,7 @@ const server = Bun.serve({
       horizon: number;
       quantiles: number[];
     };
+    lastSeries = body.series.length;
     if (mode === "500") return new Response("boom", { status: 500 });
     if (mode === "malformed") return Response.json({ median: [] });
     if (mode === "slow") await Bun.sleep(500);
@@ -277,14 +305,64 @@ describe("requestForecast", () => {
 });
 
 describe("runModel", () => {
-  it("rates each calibration day's actual rest against its forecast", async () => {
+  const DAYS_1_TO_28 = Array.from({ length: 28 }, (_, i) => i + 1);
+  /** Stored predictions for `daysAgo`, each `orders` and `orders` × 100. */
+  const storedFor =
+    (daysAgo: number[], orders = 60) =>
+    async (asked: number[]) =>
+      new Map(
+        asked
+          .filter((d) => daysAgo.includes(d))
+          .map((d) => [d, { orders, revenue: orders * 100 }] as const),
+      );
+
+  it("sends only today's two series once every calibration day has a stored forecast", async () => {
     mode = "ok";
     value = 4;
-    // At hour 12 each past day has 12 hours left: 120 orders, 12,000 revenue,
-    // against a forecast of 12 × 4 = 48.
-    const model = await runModel(service, cleanHistory(history()), 12);
+    const asked: number[][] = [];
+    const model = await runModel(
+      service,
+      cleanHistory(history()),
+      12,
+      async (daysAgo) => {
+        asked.push(daysAgo);
+        return storedFor(DAYS_1_TO_28)(daysAgo);
+      },
+    );
+    expect(asked).toEqual([DAYS_1_TO_28]);
+    expect(lastSeries).toBe(2);
     expect(model.orders).toEqual(hours(4).slice(12));
+    expect(model.rest).toEqual({ orders: 48, revenue: 48 });
+    expect(model.backfill).toEqual([]);
+    // At hour 12 each past day has 12 hours left: 120 orders and 12,000
+    // revenue, against the stored 60 and 6,000, not today's model.
     expect(model.ratios).toHaveLength(28);
+    expect(model.ratios[0]).toEqual({ daysAgo: 1, orders: 2, revenue: 2 });
+  });
+
+  it("backfills the most recent days without a stored forecast, up to the cap", async () => {
+    mode = "ok";
+    value = 4;
+    const model = await runModel(
+      service,
+      cleanHistory(history()),
+      12,
+      storedFor([]),
+    );
+    expect(lastSeries).toBe(2 + 2 * BACKFILL_DAYS_PER_RUN);
+    expect(model.backfill.map((b) => b.daysAgo)).toEqual(
+      DAYS_1_TO_28.slice(0, BACKFILL_DAYS_PER_RUN),
+    );
+    expect(model.backfill[0]).toEqual({
+      daysAgo: 1,
+      orders: hours(4).slice(12),
+      revenue: hours(4).slice(12),
+      rest: { orders: 48, revenue: 48 },
+    });
+    // Rated against the backfilled 48; the days past the cap get no ratio.
+    expect(model.ratios.map((r) => r.daysAgo)).toEqual(
+      DAYS_1_TO_28.slice(0, BACKFILL_DAYS_PER_RUN),
+    );
     expect(model.ratios[0]).toEqual({
       daysAgo: 1,
       orders: 120 / 48,
@@ -292,11 +370,49 @@ describe("runModel", () => {
     });
   });
 
-  it("skips calibration days the model forecast nothing for", async () => {
+  it("backfills only the days missing among the stored ones", async () => {
+    mode = "ok";
+    value = 4;
+    const model = await runModel(
+      service,
+      cleanHistory(history()),
+      12,
+      storedFor(DAYS_1_TO_28.filter((d) => d !== 3 && d !== 20)),
+    );
+    expect(lastSeries).toBe(6);
+    expect(model.backfill.map((b) => b.daysAgo)).toEqual([3, 20]);
+    expect(model.ratios).toHaveLength(28);
+    expect(model.ratios.find((r) => r.daysAgo === 3)?.orders).toBe(120 / 48);
+    expect(model.ratios.find((r) => r.daysAgo === 4)?.orders).toBe(2);
+  });
+
+  it("skips calibration days whose forecast is 0", async () => {
     mode = "ok";
     value = -1;
-    const model = await runModel(service, cleanHistory(history()), 12);
-    expect(model.ratios).toEqual([]);
+    expect(
+      (await runModel(service, cleanHistory(history()), 12, storedFor([])))
+        .ratios,
+    ).toEqual([]);
+    value = 4;
+    expect(
+      (
+        await runModel(
+          service,
+          cleanHistory(history()),
+          12,
+          storedFor(DAYS_1_TO_28, 0),
+        )
+      ).ratios,
+    ).toEqual([]);
+  });
+});
+
+describe("localDateBefore", () => {
+  it("steps back calendar days across months and leap days", () => {
+    expect(localDateBefore("2026-11-26", 0)).toBe("2026-11-26");
+    expect(localDateBefore("2026-11-26", 28)).toBe("2026-10-29");
+    expect(localDateBefore("2028-03-01", 1)).toBe("2028-02-29");
+    expect(localDateBefore("2026-01-01", 1)).toBe("2025-12-31");
   });
 });
 
@@ -315,6 +431,7 @@ describe("forecastStore", () => {
     loads++;
     return history();
   };
+  const none = async () => new Map();
   const serviceWarnings = (warn: { mock: { calls: unknown[][] } }) =>
     warn.mock.calls.filter((c) =>
       String(c[0]).includes("forecast service failed"),
@@ -323,10 +440,36 @@ describe("forecastStore", () => {
   it("answers the model's forecast from the job's hour", async () => {
     mode = "ok";
     value = 3;
-    const model = await forecastStore(serviceAt("store-ok"), job("a"), load);
+    const model = await forecastStore(
+      serviceAt("store-ok"),
+      job("a"),
+      load,
+      none,
+    );
     expect(model?.hour).toBe(12);
     expect(model?.orders).toEqual(hours(3).slice(12));
-    expect(model?.ratios).toHaveLength(28);
+    expect(model?.ratios).toHaveLength(BACKFILL_DAYS_PER_RUN);
+  });
+
+  it("reads the stored forecasts by the calibration days' local dates", async () => {
+    mode = "ok";
+    value = 3;
+    const j = { ...job("dates"), date: "2026-11-26" };
+    let asked: string[] = [];
+    const model = await forecastStore(
+      serviceAt("store-dates"),
+      j,
+      load,
+      async (dates) => {
+        asked = dates;
+        return new Map([["2026-11-25", { orders: 40, revenue: 4000 }]]);
+      },
+    );
+    expect(asked).toHaveLength(28);
+    expect(asked.slice(0, 2)).toEqual(["2026-11-25", "2026-11-24"]);
+    expect(asked.at(-1)).toBe("2026-10-29");
+    expect(model?.ratios[0]).toEqual({ daysAgo: 1, orders: 3, revenue: 3 });
+    expect(model?.backfill.map((b) => b.daysAgo)[0]).toBe(2);
   });
 
   it("answers null, without throwing, when the service or the lake fails", async () => {
@@ -335,13 +478,21 @@ describe("forecastStore", () => {
       for (const failing of ["500", "malformed", "short", "slow"] as const) {
         mode = failing;
         expect(
-          await forecastStore(serviceAt(`store-${failing}`), job("a"), load),
+          await forecastStore(
+            serviceAt(`store-${failing}`),
+            job("a"),
+            load,
+            none,
+          ),
         ).toBeNull();
       }
       mode = "ok";
       expect(
-        await forecastStore(serviceAt("store-lake"), job("a"), () =>
-          Promise.reject(new Error("lake down")),
+        await forecastStore(
+          serviceAt("store-lake"),
+          job("a"),
+          () => Promise.reject(new Error("lake down")),
+          none,
         ),
       ).toBeNull();
     } finally {
@@ -353,7 +504,9 @@ describe("forecastStore", () => {
     mode = "ok";
     const [hitsBefore, loadsBefore] = [hits, loads];
     const late = job("a", new Date(Date.now() - 61 * 60_000));
-    expect(await forecastStore(serviceAt("store-late"), late, load)).toBeNull();
+    expect(
+      await forecastStore(serviceAt("store-late"), late, load, none),
+    ).toBeNull();
     expect([hits, loads]).toEqual([hitsBefore, loadsBefore]);
   });
 
@@ -362,21 +515,23 @@ describe("forecastStore", () => {
     try {
       const down = serviceAt("cooldown", 300);
       mode = "500";
-      expect(await forecastStore(down, job("a"), load)).toBeNull();
+      expect(await forecastStore(down, job("a"), load, none)).toBeNull();
       mode = "ok";
       value = 3;
       const [hitsBefore, loadsBefore] = [hits, loads];
       // Another store, same service: nothing read, nothing called.
-      expect(await forecastStore(down, job("b"), load)).toBeNull();
+      expect(await forecastStore(down, job("b"), load, none)).toBeNull();
       expect([hits, loads]).toEqual([hitsBefore, loadsBefore]);
       expect(serviceWarnings(warn)).toBe(1);
       // Another service URL isn't cooling down.
       expect(
-        (await forecastStore(serviceAt("elsewhere"), job("b"), load))
+        (await forecastStore(serviceAt("elsewhere"), job("b"), load, none))
           ?.orders[0],
       ).toBe(3);
       await Bun.sleep(350);
-      expect((await forecastStore(down, job("c"), load))?.orders[0]).toBe(3);
+      expect((await forecastStore(down, job("c"), load, none))?.orders[0]).toBe(
+        3,
+      );
       expect(serviceWarnings(warn)).toBe(1);
     } finally {
       warn.mockRestore();
@@ -390,7 +545,7 @@ describe("forecastStore", () => {
       const down = serviceAt("burst", 60_000);
       const before = hits;
       const out = await Promise.all(
-        ["1", "2", "3"].map((id) => forecastStore(down, job(id), load)),
+        ["1", "2", "3"].map((id) => forecastStore(down, job(id), load, none)),
       );
       expect(out).toEqual([null, null, null]);
       expect(hits).toBe(before + 3);
@@ -407,12 +562,17 @@ describe("forecastStore", () => {
       value = 5;
       const svc = serviceAt("lake-only", 60_000);
       expect(
-        await forecastStore(svc, job("x"), () =>
-          Promise.reject(new Error("lake down")),
+        await forecastStore(
+          svc,
+          job("x"),
+          () => Promise.reject(new Error("lake down")),
+          none,
         ),
       ).toBeNull();
       expect(serviceWarnings(warn)).toBe(0);
-      expect((await forecastStore(svc, job("y"), load))?.orders[0]).toBe(5);
+      expect((await forecastStore(svc, job("y"), load, none))?.orders[0]).toBe(
+        5,
+      );
     } finally {
       warn.mockRestore();
     }
@@ -511,6 +671,7 @@ describe("withModel", () => {
     hour,
     orders: new Array<number>(24 - hour).fill(value),
     revenue: new Array<number>(24 - hour).fill(value * 100),
+    rest: { orders: (24 - hour) * value, revenue: (24 - hour) * value * 100 },
     ratios: [{ daysAgo: 1, orders: 1.5, revenue: 0.5 }],
     computedAt: new Date(at.getTime() - minutesAgo * 60_000),
   });

@@ -324,6 +324,8 @@ export interface OrderMonitorForecastTable {
   hour: number;
   orders: JsonArray<number>;
   revenue: JsonArray<number>;
+  orders_rest: number;
+  revenue_rest: number;
   ratios: JsonArray<{ daysAgo: number; orders: number; revenue: number }>;
   computed_at: ColumnType<Date, Date, Date>;
 }

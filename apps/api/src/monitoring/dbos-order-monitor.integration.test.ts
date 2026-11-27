@@ -18,7 +18,7 @@ import {
   planForecasts,
   writeStates,
 } from "./dbos-order-monitor";
-import type { ForecastJob } from "./order-forecast";
+import { BACKFILL_DAYS_PER_RUN, type ForecastJob } from "./order-forecast";
 import { HISTORY_DAYS, type HourlyDay } from "./order-lake";
 import type { Rule, Verdict } from "./order-rules";
 
@@ -205,11 +205,13 @@ describe("the sweep's model forecast", () => {
   let failing = false;
   let value = 4;
   let calls = 0;
+  let sent = 0;
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
       calls++;
       const body = (await req.json()) as { series: unknown[]; horizon: number };
+      sent = body.series.length;
       if (failing) return new Response("boom", { status: 500 });
       return Response.json({
         quantiles: {
@@ -254,43 +256,37 @@ describe("the sweep's model forecast", () => {
     expect(await planForecasts(database.db, swept, at)).toEqual([]);
   });
 
-  test("clears forecasts over three days old on every tick", async () => {
+  test("keeps 35 local days of forecasts and clears older ones on every tick", async () => {
     setGlobalSettings(resolveConfig({}));
-    const row = (computedAt: Date) => ({
+    const row = {
       hour: 9,
       orders: new Array<number>(15).fill(1),
       revenue: new Array<number>(15).fill(1),
+      rest: { orders: 15, revenue: 15 },
       ratios: [],
-      computedAt,
-    });
-    const day = 24 * 60 * 60_000;
-    await storage.upsertForecast(
-      on.organizationId,
-      on.connectionId,
-      "2026-11-22",
-      row(new Date(at.getTime() - 3 * day - 60_000)),
-    );
-    await storage.upsertForecast(
-      on.organizationId,
-      on.connectionId,
-      "2026-11-23",
-      row(new Date(at.getTime() - 3 * day + 60_000)),
-    );
+      computedAt: at,
+    };
+    // 2026-11-26 is the tick's date: 35 days back is 2026-10-22.
+    for (const date of ["2026-10-20", "2026-10-22", "2026-11-23"]) {
+      await storage.upsertForecast(
+        on.organizationId,
+        on.connectionId,
+        date,
+        row,
+      );
+    }
     await planForecasts(database.db, swept, at);
-    expect(
-      await storage.latestForecast(
-        on.organizationId,
-        on.connectionId,
-        "2026-11-22",
-      ),
-    ).toBeNull();
-    expect(
-      await storage.latestForecast(
-        on.organizationId,
-        on.connectionId,
-        "2026-11-23",
-      ),
-    ).not.toBeNull();
+    const kept = await database.db
+      .selectFrom("order_monitor_forecasts")
+      .select("local_date")
+      .where("organization_id", "=", on.organizationId)
+      .orderBy("local_date")
+      .execute();
+    expect(kept.map((r) => r.local_date)).toEqual(["2026-10-22", "2026-11-23"]);
+    await database.db
+      .deleteFrom("order_monitor_forecasts")
+      .where("organization_id", "=", on.organizationId)
+      .execute();
   });
 
   const job = (): ForecastJob => ({
@@ -303,12 +299,26 @@ describe("the sweep's model forecast", () => {
     backfill: [],
   });
 
-  test("stores the model's forecast for the store hour, and a re-run replaces it", async () => {
+  const storedAt10 = async () =>
+    (
+      await database.db
+        .selectFrom("order_monitor_forecasts")
+        .select(["local_date", "orders_rest"])
+        .where("organization_id", "=", on.organizationId)
+        .where("hour", "=", 10)
+        .orderBy("local_date", "desc")
+        .execute()
+    ).map((r) => [r.local_date, r.orders_rest]);
+
+  test("a new store backfills its calibration days over its first runs, then sends only today", async () => {
     failing = false;
     value = 4;
-    await forecastOneStore(database.db, service("ok"), job(), async () =>
-      history(),
-    );
+    const run = () =>
+      forecastOneStore(database.db, service("ok"), job(), async () =>
+        history(),
+      );
+    await run();
+    expect(sent).toBe(2 + 2 * BACKFILL_DAYS_PER_RUN);
     const first = await storage.latestForecast(
       on.organizationId,
       on.connectionId,
@@ -316,16 +326,44 @@ describe("the sweep's model forecast", () => {
     );
     expect(first?.hour).toBe(10);
     expect(first?.orders).toEqual(new Array(14).fill(4));
-    // Each calibration day brought 14 × 10 orders against 14 × 4 forecast.
+    expect(first?.rest).toEqual({ orders: 56, revenue: 56 });
+    // Each backfilled day brought 14 × 10 orders against 14 × 4 forecast.
+    expect(first?.ratios).toHaveLength(BACKFILL_DAYS_PER_RUN);
     expect(first?.ratios[0]).toEqual({
       daysAgo: 1,
       orders: 140 / 56,
       revenue: 14_000 / 56,
     });
+    expect((await storedAt10()).slice(0, 3)).toEqual([
+      ["2026-11-26", 56],
+      ["2026-11-25", 56],
+      ["2026-11-24", 56],
+    ]);
+    expect(await storedAt10()).toHaveLength(1 + BACKFILL_DAYS_PER_RUN);
+
+    // The next run backfills the rest; stored days keep what they hold.
     value = 5;
-    await forecastOneStore(database.db, service("ok"), job(), async () =>
-      history(),
+    await run();
+    expect(sent).toBe(2 + 2 * (28 - BACKFILL_DAYS_PER_RUN));
+    const stored = await storedAt10();
+    expect(stored).toHaveLength(1 + 28);
+    expect(stored[0]).toEqual(["2026-11-26", 70]);
+    expect(stored[1]).toEqual(["2026-11-25", 56]);
+    expect(stored.at(-1)).toEqual(["2026-10-29", 70]);
+    const second = await storage.latestForecast(
+      on.organizationId,
+      on.connectionId,
+      "2026-11-26",
     );
+    expect(second?.ratios).toHaveLength(28);
+    expect(second?.ratios[0]?.orders).toBe(140 / 56);
+    expect(second?.ratios.at(-1)?.orders).toBe(140 / 70);
+
+    // Steady state: every calibration day is stored, only today is sent.
+    await run();
+    expect(sent).toBe(2);
+    expect(await storedAt10()).toHaveLength(1 + 28);
+    // A re-run of the store hour replaces its row in place.
     const rows = await database.db
       .selectFrom("order_monitor_forecasts")
       .select(["hour", "orders"])

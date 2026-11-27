@@ -176,6 +176,7 @@ describe("OrderMonitorStorage", () => {
     hour,
     orders: new Array<number>(24 - hour).fill(value),
     revenue: new Array<number>(24 - hour).fill(value * 100.5),
+    rest: { orders: (24 - hour) * value, revenue: (24 - hour) * value * 100.5 },
     ratios: [{ daysAgo: 1, orders: 1.25, revenue: 0.75 }],
     computedAt,
   });
@@ -243,15 +244,59 @@ describe("OrderMonitorStorage", () => {
     ).toEqual(forecast(11, new Date(t.getTime() + 60_000), 4));
   });
 
-  test("deletes only the listed orgs' forecasts computed before the cutoff", async () => {
-    const old = new Date("2026-11-20T10:00:00Z");
+  test("reads the predicted rest stored at one hour by local date, and never overwrites a stored day with a backfill", async () => {
+    const t = new Date("2026-11-26T15:08:00Z");
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-21",
+      forecast(12, t, 2),
+    );
+    await storage.insertMissingForecasts(orgId, "conn_om_store", [
+      { localDate: "2026-11-21", forecast: forecast(12, t, 9) },
+      {
+        localDate: "2026-11-22",
+        forecast: { ...forecast(12, t, 3), ratios: [] },
+      },
+    ]);
+    await storage.insertMissingForecasts(orgId, "conn_om_store", []);
+    // Another hour of the same day isn't read.
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-23",
+      forecast(13, t),
+    );
+    const rests = await storage.predictedRests(orgId, "conn_om_store", 12, [
+      "2026-11-21",
+      "2026-11-22",
+      "2026-11-23",
+    ]);
+    expect([...rests.entries()]).toEqual([
+      ["2026-11-21", { orders: 24, revenue: 24 * 100.5 }],
+      ["2026-11-22", { orders: 36, revenue: 36 * 100.5 }],
+    ]);
+    expect(
+      (
+        await storage.predictedRests("org_elsewhere", "conn_om_store", 12, [
+          "2026-11-21",
+        ])
+      ).size,
+    ).toBe(0);
+    expect(
+      (await storage.predictedRests(orgId, "conn_om_store", 12, [])).size,
+    ).toBe(0);
+  });
+
+  test("deletes only the listed orgs' forecasts for local dates before the cutoff", async () => {
+    // Computed recently, for an old day: the local date decides.
     await storage.upsertForecast(
       orgId,
       "conn_om_store",
       "2026-11-20",
-      forecast(7, old),
+      forecast(7, new Date("2026-11-26T10:00:00Z")),
     );
-    const cutoff = new Date("2026-11-23T00:00:00Z");
+    const cutoff = "2026-11-21";
     await storage.deleteForecastsBefore(["org_elsewhere"], cutoff);
     await storage.deleteForecastsBefore([], cutoff);
     expect(
