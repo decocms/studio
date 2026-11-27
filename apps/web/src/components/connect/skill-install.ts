@@ -4,7 +4,7 @@
  * (`.claude-plugin/marketplace.json`, source `apps/api/plugin`).
  */
 
-import type { ConnectClient } from "@/components/connect/install-snippet";
+import type { ConnectClient } from "@/components/connect/copy-snippet";
 
 /** The CLI's own default target, which needs no `--target`. */
 const DEFAULT_TARGET = "https://studio.decocms.com";
