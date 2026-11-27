@@ -34,7 +34,7 @@ import type { RegistryItem } from "@/components/store/types";
 import { fetchOrderMonitorIngestUrl } from "@/hooks/use-order-monitor";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
-import { KEYS } from "@/lib/query-keys";
+import { invalidateVirtualMcpQueries, KEYS } from "@/lib/query-keys";
 import { callStudioTool } from "@/lib/studio-tools";
 import {
   SELF_MCP_ALIAS_ID,
@@ -44,6 +44,7 @@ import {
   useProjectContext,
 } from "@/sdk";
 import { extractConnectionData } from "@/utils/extract-connection-data";
+import { vtexRejection } from "./vtex-rejection";
 
 const VTEX_APP = "deco/vtex";
 /** What the ingest declares: reading its VTEX connection's key from the vault. */
@@ -80,8 +81,9 @@ class RejectedKeyError extends Error {}
 /**
  * Installs the order ingest on a VTEX connection: `vtexId` reuses one,
  * none creates it from the registry; `keys` saves its account and app key.
+ * `projectId` aggregates the VTEX connection, tying the store to that project.
  */
-function useVtexInstall() {
+function useVtexInstall(projectId?: string | null) {
   const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
@@ -171,9 +173,44 @@ function useVtexInstall() {
       } catch (error) {
         if (!existing) await actions.delete.mutateAsync(ingest.id);
         const message = reason(error);
-        throw /^VTEX 40[13]\b/.test(message)
-          ? new RejectedKeyError(t("monitor.vtex.rejected"))
-          : new Error(message);
+        const rejection = vtexRejection(message);
+        if (!rejection) throw new Error(message);
+        throw new RejectedKeyError(
+          rejection.kind === "credentials"
+            ? t("monitor.vtex.rejected")
+            : t("monitor.vtex.missingPermission", {
+                permissions: rejection.missing
+                  .map((p) => t(`monitor.vtex.permission.${p}`))
+                  .join(", "),
+              }),
+        );
+      }
+      if (projectId) {
+        const { item: project } = await callStudioTool(
+          org.slug,
+          "COLLECTION_VIRTUAL_MCP_GET",
+          { id: projectId },
+        );
+        if (
+          project &&
+          !project.connections.some((c) => c.connection_id === vtexId)
+        ) {
+          await callStudioTool(org.slug, "COLLECTION_VIRTUAL_MCP_UPDATE", {
+            id: projectId,
+            data: {
+              connections: [
+                ...project.connections,
+                {
+                  connection_id: vtexId,
+                  selected_tools: null,
+                  selected_resources: null,
+                  selected_prompts: null,
+                },
+              ],
+            },
+          });
+          invalidateVirtualMcpQueries(queryClient, org.id);
+        }
       }
       await queryClient.invalidateQueries({
         queryKey: KEYS.orderMonitor(org.slug),
@@ -192,12 +229,15 @@ export function VtexConnectButton({
   label,
   className,
   variant,
+  projectId,
 }: {
   label: string;
   className?: string;
   variant?: "outline";
+  /** The project whose Monitor this is, which then sells through the store. */
+  projectId?: string | null;
 }) {
-  const { vtex, install } = useVtexInstall();
+  const { vtex, install } = useVtexInstall(projectId);
   const [open, setOpen] = useState(false);
   const [rejected, setRejected] = useState<string>();
   const direct = vtex.length === 1 && hasKeys(vtex[0]);
@@ -236,6 +276,7 @@ export function VtexConnectButton({
       {open && (
         <VtexConnectDialog
           rejected={rejected}
+          projectId={projectId}
           onClose={() => {
             setOpen(false);
             setRejected(undefined);
@@ -248,14 +289,16 @@ export function VtexConnectButton({
 
 function VtexConnectDialog({
   rejected,
+  projectId,
   onClose,
 }: {
   /** Why VTEX refused the key on file, which the dialog then asks for again. */
   rejected?: string;
+  projectId?: string | null;
   onClose: () => void;
 }) {
   const t = useT();
-  const { vtex, install: connect } = useVtexInstall();
+  const { vtex, install: connect } = useVtexInstall(projectId);
   const [picked, setPicked] = useState<string>();
   // The first one by default, so a retry after a failed step reuses what the
   // first try created instead of creating another.

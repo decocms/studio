@@ -71,11 +71,14 @@ function ConnectButton({
   link,
   source,
   quiet = false,
+  projectId,
 }: {
   label: string;
   /** Where to go when the source can't be connected in place. */
   link: LinkProps;
   source?: SourceId;
+  /** The project whose Monitor this is. */
+  projectId?: string | null;
   /** An outline button, for a source that isn't the one to start with. */
   quiet?: boolean;
 }) {
@@ -100,7 +103,7 @@ function ConnectButton({
   }
   // Orders come from the order ingest, not the VTEX connection alone.
   if (source === "orders") {
-    return <VtexConnectButton label={label} {...look} />;
+    return <VtexConnectButton label={label} projectId={projectId} {...look} />;
   }
   if (!field) {
     return (
@@ -246,6 +249,8 @@ export interface SourceStep {
   /** What the source brings to this tab, when it isn't what it brings to Metrics. */
   meta?: string;
   link?: LinkProps;
+  /** The project the board is scoped to: connecting ties the source to it. */
+  projectId?: string | null;
 }
 
 const NO_STEPS: readonly SourceStep[] = [];
@@ -284,6 +289,7 @@ function SourceRows({
             link={step.link ?? link}
             source={step.link ? undefined : step.source}
             quiet={step !== lead}
+            projectId={step.projectId}
           />
         ) : (
           <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
