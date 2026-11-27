@@ -172,11 +172,113 @@ describe("OrderMonitorStorage", () => {
     expect(await storage.listAgentRepositoryIds(orgId)).toEqual([]);
   });
 
-  test("drops a store's state with its connection", async () => {
+  const forecast = (hour: number, computedAt: Date, value = 5) => ({
+    hour,
+    orders: new Array<number>(24 - hour).fill(value),
+    revenue: new Array<number>(24 - hour).fill(value * 100.5),
+    ratios: [{ daysAgo: 1, orders: 1.25, revenue: 0.75 }],
+    computedAt,
+  });
+
+  test("round-trips a store's forecast and reads the latest hour of its day", async () => {
+    const t = new Date("2026-11-26T13:08:00Z");
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-26",
+      forecast(9, t),
+    );
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-26",
+      forecast(10, t),
+    );
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-25",
+      forecast(23, t),
+    );
+    expect(
+      await storage.latestForecast(orgId, "conn_om_store", "2026-11-26"),
+    ).toEqual(forecast(10, t));
+    expect(
+      await storage.latestForecast(orgId, "conn_om_store", "2026-11-24"),
+    ).toBeNull();
+    // Another org never reads it.
+    expect(
+      await storage.latestForecast(
+        "org_elsewhere",
+        "conn_om_store",
+        "2026-11-26",
+      ),
+    ).toBeNull();
+  });
+
+  test("a re-run of the same store hour replaces its forecast", async () => {
+    const t = new Date("2026-11-26T14:08:00Z");
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-26",
+      forecast(11, t, 3),
+    );
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-26",
+      forecast(11, new Date(t.getTime() + 60_000), 4),
+    );
+    const rows = await database.db
+      .selectFrom("order_monitor_forecasts")
+      .select("hour")
+      .where("connection_id", "=", "conn_om_store")
+      .where("local_date", "=", "2026-11-26")
+      .where("hour", "=", 11)
+      .execute();
+    expect(rows).toHaveLength(1);
+    expect(
+      await storage.latestForecast(orgId, "conn_om_store", "2026-11-26"),
+    ).toEqual(forecast(11, new Date(t.getTime() + 60_000), 4));
+  });
+
+  test("deletes only the listed orgs' forecasts computed before the cutoff", async () => {
+    const old = new Date("2026-11-20T10:00:00Z");
+    await storage.upsertForecast(
+      orgId,
+      "conn_om_store",
+      "2026-11-20",
+      forecast(7, old),
+    );
+    const cutoff = new Date("2026-11-23T00:00:00Z");
+    await storage.deleteForecastsBefore(["org_elsewhere"], cutoff);
+    await storage.deleteForecastsBefore([], cutoff);
+    expect(
+      await storage.latestForecast(orgId, "conn_om_store", "2026-11-20"),
+    ).not.toBeNull();
+    await storage.deleteForecastsBefore([orgId], cutoff);
+    expect(
+      await storage.latestForecast(orgId, "conn_om_store", "2026-11-20"),
+    ).toBeNull();
+    // Newer ones stay.
+    expect(
+      await storage.latestForecast(orgId, "conn_om_store", "2026-11-26"),
+    ).not.toBeNull();
+  });
+
+  test("drops a store's state and forecasts with its connection", async () => {
     await database.db
       .deleteFrom("connections")
       .where("id", "=", "conn_om_store")
       .execute();
     expect(await storage.listStates(orgId, "conn_om_store")).toEqual([]);
+    expect(
+      await database.db
+        .selectFrom("order_monitor_forecasts")
+        .select("hour")
+        .where("connection_id", "=", "conn_om_store")
+        .execute(),
+    ).toEqual([]);
   });
 });

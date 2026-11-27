@@ -1,4 +1,5 @@
 import type { Kysely } from "kysely";
+import { z } from "zod";
 import type { Database } from "./types";
 
 /** An ingest install: one store the order monitor watches. */
@@ -27,9 +28,24 @@ export interface StoredOrderMonitorState extends OrderMonitorStateRow {
   connectionId: string;
 }
 
+const ForecastRowSchema = z.object({
+  hour: z.number().int().min(0).max(23),
+  orders: z.array(z.number()),
+  revenue: z.array(z.number()),
+  ratios: z.array(
+    z.object({ daysAgo: z.number(), orders: z.number(), revenue: z.number() }),
+  ),
+});
+
+/** The model's forecast for a store's local day from `hour` on (migration 275). */
+export interface StoredOrderForecast extends z.infer<typeof ForecastRowSchema> {
+  computedAt: Date;
+}
+
 /**
- * Order-monitor verdicts (migration 255). `listIngestInstalls` spans every org
- * and exists only for the sweep; the rest take the org in the WHERE clause.
+ * Order-monitor verdicts (migration 255) and model forecasts (migration 275).
+ * `listIngestInstalls` spans every org and exists only for the sweep; the rest
+ * take the org in the WHERE clause.
  */
 export class OrderMonitorStorage {
   constructor(private readonly db: Kysely<Database>) {}
@@ -164,6 +180,71 @@ export class OrderMonitorStorage {
           prev_status: (eb) => eb.ref("excluded.prev_status"),
         }),
       )
+      .execute();
+  }
+
+  async upsertForecast(
+    organizationId: string,
+    connectionId: string,
+    localDate: string,
+    forecast: StoredOrderForecast,
+  ): Promise<void> {
+    await this.db
+      .insertInto("order_monitor_forecasts")
+      .values({
+        organization_id: organizationId,
+        connection_id: connectionId,
+        local_date: localDate,
+        hour: forecast.hour,
+        orders: JSON.stringify(forecast.orders),
+        revenue: JSON.stringify(forecast.revenue),
+        ratios: JSON.stringify(forecast.ratios),
+        computed_at: forecast.computedAt,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(["organization_id", "connection_id", "local_date", "hour"])
+          .doUpdateSet({
+            orders: (eb) => eb.ref("excluded.orders"),
+            revenue: (eb) => eb.ref("excluded.revenue"),
+            ratios: (eb) => eb.ref("excluded.ratios"),
+            computed_at: (eb) => eb.ref("excluded.computed_at"),
+          }),
+      )
+      .execute();
+  }
+
+  /** The store's forecast from the latest hour of its local day; null when there is none or it doesn't parse. */
+  async latestForecast(
+    organizationId: string,
+    connectionId: string,
+    localDate: string,
+  ): Promise<StoredOrderForecast | null> {
+    const row = await this.db
+      .selectFrom("order_monitor_forecasts")
+      .select(["hour", "orders", "revenue", "ratios", "computed_at"])
+      .where("organization_id", "=", organizationId)
+      .where("connection_id", "=", connectionId)
+      .where("local_date", "=", localDate)
+      .orderBy("hour", "desc")
+      .limit(1)
+      .executeTakeFirst();
+    const parsed = ForecastRowSchema.safeParse(row);
+    return row && parsed.success
+      ? { ...parsed.data, computedAt: row.computed_at }
+      : null;
+  }
+
+  /** Deletes the orgs' forecasts computed before `before`. */
+  async deleteForecastsBefore(
+    organizationIds: string[],
+    before: Date,
+  ): Promise<void> {
+    if (organizationIds.length === 0) return;
+    await this.db
+      .deleteFrom("order_monitor_forecasts")
+      .where("organization_id", "in", organizationIds)
+      .where("computed_at", "<", before)
       .execute();
   }
 

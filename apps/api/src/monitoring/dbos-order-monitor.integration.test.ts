@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { sql } from "kysely";
 import type { StudioDatabase } from "@/database";
 import {
@@ -6,9 +6,21 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "@/database/test-db-pg";
+import { setGlobalSettings } from "@/settings";
+import { resolveConfig } from "@/settings/resolve-config";
 import { AlertStorage } from "@/storage/alerts";
-import type { MonitoredStore } from "@/storage/order-monitor";
-import { writeStates } from "./dbos-order-monitor";
+import {
+  type MonitoredStore,
+  OrderMonitorStorage,
+} from "@/storage/order-monitor";
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import {
+  forecastOneStore,
+  planForecasts,
+  writeStates,
+} from "./dbos-order-monitor";
+import type { ForecastJob } from "./order-forecast";
+import { HISTORY_DAYS, type HourlyDay } from "./order-lake";
 import type { Rule, Verdict } from "./order-rules";
 
 const ORG = "org_sweep_alerts";
@@ -38,6 +50,49 @@ const tick = (drop: Verdict["status"]): Record<Rule, Verdict> => ({
 });
 const minute = (m: number) => new Date(Date.UTC(2026, 9, 19, 18, m));
 
+async function insertStore(
+  database: StudioDatabase,
+  store: MonitoredStore,
+  userId: string,
+) {
+  const now = new Date().toISOString();
+  const org = store.organizationId;
+  await sql`INSERT INTO "organization" (id, name, slug, "createdAt") VALUES (${org}, ${org}, ${store.orgSlug}, ${now}) ON CONFLICT DO NOTHING`.execute(
+    database.db,
+  );
+  await sql`INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt") VALUES (${userId}, ${`${userId}@example.com`}, false, 'Sweep', ${now}, ${now}) ON CONFLICT DO NOTHING`.execute(
+    database.db,
+  );
+  await database.db
+    .insertInto("connections")
+    .values({
+      id: store.connectionId,
+      organization_id: org,
+      created_by: userId,
+      updated_by: null,
+      title: store.title,
+      description: null,
+      icon: null,
+      app_name: null,
+      app_id: null,
+      slug: null,
+      connection_type: "HTTP",
+      connection_url: "https://ingest.example.com/mcp",
+      connection_token: null,
+      connection_headers: null,
+      oauth_config: null,
+      configuration_state: null,
+      configuration_scopes: null,
+      metadata: null,
+      bindings: null,
+      status: "active",
+      pinned: false,
+      created_at: now,
+      updated_at: now,
+    })
+    .execute();
+}
+
 describe("writeStates opens an alert when a rule crosses into alert", () => {
   let database: StudioDatabase;
   let alerts: AlertStorage;
@@ -48,41 +103,7 @@ describe("writeStates opens an alert when a rule crosses into alert", () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
     alerts = new AlertStorage(database.db);
-    const now = new Date().toISOString();
-    await sql`INSERT INTO "organization" (id, name, slug, "createdAt") VALUES (${ORG}, ${ORG}, ${STORE.orgSlug}, ${now})`.execute(
-      database.db,
-    );
-    await sql`INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt") VALUES (${USER}, ${`${USER}@example.com`}, false, 'Sweep', ${now}, ${now})`.execute(
-      database.db,
-    );
-    await database.db
-      .insertInto("connections")
-      .values({
-        id: STORE.connectionId,
-        organization_id: ORG,
-        created_by: USER,
-        updated_by: null,
-        title: STORE.title,
-        description: null,
-        icon: null,
-        app_name: null,
-        app_id: null,
-        slug: null,
-        connection_type: "HTTP",
-        connection_url: "https://ingest.example.com/mcp",
-        connection_token: null,
-        connection_headers: null,
-        oauth_config: null,
-        configuration_state: null,
-        configuration_scopes: null,
-        metadata: null,
-        bindings: null,
-        status: "active",
-        pinned: false,
-        created_at: now,
-        updated_at: now,
-      })
-      .execute();
+    await insertStore(database, STORE, USER);
   });
 
   afterAll(async () => {
@@ -138,5 +159,238 @@ describe("writeStates opens an alert when a rule crosses into alert", () => {
     await write(minute(38), "ok");
     expect(await write(minute(36), "alert")).toBeNull();
     expect((await alerts.list(ORG)).alerts).toHaveLength(1);
+  });
+});
+
+describe("the sweep's model forecast", () => {
+  let database: StudioDatabase;
+  let storage: OrderMonitorStorage;
+  const USER_F = "user_sweep_forecast";
+  const on: MonitoredStore = {
+    organizationId: "org_forecast_on",
+    connectionId: "conn_forecast_on",
+    createdBy: USER_F,
+    title: "On",
+    orgSlug: "forecast-on",
+  };
+  const off: MonitoredStore = {
+    ...on,
+    organizationId: "org_forecast_off",
+    connectionId: "conn_forecast_off",
+    orgSlug: "forecast-off",
+  };
+  // 10:08 in São Paulo: hour 10 under way.
+  const at = new Date("2026-11-26T13:08:00Z");
+  const read = { timezone: "America/Sao_Paulo", done: 40, backfill: [] };
+  const swept = [
+    {
+      organizationId: on.organizationId,
+      connectionId: on.connectionId,
+      day: read,
+    },
+    {
+      organizationId: off.organizationId,
+      connectionId: off.connectionId,
+      day: read,
+    },
+  ];
+  const history = (): HourlyDay[] =>
+    Array.from({ length: HISTORY_DAYS + 1 }, () => ({
+      orders: new Array<number>(24).fill(10),
+      revenue: new Array<number>(24).fill(1000),
+    }));
+
+  // A stand-in forecasting service: every series' horizon at `value`, or a 500.
+  let failing = false;
+  let value = 4;
+  let calls = 0;
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      calls++;
+      const body = (await req.json()) as { series: unknown[]; horizon: number };
+      if (failing) return new Response("boom", { status: 500 });
+      return Response.json({
+        quantiles: {
+          "0.5": body.series.map(() => new Array(body.horizon).fill(value)),
+        },
+      });
+    },
+  });
+  const service = (path: string) => ({
+    url: `${server.url.href}${path}`,
+    cooldownMs: 0,
+  });
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    storage = new OrderMonitorStorage(database.db);
+    await insertStore(database, on, USER_F);
+    await insertStore(database, off, USER_F);
+    const settings = new OrganizationSettingsStorage(database.db);
+    await settings.upsert(on.organizationId, {
+      flags: { monitor_timestral_projection: true },
+    });
+    await settings.upsert(off.organizationId, {
+      flags: { monitor_timestral_projection: false },
+    });
+  });
+
+  afterAll(async () => {
+    setGlobalSettings(resolveConfig(process.env));
+    server.stop(true);
+    await closeTestPgDatabase(database);
+  });
+
+  test("plans one forecast per store of an org with the flag on, none without the service", async () => {
+    setGlobalSettings(resolveConfig({ TIMESTRAL_URL: server.url.href }));
+    const jobs = await planForecasts(database.db, swept, at);
+    expect(jobs).toEqual([
+      {
+        organizationId: on.organizationId,
+        connectionId: on.connectionId,
+        timezone: "America/Sao_Paulo",
+        at: at.toISOString(),
+        date: "2026-11-26",
+        hour: 10,
+        backfill: [],
+      },
+    ]);
+    setGlobalSettings(resolveConfig({}));
+    expect(await planForecasts(database.db, swept, at)).toEqual([]);
+  });
+
+  test("clears forecasts over three days old on every tick", async () => {
+    setGlobalSettings(resolveConfig({}));
+    const row = (computedAt: Date) => ({
+      hour: 9,
+      orders: new Array<number>(15).fill(1),
+      revenue: new Array<number>(15).fill(1),
+      ratios: [],
+      computedAt,
+    });
+    const day = 24 * 60 * 60_000;
+    await storage.upsertForecast(
+      on.organizationId,
+      on.connectionId,
+      "2026-11-22",
+      row(new Date(at.getTime() - 3 * day - 60_000)),
+    );
+    await storage.upsertForecast(
+      on.organizationId,
+      on.connectionId,
+      "2026-11-23",
+      row(new Date(at.getTime() - 3 * day + 60_000)),
+    );
+    await planForecasts(database.db, swept, at);
+    expect(
+      await storage.latestForecast(
+        on.organizationId,
+        on.connectionId,
+        "2026-11-22",
+      ),
+    ).toBeNull();
+    expect(
+      await storage.latestForecast(
+        on.organizationId,
+        on.connectionId,
+        "2026-11-23",
+      ),
+    ).not.toBeNull();
+  });
+
+  const job = (): ForecastJob => ({
+    organizationId: on.organizationId,
+    connectionId: on.connectionId,
+    timezone: "America/Sao_Paulo",
+    at: new Date().toISOString(),
+    date: "2026-11-26",
+    hour: 10,
+    backfill: [],
+  });
+
+  test("stores the model's forecast for the store hour, and a re-run replaces it", async () => {
+    failing = false;
+    value = 4;
+    await forecastOneStore(database.db, service("ok"), job(), async () =>
+      history(),
+    );
+    const first = await storage.latestForecast(
+      on.organizationId,
+      on.connectionId,
+      "2026-11-26",
+    );
+    expect(first?.hour).toBe(10);
+    expect(first?.orders).toEqual(new Array(14).fill(4));
+    // Each calibration day brought 14 × 10 orders against 14 × 4 forecast.
+    expect(first?.ratios[0]).toEqual({
+      daysAgo: 1,
+      orders: 140 / 56,
+      revenue: 14_000 / 56,
+    });
+    value = 5;
+    await forecastOneStore(database.db, service("ok"), job(), async () =>
+      history(),
+    );
+    const rows = await database.db
+      .selectFrom("order_monitor_forecasts")
+      .select(["hour", "orders"])
+      .where("organization_id", "=", on.organizationId)
+      .where("local_date", "=", "2026-11-26")
+      .execute();
+    expect(rows).toEqual([{ hour: 10, orders: new Array(14).fill(5) }]);
+  });
+
+  test("a failed forecast writes nothing and leaves the verdicts alone", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const verdicts = await writeStates(
+        database.db,
+        on,
+        at,
+        tick("alert"),
+        "America/Sao_Paulo",
+      );
+      expect(verdicts?.opened).toHaveLength(1);
+      failing = true;
+      const before = calls;
+      await forecastOneStore(
+        database.db,
+        service("down"),
+        { ...job(), hour: 11 },
+        async () => history(),
+      );
+      expect(calls).toBe(before + 1);
+      const latest = await storage.latestForecast(
+        on.organizationId,
+        on.connectionId,
+        "2026-11-26",
+      );
+      expect(latest?.hour).toBe(10);
+      expect(
+        (await storage.listStates(on.organizationId, on.connectionId)).map(
+          (s) => [s.rule, s.status],
+        ),
+      ).toEqual(expect.arrayContaining([["orders_drop", "alert"]]));
+      expect(
+        (await new AlertStorage(database.db).list(on.organizationId)).alerts,
+      ).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("an org's forecasts go with the org", async () => {
+    await sql`DELETE FROM "organization" WHERE id = ${on.organizationId}`.execute(
+      database.db,
+    );
+    expect(
+      await database.db
+        .selectFrom("order_monitor_forecasts")
+        .select("hour")
+        .where("organization_id", "=", on.organizationId)
+        .execute(),
+    ).toEqual([]);
   });
 });

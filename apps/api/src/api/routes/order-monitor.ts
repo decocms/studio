@@ -24,6 +24,7 @@ import type {
   OrderMonitorStore,
   OrderMonitorVerdict,
 } from "@decocms/shared/order-monitor";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -39,12 +40,8 @@ import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadThresholds } from "@/monitoring/order-alerts";
-import { modelProjection } from "@/monitoring/order-forecast";
-import {
-  loadHourlyHistory,
-  loadStoreDay,
-  loadStoreTimezone,
-} from "@/monitoring/order-lake";
+import { withModel } from "@/monitoring/order-forecast";
+import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
 import { addSiteTraffic, loadSiteTraffic } from "@/monitoring/site-traffic";
 import { isTimezone } from "@/monitoring/timezone";
@@ -255,25 +252,20 @@ export const createOrderMonitorRoutes = () => {
       // The chart's bands are the thresholds the sweep judges by.
       const thresholds = await loadThresholds(g.ctx.storage.alerts, orgId);
       const view = buildDayView(day, at, thresholds);
-      const { timestralUrl, timestralToken } = getSettings();
-      const baseline = view.forecast.projection;
-      if (timestralUrl && baseline) {
-        const settings = await g.ctx.storage.organizationSettings
-          .get(orgId)
-          .catch(() => null);
-        view.forecast.projection = await modelProjection({
-          organizationId: orgId,
-          connectionId,
-          at,
-          day,
-          baseline,
-          flags: settings?.flags,
-          service: { url: timestralUrl, token: timestralToken },
-          loadHistory: () =>
-            loadHourlyHistory(orgId, connectionId, at, day.timezone),
-        });
+      if (!getSettings().timestralUrl || !view.forecast.projection) {
+        return c.json(view);
       }
-      return c.json(view);
+      // The sweep's model forecast for the store's hour, when the org has it on.
+      const settings = await g.ctx.storage.organizationSettings
+        .get(orgId)
+        .catch(() => null);
+      if (!orgFlagEnabled(settings?.flags, "monitor_timestral_projection")) {
+        return c.json(view);
+      }
+      const forecast = await g.storage
+        .latestForecast(orgId, connectionId, view.date)
+        .catch(() => null);
+      return c.json(withModel(view, day, forecast, at));
     } catch (err) {
       console.error("[order-monitor] day read failed", {
         connectionId,

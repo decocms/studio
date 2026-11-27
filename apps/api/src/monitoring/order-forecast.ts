@@ -1,9 +1,12 @@
 /**
  * The Monitor's sales projection from the Timestral forecasting model, for
  * orgs with `monitor_timestral_projection`: orders and revenue per local clock
- * hour, 112 days of context. Only the day view reads it; the sweep keeps
- * judging by the baseline. Any failure leaves the baseline's projection, and a
- * failed service call skips the service for COOLDOWN_MS.
+ * hour, 112 days of context. A batch takes the model tens of seconds, so the
+ * order-monitor sweep runs it once per store and local hour, off the alert
+ * path (`dbos-order-monitor.ts`), and stores it; the day view maps the stored
+ * forecast onto what's in so far. Alerts keep judging by the baseline. Without
+ * a fresh forecast the day view keeps the baseline's projection, and a failed
+ * service call skips the service for COOLDOWN_MS.
  *
  * The spread comes from the model's own misses: each of the last 28 days is
  * forecast from the same hour, and how its actual rest of day compared with
@@ -11,19 +14,24 @@
  * of those paths held ~80% of closes.
  */
 
-import type { OrderMonitorForecast } from "@decocms/shared/order-monitor";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import type {
+  OrderMonitorDay,
+  OrderMonitorForecast,
+} from "@decocms/shared/order-monitor";
 import { z } from "zod";
+import type { StoredOrderForecast } from "@/storage/order-monitor";
 import type { HourlyDay } from "./order-lake";
 import type { StoreDay } from "./order-rules";
 
-const TIMEOUT_MS = 3_000;
+const TIMEOUT_MS = 60_000;
 /** After a failed call, the service is skipped this long. */
 const COOLDOWN_MS = 60_000;
+/** A job whose tick is older than this is skipped: the next hour's has taken over. */
+const MAX_LAG_MS = 60 * 60_000;
+/** The day view uses a forecast this old at most, from the hour under way or the one before. */
+const MAX_AGE_MS = 75 * 60_000;
 /** Days of history each series gives the model. */
 export const CONTEXT_DAYS = 112;
-const CACHE_TTL_MS = 10 * 60_000;
-const CACHE_MAX = 500;
 /** A past day under this share of its trailing kept days' median is an ingest outage. */
 const OUTAGE_SHARE = 0.25;
 const TRAILING_DAYS = 28;
@@ -209,9 +217,10 @@ export async function runModel(
 }
 
 /**
- * The model's day as the projection: the median per clock hour (the hour under
- * way minus what's already in it), and per calibration day its ratio × the
- * median's running total, so `paths` keeps meaning how the rest could go.
+ * The model's day as the projection: the median per clock hour from the hour
+ * under way (minus what's already in it), and per calibration day its ratio ×
+ * the median's running total, so `paths` keeps meaning how the rest could go.
+ * `model.hour` may be the hour before the one under way.
  */
 export function toProjection(
   baseline: OrderMonitorForecast,
@@ -219,13 +228,16 @@ export function toProjection(
   model: ModelForecast,
 ): OrderMonitorForecast {
   const today = day.days[0];
-  const { hour } = model;
+  const hour = Math.floor(day.done / 4);
   const rest = (forecast: number[], m: "placed" | "revenue") => {
     const inHour = sum(today[m].slice(hour * 4, day.done));
     return HOURS.map((h) =>
       h < hour
         ? 0
-        : Math.max(0, forecast[h - hour]! - (h === hour ? inHour : 0)),
+        : Math.max(
+            0,
+            (forecast[h - model.hour] ?? 0) - (h === hour ? inHour : 0),
+          ),
     );
   };
   const orders = rest(model.orders, "placed");
@@ -252,94 +264,127 @@ export function toProjection(
   };
 }
 
-export const forecastCacheKey = (
-  organizationId: string,
-  connectionId: string,
-  date: string,
-  hour: number,
-) => JSON.stringify([organizationId, connectionId, date, hour]);
-
-// In flight or done, so viewers of the same store hour share one forecast.
-const cache = new Map<
-  string,
-  { expires: number; forecast: Promise<ModelForecast> }
->();
-
-function cached(
-  key: string,
-  make: () => Promise<ModelForecast>,
-): Promise<ModelForecast> {
-  const now = Date.now();
-  const hit = cache.get(key);
-  if (hit && hit.expires > now) return hit.forecast;
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  while (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
-  const forecast = make();
-  cache.set(key, { expires: now + CACHE_TTL_MS, forecast });
-  // A failure isn't kept: the next view tries again.
-  forecast.catch(() => {
-    if (cache.get(key)?.forecast === forecast) cache.delete(key);
-  });
-  return forecast;
+/**
+ * The day view with the stored forecast as its projection, when it is from
+ * the hour under way or the one before and at most MAX_AGE_MS old. The
+ * headline and the expected line from the hour under way on come from the
+ * same rest of day, so the cards and the chart agree; the bands stay the
+ * baseline's, as the sweep judges by them.
+ */
+export function withModel(
+  view: OrderMonitorDay,
+  day: StoreDay,
+  forecast: StoredOrderForecast | null,
+  at: Date,
+): OrderMonitorDay {
+  const baseline = view.forecast.projection;
+  const hour = Math.floor(day.done / 4);
+  const fresh =
+    !!forecast &&
+    (forecast.hour === hour || forecast.hour === hour - 1) &&
+    at.getTime() - forecast.computedAt.getTime() <= MAX_AGE_MS &&
+    forecast.orders.length === 24 - forecast.hour &&
+    forecast.revenue.length === 24 - forecast.hour;
+  if (!baseline || !forecast || !fresh) return view;
+  const projection = toProjection(baseline, day, forecast);
+  const inHour = sum(day.days[0].placed.slice(hour * 4, day.done));
+  return {
+    ...view,
+    orders: {
+      ...view.orders,
+      expected: view.orders.expected.map((e, h) =>
+        h < hour ? e : projection.orders[h]! + (h === hour ? inHour : 0),
+      ),
+    },
+    headline: { ...view.headline, projected: projection.close.orders },
+    forecast: { ...view.forecast, projection },
+  };
 }
+
+/** One store's forecast for the sweep to run: its local day and hour under way as of the tick `at`. */
+export interface ForecastJob {
+  organizationId: string;
+  connectionId: string;
+  timezone: string;
+  at: string;
+  date: string;
+  hour: number;
+  /** Days back from `date` the ingest's history backfill still holds. */
+  backfill: number[];
+}
+
+/** A store the sweep read, with what it read of the day; no `day` when the read failed. */
+export interface SweptStore {
+  organizationId: string;
+  connectionId: string;
+  day?: { timezone: string; done: number; backfill: number[] };
+}
+
+/** The forecasts due at `at`: one per read store of an org in `enabledOrgs`. */
+export function forecastJobs(
+  stores: readonly SweptStore[],
+  enabledOrgs: ReadonlySet<string>,
+  at: Date,
+): ForecastJob[] {
+  return stores.flatMap(({ organizationId, connectionId, day }) =>
+    day && enabledOrgs.has(organizationId)
+      ? [
+          {
+            organizationId,
+            connectionId,
+            timezone: day.timezone,
+            at: at.toISOString(),
+            date: at.toLocaleDateString("en-CA", { timeZone: day.timezone }),
+            hour: Math.floor(day.done / 4),
+            backfill: day.backfill,
+          },
+        ]
+      : [],
+  );
+}
+
+/** One workflow per store, local day and hour: every tick of the hour asks for the same one. */
+export const forecastWorkflowId = (job: ForecastJob) =>
+  `order-forecast:${job.connectionId}:${job.date}:${job.hour}`;
 
 /** Service URL → when calling it again is allowed. */
 const cooldowns = new Map<string, number>();
 const coolingDown = (url: string) => (cooldowns.get(url) ?? 0) > Date.now();
 
-/** `baseline` when the org's flag is off or the service is cooling down; otherwise the model's projection, or `baseline` when it fails. */
-export async function modelProjection(args: {
-  organizationId: string;
-  connectionId: string;
-  at: Date;
-  day: StoreDay;
-  baseline: OrderMonitorForecast;
-  flags: Record<string, unknown> | null | undefined;
-  service: TimestralService;
-  loadHistory: () => Promise<HourlyDay[]>;
-}): Promise<OrderMonitorForecast> {
-  const { day, baseline } = args;
+/** The model's forecast for the job; null when it is late, the service is cooling down, or anything fails. Never throws. */
+export async function forecastStore(
+  service: TimestralService,
+  job: ForecastJob,
+  loadHistory: () => Promise<HourlyDay[]>,
+): Promise<ModelForecast | null> {
   if (
-    !orgFlagEnabled(args.flags, "monitor_timestral_projection") ||
-    coolingDown(args.service.url)
+    Date.now() - Date.parse(job.at) > MAX_LAG_MS ||
+    coolingDown(service.url)
   ) {
-    return baseline;
+    return null;
   }
-  const hour = Math.floor(day.done / 4);
-  const key = forecastCacheKey(
-    args.organizationId,
-    args.connectionId,
-    args.at.toLocaleDateString("en-CA", { timeZone: day.timezone }),
-    hour,
-  );
   try {
-    const model = await cached(key, async () =>
-      runModel(
-        args.service,
-        cleanHistory(await args.loadHistory(), day.backfill?.days),
-        hour,
-      ),
+    return await runModel(
+      service,
+      cleanHistory(await loadHistory(), job.backfill),
+      job.hour,
     );
-    return toProjection(baseline, day, model);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     if (!(err instanceof ForecastServiceError)) {
-      console.warn(
-        "[order-monitor] model forecast failed, using the baseline",
-        {
-          connectionId: args.connectionId,
-          error,
-        },
-      );
-    } else if (!coolingDown(args.service.url)) {
+      console.warn("[order-monitor] model forecast failed", {
+        connectionId: job.connectionId,
+        error,
+      });
+    } else if (!coolingDown(service.url)) {
       // Concurrent failures land here once: the first starts the cooldown.
-      const ms = args.service.cooldownMs ?? COOLDOWN_MS;
-      cooldowns.set(args.service.url, Date.now() + ms);
+      const ms = service.cooldownMs ?? COOLDOWN_MS;
+      cooldowns.set(service.url, Date.now() + ms);
       console.warn(
-        `[order-monitor] forecast service failed, using the baseline for ${ms / 1000} s`,
-        { connectionId: args.connectionId, error },
+        `[order-monitor] forecast service failed, skipping it for ${ms / 1000} s`,
+        { connectionId: job.connectionId, error },
       );
     }
-    return baseline;
+    return null;
   }
 }

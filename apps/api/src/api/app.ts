@@ -266,6 +266,7 @@ import {
 import {
   BOARD_TRANSITIONS_QUEUE,
   GITHUB_READS_QUEUE,
+  ORDER_FORECAST_QUEUE,
 } from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
@@ -2555,6 +2556,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
     await DBOS.registerQueue(BOARD_TRANSITIONS_QUEUE);
+    // A forecast holds the forecasting service's CPU for tens of seconds; one
+    // at a time across replicas keeps each call inside its timeout.
+    await DBOS.registerQueue(ORDER_FORECAST_QUEUE, { concurrency: 1 });
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.

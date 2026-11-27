@@ -45,3 +45,6 @@ export const GITHUB_READS_QUEUE = "task-board-github-reads";
  *  wait spends its time in a durable sleep, and a cap would let a busy board
  *  hold every slot asleep. */
 export const BOARD_TRANSITIONS_QUEUE = "board-transitions";
+/** The order monitor's model forecasts (`monitoring/dbos-order-monitor.ts`):
+ *  tens of seconds of the forecasting service's CPU each, one at a time. */
+export const ORDER_FORECAST_QUEUE = "order-forecasts";

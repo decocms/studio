@@ -315,6 +315,19 @@ export interface OrderMonitorStateTable {
   >;
 }
 
+/** The Monitor's model forecast for one store from one local clock hour on
+ *  (migration 275); see monitoring/order-forecast.ts. */
+export interface OrderMonitorForecastTable {
+  organization_id: string;
+  connection_id: string;
+  local_date: string;
+  hour: number;
+  orders: JsonArray<number>;
+  revenue: JsonArray<number>;
+  ratios: JsonArray<{ daysAgo: number; orders: number; revenue: number }>;
+  computed_at: ColumnType<Date, Date, Date>;
+}
+
 /** Something a detector saw, open until a person or an agent acks it (migration 265). */
 export interface AlertTable {
   id: string;
@@ -2907,6 +2920,7 @@ export interface Database {
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
+  order_monitor_forecasts: OrderMonitorForecastTable;
   alerts: AlertTable;
   channel_accounts: ChannelAccountTable;
   channel_account_claims: ChannelAccountClaimTable;
