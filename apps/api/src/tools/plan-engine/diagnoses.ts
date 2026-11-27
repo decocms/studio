@@ -23,9 +23,9 @@ import {
   lifecycleOf,
 } from "@/plan-engine/lifecycle";
 import { queueOrder } from "@/plan-engine/priority";
+import { byConfidenceThenValue } from "@decocms/shared/plan-confidence";
 import {
   buildStoreView,
-  byValue,
   choosePageDiagnoses,
   coveredElsewhere,
 } from "@/plan-engine/store-view";
@@ -223,7 +223,7 @@ export const PLAN_UX_SITE_RUN_GET = defineTool({
       return await withOrgMediaUrls(ctx, {
         site_run_id: input.site_run_id,
         diagnoses,
-        opportunities: lists.flat().sort(byValue),
+        opportunities: lists.flat().sort(byConfidenceThenValue),
         hidden_elsewhere: hidden,
       });
     } catch (err) {

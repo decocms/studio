@@ -8,6 +8,7 @@
 
 import { type ReactNode, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { confidenceLevel } from "@decocms/shared/plan-confidence";
 import { ArrowLeft, ChevronDown, Monitor01, Phone01 } from "@untitledui/icons";
 import { Badge, BadgeDot } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -43,7 +44,6 @@ import {
 } from "./labels.ts";
 import { SectionError } from "./opportunities-section.tsx";
 import {
-  confidenceLevel,
   dataBadge,
   detailFailure,
   detailHypotheses,

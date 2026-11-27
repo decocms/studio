@@ -1,8 +1,9 @@
-/** Plan: the goal, the request composer, what the store analysis found, and
- *  the cases already started; the Store tab shows the analysis page by page.
- *  While the guided intro runs, its screens take the whole page. With Plan
- *  goals on, the goal is the one this member works toward, picked from the
- *  organization's goals; otherwise it is the single store goal. */
+/** Plan: the goal, what the store analysis found, and the cases already
+ *  started; the Store tab shows the analysis page by page. The idea button
+ *  beside the goal opens the idea screen in place of the page, and the guided
+ *  intro it starts takes the whole page too. With Plan goals on, the goal is
+ *  the one this member works toward, picked from the organization's goals;
+ *  otherwise it is the single store goal. */
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,7 +35,7 @@ import { StoreTab } from "./opportunities/store-tab.tsx";
 import { useCreateCaseFromOpportunity } from "./opportunities/use-create-case.ts";
 import { PlanCasesList } from "./plan-cases-list.tsx";
 import { PlanGoalsSection } from "./plan-goals.tsx";
-import { PlanIdeaComposer } from "./plan-idea-composer.tsx";
+import { PlanIdeaScreen, ProposeIdeaButton } from "./plan-idea-screen.tsx";
 import { PlanObjective } from "./plan-objective.tsx";
 import { useActivePlanGoal } from "./use-active-goal.ts";
 
@@ -137,7 +138,8 @@ export function PlanPage() {
   const [tab, setTab] = usePlanTab();
   // The "Nova análise" button that opened the popover; null when closed.
   const [newRunAnchor, setNewRunAnchor] = useState<HTMLElement | null>(null);
-  // Going back from the intro puts the idea back in the composer.
+  // The idea screen is open; going back from the intro reopens it with the idea.
+  const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
   const { state } = guide;
   if (state) {
@@ -149,6 +151,7 @@ export function PlanPage() {
             state,
             cancel: () => {
               setDraft(state.idea);
+              setComposing(true);
               guide.cancel();
             },
           }}
@@ -156,6 +159,24 @@ export function PlanPage() {
       </Page>
     );
   }
+  if (composing) {
+    return (
+      <Page>
+        <PlanIdeaScreen
+          initialIdea={draft}
+          onBack={(idea) => {
+            setDraft(idea);
+            setComposing(false);
+          }}
+          onSubmit={(idea) => {
+            setComposing(false);
+            guide.start(idea);
+          }}
+        />
+      </Page>
+    );
+  }
+  const proposeIdea = <ProposeIdeaButton onClick={() => setComposing(true)} />;
   const store = tab === "store";
   return (
     <Page>
@@ -182,7 +203,11 @@ export function PlanPage() {
             </ErrorBoundary>
           ) : (
             <>
-              {goalsOn ? <PlanGoalsSection goals={goals} /> : <PlanObjective />}
+              {goalsOn ? (
+                <PlanGoalsSection goals={goals} action={proposeIdea} />
+              ) : (
+                <PlanObjective action={proposeIdea} />
+              )}
               {guide.saved && (
                 <PlanGuideResume
                   draft={guide.saved}
@@ -190,7 +215,6 @@ export function PlanPage() {
                   onDiscard={guide.discard}
                 />
               )}
-              <PlanIdeaComposer initialIdea={draft} onSubmit={guide.start} />
               <ErrorBoundary fallback={diagnosisFallback}>
                 <OpportunitiesSection
                   goal={runGoal}

@@ -5,7 +5,7 @@
  * archives it, so nobody changes someone else's goal from under them.
  */
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   Archive,
   Check,
@@ -232,7 +232,14 @@ function ArchiveGoal({
   );
 }
 
-export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
+export function PlanGoalsSection({
+  goals: state,
+  action,
+}: {
+  goals: PlanGoals;
+  /** Beside the goal's own buttons, and under the form while there is no goal. */
+  action?: ReactNode;
+}) {
   const t = useT();
   const actions = usePlanGoalActions();
   const suggestions = useGoalSuggestions();
@@ -277,6 +284,7 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
               )
             }
           />
+          {goals.length === 0 && action}
         </>
       );
     }
@@ -311,7 +319,7 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
             {t("plan.goals.found", { source: active.source.label })}
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2">
           <GoalPicker
             goals={goals}
             active={active}
@@ -356,6 +364,7 @@ export function PlanGoalsSection({ goals: state }: { goals: PlanGoals }) {
               />
             </>
           )}
+          {action && <div className="ml-auto">{action}</div>}
         </div>
       </div>
     );

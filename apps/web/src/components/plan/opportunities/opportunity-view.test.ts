@@ -22,7 +22,6 @@ import {
 import {
   canApprove,
   cardState,
-  confidenceLevel,
   dataBadge,
   defaultStorePage,
   detailFailure,
@@ -600,17 +599,6 @@ describe("showsAnalysedAt", () => {
         },
       ),
     ).toBe(true);
-  });
-});
-
-describe("confidenceLevel", () => {
-  it("reads the engine's confidence in three levels", () => {
-    expect(confidenceLevel(0.9)).toBe("high");
-    expect(confidenceLevel(0.7)).toBe("high");
-    expect(confidenceLevel(0.5)).toBe("medium");
-    expect(confidenceLevel(0.4)).toBe("medium");
-    expect(confidenceLevel(0.1)).toBe("low");
-    expect(confidenceLevel(Number.NaN)).toBeNull();
   });
 });
 

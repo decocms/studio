@@ -34,6 +34,7 @@ export const plan = {
   "plan.objective.connectHint":
     "Conecte reuniões ou conversas, como Grain ou WhatsApp, para eu encontrar da próxima vez.",
   "plan.objective.saveError": "Não deu para salvar o objetivo. Tente de novo.",
+  "plan.idea.open": "Tenho uma ideia",
   "plan.idea.heading": "O que você quer melhorar na loja?",
   "plan.idea.description":
     "Fale do jeito que vier, mesmo vago. Algumas perguntas rápidas completam o que só você sabe, e o agente monta o case: o problema em números, quem já faz, o dinheiro em jogo, o esforço e o teste A/B.",
@@ -321,7 +322,7 @@ export const plan = {
   "plan.guide.resume.discard": "Descartar",
   "plan.opportunities.heading": "Encontramos para você",
   "plan.opportunities.description":
-    "Os agentes mediram onde a loja perde mais, testaram o porquê e separaram as duas maiores perdas para o seu objetivo.",
+    "Os agentes mediram onde a loja perde mais, testaram o porquê e separaram as maiores perdas para o seu objetivo, das mais certas para as menos.",
   "plan.opportunities.scope.whole": "Site inteiro",
   "plan.opportunities.scope.analysed": "Analisado em {date}",
   "plan.opportunities.newRun": "Nova análise",
@@ -339,8 +340,7 @@ export const plan = {
   "plan.opportunities.summary.monthly.other": "por mês nas {count}",
   "plan.opportunities.summary.sources": "Fontes",
   "plan.opportunities.summary.gaps": "Não responderam",
-  "plan.opportunities.card.biggest": "Maior perda",
-  "plan.opportunities.card.second": "2ª maior perda",
+  "plan.opportunities.card.rank": "{position}º lugar",
   "plan.opportunities.card.perMonth": "/mês",
   "plan.opportunities.card.atStake":
     "em jogo, se fechar {delta} pp da diferença",
@@ -410,7 +410,7 @@ export const plan = {
   "plan.opportunities.store.unavailable":
     "Esta organização não tem a análise da loja.",
   "plan.opportunities.newRun.description":
-    "Mede de novo, investiga o porquê e atualiza as duas maiores perdas. As outras páginas continuam com a última análise.",
+    "Mede de novo, investiga o porquê e atualiza as maiores perdas. As outras páginas continuam com a última análise.",
   "plan.opportunities.newRun.site": "Site inteiro",
   "plan.opportunities.newRun.siteHint": "As 5 páginas ao mesmo tempo",
   "plan.opportunities.newRun.or": "Ou só as partes que você escolher",
