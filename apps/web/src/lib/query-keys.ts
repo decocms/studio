@@ -746,12 +746,13 @@ export const KEYS = {
   organizationInviteLinks: (organizationId: string) =>
     ["organization-invite-links", organizationId] as const,
 
-  // The caller's own channel accounts (per user; the tool call is org-scoped)
   // Channels (Context → Channels): everything under the org's prefix, so a
   // delete invalidates conversations and messages along with the list.
   channels: (orgId: string) => ["channels", orgId] as const,
   channelsConnections: (orgId: string) =>
     ["channels", orgId, "connections"] as const,
+  channelsConnection: (orgId: string, connectionId: string) =>
+    ["channels", orgId, "connection", connectionId] as const,
   channelsConversations: (orgId: string, connectionId: string, query = "") =>
     ["channels", orgId, "conversations", connectionId, query] as const,
   channelsMessages: (
@@ -759,6 +760,7 @@ export const KEYS = {
     connectionId: string,
     conversationId: string,
   ) => ["channels", orgId, "messages", connectionId, conversationId] as const,
+  // The caller's own channel accounts (per user; the tool call is org-scoped)
   channelAccounts: (orgId: string, userId: string) =>
     ["channel-accounts", orgId, userId] as const,
   // A link a channel bot sent, as the viewer sees it (scoped by org, claim and viewer)
