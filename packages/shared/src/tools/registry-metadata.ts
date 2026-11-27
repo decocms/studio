@@ -2322,8 +2322,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
   },
   // Proposing reads the file, writes a branch and opens a change request onto
   // it; it changes no deployed branch (REPOSITORY_COMMIT_FILES refuses the
-  // default branch).
-  // Merging (CHANGE_REQUEST_MERGE) is what ships, and stays out of this grant.
+  // default branch). Merging is the separate `changes:publish` grant.
   {
     id: "changes:propose",
     label: "Propose changes",
@@ -2335,6 +2334,15 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REPOSITORY_COMMIT_FILES",
       "CHANGE_REQUEST_OPEN",
     ],
+  },
+  // The site editor's Publish squash-merges the change request it opened.
+  {
+    id: "changes:publish",
+    label: "Publish changes",
+    description:
+      "Merge pull requests (merge requests), which publishes site editor changes to the live site",
+    section: "Organization",
+    tools: ["CHANGE_REQUEST_MERGE"],
   },
   // File Configs
   {
@@ -2525,6 +2533,7 @@ const USER_ROLE_CAPABILITY_IDS: string[] = [
   "assets:manage",
   "repositories:connect",
   "changes:propose",
+  "changes:publish",
 ];
 
 /**

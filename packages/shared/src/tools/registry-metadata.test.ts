@@ -66,8 +66,14 @@ describe("change request permissions", () => {
     ).toBe(true);
   });
 
-  it("keeps merging — what ships — out of the user and basic grants", () => {
-    expect(USER_ROLE_TOOLS.has("CHANGE_REQUEST_MERGE")).toBe(false);
+  it("lets the built-in user publish (merge a change request)", () => {
+    expect(USER_ROLE_TOOLS.has("CHANGE_REQUEST_MERGE")).toBe(true);
+    expect(
+      resolveCapabilities({ self: [...USER_ROLE_TOOLS] })["changes:publish"],
+    ).toBe(true);
+  });
+
+  it("keeps change requests out of basic usage", () => {
     expect(BASIC_USAGE_TOOLS.has("CHANGE_REQUEST_MERGE")).toBe(false);
     expect(BASIC_USAGE_TOOLS.has("CHANGE_REQUEST_OPEN")).toBe(false);
     expect(BASIC_USAGE_TOOLS.has("REPOSITORY_COMMIT_FILES")).toBe(false);
