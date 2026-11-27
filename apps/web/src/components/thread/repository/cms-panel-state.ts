@@ -378,8 +378,16 @@ export function selectCmsHeaderButton(
       };
     }
 
-    // Blocked on a human; the primary opens the PR, the only place they act.
     if (mergeableState === "blocked" || reviews?.draft) {
+      // Review blocks merging, not sending new edits to the existing PR.
+      if (branch.workingTreeDirty || branch.unpushed > 0) {
+        return {
+          label: t("thread.headerActions.submitForReview"),
+          action: "request-approval",
+          variant: "brand",
+          menu: withGetLatest([viewChangeRequestItem(t)], branch, t),
+        };
+      }
       return applyCheckTreatment(
         {
           label: t("thread.cmsActions.waitingForReview"),

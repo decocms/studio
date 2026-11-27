@@ -23,11 +23,7 @@ const mockT: TFunction = (key: TranslationKey, vars?: InterpolationVars) => {
 
 type ReadyBranch = Extract<BranchMeta, { kind: "ready" }>;
 
-/**
- * Fast Preview has no working tree: `workingTreeDirty` and `unpushed` are
- * pinned to their empty values here because the daemon never reports anything
- * else in this mode.
- */
+/** Auto-commit-off saves are represented as dirty work until submitted. */
 function ready(over: Partial<ReadyBranch> = {}): ReadyBranch {
   return {
     kind: "ready",
@@ -1002,4 +998,45 @@ describe("merged pull request", () => {
     expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
     expect(r.action).toBe("publish");
   });
+});
+
+describe("pending edits on a pull request awaiting review", () => {
+  test.each([
+    { mergeableState: "blocked" as const, draft: false },
+    { mergeableState: "clean" as const, draft: true },
+  ])("offers submission for $mergeableState, draft=$draft", (review) => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2, workingTreeDirty: true }),
+        pr: pr(),
+        reviews: reviews(review),
+      }),
+    );
+    expect(r.action).toBe("request-approval");
+    expect(r.disabled).toBeFalsy();
+    expect(r.loading).toBeFalsy();
+    expect(r.menu.some((item) => item.action === "open-pr")).toBe(true);
+  });
+});
+
+test("an awaiting-review PR can receive another batch, then returns to waiting", () => {
+  const state = input({
+    branch: ready({ aheadOfBase: 2 }),
+    pr: pr(),
+    reviews: reviews({ mergeableState: "blocked" }),
+    checks: [check({ status: "in_progress", conclusion: null })],
+  });
+  expect(selectCmsHeaderButton(state).action).toBe("open-pr");
+  const edited = selectCmsHeaderButton({
+    ...state,
+    branch: ready({ aheadOfBase: 2, workingTreeDirty: true }),
+  });
+  expect(edited.action).toBe("request-approval");
+  expect(edited.loading).toBeFalsy();
+  const unpushed = selectCmsHeaderButton({
+    ...state,
+    branch: ready({ aheadOfBase: 3, unpushed: 1 }),
+  });
+  expect(unpushed.action).toBe("request-approval");
+  expect(selectCmsHeaderButton(state).action).toBe("open-pr");
 });
