@@ -12,11 +12,35 @@
 export type HeatDevice = "desktop" | "tablet" | "mobile";
 export type HeatMode = "clicks" | "value" | "scroll" | "attention" | "sections";
 export type ClickType = "all" | "rage" | "dead" | "error" | "first";
-export type HeatRange = "24h" | "7d" | "30d";
+export type HeatRange = "24h" | "7d" | "30d" | "custom";
 export type HeatRamp = "thermal" | "inferno";
 
 export const HEAT_DEVICES: HeatDevice[] = ["desktop", "tablet", "mobile"];
-export const HEAT_RANGES: HeatRange[] = ["24h", "7d", "30d"];
+export const HEAT_RANGES: HeatRange[] = ["24h", "7d", "30d", "custom"];
+/** The read surface's cap on a custom window, in days. */
+export const HEAT_MAX_DAYS = 31;
+
+const DAY_MS = 86_400_000;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `YYYY-MM-DD` of the UTC day `ms` falls in: the heatmap facts are UTC days. */
+export function utcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** The query string for a period, or null for a custom window the read
+ *  surface would refuse (malformed, reversed, or longer than the cap). */
+export function rangeQuery(
+  range: HeatRange,
+  window: { from: string; to: string },
+): string | null {
+  if (range !== "custom") return `range=${range}`;
+  const { from, to } = window;
+  if (!ISO_DAY.test(from) || !ISO_DAY.test(to)) return null;
+  const days = (Date.parse(to) - Date.parse(from)) / DAY_MS + 1;
+  if (!(days >= 1 && days <= HEAT_MAX_DAYS)) return null;
+  return `from=${from}&to=${to}`;
+}
 export const HEAT_MODES: HeatMode[] = [
   "clicks",
   // Second, next to the clicks it qualifies: "what gets clicked" and "what
