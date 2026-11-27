@@ -516,6 +516,14 @@ function refPath(ref: string): string {
     .replace(/^src\//, "");
 }
 
+/** The cited line when the file read has no such line; null = no line cited, or it exists. */
+function lineOutside(ref: string, fileText: string): number | null {
+  const m = /:(\d+)(?:[-:]\d+)*$/.exec(ref.trim());
+  if (!m) return null;
+  const line = Number(m[1]);
+  return line >= 1 && line <= fileText.split("\n").length ? null : line;
+}
+
 export function parseRepoAnswer(
   raw: string,
   snapshot: RepoSnapshot,
@@ -529,10 +537,21 @@ export function parseRepoAnswer(
     : "nao_decidiu";
   let observed = text(parsed.observed) || "(sem observação)";
   const ref = text(parsed.source_ref);
-  const inSnapshot =
-    ref !== "" && snapshot.files.some((f) => f.path === refPath(ref));
+  const file =
+    ref === ""
+      ? undefined
+      : snapshot.files.find((f) => f.path === refPath(ref));
+  const inSnapshot = file !== undefined;
+  const missingLine = file ? lineOutside(ref, file.text) : null;
   if ((outcome === "confirma" || outcome === "desmente") && !inSnapshot) {
     observed = `${observed} (sem decidir: ${ref ? `o arquivo ${ref} não está no snapshot` : "sem arquivo citado"})`;
+    outcome = "nao_decidiu";
+  } else if (
+    (outcome === "confirma" || outcome === "desmente") &&
+    missingLine !== null
+  ) {
+    // A cited line the model never saw is a made-up reference, not evidence.
+    observed = `${observed} (sem decidir: ${ref} cita a linha ${missingLine}, que o arquivo lido não tem)`;
     outcome = "nao_decidiu";
   }
   let followup: VerifyCheck | null = null;

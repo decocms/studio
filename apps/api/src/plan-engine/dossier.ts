@@ -182,7 +182,13 @@ export function buildDossier(input: {
     ...(input.review?.falhas ?? []).map((f) => `- Revisor: ${f}`),
   ]);
 
+  const strength = h.verification?.strength;
   section("4. Validações", [
+    strength === "isolada"
+      ? "- Confirmação isolada: um só ponto de vista (código, página ou dados) decidiu; nenhum teste independente concorda."
+      : strength === "corroborada"
+        ? "- Confirmação corroborada: testes independentes concordam."
+        : "",
     `- Existência do problema: ${LEVEL_WORD[v.existencia]}`,
     `- Implementação: ${LEVEL_WORD[v.implementacao]}`,
     `- Relevância: ${RELEVANCE_WORD[v.relevancia]}`,

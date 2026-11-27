@@ -7,7 +7,12 @@ import { parseJson, text } from "../opportunities.ts";
 import type { Llm, LlmUsage } from "../ports.ts";
 import type { UxHypothesis } from "../types.ts";
 import { VERIFY_MODEL } from "./plan.ts";
-import type { CheckOutcome, CheckRun, Verdict } from "./types.ts";
+import type {
+  CheckOutcome,
+  CheckRun,
+  ConfirmationStrength,
+  Verdict,
+} from "./types.ts";
 
 export interface RewriteDraft {
   title: string;
@@ -27,9 +32,31 @@ export interface JudgeResult {
   novas_linhas?: string[];
 }
 
-/** Confirmed: confidence = min(CONFIRM_CEILING, confidence + CONFIRM_BOOST). */
-export const CONFIRM_BOOST = 0.2;
-export const CONFIRM_CEILING = 0.9;
+/** Confirmed: confidence = min(CONFIRM_CEILING, confidence + the strength's boost). */
+const CONFIRM_BOOST: Record<ConfirmationStrength, number> = {
+  corroborada: 0.2,
+  isolada: 0.1,
+};
+const CONFIRM_CEILING = 0.9;
+
+/** Where a check looked from: the code is one place; the page and the data count once per screen. */
+const vantage = (r: CheckRun) =>
+  r.check.stage === "repo" ? "repo" : `${r.check.stage}:${r.check.device}`;
+
+/** How independent the confirming checks that count are. */
+export function confirmationStrength(runs: CheckRun[]): ConfirmationStrength {
+  const points = new Set(
+    runs
+      .filter((r) => r.outcome === "confirma" && r.measures_cause !== false)
+      .map(vantage),
+  );
+  return points.size >= 2 ? "corroborada" : "isolada";
+}
+
+export const confirmedConfidence = (
+  base: number,
+  strength: ConfirmationStrength,
+) => Math.min(CONFIRM_CEILING, base + CONFIRM_BOOST[strength]);
 
 const JUDGED: readonly string[] = ["confirma", "desmente", "nao_decidiu"];
 const REWRITE_FIELDS = [

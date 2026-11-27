@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { CheckOutcome, CheckRun } from "./types.ts";
-import { JUDGE_SYSTEM, parseJudgment, scrollForPrompt } from "./verdict.ts";
+import {
+  confirmationStrength,
+  confirmedConfidence,
+  JUDGE_SYSTEM,
+  parseJudgment,
+  scrollForPrompt,
+} from "./verdict.ts";
 
 function run(
   id: string,
@@ -410,5 +416,48 @@ describe("measures_cause and novas_linhas", () => {
       false,
     );
     expect(out.novas_linhas).toBeUndefined();
+  });
+});
+
+describe("confirmationStrength", () => {
+  const at = (
+    id: string,
+    stage: "live" | "repo" | "data",
+    device: "mobile" | "desktop" = "mobile",
+    outcome: CheckOutcome = "confirma",
+  ): CheckRun => {
+    const r = run(id, outcome);
+    return { ...r, check: { ...r.check, stage, device } };
+  };
+
+  test("the code and the page agreeing is corroborated", () => {
+    expect(confirmationStrength([at("c1", "repo"), at("c2", "live")])).toBe(
+      "corroborada",
+    );
+  });
+
+  test("the same page on both screens is corroborated; two checks on one screen are not", () => {
+    expect(
+      confirmationStrength([at("c1", "live"), at("c2", "live", "desktop")]),
+    ).toBe("corroborada");
+    expect(confirmationStrength([at("c1", "live"), at("c2", "live")])).toBe(
+      "isolada",
+    );
+  });
+
+  test("a check off the cause or undecided does not corroborate", () => {
+    expect(
+      confirmationStrength([
+        at("c1", "repo"),
+        { ...at("c2", "live"), measures_cause: false },
+        at("c3", "data", "mobile", "nao_decidiu"),
+      ]),
+    ).toBe("isolada");
+  });
+
+  test("the boost follows the strength and stops at 0.9", () => {
+    expect(confirmedConfidence(0.5, "corroborada")).toBeCloseTo(0.7);
+    expect(confirmedConfidence(0.5, "isolada")).toBeCloseTo(0.6);
+    expect(confirmedConfidence(0.85, "corroborada")).toBeCloseTo(0.9);
   });
 });

@@ -101,7 +101,7 @@ describe("parseRepoAnswer", () => {
     expect(r.run.outcome).toBe("nao_decidiu");
   });
   test("a file present confirms and keeps the reference", () => {
-    const ref = "src/sections/Product/ProductDetails.tsx:88";
+    const ref = "src/sections/Product/ProductDetails.tsx:1";
     const r = parseRepoAnswer(
       ans({ outcome: "confirma", observed: "o", source_ref: ref }),
       snap,
@@ -110,6 +110,20 @@ describe("parseRepoAnswer", () => {
     );
     expect(r.run.outcome).toBe("confirma");
     expect(r.run.source_ref).toBe(ref);
+  });
+  test("a line the file read does not have does not decide", () => {
+    const r = parseRepoAnswer(
+      ans({
+        outcome: "confirma",
+        observed: "o",
+        source_ref: "src/sections/Product/ProductDetails.tsx:9999",
+      }),
+      snap,
+      check,
+      ctx,
+    );
+    expect(r.run.outcome).toBe("nao_decidiu");
+    expect(r.run.observed).toContain("linha 9999");
   });
   test("a valid followup becomes a live test; an invalid one is dropped", () => {
     const base = { outcome: "nao_decidiu", observed: "o" };
@@ -514,7 +528,7 @@ describe("runRepoCheck, files requested on demand", () => {
         {
           outcome: "confirma",
           observed: "o popup fecha sozinho",
-          source_ref: "components/ClosedPopup.tsx:12",
+          source_ref: "components/ClosedPopup.tsx:1",
         },
       ],
       async (prompts, llm) => {
@@ -533,7 +547,7 @@ describe("runRepoCheck, files requested on demand", () => {
     );
     expect(reads).toEqual(["components/ClosedPopup.tsx"]);
     expect(r.run.outcome).toBe("confirma");
-    expect(r.run.source_ref).toBe("components/ClosedPopup.tsx:12");
+    expect(r.run.source_ref).toBe("components/ClosedPopup.tsx:1");
   });
 
   test("a request with .., an absolute path or an unlisted extension is ignored", async () => {
@@ -1005,7 +1019,7 @@ describe("code test prompt with the page block", () => {
       JSON.stringify({
         outcome: "confirma",
         observed: "a vitrine é a 5ª seção",
-        source_ref: ".deco/blocks/pages-productpage-1.json:12",
+        source_ref: ".deco/blocks/pages-productpage-1.json:1",
       }),
       withBlock,
       check,
@@ -1338,7 +1352,7 @@ describe("need_files without an extension", () => {
         {
           outcome: "confirma",
           observed: "abre no primeiro gesto",
-          source_ref: "components/newsletter-popup/ButtonClosePopup.tsx:10",
+          source_ref: "components/newsletter-popup/ButtonClosePopup.tsx:1",
         },
       ],
       async (prompts, llm) => {
