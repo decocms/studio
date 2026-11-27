@@ -45,20 +45,30 @@ import {
 import { emitOrderMonitorEvaluated } from "./order-events";
 import {
   CALIBRATION_WINDOW_DAYS,
+  closeAtTick,
   type ForecastJob,
   forecastJobs,
   forecastStore,
   forecastWorkflowId,
   localDateBefore,
+  type SweptDay,
   type SweptStore,
   type TimestralService,
 } from "./order-forecast";
 import { type HourlyDay, loadHourlyHistory, loadStoreDay } from "./order-lake";
-import { evaluateStore, RULES, type Rule, type Verdict } from "./order-rules";
+import {
+  baselineClose,
+  evaluateStore,
+  RULES,
+  type Rule,
+  type Verdict,
+} from "./order-rules";
 
 // Off the every-5-minutes sweeps (Jira trigger, board transitions). Listed,
 // not `3-59/5`: DBOS's parser keeps only the values divisible by the step.
 const ORDER_MONITOR_CRONTAB = "3,8,13,18,23,28,33,38,43,48,53,58 * * * *";
+
+const sum = (xs: readonly number[]) => xs.reduce((s, v) => s + v, 0);
 
 /** Each store costs four lake queries; this many stores are read at once. */
 const STORES_PER_BATCH = 20;
@@ -203,15 +213,26 @@ async function evaluateOneStore(
       );
       return { connectionId };
     }
-    const read = {
-      timezone: day.timezone,
-      done: day.done,
-      backfill: day.backfill?.days ?? [],
-    };
     const verdicts = evaluateStore(
       day,
       await loadThresholds(new AlertStorage(requireDb()), organizationId),
     );
+    const today = day.days[0];
+    const inHour = Math.floor(day.done / 4) * 4;
+    const read: SweptDay = {
+      timezone: day.timezone,
+      done: day.done,
+      backfill: day.backfill?.days ?? [],
+      soFar: {
+        orders: sum(today.placed.slice(0, day.done)),
+        revenue: sum(today.revenue.slice(0, day.done)),
+      },
+      inHour: {
+        orders: sum(today.placed.slice(inHour, day.done)),
+        revenue: sum(today.revenue.slice(inHour, day.done)),
+      },
+      baselineClose: baselineClose(day, verdicts),
+    };
 
     const written = await writeStates(
       requireDb(),
@@ -283,8 +304,9 @@ export async function planForecasts(
 }
 
 /**
- * Runs the model for one job and stores what it answers, with the past days
- * it backfilled; nothing when it doesn't answer. Never throws.
+ * Runs the model for one job and records the run, answered or not, with the
+ * past days it backfilled; then sets the close of the store's finished days
+ * from the history it read. Never throws.
  */
 export async function forecastOneStore(
   db: Kysely<Database>,
@@ -293,49 +315,66 @@ export async function forecastOneStore(
   loadHistory: () => Promise<HourlyDay[]>,
 ): Promise<void> {
   const storage = new OrderMonitorStorage(db);
-  const model = await forecastStore(service, job, loadHistory, (dates) =>
-    storage.predictedRests(
-      job.organizationId,
-      job.connectionId,
-      job.hour,
-      dates,
-    ),
+  const { organizationId, connectionId, hour } = job;
+  const run = await forecastStore(service, job, loadHistory, (dates) =>
+    storage.predictedRests(organizationId, connectionId, hour, dates),
   );
-  if (!model) return;
   const computedAt = new Date();
+  const model = run.model;
   try {
-    const { hour, orders, revenue, rest, ratios, backfill } = model;
-    await storage.upsertForecast(
-      job.organizationId,
-      job.connectionId,
-      job.date,
-      {
-        hour,
-        orders,
-        revenue,
-        rest,
-        ratios,
-        computedAt,
+    await storage.recordForecast(organizationId, connectionId, job.date, {
+      hour,
+      source: "live",
+      status: run.status,
+      error: run.error,
+      latencyMs: run.latencyMs,
+      seriesSent: run.seriesSent,
+      backfilledDays: model?.backfill.length ?? 0,
+      forecast: model && {
+        orders: model.orders,
+        revenue: model.revenue,
+        rest: model.rest,
+        ratios: model.ratios,
       },
-    );
+      soFar: job.soFar,
+      ...(model ? closeAtTick(job, model) : {}),
+      baselineClose: job.baselineClose,
+      computedAt,
+    });
     await storage.insertMissingForecasts(
-      job.organizationId,
-      job.connectionId,
-      backfill.map((b) => ({
+      organizationId,
+      connectionId,
+      (model?.backfill ?? []).map((b) => ({
         localDate: localDateBefore(job.date, b.daysAgo),
-        forecast: {
+        record: {
           hour,
-          orders: b.orders,
-          revenue: b.revenue,
-          rest: b.rest,
-          ratios: [],
+          source: "backfill",
+          status: "ok",
+          forecast: {
+            orders: b.orders,
+            revenue: b.revenue,
+            rest: b.rest,
+            ratios: [],
+          },
           computedAt,
         },
       })),
     );
+    if (run.days) {
+      for (const date of await storage.datesWithoutActuals(
+        organizationId,
+        connectionId,
+        job.date,
+      )) {
+        const day =
+          run.days[(Date.parse(job.date) - Date.parse(date)) / 86_400_000];
+        if (day)
+          await storage.setActuals(organizationId, connectionId, date, day);
+      }
+    }
   } catch (err) {
     console.warn("[order-monitor] forecast write failed", {
-      connectionId: job.connectionId,
+      connectionId,
       error: err instanceof Error ? err.message : String(err),
     });
   }

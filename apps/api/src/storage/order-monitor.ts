@@ -44,23 +44,85 @@ export interface StoredOrderForecast extends z.infer<typeof ForecastRowSchema> {
   computedAt: Date;
 }
 
-const forecastRow = (
+type Pair = { orders: number; revenue: number };
+
+/** One forecast run's row: the forecast when it answered, and how the run went. */
+export interface ForecastRecord {
+  hour: number;
+  source: "live" | "backfill";
+  status: "ok" | "failed" | "timeout";
+  error?: string | null;
+  latencyMs?: number | null;
+  seriesSent?: number;
+  backfilledDays?: number;
+  forecast?: Omit<StoredOrderForecast, "hour" | "computedAt"> | null;
+  /** As of the sweep tick that asked for a live forecast. */
+  soFar?: Pair | null;
+  predClose?: Pair | null;
+  band?: { lo: Pair; hi: Pair } | null;
+  baselineClose?: Pair | null;
+  computedAt: Date;
+}
+
+const recordRow = (
   organizationId: string,
   connectionId: string,
   localDate: string,
-  forecast: StoredOrderForecast,
+  r: ForecastRecord,
 ) => ({
   organization_id: organizationId,
   connection_id: connectionId,
   local_date: localDate,
-  hour: forecast.hour,
-  orders: JSON.stringify(forecast.orders),
-  revenue: JSON.stringify(forecast.revenue),
-  orders_rest: forecast.rest.orders,
-  revenue_rest: forecast.rest.revenue,
-  ratios: JSON.stringify(forecast.ratios),
-  computed_at: forecast.computedAt,
+  hour: r.hour,
+  source: r.source,
+  status: r.status,
+  error: r.error ?? null,
+  latency_ms: r.latencyMs ?? null,
+  series_sent: r.seriesSent ?? 0,
+  backfilled_days: r.backfilledDays ?? 0,
+  orders: r.forecast ? JSON.stringify(r.forecast.orders) : null,
+  revenue: r.forecast ? JSON.stringify(r.forecast.revenue) : null,
+  orders_rest: r.forecast?.rest.orders ?? null,
+  revenue_rest: r.forecast?.rest.revenue ?? null,
+  ratios: r.forecast ? JSON.stringify(r.forecast.ratios) : null,
+  so_far_orders: r.soFar?.orders ?? null,
+  so_far_revenue: r.soFar?.revenue ?? null,
+  pred_close_orders: r.predClose?.orders ?? null,
+  pred_close_revenue: r.predClose?.revenue ?? null,
+  band_lo_orders: r.band?.lo.orders ?? null,
+  band_hi_orders: r.band?.hi.orders ?? null,
+  band_lo_revenue: r.band?.lo.revenue ?? null,
+  band_hi_revenue: r.band?.hi.revenue ?? null,
+  baseline_close_orders: r.baselineClose?.orders ?? null,
+  baseline_close_revenue: r.baselineClose?.revenue ?? null,
+  computed_at: r.computedAt,
 });
+
+/** Every column a re-run of the same store hour replaces. */
+const RERUN_COLUMNS = [
+  "source",
+  "status",
+  "error",
+  "latency_ms",
+  "series_sent",
+  "backfilled_days",
+  "orders",
+  "revenue",
+  "orders_rest",
+  "revenue_rest",
+  "ratios",
+  "so_far_orders",
+  "so_far_revenue",
+  "pred_close_orders",
+  "pred_close_revenue",
+  "band_lo_orders",
+  "band_hi_orders",
+  "band_lo_revenue",
+  "band_hi_revenue",
+  "baseline_close_orders",
+  "baseline_close_revenue",
+  "computed_at",
+] as const;
 
 /**
  * Order-monitor verdicts (migration 255) and model forecasts (migration 275).
@@ -203,43 +265,40 @@ export class OrderMonitorStorage {
       .execute();
   }
 
-  /** Writes the store's forecast for `localDate`, replacing one of the same hour. */
-  async upsertForecast(
+  /** Writes the run for the store's `localDate` and hour, replacing an earlier run of it. */
+  async recordForecast(
     organizationId: string,
     connectionId: string,
     localDate: string,
-    forecast: StoredOrderForecast,
+    record: ForecastRecord,
   ): Promise<void> {
     await this.db
       .insertInto("order_monitor_forecasts")
-      .values(forecastRow(organizationId, connectionId, localDate, forecast))
+      .values(recordRow(organizationId, connectionId, localDate, record))
       .onConflict((oc) =>
         oc
           .columns(["organization_id", "connection_id", "local_date", "hour"])
-          .doUpdateSet({
-            orders: (eb) => eb.ref("excluded.orders"),
-            revenue: (eb) => eb.ref("excluded.revenue"),
-            orders_rest: (eb) => eb.ref("excluded.orders_rest"),
-            revenue_rest: (eb) => eb.ref("excluded.revenue_rest"),
-            ratios: (eb) => eb.ref("excluded.ratios"),
-            computed_at: (eb) => eb.ref("excluded.computed_at"),
-          }),
+          .doUpdateSet((eb) =>
+            Object.fromEntries(
+              RERUN_COLUMNS.map((c) => [c, eb.ref(`excluded.${c}`)]),
+            ),
+          ),
       )
       .execute();
   }
 
-  /** Writes forecasts for past local dates, leaving any already stored for the same hour. */
+  /** Writes rows for past local dates, leaving any row already there for the same hour. */
   async insertMissingForecasts(
     organizationId: string,
     connectionId: string,
-    rows: { localDate: string; forecast: StoredOrderForecast }[],
+    rows: { localDate: string; record: ForecastRecord }[],
   ): Promise<void> {
     if (rows.length === 0) return;
     await this.db
       .insertInto("order_monitor_forecasts")
       .values(
         rows.map((r) =>
-          forecastRow(organizationId, connectionId, r.localDate, r.forecast),
+          recordRow(organizationId, connectionId, r.localDate, r.record),
         ),
       )
       .onConflict((oc) =>
@@ -250,17 +309,20 @@ export class OrderMonitorStorage {
       .execute();
   }
 
-  /** The predicted rest of day stored for the store's `hour` on each of `localDates` that has one. */
+  /**
+   * The predicted rest of day stored for the store's `hour` on each of
+   * `localDates` that has a row: null when that run didn't answer.
+   */
   async predictedRests(
     organizationId: string,
     connectionId: string,
     hour: number,
     localDates: string[],
-  ): Promise<Map<string, StoredOrderForecast["rest"]>> {
+  ): Promise<Map<string, StoredOrderForecast["rest"] | null>> {
     if (localDates.length === 0) return new Map();
     const rows = await this.db
       .selectFrom("order_monitor_forecasts")
-      .select(["local_date", "orders_rest", "revenue_rest"])
+      .select(["local_date", "status", "orders_rest", "revenue_rest"])
       .where("organization_id", "=", organizationId)
       .where("connection_id", "=", connectionId)
       .where("local_date", "in", localDates)
@@ -269,12 +331,14 @@ export class OrderMonitorStorage {
     return new Map(
       rows.map((r) => [
         r.local_date,
-        { orders: r.orders_rest, revenue: r.revenue_rest },
+        r.status === "ok" && r.orders_rest !== null && r.revenue_rest !== null
+          ? { orders: r.orders_rest, revenue: r.revenue_rest }
+          : null,
       ]),
     );
   }
 
-  /** The store's forecast from the latest hour of its local day; null when there is none or it doesn't parse. */
+  /** The store's answered forecast from the latest hour of its local day; null when there is none or it doesn't parse. */
   async latestForecast(
     organizationId: string,
     connectionId: string,
@@ -294,6 +358,7 @@ export class OrderMonitorStorage {
       .where("organization_id", "=", organizationId)
       .where("connection_id", "=", connectionId)
       .where("local_date", "=", localDate)
+      .where("status", "=", "ok")
       .orderBy("hour", "desc")
       .limit(1)
       .executeTakeFirst();
@@ -306,6 +371,45 @@ export class OrderMonitorStorage {
     return row && parsed.success
       ? { ...parsed.data, computedAt: row.computed_at }
       : null;
+  }
+
+  /** The store's local dates before `localDate` that have rows without the day's close yet. */
+  async datesWithoutActuals(
+    organizationId: string,
+    connectionId: string,
+    localDate: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("order_monitor_forecasts")
+      .select("local_date")
+      .distinct()
+      .where("organization_id", "=", organizationId)
+      .where("connection_id", "=", connectionId)
+      .where("local_date", "<", localDate)
+      .where("actual_close_orders", "is", null)
+      .execute();
+    return rows.map((r) => r.local_date);
+  }
+
+  /** Sets the day's close on the store's rows of `localDate` that don't have one yet. */
+  async setActuals(
+    organizationId: string,
+    connectionId: string,
+    localDate: string,
+    actual: { orders: number; revenue: number; outage: boolean },
+  ): Promise<void> {
+    await this.db
+      .updateTable("order_monitor_forecasts")
+      .set({
+        actual_close_orders: actual.orders,
+        actual_close_revenue: actual.revenue,
+        actual_is_outage: actual.outage,
+      })
+      .where("organization_id", "=", organizationId)
+      .where("connection_id", "=", connectionId)
+      .where("local_date", "=", localDate)
+      .where("actual_close_orders", "is", null)
+      .execute();
   }
 
   /** Deletes the orgs' forecasts for local dates before `localDate` (YYYY-MM-DD). */

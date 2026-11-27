@@ -306,6 +306,15 @@ function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
   };
 }
 
+/** The baseline projection's close, as the day view shows it; null without reference days. */
+export function baselineClose(
+  day: StoreDay,
+  verdicts: Record<Rule, Verdict>,
+): { orders: number; revenue: number } | null {
+  const close = projection(day, verdicts.orders_drop.level)?.close;
+  return close ? { orders: close.orders, revenue: close.revenue } : null;
+}
+
 /** Day `d` up to the same time of day as day 0; null when the lake has no order of it. */
 function salesSoFar(day: StoreDay, d: DayAgo): OrderMonitorSales | null {
   const s = day.days[d];

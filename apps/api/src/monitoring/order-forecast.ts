@@ -54,20 +54,34 @@ export interface TimestralService {
 }
 
 /** The service failed or timed out, as opposed to the lake or the history. */
-class ForecastServiceError extends Error {}
+class ForecastServiceError extends Error {
+  constructor(
+    message: string,
+    readonly call: { latencyMs: number; seriesSent: number; timeout: boolean },
+  ) {
+    super(message);
+  }
+}
+
+/** The paths' quantiles the UI's outer band spans, for the close's band. */
+const BAND = [0.1, 0.9] as const;
+const ERROR_CHARS = 200;
 
 type PredictedRest = StoredOrderForecast["rest"];
 
 /**
  * The model's median for the clock hours from `hour` on and its total, each
  * calibration day's actual ÷ forecast rest of day, and the past days this run
- * forecast for want of a stored forecast at `hour`.
+ * forecast for want of a stored forecast at `hour`, with the service call's
+ * latency and batch size.
  */
 export interface ModelForecast {
   hour: number;
   orders: number[];
   revenue: number[];
   rest: PredictedRest;
+  latencyMs: number;
+  seriesSent: number;
   ratios: { daysAgo: number; orders: number; revenue: number }[];
   backfill: {
     daysAgo: number;
@@ -180,17 +194,28 @@ const ForecastResponseSchema = z.object({
   quantiles: z.object({ "0.5": z.array(z.array(z.number())) }),
 });
 
-/** The model's median per series; throws a ForecastServiceError on a timeout, a non-200 or a body of another shape. */
+/**
+ * The model's median per series and how long the call took; throws a
+ * ForecastServiceError on a timeout, a non-200 or a body of another shape.
+ */
 export async function requestForecast(
   service: TimestralService,
   series: Hours[],
   horizon: number,
-): Promise<number[][]> {
+): Promise<{ median: number[][]; latencyMs: number }> {
+  const start = performance.now();
+  const latencyMs = () => Math.round(performance.now() - start);
   try {
-    return await callService(service, series, horizon);
+    const median = await callService(service, series, horizon);
+    return { median, latencyMs: latencyMs() };
   } catch (err) {
     throw new ForecastServiceError(
       err instanceof Error ? err.message : String(err),
+      {
+        latencyMs: latencyMs(),
+        seriesSent: series.length,
+        timeout: err instanceof Error && err.name === "TimeoutError",
+      },
     );
   }
 }
@@ -223,16 +248,17 @@ async function callService(
 }
 
 /**
- * Forecasts today and the calibration days `stored` has no forecast for
+ * Forecasts today and the calibration days `stored` has no row for
  * (BACKFILL_DAYS_PER_RUN at most), and rates each calibration day's actual
  * rest of day against its stored or backfilled forecast; a day forecast at 0,
- * or past the backfill cap, gets no ratio.
+ * whose stored run didn't answer (null), or past the backfill cap gets no
+ * ratio.
  */
 export async function runModel(
   service: TimestralService,
   days: (HourlyDay | null)[],
   hour: number,
-  stored: (daysAgo: number[]) => Promise<Map<number, PredictedRest>>,
+  stored: (daysAgo: number[]) => Promise<Map<number, PredictedRest | null>>,
 ): Promise<ModelForecast> {
   const calibration = calibrationDays(days, hour);
   if (calibration.length === 0) throw new Error("no history to forecast from");
@@ -242,7 +268,7 @@ export async function runModel(
     .filter((d) => !known.has(d))
     .slice(0, BACKFILL_DAYS_PER_RUN);
   const { series, horizon } = buildRequest(days, hour, [0, ...missing]);
-  const median = await requestForecast(service, series, horizon);
+  const { median, latencyMs } = await requestForecast(service, series, horizon);
   const rest = (i: number): PredictedRest => ({
     orders: sum(median[i]!.map((v) => Math.max(0, v))),
     revenue: sum(median[i + 1]!.map((v) => Math.max(0, v))),
@@ -260,6 +286,8 @@ export async function runModel(
     orders: median[0]!,
     revenue: median[1]!,
     rest: rest(0),
+    latencyMs,
+    seriesSent: series.length,
     ratios: calibration.flatMap(({ daysAgo, actual }) => {
       const p = predicted.get(daysAgo);
       return p && p.orders > 0 && p.revenue > 0
@@ -371,13 +399,23 @@ export interface ForecastJob {
   hour: number;
   /** Days back from `date` the ingest's history backfill still holds. */
   backfill: number[];
+  /** As of the tick: the day so far, the part of it in the hour under way, and the baseline projection's close. */
+  soFar: PredictedRest;
+  inHour: PredictedRest;
+  baselineClose: PredictedRest | null;
 }
+
+/** What the sweep read of a store's day for its forecast. */
+export type SweptDay = Pick<
+  ForecastJob,
+  "timezone" | "backfill" | "soFar" | "inHour" | "baselineClose"
+> & { done: number };
 
 /** A store the sweep read, with what it read of the day; no `day` when the read failed. */
 export interface SweptStore {
   organizationId: string;
   connectionId: string;
-  day?: { timezone: string; done: number; backfill: number[] };
+  day?: SweptDay;
 }
 
 /** The forecasts due at `at`: one per store whose day the sweep read. */
@@ -396,6 +434,9 @@ export function forecastJobs(
             date: at.toLocaleDateString("en-CA", { timeZone: day.timezone }),
             hour: Math.floor(day.done / 4),
             backfill: day.backfill,
+            soFar: day.soFar,
+            inHour: day.inHour,
+            baselineClose: day.baselineClose,
           },
         ]
       : [],
@@ -410,39 +451,120 @@ export const forecastWorkflowId = (job: ForecastJob) =>
 const cooldowns = new Map<string, number>();
 const coolingDown = (url: string) => (cooldowns.get(url) ?? 0) > Date.now();
 
+/** Linear-interpolated quantile, as the UI's bands take it; `xs` is not empty. */
+function quantile(xs: number[], q: number): number {
+  const s = [...xs].sort((a, b) => a - b);
+  const i = (s.length - 1) * q;
+  const lo = Math.floor(i);
+  return s[lo]! + (s[Math.ceil(i)]! - s[lo]!) * (i - lo);
+}
+
 /**
- * The model's forecast for the job, calibrated on the forecasts
- * `loadPredicted` has stored for the job's hour by local date; null when it is
- * late, the service is cooling down, or anything fails. Never throws.
+ * The close the day view projects from this forecast at the job's tick, and
+ * the band its calibration paths span there (the UI's outer band, 10%–90%);
+ * no band without a ratio.
+ */
+export function closeAtTick(job: ForecastJob, model: ModelForecast) {
+  const close = (forecast: number[], m: keyof PredictedRest) =>
+    job.soFar[m] +
+    sum(forecast.map((v, i) => Math.max(0, v - (i === 0 ? job.inHour[m] : 0))));
+  const predClose = {
+    orders: close(model.orders, "orders"),
+    revenue: close(model.revenue, "revenue"),
+  };
+  const at = (q: number) => ({
+    orders:
+      job.soFar.orders +
+      (predClose.orders - job.soFar.orders) *
+        quantile(
+          model.ratios.map((r) => r.orders),
+          q,
+        ),
+    revenue:
+      job.soFar.revenue +
+      (predClose.revenue - job.soFar.revenue) *
+        quantile(
+          model.ratios.map((r) => r.revenue),
+          q,
+        ),
+  });
+  return {
+    predClose,
+    band: model.ratios.length > 0 ? { lo: at(BAND[0]), hi: at(BAND[1]) } : null,
+  };
+}
+
+/** One job's run: the model's forecast when it answered, and the lake's days when it was read. */
+export interface ForecastRun {
+  status: "ok" | "failed" | "timeout";
+  error: string | null;
+  latencyMs: number | null;
+  seriesSent: number;
+  model: ModelForecast | null;
+  /** Per day back, its total and whether the history's cleaning dropped it as an outage. */
+  days: { orders: number; revenue: number; outage: boolean }[] | null;
+}
+
+const failedRun = (
+  error: string,
+  days: ForecastRun["days"] = null,
+  call?: ForecastServiceError["call"],
+): ForecastRun => ({
+  status: call?.timeout ? "timeout" : "failed",
+  error: error.slice(0, ERROR_CHARS),
+  latencyMs: call?.latencyMs ?? null,
+  seriesSent: call?.seriesSent ?? 0,
+  model: null,
+  days,
+});
+
+/**
+ * Runs the model for the job, calibrated on the forecasts `loadPredicted`
+ * has stored for the job's hour by local date. A late job, a service cooling
+ * down or any failure answers a failed run. Never throws.
  */
 export async function forecastStore(
   service: TimestralService,
   job: ForecastJob,
   loadHistory: () => Promise<HourlyDay[]>,
-  loadPredicted: (dates: string[]) => Promise<Map<string, PredictedRest>>,
-): Promise<ModelForecast | null> {
-  if (
-    Date.now() - Date.parse(job.at) > MAX_LAG_MS ||
-    coolingDown(service.url)
-  ) {
-    return null;
+  loadPredicted: (
+    dates: string[],
+  ) => Promise<Map<string, PredictedRest | null>>,
+): Promise<ForecastRun> {
+  if (Date.now() - Date.parse(job.at) > MAX_LAG_MS) {
+    return failedRun("over an hour late; the next hour's forecast took over");
   }
+  if (coolingDown(service.url)) {
+    return failedRun("service cooling down after a failure");
+  }
+  let days: ForecastRun["days"] = null;
   try {
-    return await runModel(
-      service,
-      cleanHistory(await loadHistory(), job.backfill),
-      job.hour,
-      async (daysAgo) => {
-        const dates = daysAgo.map((d) => localDateBefore(job.date, d));
-        const byDate = await loadPredicted(dates);
-        return new Map(
-          daysAgo.flatMap((d, i) => {
-            const p = byDate.get(dates[i]!);
-            return p ? [[d, p] as const] : [];
-          }),
-        );
-      },
-    );
+    const history = await loadHistory();
+    const kept = cleanHistory(history, job.backfill);
+    days = history.map((d, i) => ({
+      orders: sum(d.orders),
+      revenue: sum(d.revenue),
+      outage: !kept[i],
+    }));
+    const model = await runModel(service, kept, job.hour, async (daysAgo) => {
+      const dates = daysAgo.map((d) => localDateBefore(job.date, d));
+      const byDate = await loadPredicted(dates);
+      return new Map(
+        daysAgo.flatMap((d, i) =>
+          byDate.has(dates[i]!)
+            ? [[d, byDate.get(dates[i]!) ?? null] as const]
+            : [],
+        ),
+      );
+    });
+    return {
+      status: "ok",
+      error: null,
+      latencyMs: model.latencyMs,
+      seriesSent: model.seriesSent,
+      model,
+      days,
+    };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     if (!(err instanceof ForecastServiceError)) {
@@ -450,7 +572,9 @@ export async function forecastStore(
         connectionId: job.connectionId,
         error,
       });
-    } else if (!coolingDown(service.url)) {
+      return failedRun(error, days);
+    }
+    if (!coolingDown(service.url)) {
       // Concurrent failures land here once: the first starts the cooldown.
       const ms = service.cooldownMs ?? COOLDOWN_MS;
       cooldowns.set(service.url, Date.now() + ms);
@@ -459,6 +583,6 @@ export async function forecastStore(
         { connectionId: job.connectionId, error },
       );
     }
-    return null;
+    return failedRun(error, days, err.call);
   }
 }

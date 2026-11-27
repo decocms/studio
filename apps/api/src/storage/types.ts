@@ -322,11 +322,34 @@ export interface OrderMonitorForecastTable {
   connection_id: string;
   local_date: string;
   hour: number;
-  orders: JsonArray<number>;
-  revenue: JsonArray<number>;
-  orders_rest: number;
-  revenue_rest: number;
-  ratios: JsonArray<{ daysAgo: number; orders: number; revenue: number }>;
+  source: "live" | "backfill";
+  status: "ok" | "failed" | "timeout";
+  error: string | null;
+  latency_ms: number | null;
+  series_sent: ColumnType<number, number | undefined, number>;
+  backfilled_days: ColumnType<number, number | undefined, number>;
+  orders: JsonArray<number> | null;
+  revenue: JsonArray<number> | null;
+  orders_rest: number | null;
+  revenue_rest: number | null;
+  ratios: JsonArray<{
+    daysAgo: number;
+    orders: number;
+    revenue: number;
+  }> | null;
+  so_far_orders: number | null;
+  so_far_revenue: number | null;
+  pred_close_orders: number | null;
+  pred_close_revenue: number | null;
+  band_lo_orders: number | null;
+  band_hi_orders: number | null;
+  band_lo_revenue: number | null;
+  band_hi_revenue: number | null;
+  baseline_close_orders: number | null;
+  baseline_close_revenue: number | null;
+  actual_close_orders: number | null;
+  actual_close_revenue: number | null;
+  actual_is_outage: boolean | null;
   computed_at: ColumnType<Date, Date, Date>;
 }
 

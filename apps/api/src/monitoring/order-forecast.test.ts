@@ -6,11 +6,13 @@ import {
   CONTEXT_DAYS,
   calibrationDays,
   cleanHistory,
+  closeAtTick,
   type ForecastJob,
   forecastJobs,
   forecastStore,
   forecastWorkflowId,
   localDateBefore,
+  type ModelForecast,
   requestForecast,
   runModel,
   toProjection,
@@ -292,7 +294,8 @@ describe("requestForecast", () => {
     mode = "ok";
     value = 2;
     const out = await requestForecast(service, [[1, null, 3]], 4);
-    expect(out).toEqual([[2, 2, 2, 2]]);
+    expect(out.median).toEqual([[2, 2, 2, 2]]);
+    expect(out.latencyMs).toBeGreaterThanOrEqual(0);
     expect(lastAuth).toBe("Bearer t0ken");
   });
 
@@ -425,6 +428,9 @@ describe("forecastStore", () => {
     date: at.toLocaleDateString("en-CA", { timeZone: "UTC" }),
     hour: 12,
     backfill: [],
+    soFar: { orders: 0, revenue: 0 },
+    inHour: { orders: 0, revenue: 0 },
+    baselineClose: null,
   });
   let loads = 0;
   const load = async () => {
@@ -436,19 +442,49 @@ describe("forecastStore", () => {
     warn.mock.calls.filter((c) =>
       String(c[0]).includes("forecast service failed"),
     ).length;
+  const failed = (error: string) => ({
+    status: "failed" as const,
+    error: expect.stringContaining(error),
+    latencyMs: null,
+    seriesSent: 0,
+    model: null,
+    days: null,
+  });
 
-  it("answers the model's forecast from the job's hour", async () => {
+  it("answers the model's forecast from the job's hour, with the call and the lake's days", async () => {
     mode = "ok";
     value = 3;
-    const model = await forecastStore(
+    const run = await forecastStore(
       serviceAt("store-ok"),
       job("a"),
       load,
       none,
     );
-    expect(model?.hour).toBe(12);
-    expect(model?.orders).toEqual(hours(3).slice(12));
-    expect(model?.ratios).toHaveLength(BACKFILL_DAYS_PER_RUN);
+    expect(run.status).toBe("ok");
+    expect(run.error).toBeNull();
+    expect(run.seriesSent).toBe(2 + 2 * BACKFILL_DAYS_PER_RUN);
+    expect(run.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(run.model?.hour).toBe(12);
+    expect(run.model?.orders).toEqual(hours(3).slice(12));
+    expect(run.model?.ratios).toHaveLength(BACKFILL_DAYS_PER_RUN);
+    expect(run.days).toHaveLength(HISTORY_DAYS + 1);
+    expect(run.days?.[1]).toEqual({
+      orders: 240,
+      revenue: 24_000,
+      outage: false,
+    });
+  });
+
+  it("flags the days the history's cleaning drops as outages", async () => {
+    mode = "ok";
+    const run = await forecastStore(
+      serviceAt("store-outage"),
+      job("a"),
+      async () => history((d) => (d === 3 ? hourly(1) : undefined)),
+      none,
+    );
+    expect(run.days?.[3]).toEqual({ orders: 24, revenue: 2400, outage: true });
+    expect(run.days?.[2]?.outage).toBe(false);
   });
 
   it("reads the stored forecasts by the calibration days' local dates", async () => {
@@ -456,36 +492,55 @@ describe("forecastStore", () => {
     value = 3;
     const j = { ...job("dates"), date: "2026-11-26" };
     let asked: string[] = [];
-    const model = await forecastStore(
+    const run = await forecastStore(
       serviceAt("store-dates"),
       j,
       load,
       async (dates) => {
         asked = dates;
-        return new Map([["2026-11-25", { orders: 40, revenue: 4000 }]]);
+        return new Map([
+          ["2026-11-25", { orders: 40, revenue: 4000 }],
+          // That day's live run failed: no ratio, and no backfill either.
+          ["2026-11-24", null],
+        ]);
       },
     );
     expect(asked).toHaveLength(28);
     expect(asked.slice(0, 2)).toEqual(["2026-11-25", "2026-11-24"]);
     expect(asked.at(-1)).toBe("2026-10-29");
-    expect(model?.ratios[0]).toEqual({ daysAgo: 1, orders: 3, revenue: 3 });
-    expect(model?.backfill.map((b) => b.daysAgo)[0]).toBe(2);
+    expect(run.model?.ratios[0]).toEqual({ daysAgo: 1, orders: 3, revenue: 3 });
+    expect(run.model?.ratios.some((r) => r.daysAgo === 2)).toBe(false);
+    expect(run.model?.backfill.map((b) => b.daysAgo)[0]).toBe(3);
   });
 
-  it("answers null, without throwing, when the service or the lake fails", async () => {
+  it("answers a failed run, without throwing, when the service or the lake fails", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
-      for (const failing of ["500", "malformed", "short", "slow"] as const) {
+      for (const failing of ["500", "malformed", "short"] as const) {
         mode = failing;
-        expect(
-          await forecastStore(
-            serviceAt(`store-${failing}`),
-            job("a"),
-            load,
-            none,
-          ),
-        ).toBeNull();
+        const run = await forecastStore(
+          serviceAt(`store-${failing}`),
+          job("a"),
+          load,
+          none,
+        );
+        expect(run.status).toBe("failed");
+        expect(run.model).toBeNull();
+        expect(run.error?.length).toBeLessThanOrEqual(200);
+        expect(run.seriesSent).toBe(2 + 2 * BACKFILL_DAYS_PER_RUN);
+        expect(run.latencyMs).toBeGreaterThanOrEqual(0);
+        // The lake was read: the finished days can still get their close.
+        expect(run.days).toHaveLength(HISTORY_DAYS + 1);
       }
+      mode = "slow";
+      const slow = await forecastStore(
+        serviceAt("store-slow"),
+        job("a"),
+        load,
+        none,
+      );
+      expect(slow.status).toBe("timeout");
+      expect(slow.latencyMs).toBeGreaterThanOrEqual(150);
       mode = "ok";
       expect(
         await forecastStore(
@@ -494,19 +549,19 @@ describe("forecastStore", () => {
           () => Promise.reject(new Error("lake down")),
           none,
         ),
-      ).toBeNull();
+      ).toEqual(failed("lake down"));
     } finally {
       warn.mockRestore();
     }
   });
 
-  it("skips a job whose tick is over an hour old, without the lake or the model", async () => {
+  it("fails a job whose tick is over an hour old, without the lake or the model", async () => {
     mode = "ok";
     const [hitsBefore, loadsBefore] = [hits, loads];
     const late = job("a", new Date(Date.now() - 61 * 60_000));
     expect(
       await forecastStore(serviceAt("store-late"), late, load, none),
-    ).toBeNull();
+    ).toEqual(failed("over an hour late"));
     expect([hits, loads]).toEqual([hitsBefore, loadsBefore]);
   });
 
@@ -515,23 +570,27 @@ describe("forecastStore", () => {
     try {
       const down = serviceAt("cooldown", 300);
       mode = "500";
-      expect(await forecastStore(down, job("a"), load, none)).toBeNull();
+      expect((await forecastStore(down, job("a"), load, none)).status).toBe(
+        "failed",
+      );
       mode = "ok";
       value = 3;
       const [hitsBefore, loadsBefore] = [hits, loads];
       // Another store, same service: nothing read, nothing called.
-      expect(await forecastStore(down, job("b"), load, none)).toBeNull();
+      expect(await forecastStore(down, job("b"), load, none)).toEqual(
+        failed("cooling down"),
+      );
       expect([hits, loads]).toEqual([hitsBefore, loadsBefore]);
       expect(serviceWarnings(warn)).toBe(1);
       // Another service URL isn't cooling down.
       expect(
         (await forecastStore(serviceAt("elsewhere"), job("b"), load, none))
-          ?.orders[0],
+          .model?.orders[0],
       ).toBe(3);
       await Bun.sleep(350);
-      expect((await forecastStore(down, job("c"), load, none))?.orders[0]).toBe(
-        3,
-      );
+      expect(
+        (await forecastStore(down, job("c"), load, none)).model?.orders[0],
+      ).toBe(3);
       expect(serviceWarnings(warn)).toBe(1);
     } finally {
       warn.mockRestore();
@@ -547,7 +606,11 @@ describe("forecastStore", () => {
       const out = await Promise.all(
         ["1", "2", "3"].map((id) => forecastStore(down, job(id), load, none)),
       );
-      expect(out).toEqual([null, null, null]);
+      expect(out.map((r) => r.status)).toEqual([
+        "timeout",
+        "timeout",
+        "timeout",
+      ]);
       expect(hits).toBe(before + 3);
       expect(serviceWarnings(warn)).toBe(1);
     } finally {
@@ -562,30 +625,81 @@ describe("forecastStore", () => {
       value = 5;
       const svc = serviceAt("lake-only", 60_000);
       expect(
-        await forecastStore(
-          svc,
-          job("x"),
-          () => Promise.reject(new Error("lake down")),
-          none,
-        ),
-      ).toBeNull();
+        (
+          await forecastStore(
+            svc,
+            job("x"),
+            () => Promise.reject(new Error("lake down")),
+            none,
+          )
+        ).status,
+      ).toBe("failed");
       expect(serviceWarnings(warn)).toBe(0);
-      expect((await forecastStore(svc, job("y"), load, none))?.orders[0]).toBe(
-        5,
-      );
+      expect(
+        (await forecastStore(svc, job("y"), load, none)).model?.orders[0],
+      ).toBe(5);
     } finally {
       warn.mockRestore();
     }
   });
 });
 
+describe("closeAtTick", () => {
+  const job: ForecastJob = {
+    organizationId: "org",
+    connectionId: "a",
+    timezone: "UTC",
+    at: "2026-11-26T10:30:00Z",
+    date: "2026-11-26",
+    hour: 10,
+    backfill: [],
+    soFar: { orders: 42, revenue: 4200 },
+    inHour: { orders: 2, revenue: 200 },
+    baselineClose: { orders: 100, revenue: 10_000 },
+  };
+  const model = (ratios: number[]): ModelForecast => ({
+    hour: 10,
+    orders: hours(5).slice(10),
+    revenue: hours(500).slice(10),
+    rest: { orders: 70, revenue: 7000 },
+    latencyMs: 1,
+    seriesSent: 2,
+    ratios: ratios.map((r, i) => ({ daysAgo: i + 1, orders: r, revenue: r })),
+    backfill: [],
+  });
+
+  it("projects the close the day view shows at the tick", () => {
+    // The hour under way: 5 forecast, 2 already in; then 13 hours of 5.
+    expect(closeAtTick(job, model([])).predClose).toEqual({
+      orders: 42 + 3 + 13 * 5,
+      revenue: 4200 + 300 + 13 * 500,
+    });
+  });
+
+  it("bands the close by the calibration ratios' 10% and 90% quantiles", () => {
+    const ratios = Array.from({ length: 11 }, (_, i) => 0.5 + i * 0.1);
+    const { band } = closeAtTick(job, model(ratios));
+    const rest = 3 + 13 * 5;
+    expect(band?.lo.orders).toBeCloseTo(42 + rest * 0.6);
+    expect(band?.hi.orders).toBeCloseTo(42 + rest * 1.4);
+    expect(band?.lo.revenue).toBeCloseTo(4200 + (300 + 13 * 500) * 0.6);
+    expect(closeAtTick(job, model([])).band).toBeNull();
+  });
+});
+
 describe("forecastJobs", () => {
   // 10:08 in São Paulo (UTC-3): hour 10 is under way, 40 buckets done.
   const at = new Date("2026-11-26T13:08:00Z");
+  const tick = {
+    soFar: { orders: 40, revenue: 4000 },
+    inHour: { orders: 0, revenue: 0 },
+    baselineClose: { orders: 96, revenue: 9600 },
+  };
   const read = {
     timezone: "America/Sao_Paulo",
     done: 40,
     backfill: [3],
+    ...tick,
   };
 
   it("asks for one forecast per store whose day the sweep read, in every org", () => {
@@ -595,7 +709,13 @@ describe("forecastJobs", () => {
         {
           organizationId: "y",
           connectionId: "b",
-          day: { timezone: "Europe/Lisbon", done: 52, backfill: [] },
+          day: {
+            timezone: "Europe/Lisbon",
+            done: 52,
+            backfill: [],
+            ...tick,
+            baselineClose: null,
+          },
         },
         // The sweep couldn't read this one's day.
         { organizationId: "x", connectionId: "c" },
@@ -611,6 +731,7 @@ describe("forecastJobs", () => {
         date: "2026-11-26",
         hour: 10,
         backfill: [3],
+        ...tick,
       },
       {
         organizationId: "y",
@@ -620,6 +741,8 @@ describe("forecastJobs", () => {
         date: "2026-11-26",
         hour: 13,
         backfill: [],
+        ...tick,
+        baselineClose: null,
       },
     ]);
   });

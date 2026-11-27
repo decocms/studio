@@ -180,7 +180,18 @@ describe("the sweep's model forecast", () => {
   };
   // 10:08 in São Paulo: hour 10 under way.
   const at = new Date("2026-11-26T13:08:00Z");
-  const read = { timezone: "America/Sao_Paulo", done: 40, backfill: [] };
+  // As of the tick: 40 orders in, 2 of them in hour 10.
+  const tickState = {
+    soFar: { orders: 40, revenue: 4000 },
+    inHour: { orders: 2, revenue: 200 },
+    baselineClose: { orders: 100, revenue: 10_000 },
+  };
+  const read = {
+    timezone: "America/Sao_Paulo",
+    done: 40,
+    backfill: [],
+    ...tickState,
+  };
   const swept = [
     {
       organizationId: on.organizationId,
@@ -250,6 +261,7 @@ describe("the sweep's model forecast", () => {
       date: "2026-11-26",
       hour: 10,
       backfill: [],
+      ...tickState,
     });
     expect(jobs).toEqual([due(on), due(other)]);
     setGlobalSettings(resolveConfig({}));
@@ -268,12 +280,13 @@ describe("the sweep's model forecast", () => {
     };
     // 2026-11-26 is the tick's date: 35 days back is 2026-10-22.
     for (const date of ["2026-10-20", "2026-10-22", "2026-11-23"]) {
-      await storage.upsertForecast(
-        on.organizationId,
-        on.connectionId,
-        date,
-        row,
-      );
+      await storage.recordForecast(on.organizationId, on.connectionId, date, {
+        hour: row.hour,
+        source: "live",
+        status: "ok",
+        forecast: row,
+        computedAt: row.computedAt,
+      });
     }
     await planForecasts(database.db, swept, at);
     const kept = await database.db
@@ -297,6 +310,7 @@ describe("the sweep's model forecast", () => {
     date: "2026-11-26",
     hour: 10,
     backfill: [],
+    ...tickState,
   });
 
   const storedAt10 = async () =>
@@ -373,7 +387,98 @@ describe("the sweep's model forecast", () => {
     expect(rows).toEqual([{ hour: 10, orders: new Array(14).fill(5) }]);
   });
 
-  test("a failed forecast writes nothing and leaves the verdicts alone", async () => {
+  test("records the tick's so-far, baseline, predicted close and band on the live row", async () => {
+    const row = await database.db
+      .selectFrom("order_monitor_forecasts")
+      .selectAll()
+      .where("organization_id", "=", on.organizationId)
+      .where("local_date", "=", "2026-11-26")
+      .where("hour", "=", 10)
+      .executeTakeFirstOrThrow();
+    // The last run: value 5 per hour; 2 of hour 10's 5 were in at the tick.
+    const close = 40 + 3 + 13 * 5;
+    expect(row).toMatchObject({
+      source: "live",
+      status: "ok",
+      error: null,
+      series_sent: 2,
+      backfilled_days: 0,
+      so_far_orders: 40,
+      so_far_revenue: 4000,
+      pred_close_orders: close,
+      pred_close_revenue: 4000 + 13 * 5,
+      baseline_close_orders: 100,
+      baseline_close_revenue: 10_000,
+    });
+    expect(row.latency_ms).toBeGreaterThanOrEqual(0);
+    // Ratios: 140 ÷ 56 for the first 14 days, 140 ÷ 70 for the rest.
+    expect(row.band_lo_orders).toBeCloseTo(40 + (close - 40) * 2);
+    expect(row.band_hi_orders).toBeCloseTo(40 + (close - 40) * 2.5);
+    const backfilled = await database.db
+      .selectFrom("order_monitor_forecasts")
+      .select(["source", "status", "latency_ms", "pred_close_orders"])
+      .where("organization_id", "=", on.organizationId)
+      .where("local_date", "=", "2026-11-25")
+      .executeTakeFirstOrThrow();
+    expect(backfilled).toEqual({
+      source: "backfill",
+      status: "ok",
+      latency_ms: null,
+      pred_close_orders: null,
+    });
+  });
+
+  test("sets the close of the store's finished days once, flagging outage days", async () => {
+    const closes = async (date: string) =>
+      await database.db
+        .selectFrom("order_monitor_forecasts")
+        .select(["actual_close_orders", "actual_is_outage"])
+        .where("organization_id", "=", on.organizationId)
+        .where("local_date", "=", date)
+        .where("hour", "=", 10)
+        .execute();
+    // Every finished day so far got its close: 24 × 10 orders.
+    expect(await closes("2026-11-25")).toEqual([
+      { actual_close_orders: 240, actual_is_outage: false },
+    ]);
+    expect(await closes("2026-10-29")).toEqual([
+      { actual_close_orders: 240, actual_is_outage: false },
+    ]);
+    // Today isn't finished.
+    expect(await closes("2026-11-26")).toEqual([
+      { actual_close_orders: null, actual_is_outage: null },
+    ]);
+    // The next day's first run closes today; day 1 there is an outage.
+    failing = false;
+    value = 4;
+    await forecastOneStore(
+      database.db,
+      service("ok"),
+      { ...job(), date: "2026-11-27", hour: 0 },
+      async () =>
+        history().map((d, i) =>
+          i === 1 ? { orders: d.orders.map(() => 1), revenue: d.revenue } : d,
+        ),
+    );
+    expect(await closes("2026-11-26")).toEqual([
+      { actual_close_orders: 24, actual_is_outage: true },
+    ]);
+    // Already set: a later run with other numbers leaves them.
+    await forecastOneStore(
+      database.db,
+      service("ok"),
+      { ...job(), date: "2026-11-27", hour: 1 },
+      async () => history(),
+    );
+    expect(await closes("2026-11-26")).toEqual([
+      { actual_close_orders: 24, actual_is_outage: true },
+    ]);
+    expect(await closes("2026-11-25")).toEqual([
+      { actual_close_orders: 240, actual_is_outage: false },
+    ]);
+  });
+
+  test("a failed forecast records its row, which the day view skips, and leaves the verdicts alone", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const verdicts = await writeStates(
@@ -393,6 +498,31 @@ describe("the sweep's model forecast", () => {
         async () => history(),
       );
       expect(calls).toBe(before + 1);
+      const failed = await database.db
+        .selectFrom("order_monitor_forecasts")
+        .select([
+          "status",
+          "error",
+          "series_sent",
+          "orders",
+          "so_far_orders",
+          "baseline_close_orders",
+          "pred_close_orders",
+        ])
+        .where("organization_id", "=", on.organizationId)
+        .where("local_date", "=", "2026-11-26")
+        .where("hour", "=", 11)
+        .executeTakeFirstOrThrow();
+      expect(failed).toEqual({
+        status: "failed",
+        error: "forecast service answered 500",
+        // Hour 11 has no stored forecasts yet: today plus a backfill batch.
+        series_sent: 2 + 2 * BACKFILL_DAYS_PER_RUN,
+        orders: null,
+        so_far_orders: 40,
+        baseline_close_orders: 100,
+        pred_close_orders: null,
+      });
       const latest = await storage.latestForecast(
         on.organizationId,
         on.connectionId,
