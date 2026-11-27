@@ -5,6 +5,7 @@ import {
   parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
+import { isPrivateUrl } from "../../mcp-clients/url-security";
 
 function fetchModelsWithRetry(
   baseUrl: string,
@@ -34,6 +35,11 @@ function parseCredential(raw: string): { baseUrl: string; apiKey: string } {
   // so it must end with /v1 for standard OpenAI-compatible servers.
   let url = parsed.baseUrl.replace(/\/+$/, "");
   if (!url.endsWith("/v1")) url += "/v1";
+  if (isPrivateUrl(url)) {
+    throw new Error(
+      "Invalid OpenAI-compatible credential: baseUrl targets a private network",
+    );
+  }
   return {
     baseUrl: url,
     apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
