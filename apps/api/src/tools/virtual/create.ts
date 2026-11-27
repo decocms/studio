@@ -23,12 +23,7 @@ import {
 } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 import { refuseBlocksV8MetadataWrite } from "./blocks-v8-switch";
-import { ensureManagedSiteFileConfig } from "../../file-storage/managed-site-config";
-import {
-  claimProjectSite,
-  decoSiteExists,
-  otherOrgNamingSlugFromDb,
-} from "../../hosted/claim-site";
+import { linkProjectSite } from "./link-project-site";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -166,43 +161,14 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     );
 
     // The site slug is set once, here (the import flow passes it): link it to
-    // the project in `org_sites`. A slug no org owns is claimed for this org
-    // first, unless another org's project already names it or deco.cx has it;
-    // a reserved (deleted org's) slug, another org's, or another project's
-    // stays unlinked (see hosted/claim-site.ts). Best-effort: never fails the
-    // creation.
+    // the project in `org_sites`.
     if (virtualMcp.id) {
-      const site = await claimProjectSite(
-        {
-          orgSites: ctx.storage.orgSites,
-          isDecoSite: (slug) => decoSiteExists(slug),
-          otherOrgNamingSlug: otherOrgNamingSlugFromDb(ctx.db),
-        },
-        {
-          organizationId: organization.id,
-          projectId: virtualMcp.id,
-          metadata,
-          by: userId,
-        },
-      );
-      // A linked site's assets go to Studio's storage (S3) from every mode
-      // but a local `deco serve`: give it the managed config the image and
-      // file fields lock onto, as the deco.cx import does. Best-effort.
-      if (site && site.status !== "refused") {
-        await ensureManagedSiteFileConfig({
-          fileConfigs: ctx.storage.orgFileConfigs,
-          organizationId: organization.id,
-          slug: site.slug,
-          by: userId,
-        }).catch((error) =>
-          console.error("hosted: managed asset config not provisioned", {
-            organizationId: organization.id,
-            projectId: virtualMcp.id,
-            slug: site.slug,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        );
-      }
+      await linkProjectSite(ctx, {
+        organizationId: organization.id,
+        projectId: virtualMcp.id,
+        metadata,
+        by: userId,
+      });
     }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as
