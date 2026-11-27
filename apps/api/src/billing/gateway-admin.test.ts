@@ -104,6 +104,22 @@ describe("requestGatewayInvoiceUpgrade", () => {
     }
   });
 
+  it("refuses cleanly when the gateway answers with its HTML shell", async () => {
+    configure();
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("<!doctype html><html></html>", {
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+    try {
+      await expect(request()).rejects.toThrow(
+        "Adding a plan to your invoice is unavailable right now. Nothing was changed.",
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("surfaces the gateway's refusal as the reason", async () => {
     configure();
     const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(

@@ -735,7 +735,6 @@ export const settings = {
     "Não foi possível abrir a cobrança: {message}",
   "settings.planUsage.subscribe": "Assinar",
   "settings.planUsage.changePlan": "Mudar de plano",
-  "settings.planUsage.changed": "Plano atualizado",
   "settings.planUsage.changeFailed":
     "Não foi possível trocar o plano: {message}",
   "settings.planUsage.feature.cms": "CMS",

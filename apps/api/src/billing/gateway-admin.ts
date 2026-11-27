@@ -192,5 +192,17 @@ export async function requestGatewayInvoiceUpgrade(input: {
     },
     "gateway invoice upgrade",
   );
-  return invoiceUpgradeResponseSchema.parse(JSON.parse(text));
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {}
+  const parsed = invoiceUpgradeResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    // A gateway without this route answers 200 with its HTML app shell.
+    // Nothing was placed or recorded there.
+    throw new Error(
+      "Adding a plan to your invoice is unavailable right now. Nothing was changed.",
+    );
+  }
+  return parsed.data;
 }

@@ -717,7 +717,6 @@ export const settings = {
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
   "settings.planUsage.changePlan": "Change plan",
-  "settings.planUsage.changed": "Plan updated",
   "settings.planUsage.changeFailed": "Couldn't change plan: {message}",
   "settings.planUsage.feature.cms": "CMS",
   "settings.planUsage.feature.chat": "Superagent chat",
