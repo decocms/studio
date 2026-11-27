@@ -311,6 +311,8 @@ export function resolveConfig(
       15,
       100,
     ),
+    invoiceUpgradeNotifyEmail:
+      envVars.STUDIO_INVOICE_UPGRADE_NOTIFY_EMAIL?.trim() || undefined,
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),

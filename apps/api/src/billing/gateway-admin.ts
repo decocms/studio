@@ -3,6 +3,7 @@
  * referenceId (unique ledger index), so callers may retry freely.
  */
 
+import z from "zod";
 import { getSettings } from "../settings";
 
 /** Whether this deployment can reach the gateway admin API at all
@@ -19,17 +20,36 @@ export class GatewayAdminPermanentError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The gateway's own `error` text, when it sent one — fit to show a user. */
+    readonly reason: string | null = null,
   ) {
     super(message);
     this.name = "GatewayAdminPermanentError";
   }
 }
 
+function errorReason(text: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "error" in parsed &&
+      typeof parsed.error === "string"
+    ) {
+      return parsed.error;
+    }
+  } catch {
+    // Not JSON: no reason to surface.
+  }
+  return null;
+}
+
 async function postGatewayAdmin(
   path: string,
   body: Record<string, unknown>,
   label: string,
-): Promise<void> {
+): Promise<string> {
   const settings = getSettings();
   const res = await fetch(`${settings.aiGatewayUrl}${path}`, {
     method: "POST",
@@ -58,9 +78,10 @@ async function postGatewayAdmin(
       res.status !== 429;
     const message = `${label} failed (${res.status}): ${text}`;
     throw permanent
-      ? new GatewayAdminPermanentError(res.status, message)
+      ? new GatewayAdminPermanentError(res.status, message, errorReason(text))
       : new Error(message);
   }
+  return text;
 }
 
 /**
@@ -141,4 +162,35 @@ export async function creditGatewayTopUp(input: {
     },
     "gateway top-up credit",
   );
+}
+
+const invoiceUpgradeResponseSchema = z.object({
+  replayed: z.boolean(),
+  upgrade: z.object({ id: z.string(), fromPlanId: z.string() }),
+});
+
+/**
+ * "Add to my invoice": the gateway moves the org and records the upgrade for
+ * finance in one call, and re-checks the rule itself. A refusal comes back as
+ * a GatewayAdminPermanentError whose `reason` is the gateway's own sentence.
+ * `replayed` means this upgrade was already placed — a retry, not a new one.
+ */
+export async function requestGatewayInvoiceUpgrade(input: {
+  organizationId: string;
+  planId: string;
+  requestedBy: string;
+}): Promise<z.infer<typeof invoiceUpgradeResponseSchema>> {
+  if (!gatewayAdminConfigured()) {
+    throw new Error("gateway admin not configured — cannot place the plan");
+  }
+  const text = await postGatewayAdmin(
+    "/api/admin/plans/invoice-upgrade",
+    {
+      orgId: input.organizationId,
+      planId: input.planId,
+      requestedBy: input.requestedBy,
+    },
+    "gateway invoice upgrade",
+  );
+  return invoiceUpgradeResponseSchema.parse(JSON.parse(text));
 }

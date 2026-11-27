@@ -10,9 +10,11 @@ import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";
 import { invalidateOrgFeaturesEverywhere } from "../../billing/plan-cache-broadcast";
 import {
+  GatewayAdminPermanentError,
   gatewayAdminConfigured,
-  setGatewayOrgPlan,
+  requestGatewayInvoiceUpgrade,
 } from "../../billing/gateway-admin";
+import { emailFinanceInvoiceUpgrade } from "../../billing/invoice-upgrade-email";
 import { getSettings } from "../../settings";
 import { captureOrgEvent } from "@/posthog";
 
@@ -141,8 +143,9 @@ export function invoiceUpgradeRefusal(input: {
 
 /**
  * Move a flagged org (`invoice_upgrade`) onto a paid plan now and bill it on
- * the org's next invoice, outside Stripe. deco finance learns of it from the
- * `plan_invoice_upgrade` event.
+ * the org's next invoice, outside Stripe. The gateway records every upgrade in
+ * the pending list finance bills from, and finance is emailed for each one —
+ * a PostHog event alone left these upgrades unbilled.
  *
  * Not `requiresFeature`: that gate fails OPEN when the gateway cannot answer,
  * which would hand out a paid plan. The flag is read fresh, past the gate's
@@ -191,13 +194,36 @@ export const AI_PLAN_INVOICE_UPGRADE = defineTool({
       throw new Error(refusal ?? "Could not read this organization's plan.");
     }
 
-    const by = ctx.auth.user?.email ?? userId;
-    await setGatewayOrgPlan({
-      organizationId: org.id,
-      planId: input.planId,
-      note: `invoice upgrade by ${by} at ${new Date().toISOString()} — bill on next invoice`,
-    });
+    const requestedBy = ctx.auth.user?.email ?? userId;
+    let placed: Awaited<ReturnType<typeof requestGatewayInvoiceUpgrade>>;
+    try {
+      // The gateway checks the rule again and writes the record finance bills
+      // from in the same call; a plan placed without that record is the
+      // unbilled upgrade this tool used to leave behind.
+      placed = await requestGatewayInvoiceUpgrade({
+        organizationId: org.id,
+        planId: input.planId,
+        requestedBy,
+      });
+    } catch (err) {
+      if (err instanceof GatewayAdminPermanentError && err.reason) {
+        throw new Error(err.reason);
+      }
+      throw err;
+    }
     invalidateOrgFeaturesEverywhere(org.id);
+    // A replay is an upgrade finance already heard about.
+    if (placed.replayed) return { planId: input.planId };
+
+    await emailFinanceInvoiceUpgrade({
+      orgName: org.name ?? org.slug ?? org.id,
+      orgSlug: org.slug ?? org.id,
+      organizationId: org.id,
+      fromPlanId: placed.upgrade.fromPlanId,
+      toPlanId: input.planId,
+      requestedBy,
+      at: new Date(),
+    });
     captureOrgEvent({
       event: "plan_invoice_upgrade",
       organizationId: org.id,
