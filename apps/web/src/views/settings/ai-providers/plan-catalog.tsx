@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, Minus } from "@untitledui/icons";
+import { ArrowUpRight, Check, Minus } from "@untitledui/icons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +23,7 @@ import {
   CUSTOM_PLAN_ID,
   FEATURE_ROWS,
   PlanPlant,
+  SALES_CONTACT_EMAIL,
   SALES_CONTACT_HREF,
   formatPlanPrice,
   isStaffManagedPlan,
@@ -60,6 +61,20 @@ function invoicePlanId(id: string): "starter" | "business" | null {
   return id === "starter" || id === "business" ? id : null;
 }
 
+const INVOICE_RANK: Record<string, number> = { starter: 1, business: 2 };
+
+function invoiceRank(id: string | null): number {
+  return (id && INVOICE_RANK[id]) || 0;
+}
+
+/** The gateway only moves an org up by invoice, so Business never offers it
+ *  for Starter and no plan offers it for itself. */
+function offersInvoiceFrom(currentId: string | null, id: string): boolean {
+  const target = invoicePlanId(id);
+  if (!target) return false;
+  return invoiceRank(currentId) < invoiceRank(target);
+}
+
 export function PlanCatalog() {
   const t = useT();
   const plansEnabled = usePlansEnabled();
@@ -95,15 +110,20 @@ export function PlanCatalog() {
     queryFn: () => studio.call("ORGANIZATION_BILLING_GET", {}),
   });
   const offerInvoice = canInvoice && billingAccount?.subscribed === false;
+  // A paid tier with no Stripe subscription behind it, on an org deco bills
+  // by invoice, came in through "Add to my invoice" (or staff): its changes go
+  // through deco, not a card checkout that would start a second bill.
+  const invoiced =
+    offerInvoice && invoicePlanId(entitlements?.plan.id ?? "") !== null;
   const [invoicePlan, setInvoicePlan] = useState<Plan | null>(null);
   const { mutate: invoiceUpgrade, isPending: isInvoicing } = useMutation({
-    mutationFn: (planId: "starter" | "business") =>
-      studio.call("AI_PLAN_INVOICE_UPGRADE", { planId }),
-    onSuccess: () => {
+    mutationFn: (input: { planId: "starter" | "business"; name: string }) =>
+      studio.call("AI_PLAN_INVOICE_UPGRADE", { planId: input.planId }),
+    onSuccess: (_data, input) => {
       queryClient.invalidateQueries({
         queryKey: KEYS.aiPlanEntitlements(org.id),
       });
-      toast.success(t("settings.planUsage.changed"));
+      toast.success(t("settings.plans.invoice.added", { plan: input.name }));
     },
     onError: (err) =>
       toast.error(
@@ -127,9 +147,7 @@ export function PlanCatalog() {
               plan: entitlements?.plan.name ?? "",
             })}
           </p>
-          <Button variant="outline" size="sm" asChild>
-            <a href={SALES_CONTACT_HREF}>{t("settings.plans.custom.cta")}</a>
-          </Button>
+          <SalesContact size="sm" />
         </Card>
       </SettingsSection>
     );
@@ -180,8 +198,9 @@ export function PlanCatalog() {
               emphasis={plan.id === suggestedId}
               disabled={isPending || isInvoicing}
               onChoose={() => startCheckout(plan.id)}
+              billedByInvoice={invoiced}
               onInvoice={
-                offerInvoice && invoicePlanId(plan.id)
+                offerInvoice && offersInvoiceFrom(currentId, plan.id)
                   ? () => setInvoicePlan(plan)
                   : undefined
               }
@@ -191,36 +210,15 @@ export function PlanCatalog() {
         </div>
       )}
 
-      <AlertDialog
-        open={invoicePlan !== null}
-        onOpenChange={(open) => !open && setInvoicePlan(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("settings.plans.invoice.cta")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("settings.plans.invoice.confirm", {
-                plan: invoicePlan?.name ?? "",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("settings.plans.invoice.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                const planId = invoicePlan && invoicePlanId(invoicePlan.id);
-                if (planId) invoiceUpgrade(planId);
-              }}
-            >
-              {t("settings.plans.invoice.switch")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <InvoiceConfirmDialog
+        plan={invoicePlan}
+        price={invoicePlan ? prices?.[invoicePlan.id] : undefined}
+        onCancel={() => setInvoicePlan(null)}
+        onConfirm={(plan) => {
+          const planId = invoicePlanId(plan.id);
+          if (planId) invoiceUpgrade({ planId, name: plan.name });
+        }}
+      />
     </SettingsSection>
   );
 }
@@ -235,6 +233,7 @@ function PlanCard({
   disabled,
   onChoose,
   onInvoice,
+  billedByInvoice = false,
 }: {
   plan: Plan;
   index: number;
@@ -246,6 +245,8 @@ function PlanCard({
   onChoose: () => void;
   /** Set when the org may take this plan on its invoice instead of Stripe. */
   onInvoice?: () => void;
+  /** The org's current plan is billed on its deco invoice, not by card. */
+  billedByInvoice?: boolean;
 }) {
   const t = useT();
   const [preferences] = usePreferences();
@@ -290,8 +291,54 @@ function PlanCard({
       </div>
 
       {isCurrent ? (
-        <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-          {t("settings.plans.currentPlan")}
+        <div className="flex flex-col gap-2">
+          <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
+            {t("settings.plans.currentPlan")}
+          </div>
+          {billedByInvoice && (
+            <p className="text-center text-xs text-muted-foreground">
+              {t("settings.plans.invoice.current")}
+            </p>
+          )}
+        </div>
+      ) : billedByInvoice && !onInvoice ? (
+        // Moving down from an invoiced plan is deco's to arrange: a card
+        // checkout here would open a second bill beside the invoice.
+        <div className="flex flex-col gap-2">
+          <SalesContact block />
+          <p className="text-center text-xs text-muted-foreground">
+            {t("settings.plans.invoice.changeByContact")}
+          </p>
+        </div>
+      ) : onInvoice ? (
+        // A contract org pays deco by invoice, so that is its way in. Two
+        // equal buttons made it pick between payment rails before it had
+        // picked a plan; the card checkout stays one quiet click away.
+        <div className="flex flex-col gap-2">
+          <Button
+            variant={emphasis ? "default" : "outline"}
+            className="w-full"
+            disabled={disabled}
+            onClick={onInvoice}
+          >
+            {t("settings.plans.invoice.cta")}
+          </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            {t("settings.plans.invoice.hint")}
+          </p>
+          {!billedByInvoice && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              disabled={disabled}
+              onClick={onChoose}
+            >
+              {trial
+                ? t("settings.plans.invoice.trialByCard")
+                : t("settings.plans.invoice.payByCard")}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -307,16 +354,6 @@ function PlanCard({
                 ? t("settings.plans.startTrial")
                 : t("settings.planUsage.subscribe")}
           </Button>
-          {onInvoice && (
-            <Button
-              variant="outline"
-              className="w-full"
-              disabled={disabled}
-              onClick={onInvoice}
-            >
-              {t("settings.plans.invoice.cta")}
-            </Button>
-          )}
         </div>
       )}
 
@@ -380,10 +417,91 @@ function CustomPlanCard({
           {t("settings.plans.currentPlan")}
         </div>
       ) : (
-        <Button variant="outline" className="w-full" asChild>
-          <a href={SALES_CONTACT_HREF}>{t("settings.plans.custom.cta")}</a>
-        </Button>
+        <SalesContact block />
       )}
     </Card>
+  );
+}
+
+/**
+ * The one confirm before a paid plan starts with no payment: what starts, and
+ * what it adds to the invoice, so "Switch now?" is not the whole explanation.
+ */
+function InvoiceConfirmDialog({
+  plan,
+  price,
+  onCancel,
+  onConfirm,
+}: {
+  plan: Plan | null;
+  price: PlanPrice | undefined;
+  onCancel: () => void;
+  onConfirm: (plan: Plan) => void;
+}) {
+  const t = useT();
+  const [preferences] = usePreferences();
+  const name = plan?.name ?? "";
+  return (
+    <AlertDialog
+      open={plan !== null}
+      onOpenChange={(open) => !open && onCancel()}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("settings.plans.invoice.title", { plan: name })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {price
+              ? t("settings.plans.invoice.confirmPrice", {
+                  plan: name,
+                  price: formatPlanPrice(price, preferences.language),
+                })
+              : t("settings.plans.invoice.confirm", { plan: name })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            {t("settings.plans.invoice.cancel")}
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={() => plan && onConfirm(plan)}>
+            {t("settings.plans.invoice.switch", { plan: name })}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/** "Talk to us": the address written out, and a Gmail compose tab. */
+function SalesContact({ size, block }: { size?: "sm"; block?: boolean }) {
+  const t = useT();
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 gap-2",
+        block ? "flex-col items-stretch" : "items-center",
+      )}
+    >
+      <Button
+        variant="outline"
+        size={size}
+        className={cn(block && "w-full")}
+        asChild
+      >
+        <a href={SALES_CONTACT_HREF} target="_blank" rel="noreferrer">
+          {t("settings.plans.custom.cta")}
+          <ArrowUpRight size={14} />
+        </a>
+      </Button>
+      <span
+        className={cn(
+          "text-xs text-muted-foreground select-all",
+          block && "text-center",
+        )}
+      >
+        {SALES_CONTACT_EMAIL}
+      </span>
+    </div>
   );
 }
