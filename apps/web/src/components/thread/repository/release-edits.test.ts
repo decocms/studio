@@ -3,12 +3,11 @@ import type { Release } from "@decocms/shared/sdk/types";
 import {
   addPullRequestRelease,
   addRelease,
-  groupReleasesByRuntime,
-  releaseRuntime,
   markReleaseSandbox,
   removeRelease,
   renameReleaseIn,
-} from "./release-edits";
+} from "@decocms/shared/release-edits";
+import { groupReleasesByRuntime, releaseRuntime } from "./release-edits";
 
 const rel = (branch: string, name = branch): Release => ({
   branch,

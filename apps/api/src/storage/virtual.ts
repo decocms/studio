@@ -21,6 +21,11 @@ import {
   isDecopilot,
   normalizeSandboxMap,
 } from "@decocms/shared/sdk";
+import {
+  type Release,
+  ReleaseSchema,
+  RELEASES_MAX,
+} from "@decocms/shared/sdk/types";
 import type {
   VirtualMCPCreateData,
   VirtualMCPEntity,
@@ -80,6 +85,33 @@ export interface CrossOrgProjectMatch {
  *  character by default, so escaping it first keeps the other two honest. */
 export function escapeLikePattern(term: string): string {
   return term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/**
+ * A metadata write that keeps the row's stored `metadata.releases`. The draft
+ * list changes only through `editReleases`; a whole-metadata write carries a
+ * copy read earlier (a stale browser tab, or the read at the top of the
+ * update tool) and would bring discarded drafts back.
+ */
+function withStoredReleases(json: string | null) {
+  const stored = sql`metadata::jsonb -> 'releases'`;
+  const kept = sql`case when ${stored} is null then '{}'::jsonb else jsonb_build_object('releases', ${stored}) end`;
+  return json === null
+    ? sql<
+        string | null
+      >`case when ${stored} is null then null else (${kept})::text end`
+    : sql<string>`((${json}::jsonb - 'releases') || ${kept})::text`;
+}
+
+/** The stored draft list. Fails closed on a malformed one rather than edit
+ *  (and so overwrite) drafts it can't read. */
+function storedReleases(value: unknown): Release[] {
+  if (value === undefined || value === null) return [];
+  const parsed = ReleaseSchema.array().safeParse(value);
+  if (!parsed.success) {
+    throw new Error("The project's stored draft list is malformed");
+  }
+  return parsed.data;
 }
 
 /**
@@ -585,9 +617,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         : data.metadata;
       // Dual-write, in step with the JSON — see `boundRepositoryId`.
       updateData.repository_id = boundRepositoryId(metadata);
-      updateData.metadata = metadata
-        ? JSON.stringify(writeRepositoryMetadata(metadata))
-        : null;
+      updateData.metadata = withStoredReleases(
+        metadata ? JSON.stringify(writeRepositoryMetadata(metadata)) : null,
+      );
     }
 
     if (data.url_slug) {
@@ -725,6 +757,57 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       )
       .executeTakeFirst();
     return Number(result.numUpdatedRows) > 0;
+  }
+
+  /**
+   * Apply `edit` to the stored draft list (`metadata.releases`) and write
+   * only that key, holding the row lock in between: concurrent edits from
+   * other tabs or people compose instead of the last one winning. Returns
+   * the list as stored, or null when the project is not a VIRTUAL row of
+   * `organizationId`.
+   */
+  async editReleases(params: {
+    id: string;
+    organizationId: string;
+    edit: (current: Release[]) => Release[];
+    by: string;
+  }): Promise<Release[] | null> {
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx
+        .selectFrom("connections")
+        .select("metadata")
+        .where("id", "=", params.id)
+        .where("organization_id", "=", params.organizationId)
+        .where("connection_type", "=", "VIRTUAL")
+        .forUpdate()
+        .executeTakeFirst();
+      if (!row) return null;
+      const stored = this.parseJson<unknown>(row.metadata);
+      if (
+        stored !== null &&
+        (typeof stored !== "object" || Array.isArray(stored))
+      ) {
+        throw new Error("The project's stored metadata is not an object");
+      }
+      const current = storedReleases(
+        stored !== null && "releases" in stored ? stored.releases : undefined,
+      );
+      const next = params.edit(current);
+      if (next === current) return current;
+      if (next.length > RELEASES_MAX && next.length > current.length) {
+        throw new Error(`A project holds at most ${RELEASES_MAX} drafts`);
+      }
+      await trx
+        .updateTable("connections")
+        .set({
+          metadata: sql<string>`(coalesce(metadata::jsonb, '{}'::jsonb) || jsonb_build_object('releases', ${JSON.stringify(next)}::jsonb))::text`,
+          updated_at: new Date().toISOString(),
+          updated_by: params.by,
+        })
+        .where("id", "=", params.id)
+        .execute();
+      return next;
+    });
   }
 
   /** Drop every override in the org that points at `slug`, for when the org
@@ -952,6 +1035,7 @@ export function createRequestCachedVirtualMcps(
         prop === "delete" ||
         prop === "removeConnectionReferences" ||
         prop === "patchMetadata" ||
+        prop === "editReleases" ||
         prop === "clearAnalyticsSiteSlugReferences"
       ) {
         return (...args: unknown[]) => {

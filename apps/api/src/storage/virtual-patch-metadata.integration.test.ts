@@ -6,6 +6,7 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
+import { addRelease, removeRelease } from "@decocms/shared/release-edits";
 import { VirtualMCPStorage } from "./virtual";
 
 const ORG = "org_analytics_site";
@@ -206,6 +207,63 @@ describe("VirtualMCPStorage metadata patches", () => {
     expect(await readMetadata("vir_ref_other")).toEqual({
       siteSlug: "c",
       analyticsSiteSlug: "released",
+    });
+  });
+
+  describe("draft list", () => {
+    const draft = (branch: string) => ({ branch, name: branch, color: "blue" });
+
+    test("concurrent edits compose instead of the last one winning", async () => {
+      await insertProject("vir_rel_race", ORG, {
+        siteSlug: "acme",
+        releases: [draft("old")],
+      });
+
+      await Promise.all([
+        storage.editReleases({
+          id: "vir_rel_race",
+          organizationId: ORG,
+          edit: (current) => removeRelease(current, "old"),
+          by: USER,
+        }),
+        storage.editReleases({
+          id: "vir_rel_race",
+          organizationId: ORG,
+          edit: (current) => addRelease(current, draft("new")),
+          by: USER,
+        }),
+      ]);
+
+      expect(await readMetadata("vir_rel_race")).toEqual({
+        siteSlug: "acme",
+        releases: [draft("new")],
+      });
+    });
+
+    test("a whole-metadata update keeps the stored list", async () => {
+      await insertProject("vir_rel_stale", ORG, {
+        siteSlug: "acme",
+        releases: [draft("kept")],
+      });
+
+      await storage.update("vir_rel_stale", USER, {
+        metadata: {
+          siteSlug: "acme",
+          fastPreview: true,
+          releases: [draft("gone")],
+        },
+      });
+      expect(await readMetadata("vir_rel_stale")).toEqual({
+        siteSlug: "acme",
+        fastPreview: true,
+        releases: [draft("kept")],
+      });
+
+      await storage.update("vir_rel_stale", USER, { metadata: null });
+      expect(await readMetadata("vir_rel_stale")).toEqual({
+        siteSlug: "acme",
+        releases: [draft("kept")],
+      });
     });
   });
 });

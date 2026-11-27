@@ -203,6 +203,7 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_RUN_STATS",
   // Virtual MCP plugin config and pinned views tools
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+  "VIRTUAL_MCP_RELEASE_EDIT",
   "VIRTUAL_MCP_LAST_USED_LIST",
   "PROJECT_FOLDER_ENSURE",
 
@@ -1156,6 +1157,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
     description: "Update virtual MCP pinned sidebar views",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "VIRTUAL_MCP_RELEASE_EDIT",
+    description: "Add, rename, or remove one of a project's drafts",
     category: "Virtual MCPs",
   },
   {
@@ -2383,6 +2389,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_UPDATE",
       "COLLECTION_VIRTUAL_MCP_DELETE",
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+      "VIRTUAL_MCP_RELEASE_EDIT",
       // Folders are org-wide structure, so they sit with managing projects.
       "PROJECT_FOLDERS_SET",
     ],
