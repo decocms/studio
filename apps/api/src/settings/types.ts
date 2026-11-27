@@ -329,6 +329,11 @@ export interface Settings {
    *  stores the order monitor watches; unset = the monitor does nothing. See
    *  monitoring/dbos-order-monitor.ts. */
   orderMonitorIngestUrl: string | undefined;
+  /** The Timestral forecasting service (`POST /forecast`) behind the Monitor's
+   *  sales projection; bearer token optional. Unset url = the baseline
+   *  projection for every store. See monitoring/order-forecast.ts. */
+  timestralUrl: string | undefined;
+  timestralToken: string | undefined;
   /** OneDollarStats backend key — the legacy platform's pageview source
    *  (pageviews do not live in the warehouse). Unset = pageviews render "—". */
   oneDollarStatsApiKey: string | undefined;

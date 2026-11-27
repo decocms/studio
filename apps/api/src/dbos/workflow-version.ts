@@ -116,5 +116,10 @@
  *
  * Version 16 adds `trafficMonitorWorkflow`. Like 14, a new workflow needs the
  * bump only because the source guard keys on the fileset.
+ *
+ * Version 17 adds `orderForecastWorkflow` and, after `orderMonitorWorkflow`'s
+ * `evaluateStore:*` steps (whose recorded output now carries the day read), a
+ * `planForecasts` step and a child workflow per forecast due. An in-flight
+ * v16 tick strands; the next tick reads the same lake.
  */
-export const DBOS_WORKFLOW_VERSION = "16";
+export const DBOS_WORKFLOW_VERSION = "17";

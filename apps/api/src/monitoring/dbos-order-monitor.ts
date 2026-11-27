@@ -8,6 +8,11 @@
  * `[order-monitor] transition`: that list is what a rule's thresholds get
  * checked against.
  *
+ * Once the verdicts are written, every store the sweep read gets the model's
+ * forecast for its local hour (`order-forecast.ts`): a child workflow per store and hour on
+ * ORDER_FORECAST_QUEUE, which every tick of the hour asks for by the same id,
+ * so the model runs once per store and hour and the sweep never waits on it.
+ *
  * Same shape as `dbos-archive-sweep.ts`: the store list is read inside a step
  * so a replay iterates the recorded list, and each store is its own step that
  * never throws. Everything is computed from `scheduledTime`, so a replayed
@@ -22,6 +27,7 @@ import type { OrderMonitorVerdict } from "@decocms/shared/order-monitor";
 import { type Kysely, sql } from "kysely";
 import { orgHasFeatureAsUser } from "@/core/plan-feature-gate";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
+import { ORDER_FORECAST_QUEUE } from "@/dispatch-queue/queue-names";
 import { getSettings } from "@/settings";
 import { AlertStorage } from "@/storage/alerts";
 import {
@@ -37,15 +43,43 @@ import {
   loadThresholds,
 } from "./order-alerts";
 import { emitOrderMonitorEvaluated } from "./order-events";
-import { loadStoreDay } from "./order-lake";
-import { evaluateStore, RULES, type Rule, type Verdict } from "./order-rules";
+import {
+  CALIBRATION_WINDOW_DAYS,
+  closeAtTick,
+  type ForecastJob,
+  forecastJobs,
+  forecastStore,
+  forecastWorkflowId,
+  localDateBefore,
+  type SweptDay,
+  type SweptStore,
+  type TimestralService,
+} from "./order-forecast";
+import { type HourlyDay, loadHourlyHistory, loadStoreDay } from "./order-lake";
+import {
+  baselineClose,
+  evaluateStore,
+  RULES,
+  type Rule,
+  type Verdict,
+} from "./order-rules";
 
 // Off the every-5-minutes sweeps (Jira trigger, board transitions). Listed,
 // not `3-59/5`: DBOS's parser keeps only the values divisible by the step.
 const ORDER_MONITOR_CRONTAB = "3,8,13,18,23,28,33,38,43,48,53,58 * * * *";
 
+const sum = (xs: readonly number[]) => xs.reduce((s, v) => s + v, 0);
+
 /** Each store costs four lake queries; this many stores are read at once. */
 const STORES_PER_BATCH = 20;
+
+/**
+ * Forecasts are kept this many local days, at least: calibration reads a
+ * store's rows at the same hour up to CALIBRATION_WINDOW_DAYS back. The cutoff
+ * is a day further back than this from the UTC date, so it holds in any
+ * timezone.
+ */
+const FORECAST_RETENTION_DAYS = CALIBRATION_WINDOW_DAYS;
 
 export interface OrderMonitorRuntime {
   db: Kysely<Database>;
@@ -87,6 +121,8 @@ const isIncident = (status: string | undefined) =>
 interface StoreResult {
   connectionId: string;
   error?: string;
+  /** What the forecast needs of the day read; absent when it wasn't read. */
+  day?: SweptStore["day"];
 }
 
 const storeLock = (trx: Kysely<Database>, connectionId: string) =>
@@ -181,6 +217,22 @@ async function evaluateOneStore(
       day,
       await loadThresholds(new AlertStorage(requireDb()), organizationId),
     );
+    const today = day.days[0];
+    const inHour = Math.floor(day.done / 4) * 4;
+    const read: SweptDay = {
+      timezone: day.timezone,
+      done: day.done,
+      backfill: day.backfill?.days ?? [],
+      soFar: {
+        orders: sum(today.placed.slice(0, day.done)),
+        revenue: sum(today.revenue.slice(0, day.done)),
+      },
+      inHour: {
+        orders: sum(today.placed.slice(inHour, day.done)),
+        revenue: sum(today.revenue.slice(inHour, day.done)),
+      },
+      baselineClose: baselineClose(day, verdicts),
+    };
 
     const written = await writeStates(
       requireDb(),
@@ -189,7 +241,7 @@ async function evaluateOneStore(
       verdicts,
       day.timezone,
     );
-    if (!written) return { connectionId };
+    if (!written) return { connectionId, day: read };
     const { prev, states, opened } = written;
 
     for (const s of states) {
@@ -212,13 +264,142 @@ async function evaluateOneStore(
       emitOrderMonitorEvaluated(organizationId, connectionId);
     }
     for (const id of opened) emitAlertsUpdated(organizationId, id);
-    return { connectionId };
+    return { connectionId, day: read };
   } catch (err) {
     return {
       connectionId,
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * Deletes the orgs' forecasts past their use and lists the ones due at `at`,
+ * none without the forecasting service.
+ * Never throws: it runs after the verdicts are written and the forecast is
+ * best-effort.
+ */
+export async function planForecasts(
+  db: Kysely<Database>,
+  stores: SweptStore[],
+  at: Date,
+): Promise<ForecastJob[]> {
+  try {
+    const orgs = [...new Set(stores.map((s) => s.organizationId))];
+    await new OrderMonitorStorage(db).deleteForecastsBefore(
+      orgs,
+      localDateBefore(
+        at.toISOString().slice(0, 10),
+        FORECAST_RETENTION_DAYS + 1,
+      ),
+    );
+    if (!getSettings().timestralUrl) return [];
+    return forecastJobs(stores, at);
+  } catch (err) {
+    console.warn("[order-monitor] forecast planning failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
+/**
+ * Runs the model for one job and records the run, answered or not, with the
+ * past days it backfilled; then sets the close of the store's finished days
+ * from the history it read. Never throws.
+ */
+export async function forecastOneStore(
+  db: Kysely<Database>,
+  service: TimestralService,
+  job: ForecastJob,
+  loadHistory: () => Promise<HourlyDay[]>,
+): Promise<void> {
+  const storage = new OrderMonitorStorage(db);
+  const { organizationId, connectionId, hour } = job;
+  const run = await forecastStore(service, job, loadHistory, (dates) =>
+    storage.predictedRests(organizationId, connectionId, hour, dates),
+  );
+  const computedAt = new Date();
+  const model = run.model;
+  try {
+    await storage.recordForecast(organizationId, connectionId, job.date, {
+      hour,
+      source: "live",
+      status: run.status,
+      error: run.error,
+      latencyMs: run.latencyMs,
+      seriesSent: run.seriesSent,
+      backfilledDays: model?.backfill.length ?? 0,
+      forecast: model && {
+        orders: model.orders,
+        revenue: model.revenue,
+        rest: model.rest,
+        ratios: model.ratios,
+      },
+      soFar: job.soFar,
+      ...(model ? closeAtTick(job, model) : {}),
+      baselineClose: job.baselineClose,
+      computedAt,
+    });
+    await storage.insertMissingForecasts(
+      organizationId,
+      connectionId,
+      (model?.backfill ?? []).map((b) => ({
+        localDate: localDateBefore(job.date, b.daysAgo),
+        record: {
+          hour,
+          source: "backfill",
+          status: "ok",
+          forecast: {
+            orders: b.orders,
+            revenue: b.revenue,
+            rest: b.rest,
+            ratios: [],
+          },
+          computedAt,
+        },
+      })),
+    );
+    if (run.days) {
+      for (const date of await storage.datesWithoutActuals(
+        organizationId,
+        connectionId,
+        job.date,
+      )) {
+        const day =
+          run.days[(Date.parse(job.date) - Date.parse(date)) / 86_400_000];
+        if (day)
+          await storage.setActuals(organizationId, connectionId, date, day);
+      }
+    }
+  } catch (err) {
+    console.warn("[order-monitor] forecast write failed", {
+      connectionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function orderForecastWorkflowFn(job: ForecastJob): Promise<void> {
+  await DBOS.runStep(
+    async () => {
+      const { timestralUrl, timestralToken } = getSettings();
+      if (!timestralUrl) return;
+      await forecastOneStore(
+        requireDb(),
+        { url: timestralUrl, token: timestralToken },
+        job,
+        () =>
+          loadHourlyHistory(
+            job.organizationId,
+            job.connectionId,
+            new Date(job.at),
+            job.timezone,
+          ),
+      );
+    },
+    { name: "forecastStore" },
+  );
 }
 
 async function orderMonitorWorkflowFn(
@@ -249,9 +430,39 @@ async function orderMonitorWorkflowFn(
       );
     }
   }
+
+  const read = new Map(results.map((r) => [r.connectionId, r.day]));
+  const jobs = await DBOS.runStep(
+    () =>
+      planForecasts(
+        requireDb(),
+        stores.map((s) => ({
+          organizationId: s.organizationId,
+          connectionId: s.connectionId,
+          day: read.get(s.connectionId),
+        })),
+        scheduledTime,
+      ),
+    { name: "planForecasts" },
+  );
+  if (!registeredForecastWorkflow) return;
+  for (const job of jobs) {
+    try {
+      await DBOS.startWorkflow(registeredForecastWorkflow, {
+        workflowID: forecastWorkflowId(job),
+        queueName: ORDER_FORECAST_QUEUE,
+      })(job);
+    } catch (err) {
+      console.warn("[order-monitor] forecast enqueue failed", {
+        connectionId: job.connectionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 }
 
 let registeredWorkflow: typeof orderMonitorWorkflowFn | null = null;
+let registeredForecastWorkflow: typeof orderForecastWorkflowFn | null = null;
 
 /**
  * Must run before DBOS.launch(). Guarded so HMR repeats don't re-register.
@@ -262,6 +473,9 @@ let registeredWorkflow: typeof orderMonitorWorkflowFn | null = null;
  */
 export function registerOrderMonitorWorkflow(): void {
   if (registeredWorkflow) return;
+  registeredForecastWorkflow = DBOS.registerWorkflow(orderForecastWorkflowFn, {
+    name: "orderForecastWorkflow",
+  });
   registeredWorkflow = DBOS.registerWorkflow(orderMonitorWorkflowFn, {
     name: "orderMonitorWorkflow",
   });

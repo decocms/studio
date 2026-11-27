@@ -54,6 +54,23 @@ const ORDERS_SQL = byDay(
   ["placed", "revenue", "items", "currency"],
 );
 
+/** Local days before day 0 the forecasting model reads: 112 days of context for today and for each of the 28 days it calibrates on. */
+export const HISTORY_DAYS = 140;
+
+// The model's context: orders and revenue per local clock hour, ORDERS_SQL's
+// filters. Two days of slack cover the zone's offset.
+const HOURLY_SQL = byDay(
+  `
+  SELECT ${daysAgo("created_at")} AS days_ago, toHour(created_at, {tz:String}) AS bucket,
+    count() AS placed, sum(total) AS revenue
+  FROM customer_lake.orders FINAL
+  WHERE connection_id = {conn:String} AND source_status != ''
+    AND created_at < ${AT} AND created_at >= ${AT} - INTERVAL ${HISTORY_DAYS + 2} DAY
+    AND days_ago <= ${HISTORY_DAYS}
+  GROUP BY days_ago, bucket`,
+  ["placed", "revenue"],
+);
+
 // uniqExact absorbs hook retries that wrote the same event twice.
 const EVENTS_SQL = byDay(
   `
@@ -359,6 +376,38 @@ export async function loadStoreDay(
     approximate,
     channels,
   };
+}
+
+/** One local day's orders and revenue per clock hour (24 each). */
+export interface HourlyDay {
+  orders: number[];
+  revenue: number[];
+}
+
+/** The store's hours before `at`, indexed by days back from its local day (0..HISTORY_DAYS). */
+export async function loadHourlyHistory(
+  organizationId: string,
+  connectionId: string,
+  at: Date,
+  timezone: string,
+): Promise<HourlyDay[]> {
+  const rows = await queryBuckets(organizationId, HOURLY_SQL, {
+    conn: connectionId,
+    tz: timezone,
+    at: toLakeTime(at),
+  });
+  const days = Array.from({ length: HISTORY_DAYS + 1 }, () => ({
+    orders: new Array<number>(24).fill(0),
+    revenue: new Array<number>(24).fill(0),
+  }));
+  for (const row of rows) {
+    const day = days[Number(row.days_ago)];
+    const h = Number(row.bucket);
+    if (!day || !(h >= 0 && h < 24)) continue;
+    day.orders[h] = Number(row.placed);
+    day.revenue[h] = Number(row.revenue);
+  }
+  return days;
 }
 
 async function loadChannels(

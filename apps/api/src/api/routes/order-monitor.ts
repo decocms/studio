@@ -39,6 +39,7 @@ import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadThresholds } from "@/monitoring/order-alerts";
+import { withModel } from "@/monitoring/order-forecast";
 import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
 import { addSiteTraffic, loadSiteTraffic } from "@/monitoring/site-traffic";
@@ -249,7 +250,16 @@ export const createOrderMonitorRoutes = () => {
       }
       // The chart's bands are the thresholds the sweep judges by.
       const thresholds = await loadThresholds(g.ctx.storage.alerts, orgId);
-      return c.json(buildDayView(day, at, thresholds));
+      const view = buildDayView(day, at, thresholds);
+      if (!getSettings().timestralUrl || !view.forecast.projection) {
+        return c.json(view);
+      }
+      // The sweep's model forecast for the store's hour; without a fresh one
+      // the baseline projection stays.
+      const forecast = await g.storage
+        .latestForecast(orgId, connectionId, view.date)
+        .catch(() => null);
+      return c.json(withModel(view, day, forecast, at));
     } catch (err) {
       console.error("[order-monitor] day read failed", {
         connectionId,

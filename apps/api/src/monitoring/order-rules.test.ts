@@ -7,6 +7,7 @@ import {
   localDayStart,
 } from "./order-lake";
 import {
+  baselineClose,
   buildDayView,
   BUCKETS_PER_DAY,
   DAYS_AGO,
@@ -288,6 +289,13 @@ describe("buildDayView", () => {
     expect(close(7)).toBe(48 * 5);
     expect(close(14)).toBe(48 * 20);
     expect(p.close.orders).toBe(48 * 10 + 48 * 10);
+  });
+
+  it("gives the sweep the same baseline close the day view shows", () => {
+    const s = store({ placed: flat(10) });
+    s.days[7] = { ...s.days[7], placed: flat(5) };
+    const p = buildDayView(s, at).forecast.projection!;
+    expect(baselineClose(s, evaluateStore(s))).toEqual(p.close);
   });
 
   it("leaves a reference day the lake holds only part of out of the baseline and M-1", () => {

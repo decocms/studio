@@ -26,13 +26,17 @@ mock.module("../customer-lake/client", () => ({
       if (failSql.has("approximate")) throw new Error("boom");
       return [];
     }
+    if (sql.includes("toHour(created_at, {tz:String}) AS bucket"))
+      return rowsBySql.get("hourly") ?? [];
     if (sql.includes("sum(total)")) return rowsBySql.get("orders") ?? [];
     if (sql.includes("uniqExactIf")) return rowsBySql.get("events") ?? [];
     return [];
   },
 }));
 
-const { loadStoreDay } = await import("./order-lake");
+const { HISTORY_DAYS, loadHourlyHistory, loadStoreDay } = await import(
+  "./order-lake"
+);
 
 afterEach(() => rowsBySql.clear());
 
@@ -155,5 +159,48 @@ describe("loadStoreDay", () => {
 
     expect(day?.approximate?.[0]?.canceled.every((n) => n === 0)).toBe(true);
     expect(day?.timezone).toBe("UTC");
+  });
+});
+
+describe("loadHourlyHistory", () => {
+  it("keeps every hour of every day past the lake's 1000-row cap, zero where no row", async () => {
+    const hoursOf = (d: number) =>
+      Array.from({ length: 24 }, (_, h) => h).filter((h) => d % 2 || h % 3);
+    rowsBySql.set(
+      "hourly",
+      Array.from({ length: HISTORY_DAYS + 1 }, (_, d) => ({
+        days_ago: String(d),
+        bucket: hoursOf(d),
+        placed: hoursOf(d).map((h) => String(d * 100 + h)),
+        revenue: hoursOf(d).map((h) => h + 0.5),
+      })),
+    );
+    expect((HISTORY_DAYS + 1) * 24).toBeGreaterThan(1000);
+
+    const days = await loadHourlyHistory("org", "conn", new Date(), "UTC");
+
+    expect(days).toHaveLength(HISTORY_DAYS + 1);
+    expect(days[HISTORY_DAYS]!.orders[23]).toBe(HISTORY_DAYS * 100 + 23);
+    expect(days[5]!.orders[3]).toBe(503);
+    expect(days[5]!.revenue[3]).toBe(3.5);
+    // An even day has no row for hours divisible by 3.
+    expect(days[4]!.orders[3]).toBe(0);
+    expect(days[4]!.orders[4]).toBe(404);
+  });
+
+  it("ignores a day or hour outside the window", async () => {
+    rowsBySql.set("hourly", [
+      {
+        days_ago: String(HISTORY_DAYS + 1),
+        bucket: [1],
+        placed: ["9"],
+        revenue: [9],
+      },
+      { days_ago: "0", bucket: [24], placed: ["9"], revenue: [9] },
+    ]);
+
+    const days = await loadHourlyHistory("org", "conn", new Date(), "UTC");
+
+    expect(days.every((d) => d.orders.every((n) => n === 0))).toBe(true);
   });
 });
