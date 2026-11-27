@@ -444,6 +444,8 @@ export function resolveConfig(
       envVars.COMMERCE_DISCOVERY_INTERNAL_API_KEY,
     ),
     planDiagnosisMcpUrl: envVars.PLAN_DIAGNOSIS_MCP_URL || undefined,
+    channelsSourceDatabaseUrl:
+      envVars.CHANNELS_SOURCE_DATABASE_URL || undefined,
     planEngineMaxDailyStarts: toNonNegativeIntegerOrDefault(
       "PLAN_ENGINE_MAX_DAILY_STARTS",
       envVars.PLAN_ENGINE_MAX_DAILY_STARTS,

@@ -640,6 +640,7 @@ import { DemoBoardStorage } from "@/storage/demo-board";
 import { NotificationStorage } from "@/storage/notifications";
 import { AlertStorage } from "@/storage/alerts";
 import { ChannelAccountStorage } from "@/storage/channel-accounts";
+import { ChannelsStorage } from "@/storage/channels";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -1625,6 +1626,7 @@ export async function createStudioContextFactory(
     notifications: new NotificationStorage(config.db),
     alerts: new AlertStorage(config.db),
     channelAccounts: new ChannelAccountStorage(config.db),
+    channels: new ChannelsStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),

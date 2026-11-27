@@ -32,7 +32,8 @@ type IdPrefixes =
   | "sprint"
   | "goal"
   | "alert"
-  | "chc";
+  | "chc"
+  | "chan";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;

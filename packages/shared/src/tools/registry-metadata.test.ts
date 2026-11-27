@@ -80,3 +80,28 @@ describe("change request permissions", () => {
     expect(BASIC_USAGE_TOOLS.has("REPOSITORY_READ_FILE")).toBe(false);
   });
 });
+
+describe("channels permissions", () => {
+  const reads = [
+    "CHANNELS_CONNECTION_LIST",
+    "CHANNELS_CONNECTION_GET",
+    "CHANNELS_CONVERSATION_LIST",
+    "CHANNELS_MESSAGE_LIST",
+    "CHANNELS_MESSAGE_SEARCH",
+  ];
+
+  it("gives the built-in user channels:read, which a custom role can leave out", () => {
+    for (const tool of reads) {
+      expect(USER_ROLE_TOOLS.has(tool)).toBe(true);
+      expect(BASIC_USAGE_TOOLS.has(tool)).toBe(false);
+    }
+    expect(
+      resolveCapabilities({ self: [...USER_ROLE_TOOLS] })["channels:read"],
+    ).toBe(true);
+    expect(
+      resolveCapabilities({ self: ["CHANNELS_CONNECTION_LIST"] })[
+        "channels:read"
+      ],
+    ).toBe(false);
+  });
+});

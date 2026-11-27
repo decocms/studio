@@ -407,6 +407,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Blog as a project view of its own (a sidebar row, an app tile and `/blog`), edited on Blog drafts with each post beside the site's render of it. Off by default: the blog stays in the Site Editor's Content tab, and `blog-draft-` branches are ordinary drafts.",
     ),
+  channels_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Channels: connect outside sources (WhatsApp, Discord, Slack…) whose workers push conversations into Studio, and read and search them. Off by default; with it off the CHANNELS_* tools refuse. Ingestion still answers for connections already created.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

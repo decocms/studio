@@ -464,6 +464,9 @@ secret:
   # channels acting as the person who wrote). Leave unset to disable it; it
   # also needs CHANNELS_SERVICE_URL (the service's origin) in the config.
   # CHANNELS_SERVICE_TOKEN: ""
+  # Read-only Postgres URL of the channels hub, copied into each channel
+  # connection every minute. Leave unset to disable the copy.
+  # CHANNELS_SOURCE_DATABASE_URL: ""
   # Optional internal NATS credentials. Prefer secret.secretName or
   # externalSecret for production GitOps so credentials are not stored in
   # plain values files.

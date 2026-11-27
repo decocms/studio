@@ -16,6 +16,7 @@ import * as migration272planengine from "./272-plan-engine";
 import * as migration273planenginebigquerybinding from "./273-plan-engine-bigquery-binding";
 import * as migration274connectionsecretfields from "./274-connection-secret-fields";
 import * as migration275ordermonitorforecasts from "./275-order-monitor-forecasts";
+import * as migration276channels from "./276-channels";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -590,6 +591,7 @@ const migrations: Record<string, Migration> = {
   "273-plan-engine-bigquery-binding": migration273planenginebigquerybinding,
   "274-connection-secret-fields": migration274connectionsecretfields,
   "275-order-monitor-forecasts": migration275ordermonitorforecasts,
+  "276-channels": migration276channels,
 };
 
 export default migrations;

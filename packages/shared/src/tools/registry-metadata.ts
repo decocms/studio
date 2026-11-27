@@ -403,6 +403,14 @@ const ALL_TOOL_NAMES = [
   "CHANNEL_ACCOUNT_CONNECT",
   "CHANNEL_ACCOUNT_LIST",
   "CHANNEL_ACCOUNT_DISCONNECT",
+  "CHANNELS_CONNECTION_CREATE",
+  "CHANNELS_CONNECTION_ROTATE_TOKEN",
+  "CHANNELS_CONNECTION_LIST",
+  "CHANNELS_CONNECTION_GET",
+  "CHANNELS_CONNECTION_DELETE",
+  "CHANNELS_CONVERSATION_LIST",
+  "CHANNELS_MESSAGE_LIST",
+  "CHANNELS_MESSAGE_SEARCH",
 ] as const;
 
 /**
@@ -1822,6 +1830,48 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Users",
   },
   {
+    name: "CHANNELS_CONNECTION_CREATE",
+    description: "Connect a channel account and issue its ingestion token",
+    category: "Connections",
+  },
+  {
+    name: "CHANNELS_CONNECTION_ROTATE_TOKEN",
+    description: "Issue a new ingestion token for a channel connection",
+    category: "Connections",
+    dangerous: true,
+  },
+  {
+    name: "CHANNELS_CONNECTION_LIST",
+    description: "List the organization's channel connections",
+    category: "Connections",
+  },
+  {
+    name: "CHANNELS_CONNECTION_GET",
+    description: "Get a channel connection with its counts and sync state",
+    category: "Connections",
+  },
+  {
+    name: "CHANNELS_CONNECTION_DELETE",
+    description: "Delete a channel connection and everything it brought in",
+    category: "Connections",
+    dangerous: true,
+  },
+  {
+    name: "CHANNELS_CONVERSATION_LIST",
+    description: "List channel conversations",
+    category: "Connections",
+  },
+  {
+    name: "CHANNELS_MESSAGE_LIST",
+    description: "Read a channel conversation's messages",
+    category: "Connections",
+  },
+  {
+    name: "CHANNELS_MESSAGE_SEARCH",
+    description: "Search channel messages",
+    category: "Connections",
+  },
+  {
     name: "ALERTS_LIST",
     description: "List the organization's alerts",
     category: "Monitoring",
@@ -2370,8 +2420,28 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REPORTS_CONNECTION_STATUS",
       "REPORTS_SET_REPOSITORY",
       "PLAN_DIAGNOSIS_SETUP",
+      // A channel connection's token lets its worker write into the org.
+      "CHANNELS_CONNECTION_CREATE",
+      "CHANNELS_CONNECTION_ROTATE_TOKEN",
+      "CHANNELS_CONNECTION_DELETE",
     ],
     dangerous: true,
+  },
+  // Every role gets it by default (USER_ROLE_CAPABILITY_IDS); a custom role
+  // can leave it out.
+  {
+    id: "channels:read",
+    label: "Read channels",
+    description:
+      "See channel connections and read and search their conversations",
+    section: "Connections & Agents",
+    tools: [
+      "CHANNELS_CONNECTION_LIST",
+      "CHANNELS_CONNECTION_GET",
+      "CHANNELS_CONVERSATION_LIST",
+      "CHANNELS_MESSAGE_LIST",
+      "CHANNELS_MESSAGE_SEARCH",
+    ],
   },
   {
     id: "agents:manage",
@@ -2652,6 +2722,7 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
 const USER_ROLE_CAPABILITY_IDS: string[] = [
   "agents:manage",
   "connections:manage",
+  "channels:read",
   "assets:manage",
   "repositories:connect",
   "changes:propose",
