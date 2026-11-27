@@ -13,7 +13,11 @@ import { CodexSubscriptionStorage } from "../storage/codex-subscriptions";
 import { SpanStatusCode, type Meter, type Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
 import { grantedScopes } from "../auth/mcp-userinfo";
-import { CHANNELS_TOKEN_AUDIENCE, verifyStudioToken } from "../auth/jwt";
+import {
+  CHANNELS_TOKEN_AUDIENCE,
+  type StudioJwtPayload,
+  verifyStudioToken,
+} from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
@@ -876,13 +880,7 @@ async function resolveOnBehalfOfUser(
   };
 }
 
-async function authenticateRequest(
-  req: Request,
-  auth: BetterAuthInstance,
-  db: Kysely<Database>,
-  timings: FactoryOptions["timings"] = DEFAULT_TIMINGS,
-  memberRoleCache?: MemberRoleCache,
-): Promise<{
+interface AuthResult {
   method?: AuthMethod;
   user?: AuthenticatedUser;
   role?: string;
@@ -892,7 +890,112 @@ async function authenticateRequest(
   tokenOrganizationId?: string;
   organization?: OrganizationContext;
   onBehalfOf?: boolean;
-}> {
+}
+
+/**
+ * The principal a verified Studio JWT stands for. `asMember` grants the
+ * user's role permissions in the token's organization instead of the token's
+ * per-connection scope list.
+ */
+async function authenticateStudioJwt(
+  payload: StudioJwtPayload,
+  db: Kysely<Database>,
+  timings: NonNullable<FactoryOptions["timings"]>,
+  memberRoleCache: MemberRoleCache | undefined,
+  asMember: boolean,
+): Promise<AuthResult> {
+  // Look up user's organization role for admin/owner bypass
+  let role: string | undefined;
+  const organizationId = payload.metadata?.organizationId;
+  if (payload.sub && organizationId) {
+    role = await resolveAndCacheRole(
+      db,
+      timings,
+      payload.sub,
+      organizationId,
+      memberRoleCache,
+    );
+  }
+
+  let organization: OrganizationContext | undefined;
+  const metaOrgId = payload.metadata?.organizationId;
+  if (metaOrgId) {
+    const metaName = payload.metadata?.organizationName;
+    const metaSlug = payload.metadata?.organizationSlug;
+    if (metaName || metaSlug) {
+      // Name/slug are embedded in the JWT, but we still need to verify the
+      // org isn't archived — the token may have been issued before
+      // deletion. Cached to keep this off the hot path.
+      if (
+        await isOrgArchivedCached(
+          db,
+          timings,
+          metaOrgId,
+          "auth_query_org_archived_for_studio_token",
+        )
+      ) {
+        return { user: undefined };
+      }
+      organization = { id: metaOrgId, name: metaName, slug: metaSlug };
+    } else {
+      const orgRow = await timings.measure(
+        "auth_query_org_for_studio_token",
+        () =>
+          db
+            .selectFrom("organization")
+            .select(["id", "slug", "name", "metadata"])
+            .where("id", "=", metaOrgId)
+            .executeTakeFirst(),
+      );
+      if (isOrgArchived(orgRow)) {
+        return { user: undefined };
+      }
+      organization = orgRow
+        ? { id: orgRow.id, slug: orgRow.slug, name: orgRow.name }
+        : { id: metaOrgId };
+    }
+  }
+
+  return {
+    method: "studioJwt",
+    user: {
+      id: payload.sub,
+      connectionId: payload.metadata?.connectionId,
+      role,
+    },
+    role,
+    permissions: asMember
+      ? role && organizationId
+        ? await fetchRolePermissions(db, organizationId, role)
+        : {}
+      : payload.permissions,
+    tokenOrganizationId: organizationId,
+    organization,
+  };
+}
+
+/**
+ * `GET /api/:org/sites/:site/access`, the one route that accepts an
+ * `x-studio-token` with no `Authorization` header. See `authenticateRequest`.
+ */
+export function isStudioTokenOnlyRoute(req: Request): boolean {
+  if (req.method !== "GET") return false;
+  try {
+    return /^\/api\/[^/]+\/sites\/[^/]+\/access$/.test(
+      new URL(req.url).pathname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function authenticateRequest(
+  req: Request,
+  auth: BetterAuthInstance,
+  db: Kysely<Database>,
+  timings: FactoryOptions["timings"] = DEFAULT_TIMINGS,
+  memberRoleCache?: MemberRoleCache,
+): Promise<AuthResult> {
   const authHeader = req.headers.get("Authorization");
 
   // Try OAuth session first (getMcpSession)
@@ -1035,78 +1138,16 @@ async function authenticateRequest(
       );
 
       if (studioTokenPayload) {
-        // Look up user's organization role for admin/owner bypass
-        let role: string | undefined;
-        const organizationId = studioTokenPayload.metadata?.organizationId;
-        if (studioTokenPayload.sub && organizationId) {
-          role = await resolveAndCacheRole(
-            db,
-            timings,
-            studioTokenPayload.sub,
-            organizationId,
-            memberRoleCache,
-          );
-        }
-
-        let organization: OrganizationContext | undefined;
-        const metaOrgId = studioTokenPayload.metadata?.organizationId;
-        if (metaOrgId) {
-          const metaName = studioTokenPayload.metadata?.organizationName;
-          const metaSlug = studioTokenPayload.metadata?.organizationSlug;
-          if (metaName || metaSlug) {
-            // Name/slug are embedded in the JWT, but we still need to verify the
-            // org isn't archived — the token may have been issued before
-            // deletion. Cached to keep this off the hot path.
-            if (
-              await isOrgArchivedCached(
-                db,
-                timings,
-                metaOrgId,
-                "auth_query_org_archived_for_studio_token",
-              )
-            ) {
-              return { user: undefined };
-            }
-            organization = { id: metaOrgId, name: metaName, slug: metaSlug };
-          } else {
-            const orgRow = await timings.measure(
-              "auth_query_org_for_studio_token",
-              () =>
-                db
-                  .selectFrom("organization")
-                  .select(["id", "slug", "name", "metadata"])
-                  .where("id", "=", metaOrgId)
-                  .executeTakeFirst(),
-            );
-            if (isOrgArchived(orgRow)) {
-              return { user: undefined };
-            }
-            organization = orgRow
-              ? { id: orgRow.id, slug: orgRow.slug, name: orgRow.name }
-              : { id: metaOrgId };
-          }
-        }
-
-        return {
-          method: "studioJwt",
-          user: {
-            id: studioTokenPayload.sub,
-            connectionId: studioTokenPayload.metadata?.connectionId,
-            role,
-          },
-          role,
+        return await authenticateStudioJwt(
+          studioTokenPayload,
+          db,
+          timings,
+          memberRoleCache,
           // A channel token stands for the person the way their own MCP
           // OAuth session does: their role's grants, not a per-connection
           // scope list.
-          permissions:
-            studioTokenPayload.aud === CHANNELS_TOKEN_AUDIENCE
-              ? role && organizationId
-                ? await fetchRolePermissions(db, organizationId, role)
-                : {}
-              : studioTokenPayload.permissions,
-          tokenOrganizationId: organizationId,
-          organization,
-        };
+          studioTokenPayload.aud === CHANNELS_TOKEN_AUDIENCE,
+        );
       }
     } catch {
       // Not a valid studio JWT, continue to API key check
@@ -1225,6 +1266,38 @@ async function authenticateRequest(
       } else {
         console.error("[Auth] API key check failed:", err);
       }
+    }
+  }
+
+  // An `x-studio-token` alone, only on `isStudioTokenOnlyRoute`. Elsewhere
+  // the header only names the actor of an API-key loopback call
+  // (`resolveOnBehalfOfUser`) and never authenticates by itself.
+  //
+  // sites.decocms.com receives this token from Studio's MCP proxy and asks
+  // that route what the user may do on a site. The token is the same HS256
+  // credential `Authorization: Bearer` already accepts on every route, so
+  // reading it from this header on one read-only route grants nothing new,
+  // and it is held tighter than the Bearer path:
+  // - no `Authorization` header at all, so it never stands in for a failed
+  //   API key or OAuth token;
+  // - it must name an organization; `resolveOrgFromPath` then refuses (403)
+  //   one other than `:org` (`tokenOrganizationId`) and a non-member;
+  // - never a channels token, which is only handed to the channels service;
+  // - the user's current member role (re-read, not the token's snapshot)
+  //   and that role's permissions, so a custom role's project scope applies.
+  if (!authHeader && isStudioTokenOnlyRoute(req)) {
+    const token = readStudioHeader(req.headers, "token");
+    const payload = token
+      ? await timings.measure("auth_verify_studio_token", () =>
+          verifyStudioToken(token),
+        )
+      : undefined;
+    if (
+      payload?.sub &&
+      payload.metadata?.organizationId &&
+      payload.aud !== CHANNELS_TOKEN_AUDIENCE
+    ) {
+      return authenticateStudioJwt(payload, db, timings, memberRoleCache, true);
     }
   }
 

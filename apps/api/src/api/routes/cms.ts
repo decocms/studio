@@ -97,13 +97,20 @@ import { viaOf } from "@/hosted/via";
 import { getSettings } from "@/settings";
 import type { DraftStoragePort } from "@/storage/ports";
 import type { CmsVia } from "@/storage/types";
+import type { StudioContext } from "@/core/studio-context";
 import type { Env } from "../hono-env";
+
+interface SiteProject {
+  id: string;
+  title: string;
+  metadata: Record<string, unknown> | null;
+}
 
 interface CmsSite {
   organizationId: string;
   site: string;
   /** The project `org_sites` links to the site, if any. */
-  project: { id: string; metadata: Record<string, unknown> | null } | null;
+  project: SiteProject | null;
   userId: string;
   via: CmsVia;
 }
@@ -242,6 +249,37 @@ async function admitToOrganization(
   return true;
 }
 
+/**
+ * The project `org_sites` links a site to, when it is a project of
+ * `organizationId`.
+ */
+export async function siteProject(
+  ctx: StudioContext,
+  projectId: string | null,
+  organizationId: string,
+): Promise<SiteProject | null> {
+  if (!projectId) return null;
+  const found = await ctx.storage.virtualMcps.findById(projectId);
+  if (!found || found.organization_id !== organizationId) return null;
+  return {
+    id: found.id,
+    title: found.title,
+    metadata: (found.metadata as Record<string, unknown> | null) ?? null,
+  };
+}
+
+/**
+ * Whether the caller's project scope (a custom role's `projects` list)
+ * reaches the site's project, as the org's project tools enforce.
+ */
+export async function siteProjectAllowed(
+  ctx: StudioContext,
+  projectId: string | null,
+): Promise<boolean> {
+  if (!projectId) return true;
+  return isProjectAllowed(await resolveCallerProjectScope(ctx), projectId);
+}
+
 const SITE_TOKENS_ROUTE = "/:site/site-tokens";
 
 /**
@@ -276,19 +314,13 @@ function gates(options: CmsRoutesOptions) {
     if (!row || organizationId === null || !admitted) {
       return fail(c, 404, "site_not_found", "Site not found");
     }
-    // A caller scoped to some of the org's projects (a custom role's
-    // `projects` list) reaches only those projects' sites, as the org's
-    // project tools enforce (`isProjectAllowed`).
-    if (row.projectId) {
-      const scope = await resolveCallerProjectScope(ctx);
-      if (!isProjectAllowed(scope, row.projectId)) {
-        return fail(
-          c,
-          403,
-          "project_not_allowed",
-          "This site's project is outside your access",
-        );
-      }
+    if (!(await siteProjectAllowed(ctx, row.projectId))) {
+      return fail(
+        c,
+        403,
+        "project_not_allowed",
+        "This site's project is outside your access",
+      );
     }
     // Admission is membership only; the permission is what bounds an API
     // key to its allowlist (members hold all three as basic usage).
@@ -341,20 +373,10 @@ function gates(options: CmsRoutesOptions) {
         "hosted delivery not configured",
       );
     }
-    let project: CmsSite["project"] = null;
-    if (row.projectId) {
-      const found = await ctx.storage.virtualMcps.findById(row.projectId);
-      if (found && found.organization_id === organizationId) {
-        project = {
-          id: found.id,
-          metadata: (found.metadata as Record<string, unknown> | null) ?? null,
-        };
-      }
-    }
     c.set("cmsSite", {
       organizationId,
       site: row.slug,
-      project,
+      project: await siteProject(ctx, row.projectId, organizationId),
       userId,
       via: viaOf(ctx.auth),
     });

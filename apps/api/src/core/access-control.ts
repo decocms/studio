@@ -204,6 +204,14 @@ export class AccessControl {
   }
 
   /**
+   * Whether the caller holds `resource`, decided as `check()` decides it but
+   * without granting access, so one request can report several permissions.
+   */
+  async holds(resource: string): Promise<boolean> {
+    return this.checkResource(resource);
+  }
+
+  /**
    * Check if user has permission to access a resource
    * Delegates to Better Auth's Organization plugin via boundAuth
    */

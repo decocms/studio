@@ -49,6 +49,7 @@ import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
 import { createShortLinkCreateRoutes } from "./short-links";
+import { createSitesAccessRoutes } from "./sites-access";
 
 interface OrgScopedDeps {
   voiceSessions: VoiceSessions;
@@ -134,6 +135,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createOrgNoticeRoutes()); // /api/:org/notice — the org's pinned billing notice
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/hosting", createHostingRoutes()); // /api/:org/hosting/:site/...
+  app.route("/sites", createSitesAccessRoutes()); // /api/:org/sites/:site/access — sites.decocms.com's access lookup
   app.route("/monitor", createMonitorRoutes()); // /api/:org/monitor/:site/cdn/data — native CDN analytics, direct ClickHouse
   app.route("/order-monitor", createOrderMonitorRoutes()); // /api/:org/order-monitor/stores[/:connectionId/{day,pushes}] — store order flow, customer lake
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
