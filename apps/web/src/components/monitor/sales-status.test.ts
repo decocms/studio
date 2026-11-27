@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { OrderMonitorForecast } from "@decocms/shared/order-monitor";
-import { bands } from "./sales-status";
+import { bands, capturedChange, clock } from "./sales-status";
 
 const hours = (end: number) =>
   Array.from({ length: 24 }, (_, h) => (h === 23 ? end : 0));
@@ -39,5 +39,31 @@ describe("bands", () => {
 
   it("has no bands without any reference day", () => {
     expect(bands([store({})], "orders")).toBeNull();
+  });
+});
+
+describe("capturedChange", () => {
+  it("compares what's captured with the reference", () => {
+    expect(capturedChange(5, 120, 100)).toBeCloseTo(0.2);
+  });
+
+  it("shows no change before today's first order, instead of a 100% drop", () => {
+    expect(capturedChange(0, 0, 250)).toBeNull();
+    expect(capturedChange(0, null, 250)).toBeNull();
+  });
+
+  it("shows no change against a reference of 0 or none", () => {
+    expect(capturedChange(5, 120, 0)).toBeNull();
+    expect(capturedChange(5, 120, null)).toBeNull();
+  });
+});
+
+describe("clock", () => {
+  it("reads a bucket position to the minute", () => {
+    expect(clock(0)).toBe("00:00");
+    expect(clock(8 / 15)).toBe("00:08");
+    expect(clock(723 / 15)).toBe("12:03");
+    expect(clock(1439 / 15)).toBe("23:59");
+    expect(clock(96)).toBe("00:00");
   });
 });

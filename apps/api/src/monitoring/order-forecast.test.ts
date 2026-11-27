@@ -41,7 +41,7 @@ const history = (
 const flat = (n: number) => new Array<number>(BUCKETS_PER_DAY).fill(n);
 const HOURS_FROM = (from: number) =>
   Array.from({ length: 24 - from }, (_, i) => from + i);
-function storeDay(done: number): StoreDay {
+function storeDay(done: number, now = done): StoreDay {
   const series = (): DaySeries => ({
     placed: flat(1),
     revenue: flat(100),
@@ -53,7 +53,7 @@ function storeDay(done: number): StoreDay {
     DayAgo,
     DaySeries
   >;
-  return { timezone: "UTC", done, days, firstEventDaysAgo: 60 };
+  return { timezone: "UTC", done, now, days, firstEventDaysAgo: 60 };
 }
 
 const baseline: OrderMonitorForecast = {
@@ -237,6 +237,19 @@ describe("toProjection", () => {
     expect(p.close.orders).toBe(
       42 + 8 + HOURS_FROM(11).reduce((s, h) => s + h, 0),
     );
+  });
+
+  it("takes the hour under way and what's in from `now`, past `done`", () => {
+    // 10:03: the grace keeps `done` at 39 (09:45); bucket 40 has 1 order so far.
+    const late = storeDay(39, 603 / 15);
+    for (const m of ["placed", "revenue"] as const) {
+      late.days[0][m] = late.days[0][m].map((v, b) => (b <= 40 ? v : 0));
+    }
+    const p = toProjection(baseline, late, model);
+    expect(p.orders[9]).toBe(0);
+    expect(p.orders[10]).toBe(5 - 1);
+    expect(p.close.orders).toBe(41 + 4 + 13 * 5);
+    expect(p.close.revenue).toBe(4100 + 400 + 13 * 500);
   });
 
   it("scales the running median by each calibration day's ratio", () => {
@@ -828,6 +841,28 @@ describe("withModel", () => {
     expect(
       withModel(base, day, { ...stored(10, 10), orders: [1, 2] }, at),
     ).toBe(base);
+  });
+
+  it("closes at what the sales status captured plus the model's rest, counting nothing twice", () => {
+    // 10:03: `done` is still 39; 41 orders are in, 1 of them in hour 10.
+    const late = storeDay(39, 603 / 15);
+    for (const m of ["placed", "revenue"] as const) {
+      late.days[0][m] = late.days[0][m].map((v, b) => (b <= 40 ? v : 0));
+    }
+    const at1003 = new Date("2026-11-26T10:03:00Z");
+    const base = buildDayView(late, at1003);
+    const v = withModel(base, late, stored(10, 3), at1003);
+    const captured = v.forecast.soFar.today;
+    const p = v.forecast.projection!;
+    const rest = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    expect(captured.orders).toBe(41);
+    expect(p.close.orders).toBe(captured.orders + rest(p.orders));
+    expect(p.close.revenue).toBe(captured.revenue + rest(p.revenue));
+    expect(p.close.orders).toBe(41 + 4 + 13 * 5);
+    expect(v.headline.projected).toBe(p.close.orders);
+    // The baseline's close adds up the same way.
+    const b = base.forecast.projection!;
+    expect(b.close.orders).toBeCloseTo(captured.orders + rest(b.orders));
   });
 
   it("gives the headline and the expected line past now the same rest of day", () => {

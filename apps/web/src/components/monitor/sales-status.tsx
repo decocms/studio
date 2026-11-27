@@ -46,8 +46,12 @@ const COLOR_W1 = "var(--muted-foreground)";
 
 type Pair = { orders: number; revenue: number };
 
-const clock = (bucket: number) =>
-  `${String(Math.floor(bucket / 4) % 24).padStart(2, "0")}:${String((bucket % 4) * 15).padStart(2, "0")}`;
+/** `HH:MM` at bucket position `bucket` of the day, which may fall inside a bucket. */
+export const clock = (bucket: number) => {
+  const minutes = Math.round(bucket * 15);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
+};
 const total = (xs: readonly (number | null)[], to = xs.length) =>
   xs.slice(0, to).reduce<number>((s, x) => s + (x ?? 0), 0);
 
@@ -56,6 +60,16 @@ const addSales = (xs: OrderMonitorSales[]): OrderMonitorSales => ({
   revenue: xs.reduce((s, x) => s + x.revenue, 0),
   items: xs.reduce((s, x) => s + x.items, 0),
 });
+
+/**
+ * `current` against `previous`; none while nothing is `captured` yet (every
+ * figure would read as a 100% drop), at 0, or without a reference.
+ */
+export const capturedChange = (
+  captured: number,
+  current: number | null,
+  previous: number | null,
+) => (captured > 0 && current ? relativeChange(current, previous) : null);
 
 /**
  * A reference day across stores, like for like: only the stores that hold
@@ -177,13 +191,15 @@ export function SalesStatus({
   const t = useT();
   // A day read from an API without the sales, or the projection's paths, yet.
   const stale = (d: OrderMonitorDay) =>
-    !d.forecast?.revenue ||
+    !d.forecast?.orders ||
+    !Number.isFinite(d.now) ||
     (d.forecast.projection !== null && !d.forecast.projection.paths);
   if (days.length === 0 || days.some(stale)) return null;
   const first = days[0]!;
-  const done = Math.min(...days.map((d) => d.done));
+  // Bucket position the sales are captured up to.
+  const upTo = Math.min(...days.map((d) => d.now));
   const live =
-    done < 96 &&
+    upTo < 96 &&
     new Date().toLocaleDateString("en-CA", { timeZone: first.timezone }) ===
       first.date;
   const today = addSales(days.map((d) => d.forecast.soFar.today));
@@ -192,7 +208,7 @@ export function SalesStatus({
   ) as Record<Ref, ReturnType<typeof addRef>>;
   const projections = days.map((d) => d.forecast.projection);
   const held = projections.every((p) => p !== null) ? projections : null;
-  const projection = done < 95 && held ? addProjection(held) : null;
+  const projection = upTo < 95 && held ? addProjection(held) : null;
 
   // Stores in different currencies don't add up: orders stand in for revenue.
   const currencies = new Set(days.map((d) => d.forecast.currency));
@@ -216,11 +232,11 @@ export function SalesStatus({
   /** Today against reference `r`, like for like. */
   const vs = (r: Ref, f: (s: OrderMonitorSales) => number | null) => {
     const x = ref[r];
-    return x ? relativeChange(f(x.today), f(x.ref)) : null;
+    return x ? capturedChange(x.today.orders, f(x.today), f(x.ref)) : null;
   };
 
   const storeSeries = (d: OrderMonitorDay) =>
-    currency ? d.forecast.revenue : d.orders;
+    currency ? d.forecast.revenue : d.forecast.orders;
   const series = addSeries(days.map(storeSeries));
   const ahead = projection
     ? currency
@@ -230,11 +246,11 @@ export function SalesStatus({
   const band =
     projection && held ? bands(held, currency ? "revenue" : "orders") : null;
   const hasW1 = ref.w1 !== null;
-  const now = done / 4;
+  const now = upTo / 4;
   const hour = Math.floor(now);
-  // The hour under way has a bucket in; at :00 it hasn't started.
-  const started = done % 4 !== 0;
-  const until = done >= 95 ? "23:59" : clock(done);
+  // At :00 the hour under way hasn't started.
+  const started = upTo % 4 !== 0;
+  const until = clock(upTo);
 
   // W-1 up to the same minute: each store's own, or its whole hours.
   const w1Now = days.reduce((s, d) => {
@@ -363,12 +379,18 @@ export function SalesStatus({
   ).map((h) => {
     const partial = h === hour && live && started;
     const past = h < hour || (h === hour && (started || !live));
+    const value = past ? (series.today[h] ?? 0) : null;
+    const w1 = hasW1 ? (partial ? w1Partial : series.w1[h]!) : null;
     return {
       h,
       partial,
-      value: past ? (series.today[h] ?? 0) : null,
+      value,
       expected: ahead ? ahead[h]! : null,
-      w1: hasW1 ? (partial ? w1Partial : series.w1[h]!) : null,
+      w1,
+      // An hour just begun with nothing in yet isn't a drop.
+      change: partial
+        ? capturedChange(value ?? 0, value, w1)
+        : relativeChange(value, w1),
     };
   });
 
@@ -386,6 +408,8 @@ export function SalesStatus({
   const perOrder = (s: OrderMonitorSales) =>
     s.orders > 0 ? s.items / s.orders : null;
   const conversionRefs = conversion?.references;
+  const conversionVs = (reference: number | null) =>
+    capturedChange(today.orders, conversion?.value ?? null, reference);
   const cards = [
     {
       key: "orders",
@@ -415,9 +439,9 @@ export function SalesStatus({
         value: `${(conversion.value * 100).toFixed(2)}%`,
         // The sites' traffic has no M-1.
         refs: [
-          relativeChange(conversion.value, conversionRefs.w1),
+          conversionVs(conversionRefs.w1),
           null,
-          relativeChange(conversion.value, conversionRefs.y1),
+          conversionVs(conversionRefs.y1),
         ],
       },
   ].filter((c) => !!c);
@@ -455,19 +479,22 @@ export function SalesStatus({
             </span>
           </div>
           <ul className="flex flex-col gap-1 pt-1 text-sm">
-            {REFS.map((r) => (
-              <li key={r}>
-                <Trend
-                  change={vs(r, pick)}
-                  better="up"
-                  reference={
-                    r === "w1"
-                      ? t("monitor.sales.vsLast", { weekday })
-                      : refLabel[r]
-                  }
-                />
-              </li>
-            ))}
+            {REFS.map((r) => {
+              const change = vs(r, pick);
+              const reference =
+                r === "w1"
+                  ? t("monitor.sales.vsLast", { weekday })
+                  : refLabel[r];
+              return (
+                <li key={r}>
+                  {change === null ? (
+                    <span className="text-meta">— {reference}</span>
+                  ) : (
+                    <Trend change={change} better="up" reference={reference} />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
         {projection && (
@@ -691,9 +718,7 @@ export function SalesStatus({
                       if (!active || !p) return null;
                       return (
                         <div className="surface tnum flex flex-col gap-0.5 px-2.5 py-1.5 text-xs shadow-sm">
-                          <span className="text-meta">
-                            {clock(Math.round(p.x * 4))}
-                          </span>
+                          <span className="text-meta">{clock(p.x * 4)}</span>
                           {p.today !== null && (
                             <span>
                               {t("monitor.sales.today")}: {show(p.today)}
@@ -1011,7 +1036,7 @@ export function SalesStatus({
                         {!future && (
                           <span className="inline-flex justify-end leading-none">
                             <Trend
-                              change={relativeChange(row.value, row.w1)}
+                              change={row.change}
                               better="up"
                               reference=""
                             />

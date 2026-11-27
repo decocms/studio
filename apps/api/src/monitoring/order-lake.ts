@@ -360,6 +360,7 @@ export async function loadStoreDay(
     timezone,
     currency,
     done: doneBuckets(at, timezone),
+    now: localMinutes(at, timezone) / 15,
     days,
     dstBuckets: dstBuckets(at, timezone),
     firstEventDaysAgo:

@@ -55,8 +55,10 @@ export interface StoreDay {
   timezone: string;
   /** The orders' currency; null when the day has none. */
   currency?: string | null;
-  /** Fully elapsed buckets of day 0 (ingest grace included). */
+  /** Fully elapsed buckets of day 0 (ingest grace included): what the rules judge. */
   done: number;
+  /** Buckets of day 0 up to the read's instant, to the minute (`done` plus the grace and the bucket under way): what the sales status counts. */
+  now: number;
   days: Record<DayAgo, DaySeries>;
   /** Buckets of day 0 a DST switch skipped or repeated; a window over them isn't judged. */
   dstBuckets?: number[];
@@ -80,6 +82,13 @@ export type Verdict = Omit<OrderMonitorVerdict, "timezone">;
 
 const sum = (a: number[], from = 0, to = a.length) =>
   a.slice(Math.max(0, from), to).reduce((s, v) => s + v, 0);
+
+/** `a` over [from, to), `to` whole: a `from` inside a bucket takes the share of it still to come. */
+const sumFrom = (a: number[], from: number, to: number) => {
+  if (from >= to) return 0;
+  const b = Math.floor(from);
+  return (b + 1 - from) * (a[b] ?? 0) + sum(a, b + 1, to);
+};
 
 const median = (xs: number[]) => {
   if (xs.length === 0) return 0;
@@ -262,12 +271,21 @@ const hourly = (a: number[], h: number) => sum(a, h * 4, h * 4 + 4);
 
 type Measure = "placed" | "revenue";
 
+/** Day 0 before bucket position `cut`: the lake holds no order from the read's instant on, so the bucket under way counts whole. */
+const capturedTo = (a: number[], cut: number) => sum(a, 0, Math.ceil(cut));
+
 /**
- * The day's projection: the monitor's baseline scaled by today's level, per
- * clock hour still to come, its close, and the baseline's own whole day, which
- * is what the day was projected at before its first order.
+ * The day's projection from bucket position `from` on (`now` for the day
+ * view, `done` for the sweep): the monitor's baseline scaled by today's level,
+ * per clock hour still to come, its close (what's in before `from` plus the
+ * rest), and the baseline's own whole day, which is what the day was projected
+ * at before its first order.
  */
-function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
+function projection(
+  day: StoreDay,
+  lv: number,
+  from: number,
+): OrderMonitorForecast | null {
   const refs = {
     placed: series(day, "placed").refs,
     revenue: series(day, "revenue").refs,
@@ -275,23 +293,19 @@ function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
   if (refs.placed.length === 0) return null;
   // ponytail: revenue rides the orders' level, so a day with a bigger ticket
   // shows it only in what's already in; give revenue its own level if that misleads.
-  const ahead = (m: Measure, from: number, to: number) =>
-    lv * baseSum(refs[m], from + WINDOW, to + WINDOW);
+  const ahead = (m: Measure, a: number, b: number) =>
+    lv * median(refs[m].map((r) => sumFrom(r, a + WINDOW, b + WINDOW)));
   const rest = (m: Measure) =>
-    HOURS.map((h) => {
-      const from = Math.max(day.done, h * 4);
-      return from < h * 4 + 4 ? ahead(m, from, h * 4 + 4) : 0;
-    });
+    HOURS.map((h) => ahead(m, Math.max(from, h * 4), h * 4 + 4));
   const close = (m: Measure) =>
-    sum(day.days[0][m], 0, day.done) + ahead(m, day.done, BUCKETS_PER_DAY);
+    capturedTo(day.days[0][m], from) + ahead(m, from, BUCKETS_PER_DAY);
   const initial = (m: Measure) =>
     baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW);
   // The cloud around it: what each reference day brought from now on, at
   // today's level, summed up to the end of each hour.
   const path = (r: number[]) =>
     HOURS.map(
-      (h) =>
-        lv * sum(r, day.done + WINDOW, Math.max(day.done, h * 4 + 4) + WINDOW),
+      (h) => lv * sumFrom(r, from + WINDOW, Math.max(from, h * 4 + 4) + WINDOW),
     );
   return {
     orders: rest("placed"),
@@ -306,16 +320,20 @@ function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
   };
 }
 
-/** The baseline projection's close, as the day view shows it; null without reference days. */
+/** The baseline projection's close from `done` on, beside the sweep's so far; null without reference days. */
 export function baselineClose(
   day: StoreDay,
   verdicts: Record<Rule, Verdict>,
 ): { orders: number; revenue: number } | null {
-  const close = projection(day, verdicts.orders_drop.level)?.close;
+  const close = projection(day, verdicts.orders_drop.level, day.done)?.close;
   return close ? { orders: close.orders, revenue: close.revenue } : null;
 }
 
-/** Day `d` up to the same time of day as day 0; null when the lake has no order of it. */
+/**
+ * Day 0 up to `now`, and day `d` up to the same minute; null when the lake has
+ * no order of `d`. Today's bucket under way holds only what came in before
+ * `now`, so a reference day's counts for the share of it gone.
+ */
 function salesSoFar(day: StoreDay, d: DayAgo): OrderMonitorSales | null {
   const s = day.days[d];
   const partial =
@@ -327,10 +345,15 @@ function salesSoFar(day: StoreDay, d: DayAgo): OrderMonitorSales | null {
   ) {
     return null;
   }
+  const upTo = (a: number[]) =>
+    d === 0
+      ? capturedTo(a, day.now)
+      : sum(a, 0, Math.floor(day.now)) +
+        (day.now % 1) * (a[Math.floor(day.now)] ?? 0);
   return {
-    orders: sum(s.placed, 0, day.done),
-    revenue: sum(s.revenue, 0, day.done),
-    items: sum(s.items, 0, day.done),
+    orders: upTo(s.placed),
+    revenue: upTo(s.revenue),
+    items: upTo(s.items),
   };
 }
 
@@ -365,12 +388,21 @@ export function buildDayView(
   const cancels = (d: DayAgo, kind: "canceled" | "denied") =>
     (preInstall(d) ? day.approximate?.[d]?.[kind] : undefined) ??
     day.days[d][kind];
-  const hourSeries = (pick: (d: DayAgo) => number[]): OrderMonitorSeries => ({
-    today: HOURS.map((h) => soFar(pick(0), h)),
+  // The sales status counts up to `now`, the hour under way so far included.
+  const captured = (a: number[], h: number) =>
+    h * 4 < day.now
+      ? sum(a, h * 4, Math.min(h * 4 + 4, Math.ceil(day.now)))
+      : null;
+  const hourSeries = (
+    pick: (d: DayAgo) => number[],
+    cut = soFar,
+  ): OrderMonitorSeries => ({
+    today: HOURS.map((h) => cut(pick(0), h)),
     d1: HOURS.map((h) => hourly(pick(1), h)),
     w1: HOURS.map((h) => hourly(pick(7), h)),
     y1: HOURS.map((h) => hourly(pick(364), h)),
   });
+  const sales = projection(day, lv, day.now);
 
   const expected = HOURS.map((h) => lv * baseHour(placed.refs, h));
   const judged = (e: number, share: number) =>
@@ -401,6 +433,7 @@ export function buildDayView(
     // en-CA formats as YYYY-MM-DD.
     date: at.toLocaleDateString("en-CA", { timeZone: day.timezone }),
     done: day.done,
+    now: day.now,
     orders: {
       ...hourSeries((d) => day.days[d].placed),
       expected,
@@ -421,23 +454,22 @@ export function buildDayView(
       canceledAlertAt: cancelBand(thresholds.cancel_spike.threshold),
     },
     headline: {
-      projected:
-        sum(today.placed, 0, day.done) +
-        lv * baseSum(placed.refs, day.done + WINDOW, BUCKETS_PER_DAY + WINDOW),
+      projected: sales?.close.orders ?? capturedTo(today.placed, day.now),
       d1: sum(day.days[1].placed),
       w1: sum(day.days[7].placed),
       y1: sum(day.days[364].placed),
     },
     forecast: {
       currency: day.currency ?? null,
-      revenue: hourSeries((d) => day.days[d].revenue),
+      orders: hourSeries((d) => day.days[d].placed, captured),
+      revenue: hourSeries((d) => day.days[d].revenue, captured),
       soFar: {
         today: salesSoFar(day, 0)!,
         w1: salesSoFar(day, 7),
         m1: salesSoFar(day, 28),
         y1: salesSoFar(day, 364),
       },
-      projection: projection(day, lv),
+      projection: sales,
     },
     verdicts: {
       orders_drop: withZone(verdicts.orders_drop),

@@ -91,6 +91,16 @@ describe("loadStoreDay", () => {
     expect(day?.currency).toBe("BRL");
   });
 
+  it("counts the sales up to the read's minute, and the rules' buckets behind it by the ingest grace", async () => {
+    const day = await loadStoreDay(
+      "org",
+      "conn",
+      new Date("2026-11-27T00:08:30Z"),
+    );
+    expect(day?.now).toBe(8 / 15);
+    expect(day?.done).toBe(0);
+  });
+
   it("spreads each day's buckets to their slots and leaves days without rows at zero", async () => {
     rowsBySql.set("orders", [
       dayRow(0, [5, 2]),

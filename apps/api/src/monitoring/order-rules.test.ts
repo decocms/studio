@@ -37,6 +37,7 @@ function store(
   return {
     timezone: "UTC",
     done: 48,
+    now: 48,
     days,
     firstEventDaysAgo: 60,
     ...overrides,
@@ -278,6 +279,69 @@ describe("buildDayView", () => {
     }
   });
 
+  it("captures every order up to now, the bucket past `done` included, and prorates the reference days' bucket under way", () => {
+    // 12:03: the grace keeps `done` at 47 (11:45); bucket 48 has 2 orders so far.
+    const placed = flat(10).map((n, b) => (b < 48 ? n : b === 48 ? 2 : 0));
+    const s = store({ placed }, {}, { done: 47, now: 723 / 15 });
+    const v = buildDayView(s, at);
+    expect(v.now).toBe(723 / 15);
+    expect(v.forecast.soFar.today.orders).toBe(48 * 10 + 2);
+    // W-1 up to 12:03: 48 whole buckets and a fifth of the one under way.
+    expect(v.forecast.soFar.w1!.orders).toBeCloseTo(48 * 10 + 0.2 * 10);
+    expect(v.forecast.soFar.w1!.revenue).toBeCloseTo(48 * 1000 + 0.2 * 1000);
+    expect(v.forecast.orders.today[11]).toBe(40);
+    expect(v.forecast.orders.today[12]).toBe(2);
+    expect(v.forecast.orders.today[13]).toBeNull();
+    // The alert chart and the rules still stop at `done`.
+    expect(v.orders.today[11]).toBe(30);
+    expect(v.orders.today[12]).toBeNull();
+    expect(v.done).toBe(47);
+    expect(v.verdicts.orders_drop).toMatchObject(evaluateStore(s).orders_drop);
+  });
+
+  it("counts the first minutes after midnight instead of an empty day", () => {
+    // 00:08: no bucket is done yet, but 6 orders are in.
+    const placed = withDip(flat(0), 0, 1, 6);
+    const revenue = withDip(flat(0), 0, 1, 600);
+    const items = withDip(flat(0), 0, 1, 9);
+    const s = store({ placed, revenue, items }, {}, { done: 0, now: 8 / 15 });
+    const v = buildDayView(s, at);
+    expect(v.forecast.soFar.today).toEqual({
+      orders: 6,
+      revenue: 600,
+      items: 9,
+    });
+    expect(v.forecast.soFar.w1!.orders).toBeCloseTo((8 / 15) * 10);
+    expect(v.forecast.orders.today[0]).toBe(6);
+    expect(v.forecast.revenue.today[0]).toBe(600);
+    const p = v.forecast.projection!;
+    // The rest of bucket 0 and the 95 after it, at level 1.
+    expect(p.orders[0]).toBeCloseTo((4 - 8 / 15) * 10);
+    expect(p.close.orders).toBeCloseTo(6 + (96 - 8 / 15) * 10);
+    for (const x of p.paths)
+      expect(x.orders[23]).toBeCloseTo((96 - 8 / 15) * 10);
+  });
+
+  it("closes the day at what's captured plus what's still to come after it, counting nothing twice", () => {
+    const placed = flat(12).map((n, b) => (b < 48 ? n : b === 48 ? 3 : 0));
+    const revenue = placed.map((n) => n * 90);
+    const s = store({ placed, revenue }, {}, { done: 47, now: 723 / 15 });
+    const v = buildDayView(s, at);
+    const p = v.forecast.projection!;
+    const rest = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    expect(p.close.orders).toBeCloseTo(
+      v.forecast.soFar.today.orders + rest(p.orders),
+    );
+    expect(p.close.revenue).toBeCloseTo(
+      v.forecast.soFar.today.revenue + rest(p.revenue),
+    );
+    expect(v.headline.projected).toBe(p.close.orders);
+    // The sweep keeps its own cut at `done`.
+    expect(baselineClose(s, evaluateStore(s))!.orders).toBeCloseTo(
+      47 * 12 + 49 * evaluateStore(s).orders_drop.level * 10,
+    );
+  });
+
   it("spreads the projection between the quietest and busiest reference day", () => {
     const s = store({ placed: flat(10) });
     s.days[7] = { ...s.days[7], placed: flat(5) };
@@ -291,7 +355,7 @@ describe("buildDayView", () => {
     expect(p.close.orders).toBe(48 * 10 + 48 * 10);
   });
 
-  it("gives the sweep the same baseline close the day view shows", () => {
+  it("gives the sweep the baseline close the day view shows when cut at the same bucket", () => {
     const s = store({ placed: flat(10) });
     s.days[7] = { ...s.days[7], placed: flat(5) };
     const p = buildDayView(s, at).forecast.projection!;
