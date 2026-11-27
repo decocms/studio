@@ -51,6 +51,7 @@ import { settings } from "./settings.ts";
 import { announcements } from "./announcements.ts";
 import { assets } from "./assets.ts";
 import { plan } from "./plan.ts";
+import { channels } from "./channels.ts";
 import type { TranslationKey } from "../en/index.ts";
 
 export const ptBR = {
@@ -105,6 +106,7 @@ export const ptBR = {
   ...announcements,
   ...assets,
   ...plan,
+  ...channels,
   ...projects,
   ...page,
 } satisfies Record<TranslationKey, string>;

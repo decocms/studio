@@ -358,6 +358,12 @@ export interface Settings {
    *  a connection elsewhere with the same account id gets nothing. Empty =
    *  the job does nothing. */
   channelsSourceOrgIds: string[];
+  /** The bearer each channel worker accepts as admin (CHANNELS_HUB_TOKEN).
+   *  Unset = the CHANNELS_ACTION_* tools refuse. */
+  channelsHubToken: string | undefined;
+  /** Each channel worker's https origin by source (CHANNELS_WORKER_URLS, a
+   *  JSON object). Unset or malformed = the CHANNELS_ACTION_* tools refuse. */
+  channelsWorkerUrls: Record<string, string> | undefined;
   /** How many store diagnoses an org may start in 24 h with the built-in
    *  engine (PLAN_ENGINE_MAX_DAILY_STARTS, default 10; 0 = none). Each page
    *  of a run counts. */

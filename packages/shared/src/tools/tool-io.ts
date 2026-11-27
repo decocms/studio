@@ -744,6 +744,7 @@ export interface StudioToolIO {
         duration_ms: number | null;
         edited_at: string | null;
         deleted_at: string | null;
+        withheld: boolean;
       }[];
       next_before: string | null;
     };
@@ -772,8 +773,36 @@ export interface StudioToolIO {
         duration_ms: number | null;
         edited_at: string | null;
         deleted_at: string | null;
+        withheld: boolean;
       }[];
     };
+  };
+  CHANNELS_ACTION_LIST: {
+    input: { connection_id: string };
+    output: {
+      actions: {
+        name: string;
+        description: string | null;
+        scope: "channels:send" | "connections:manage";
+        input_schema: unknown;
+      }[];
+    };
+  };
+  CHANNELS_ACTION_CALL: {
+    input: {
+      connection_id: string;
+      tool: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: { result: unknown };
+  };
+  CHANNELS_ACTION_SEND: {
+    input: {
+      connection_id: string;
+      tool: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: { result: unknown };
   };
   TASK_BOARD_ITEM_CREATE: {
     input: {

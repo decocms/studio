@@ -134,6 +134,8 @@ export interface ChannelMessage {
   duration_ms: number | null;
   edited_at: string | null;
   deleted_at: string | null;
+  /** Sensitive at the source (`raw.withheld`): its content was never kept. */
+  withheld: boolean;
 }
 
 export const CHANNEL_TOKEN_PREFIX = "chit_";
@@ -268,6 +270,20 @@ export class ChannelsStorage {
       .orderBy("created_at", "desc")
       .execute();
     return rows.map(connectionOf);
+  }
+
+  /** The source of an org's connection (which worker acts for it), or null. */
+  async connectionSource(
+    organizationId: string,
+    connectionId: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("channels.connections")
+      .select("source")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", connectionId)
+      .executeTakeFirst();
+    return row?.source ?? null;
   }
 
   /** A connection with what it holds and where its hub sync stands. */
@@ -770,6 +786,7 @@ function messageOf(row: {
   duration_ms: number | null;
   edited_at: Date | null;
   deleted_at: Date | null;
+  raw: unknown;
 }): ChannelMessage {
   return {
     connection_id: row.connection_id,
@@ -788,5 +805,9 @@ function messageOf(row: {
     duration_ms: row.duration_ms,
     edited_at: isoOrNull(row.edited_at),
     deleted_at: isoOrNull(row.deleted_at),
+    withheld:
+      typeof row.raw === "object" &&
+      row.raw !== null &&
+      (row.raw as { withheld?: unknown }).withheld === true,
   };
 }

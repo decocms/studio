@@ -43,6 +43,7 @@ const CONTEXT_SECTIONS = [
   "files",
   "brand",
   "connections",
+  "channels",
   "repositories",
   "skills",
   "memory",
@@ -75,6 +76,9 @@ export const librarySearchShape = {
   scope: z.enum(["user"]).optional().catch(undefined),
   action: z.enum(["create"]).optional().catch(undefined),
   tab: z.enum(["all", "connected"]).optional().catch(undefined),
+  /** Channels: the open connection, and the conversation inside it. */
+  connection: z.string().optional(),
+  conversation: z.string().optional(),
 };
 
 /** Exact payload accepted by the retired `/agents/{-$panel}` route. */
