@@ -8,6 +8,7 @@ import {
   requireOrganization,
   type StudioContext,
 } from "@/core/studio-context";
+import { callWorkerTool, listWorkerTools, scopeOf } from "./worker";
 
 const SOURCES = [
   "whatsapp",
@@ -303,5 +304,124 @@ export const CHANNELS_MESSAGE_SEARCH = defineTool({
         limit: input.limit,
       }),
     };
+  },
+});
+
+/** The worker behind an org's connection, after access and the flag. */
+async function workerSource(ctx: StudioContext, connectionId: string) {
+  const org = await channelsOrg(ctx);
+  const source = await ctx.storage.channels.connectionSource(
+    org.id,
+    connectionId,
+  );
+  if (!source) throw new Error(NOT_FOUND);
+  return source;
+}
+
+/** The worker acts as the calling person; an API key acts as its creator. */
+async function viewerEmail(ctx: StudioContext): Promise<string> {
+  const userId = getUserId(ctx);
+  const email =
+    ctx.auth.user?.email ??
+    (userId && (await ctx.storage.users.findById(userId, userId))?.email);
+  if (!email) {
+    throw new Error(
+      "Channel actions run as a person, and this caller has none.",
+    );
+  }
+  return email;
+}
+
+const ActionInput = z.object({
+  connection_id: z.string().min(1).max(100),
+  tool: z.string().min(1).max(200),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+});
+
+const ActionOutput = z.object({ result: z.unknown() });
+
+async function runAction(
+  input: z.infer<typeof ActionInput>,
+  ctx: StudioContext,
+) {
+  const source = await workerSource(ctx, input.connection_id);
+  const viewer = await viewerEmail(ctx);
+  return {
+    result: await callWorkerTool(source, input.tool, input.arguments, viewer),
+  };
+}
+
+export const CHANNELS_ACTION_LIST = defineTool({
+  name: "CHANNELS_ACTION_LIST",
+  description:
+    "List what a channel connection's worker can do (pair a number, connect a bot, send a message…), with each action's input schema and the capability it needs. Run `channels:send` actions with CHANNELS_ACTION_SEND and the others with CHANNELS_ACTION_CALL.",
+  annotations: {
+    title: "List Channel Actions",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  inputSchema: z.object({ connection_id: z.string().min(1).max(100) }),
+  outputSchema: z.object({
+    actions: z.array(
+      z.object({
+        name: z.string(),
+        description: z.string().nullable(),
+        scope: z.enum(["channels:send", "connections:manage"]),
+        input_schema: z.unknown(),
+      }),
+    ),
+  }),
+  handler: async (input, ctx) => ({
+    actions: await listWorkerTools(
+      await workerSource(ctx, input.connection_id),
+    ),
+  }),
+});
+
+export const CHANNELS_ACTION_CALL = defineTool({
+  name: "CHANNELS_ACTION_CALL",
+  description:
+    "Run one of a channel connection's worker actions that set the channel up (pairing, bots, groups…), as you. Sending goes through CHANNELS_ACTION_SEND.",
+  annotations: {
+    title: "Run Channel Action",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  inputSchema: ActionInput,
+  outputSchema: ActionOutput,
+  handler: async (input, ctx) => {
+    if (scopeOf(input.tool) === "channels:send") {
+      throw new Error(
+        `'${input.tool}' sends or changes what was sent: run it with CHANNELS_ACTION_SEND.`,
+      );
+    }
+    return runAction(input, ctx);
+  },
+});
+
+export const CHANNELS_ACTION_SEND = defineTool({
+  name: "CHANNELS_ACTION_SEND",
+  description:
+    "Send, edit or cancel a message through a channel connection's worker, as you (send_message, update_message, cancel_message, list_outbox). See CHANNELS_ACTION_LIST for their inputs.",
+  annotations: {
+    title: "Send Through a Channel",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  inputSchema: ActionInput,
+  outputSchema: ActionOutput,
+  handler: async (input, ctx) => {
+    if (scopeOf(input.tool) !== "channels:send") {
+      throw new Error(
+        `'${input.tool}' isn't a send action: run it with CHANNELS_ACTION_CALL.`,
+      );
+    }
+    return runAction(input, ctx);
   },
 });

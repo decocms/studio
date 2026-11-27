@@ -775,6 +775,33 @@ export interface StudioToolIO {
       }[];
     };
   };
+  CHANNELS_ACTION_LIST: {
+    input: { connection_id: string };
+    output: {
+      actions: {
+        name: string;
+        description: string | null;
+        scope: "channels:send" | "connections:manage";
+        input_schema: unknown;
+      }[];
+    };
+  };
+  CHANNELS_ACTION_CALL: {
+    input: {
+      connection_id: string;
+      tool: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: { result: unknown };
+  };
+  CHANNELS_ACTION_SEND: {
+    input: {
+      connection_id: string;
+      tool: string;
+      arguments?: Record<string, unknown> | undefined;
+    };
+    output: { result: unknown };
+  };
   TASK_BOARD_ITEM_CREATE: {
     input: {
       title: string;

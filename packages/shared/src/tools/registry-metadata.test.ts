@@ -104,4 +104,14 @@ describe("channels permissions", () => {
       ],
     ).toBe(false);
   });
+
+  it("keeps channels:send out of the built-in user, apart from setup actions", () => {
+    expect(USER_ROLE_TOOLS.has("CHANNELS_ACTION_SEND")).toBe(false);
+    expect(BASIC_USAGE_TOOLS.has("CHANNELS_ACTION_SEND")).toBe(false);
+    expect(USER_ROLE_TOOLS.has("CHANNELS_ACTION_CALL")).toBe(true);
+    expect(USER_ROLE_TOOLS.has("CHANNELS_ACTION_LIST")).toBe(true);
+    expect(
+      resolveCapabilities({ self: [...USER_ROLE_TOOLS] })["channels:send"],
+    ).toBe(false);
+  });
 });

@@ -401,6 +401,10 @@ configMap:
     # max_connections from the formula, or lower this, before scaling up.
     DATABASE_POOL_MAX: "20"
     DECO_AI_GATEWAY_ENABLED: "false"
+    # Each channel worker's origin, by source, for the CHANNELS_ACTION_* tools
+    # (with secret.CHANNELS_HUB_TOKEN). A JSON object of https URLs; anything
+    # else leaves the tools off.
+    # CHANNELS_WORKER_URLS: '{"whatsapp":"https://…","discord":"https://…"}'
     # DECO_AI_GATEWAY_URL: ""      # the gateway's base url
     # Tiered plans. OFF by default, and turning it on is a fleet-wide
     # entitlement cutover, not a progressive rollout: with plans on, an org with
@@ -467,6 +471,10 @@ secret:
   # Read-only Postgres URL of the channels hub, copied into each channel
   # connection every minute. Leave unset to disable the copy.
   # CHANNELS_SOURCE_DATABASE_URL: ""
+  # Bearer every channel worker accepts as admin, for the CHANNELS_ACTION_*
+  # tools (pairing, bots, sending). Leave unset to disable them; they also
+  # need CHANNELS_WORKER_URLS in the config.
+  # CHANNELS_HUB_TOKEN: ""
   # Optional internal NATS credentials. Prefer secret.secretName or
   # externalSecret for production GitOps so credentials are not stored in
   # plain values files.

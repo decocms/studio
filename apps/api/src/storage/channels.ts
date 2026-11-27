@@ -270,6 +270,20 @@ export class ChannelsStorage {
     return rows.map(connectionOf);
   }
 
+  /** The source of an org's connection (which worker acts for it), or null. */
+  async connectionSource(
+    organizationId: string,
+    connectionId: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("channels.connections")
+      .select("source")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", connectionId)
+      .executeTakeFirst();
+    return row?.source ?? null;
+  }
+
   /** A connection with what it holds and where its hub sync stands. */
   async getConnection(
     organizationId: string,
