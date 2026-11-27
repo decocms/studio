@@ -68,6 +68,7 @@ import {
   getFullOrganizationForUser,
   listOrganizationsForUser,
 } from "./sessionless-organization";
+import { deleteApiKeyForUser, listApiKeysForUser } from "./user-api-keys";
 import { buildWildcardPermission } from "./permission-wildcard";
 import {
   activeOrganizations,
@@ -566,13 +567,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         });
       },
 
-      list: async () => {
-        // Uses headers - Better Auth's sessionMiddleware handles this
-        // enableSessionForAPIKeys: true creates a session for API key auth
-        return auth.api.listApiKeys({
-          headers,
-        });
-      },
+      list: async () => (userId ? listApiKeysForUser(auth, userId) : []),
 
       update: async (data) => {
         // Don't pass headers - same reason as create: enables server-only properties
@@ -586,12 +581,8 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       delete: async (keyId) => {
-        // Uses headers - Better Auth's sessionMiddleware handles this
-        // enableSessionForAPIKeys: true creates a session for API key auth
-        await auth.api.deleteApiKey({
-          headers,
-          body: { keyId },
-        });
+        if (!userId) throw new Error("API key not found");
+        await deleteApiKeyForUser(auth, userId, keyId);
       },
     },
   };
