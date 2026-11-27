@@ -114,3 +114,13 @@ export function triageKey(tree: HypothesisTree): string | null {
   const favor = tree.a_favor.flatMap((c) => c.facts ?? []);
   return `${tree.category}|${tree.alvo.kind}:${tree.alvo.key}|${[...new Set(favor)].sort().join(",")}`;
 }
+
+/**
+ * A cause's identity across rounds of the same page: fact ids are renumbered
+ * every round, but the category, the target and the funnel step are not.
+ * NULL = no target.
+ */
+export function crossRunKey(tree: HypothesisTree): string | null {
+  if (!tree.alvo) return null;
+  return `${tree.category}|${tree.alvo.kind}:${tree.alvo.key}|${tree.metrica.key ?? ""}`;
+}
