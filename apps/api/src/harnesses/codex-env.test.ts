@@ -39,6 +39,19 @@ describe("Codex credentials", () => {
     });
   });
 
+  test("deco gateway keys run against OpenRouter", () => {
+    expect(
+      codexEnvFromCredential(
+        { providerId: "deco", apiKey: "key_example" },
+        "gpt-6.1-sol",
+      ),
+    ).toMatchObject({
+      CODEX_MODEL: "openai/gpt-6.1-sol",
+      CODEX_API_KEY: "key_example",
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+    });
+  });
+
   test("rejects incompatible providers and missing endpoints before provisioning", () => {
     expect(() =>
       codexEnvFromCredential({
