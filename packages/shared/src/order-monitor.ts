@@ -89,8 +89,10 @@ export interface OrderMonitorDay {
   timezone: string;
   /** The local day, `YYYY-MM-DD`. */
   date: string;
-  /** Fully elapsed 15-minute buckets (ingest grace included). */
+  /** Fully elapsed 15-minute buckets (ingest grace included): what the rules judge. */
   done: number;
+  /** Buckets of the local day up to `at`, to the minute (fractional): what `forecast` counts as captured. */
+  now: number;
   orders: OrderMonitorSeries & {
     /** Baseline × today's level, for the whole day; past `done` it is the projection. */
     expected: number[];
@@ -108,7 +110,7 @@ export interface OrderMonitorDay {
     canceledAlertAt: (number | null)[];
   };
   headline: {
-    /** Today so far + level × the rest of the baseline. */
+    /** Where the day closes, as `forecast.projection.close.orders`; today up to `now` without a projection. */
     projected: number;
     d1: number;
     w1: number;
@@ -118,9 +120,10 @@ export interface OrderMonitorDay {
   forecast: {
     /** The orders' currency (ISO 4217); null when the day has no orders yet. */
     currency: string | null;
-    /** Revenue per clock hour, as `orders`. */
+    /** Orders and revenue per clock hour; today's up to `now`, the hour under way so far included. */
+    orders: OrderMonitorSeries;
     revenue: OrderMonitorSeries;
-    /** Up to `done`; a reference day is null when the lake has no order of it. */
+    /** Today up to `now`, each reference day up to the same minute; a reference day is null when the lake has no order of it. */
     soFar: {
       today: OrderMonitorSales;
       w1: OrderMonitorSales | null;
@@ -146,7 +149,7 @@ export interface OrderMonitorSales {
 
 /** What the rest of a store's day should bring. */
 export interface OrderMonitorForecast {
-  /** Per clock hour, what is still to come of it after `done`; 0 for hours gone. */
+  /** Per clock hour, what is still to come of it after `now`; 0 for hours gone. */
   orders: number[];
   revenue: number[];
   /** Where the day closes: so far plus the rest. */
@@ -155,7 +158,7 @@ export interface OrderMonitorForecast {
   initial: { orders: number; revenue: number };
   /**
    * How far the rest could go: what each reference day (`daysAgo`) brought
-   * from `done` up to each clock hour's end, at today's level. Cumulative,
+   * from `now` up to each clock hour's end, at today's level. Cumulative,
    * unlike `orders`; 0 for hours gone. The UI draws its quantiles as bands,
    * after adding stores up day by day.
    */

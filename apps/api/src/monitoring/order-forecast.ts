@@ -304,11 +304,20 @@ export async function runModel(
   };
 }
 
+/** The local hour under way at the read's instant, and what day 0 has in it so far. */
+const hourUnderWay = (day: StoreDay, m: "placed" | "revenue") => {
+  const hour = Math.floor(day.now / 4);
+  return {
+    hour,
+    inHour: sum(day.days[0][m].slice(hour * 4, Math.ceil(day.now))),
+  };
+};
+
 /**
  * The model's day as the projection: the median per clock hour from the hour
- * under way (minus what's already in it), and per calibration day its ratio ×
- * the median's running total, so `paths` keeps meaning how the rest could go.
- * `model.hour` may be the hour before the one under way.
+ * under way (minus what's already in it, up to `now`), and per calibration day
+ * its ratio × the median's running total, so `paths` keeps meaning how the
+ * rest could go. `model.hour` may be the hour before the one under way.
  */
 export function toProjection(
   baseline: OrderMonitorForecast,
@@ -316,9 +325,8 @@ export function toProjection(
   model: Pick<ModelForecast, "hour" | "orders" | "revenue" | "ratios">,
 ): OrderMonitorForecast {
   const today = day.days[0];
-  const hour = Math.floor(day.done / 4);
   const rest = (forecast: number[], m: "placed" | "revenue") => {
-    const inHour = sum(today[m].slice(hour * 4, day.done));
+    const { hour, inHour } = hourUnderWay(day, m);
     return HOURS.map((h) =>
       h < hour
         ? 0
@@ -340,8 +348,8 @@ export function toProjection(
     orders,
     revenue,
     close: {
-      orders: sum(today.placed.slice(0, day.done)) + sum(orders),
-      revenue: sum(today.revenue.slice(0, day.done)) + sum(revenue),
+      orders: sum(today.placed.slice(0, Math.ceil(day.now))) + sum(orders),
+      revenue: sum(today.revenue.slice(0, Math.ceil(day.now))) + sum(revenue),
     },
     initial: baseline.initial,
     paths: model.ratios.map((r) => ({
@@ -366,7 +374,7 @@ export function withModel(
   at: Date,
 ): OrderMonitorDay {
   const baseline = view.forecast.projection;
-  const hour = Math.floor(day.done / 4);
+  const { hour, inHour } = hourUnderWay(day, "placed");
   const fresh =
     !!forecast &&
     (forecast.hour === hour || forecast.hour === hour - 1) &&
@@ -375,7 +383,6 @@ export function withModel(
     forecast.revenue.length === 24 - forecast.hour;
   if (!baseline || !forecast || !fresh) return view;
   const projection = toProjection(baseline, day, forecast);
-  const inHour = sum(day.days[0].placed.slice(hour * 4, day.done));
   return {
     ...view,
     orders: {
