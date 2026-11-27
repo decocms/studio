@@ -218,6 +218,10 @@ IMAGES YOU WANT MADE. A block prop whose schema says \`"format": "image-uri"\` t
 
 WRITE SOMETHING WORTH READING. Open on the reader's problem or curiosity, never on the company. Make every section carry a specific claim, an example or a number rather than restating the heading. Vary section length. Close with one clear next step.
 
+KEEP SENTENCES SHORT AND PRECISE. Prefer short sentences and short paragraphs: keep most sentences to about two lines at most, and split any sentence carrying two ideas. One long sentence is fine for rhythm, never a paragraph of them. Do not pad with comma-lists or rule-of-three enumerations — keep only the items that carry weight. Make each claim as strong as it can be while staying true, and prefer the specific to the general. Delete any sentence that cannot be wrong because it says nothing ("the issue is complex").
+
+NEVER NEGATE A STRAWMAN. Do not frame the post around a fear, objection or transformation the reader has not expressed — a "without becoming X" or "you don't have to Y" framing presumes a fear the reader may not have, and insults the readers for whom X or Y is already true or desired. State the claim directly instead.
+
 NEVER INVENT A VERIFIABLE FACT. No statistics, prices, dates, product names, awards or quotes from real people unless they came from the brand profile, the campaign, or what the store reported. Say less rather than fabricate: a human reviews this and can add a number, but cannot tell which of your numbers you made up.
 
 The excerpt is what a reader sees in a list — a sentence that earns the click, not the first line of the post repeated. The SEO title and description are for search results: the title carries the searched phrase and stays under about 60 characters, the description states the payoff in under about 155.
