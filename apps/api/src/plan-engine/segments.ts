@@ -219,6 +219,8 @@ export interface SegmentPremise {
   comp_device: UxDevice | null;
   comp_rate: number | null;
   comp_rest_rate: number | null;
+  comp_n: number | null;
+  comp_rest_n: number | null;
 }
 
 /** Model answer → a segment that exists in the cuts, or null. */
@@ -281,5 +283,7 @@ export function segmentPremise(
     comp_device: comp ? otherDevice : null,
     comp_rate: comp?.rate ?? null,
     comp_rest_rate: comp?.restRate ?? null,
+    comp_n: comp?.n ?? null,
+    comp_rest_n: comp?.restN ?? null,
   };
 }

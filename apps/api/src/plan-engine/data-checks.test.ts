@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { trafficCheck } from "./data-checks.ts";
+import { trafficCheck, zAgainst } from "./data-checks.ts";
 import { evidence, sampleFunnel, sampleSegments } from "./fixtures/evidence.ts";
 import { measureMetric } from "./metrics.ts";
 import { drilldown } from "./segments.ts";
@@ -110,5 +110,51 @@ describe("a segment's traffic (fashion store)", () => {
     );
     expect(out.verdict).toBe("desmentida");
     expect(out.novas_linhas?.[0]).toContain("página do celular");
+  });
+
+  test("a small desktop segment that looks like the rest does not refute: within noise", () => {
+    const segments = [
+      seg("social_pago", "web_mobile", 206_244, 10_442),
+      seg("outros", "web_mobile", 200_254, 31_929),
+      seg("social_pago", "web_desktop", 40, 10),
+      seg("outros", "web_desktop", 38_538, 9_389),
+    ];
+    const out = trafficCheck(
+      h,
+      { drilldown: null, metric, measured },
+      "t",
+      segments,
+    );
+    expect(out.verdict).toBe("inconclusiva");
+    expect(out.runs[0]!.observed).toContain("não sai do ruído da amostra");
+  });
+
+  test("a small desktop segment that looks worse does not confirm: within noise", () => {
+    const segments = [
+      seg("social_pago", "web_mobile", 206_244, 10_442),
+      seg("outros", "web_mobile", 200_254, 31_929),
+      seg("social_pago", "web_desktop", 20, 3),
+      seg("outros", "web_desktop", 38_538, 9_389),
+    ];
+    const out = trafficCheck(
+      h,
+      { drilldown: null, metric, measured },
+      "t",
+      segments,
+    );
+    expect(out.verdict).toBe("inconclusiva");
+  });
+});
+
+describe("zAgainst", () => {
+  test("large samples separate a small gap; small ones do not", () => {
+    expect(zAgainst(0.2, 100_000, 0.21, 100_000)).toBeLessThan(-1.645);
+    expect(zAgainst(0.2, 50, 0.21, 50)).toBeGreaterThan(-1.645);
+  });
+
+  test("against a share of the other rate, and with no variance", () => {
+    expect(zAgainst(0.24, 10_000, 0.25, 10_000, 0.85)).toBeGreaterThan(1.645);
+    expect(zAgainst(0, 10, 0, 10)).toBe(0);
+    expect(zAgainst(1, 10, 0, 10)).toBe(Infinity);
   });
 });
