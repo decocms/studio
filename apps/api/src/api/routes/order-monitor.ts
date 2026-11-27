@@ -39,7 +39,12 @@ import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadThresholds } from "@/monitoring/order-alerts";
-import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
+import { modelProjection } from "@/monitoring/order-forecast";
+import {
+  loadHourlyHistory,
+  loadStoreDay,
+  loadStoreTimezone,
+} from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
 import { addSiteTraffic, loadSiteTraffic } from "@/monitoring/site-traffic";
 import { isTimezone } from "@/monitoring/timezone";
@@ -249,7 +254,26 @@ export const createOrderMonitorRoutes = () => {
       }
       // The chart's bands are the thresholds the sweep judges by.
       const thresholds = await loadThresholds(g.ctx.storage.alerts, orgId);
-      return c.json(buildDayView(day, at, thresholds));
+      const view = buildDayView(day, at, thresholds);
+      const { timestralUrl, timestralToken } = getSettings();
+      const baseline = view.forecast.projection;
+      if (timestralUrl && baseline) {
+        const settings = await g.ctx.storage.organizationSettings
+          .get(orgId)
+          .catch(() => null);
+        view.forecast.projection = await modelProjection({
+          organizationId: orgId,
+          connectionId,
+          at,
+          day,
+          baseline,
+          flags: settings?.flags,
+          service: { url: timestralUrl, token: timestralToken },
+          loadHistory: () =>
+            loadHourlyHistory(orgId, connectionId, at, day.timezone),
+        });
+      }
+      return c.json(view);
     } catch (err) {
       console.error("[order-monitor] day read failed", {
         connectionId,

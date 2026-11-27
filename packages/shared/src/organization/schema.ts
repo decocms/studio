@@ -329,6 +329,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Per-site Monitor tab (CDN Performance + Audience from the stats-lake warehouse). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. Its own deployment-wide switch `MONITOR_GA` opens it to every org at once (independent of the control-plane trio).",
     ),
+  monitor_timestral_projection: z
+    .boolean()
+    .optional()
+    .describe(
+      "The Monitor's sales projection for today comes from the Timestral forecasting model (hourly, 112 days of history) instead of the baseline scaled by today's level. Off by default; with it off, or without TIMESTRAL_URL on the deployment, or when the model doesn't answer, the baseline projection stays. Alerts always judge by the baseline.",
+    ),
   site_create_enabled: z
     .boolean()
     .optional()
