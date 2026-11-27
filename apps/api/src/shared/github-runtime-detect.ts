@@ -81,31 +81,73 @@ async function probeRuntime(
   // (e.g. `deco/keen-trail`) that hasn't been pushed yet — asking GitHub
   // for that ref 404s on every file and we'd fall back to clone-only even
   // on a valid repo. Omitting `ref` makes Contents API use HEAD.
-
-  // Fetch only what we might need for detection + port extraction. Parallel
-  // because GitHub serves these on separate CDN paths and sequential would
-  // add ~1s per file inside SANDBOX_START's critical section.
-  const cache = new Map<string, string | null>();
-  const relevantPaths = new Set(LOCKFILES.map((f) => f.path));
-  for (const sources of Object.values(PORT_SOURCES)) {
-    for (const p of sources ?? []) relevantPaths.add(p);
-  }
-  await Promise.all(
-    Array.from(relevantPaths).map(async (path) => {
-      cache.set(path, await fetchGithubFile(owner, name, path, accessToken));
-    }),
+  //
+  // One listing of the root names every lockfile, so a failed request can't
+  // read as a missing lockfile: SANDBOX_START probes again on every start
+  // while the package manager is a detection, and a partial answer would
+  // switch it.
+  const root = await fetchGithubJson<Array<{ name?: unknown }>>(
+    owner,
+    name,
+    "",
+    accessToken,
   );
+  if (!Array.isArray(root)) return null;
+  const files = new Set(
+    root.flatMap((entry) =>
+      typeof entry?.name === "string" ? [entry.name] : [],
+    ),
+  );
+  const read = (path: string) =>
+    files.has(path)
+      ? fetchGithubFile(owner, name, path, accessToken)
+      : Promise.resolve(null);
 
-  const hit = LOCKFILES.find(({ path }) => cache.get(path) !== null);
+  const deno = LOCKFILES.find(
+    ({ path, pm }) => pm === "deno" && files.has(path),
+  );
+  const packageJson = deno ? null : await read("package.json");
+  // A repo that names its package manager in package.json (corepack) is
+  // installed with it, whatever lockfile history it carries.
+  const declared = declaredPackageManager(packageJson);
+  const hit = deno
+    ? deno
+    : declared
+      ? { path: "package.json", pm: declared }
+      : LOCKFILES.find(({ path }) => files.has(path));
   if (!hit) return null;
 
-  const portSources = PORT_SOURCES[hit.pm] ?? [];
   let devPort: string | null = null;
-  for (const path of portSources) {
-    devPort = extractDevPort(cache.get(path) ?? null);
+  for (const path of PORT_SOURCES[hit.pm] ?? []) {
+    devPort = extractDevPort(
+      path === "package.json" ? packageJson : await read(path),
+    );
     if (devPort) break;
   }
   return { packageManager: hit.pm, devPort };
+}
+
+const DECLARABLE: ReadonlySet<PackageManager> = new Set([
+  "npm",
+  "pnpm",
+  "yarn",
+  "bun",
+]);
+
+/** The `packageManager` field of package.json (`yarn@1.22.22` → `yarn`). */
+export function declaredPackageManager(
+  content: string | null,
+): PackageManager | null {
+  if (!content) return null;
+  try {
+    const field = (JSON.parse(content) as { packageManager?: unknown })
+      .packageManager;
+    if (typeof field !== "string") return null;
+    const name = field.split("@")[0] as PackageManager;
+    return DECLARABLE.has(name) ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -119,6 +161,23 @@ async function fetchGithubFile(
   path: string,
   accessToken: string | null,
 ): Promise<string | null> {
+  const body = await fetchGithubJson<{ content?: string; encoding?: string }>(
+    owner,
+    repo,
+    path,
+    accessToken,
+  );
+  if (!body?.content || body.encoding !== "base64") return null;
+  return Buffer.from(body.content, "base64").toString("utf8");
+}
+
+/** A Contents API response, or null on any failure. */
+async function fetchGithubJson<T>(
+  owner: string,
+  repo: string,
+  path: string,
+  accessToken: string | null,
+): Promise<T | null> {
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
   try {
     const headers: Record<string, string> = {
@@ -131,12 +190,7 @@ async function fetchGithubFile(
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) return null;
-    const body = (await res.json()) as {
-      content?: string;
-      encoding?: string;
-    };
-    if (!body.content || body.encoding !== "base64") return null;
-    return Buffer.from(body.content, "base64").toString("utf8");
+    return (await res.json()) as T;
   } catch {
     return null;
   }
