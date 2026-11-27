@@ -661,4 +661,23 @@ describe("resolveConfig plan diagnosis engine URL", () => {
       resolveConfig({ PLAN_DIAGNOSIS_MCP_URL: "" }).planDiagnosisMcpUrl,
     ).toBeUndefined();
   });
+
+  it("reads CHANNELS_WORKER_URLS only as a JSON object of https URLs", () => {
+    const urls = { whatsapp: "https://wa.example.com" };
+    expect(
+      resolveConfig({ CHANNELS_WORKER_URLS: JSON.stringify(urls) })
+        .channelsWorkerUrls,
+    ).toEqual(urls);
+    expect(resolveConfig({}).channelsWorkerUrls).toBeUndefined();
+    for (const bad of [
+      "not json",
+      '["https://wa.example.com"]',
+      '{"whatsapp":"http://wa.example.com"}',
+      '{"whatsapp":"https://wa.example.com","discord":42}',
+    ]) {
+      expect(
+        resolveConfig({ CHANNELS_WORKER_URLS: bad }).channelsWorkerUrls,
+      ).toBeUndefined();
+    }
+  });
 });

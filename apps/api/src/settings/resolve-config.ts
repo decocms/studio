@@ -5,6 +5,7 @@
  */
 
 import { homedir } from "os";
+import { z } from "zod";
 import type { DispatchRole, Settings } from "./types";
 
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
@@ -135,6 +136,36 @@ function parseHostOriginMap(value: string | undefined): Record<string, string> {
     map[host] = origin;
   }
   return map;
+}
+
+const WorkerUrlsSchema = z.record(
+  z.string().min(1),
+  z.url({ protocol: /^https$/ }),
+);
+
+/**
+ * `{"whatsapp":"https://…"}` → the map. Anything malformed turns the whole
+ * feature off with a warning: a half-read map could send a call to the wrong
+ * worker, and an optional feature must not stop the process from booting.
+ */
+function parseWorkerUrls(
+  value: string | undefined,
+): Record<string, string> | undefined {
+  if (!value) return undefined;
+  let json: unknown;
+  try {
+    json = JSON.parse(value);
+  } catch {
+    json = undefined;
+  }
+  const parsed = WorkerUrlsSchema.safeParse(json);
+  if (!parsed.success) {
+    console.warn(
+      "CHANNELS_WORKER_URLS: ignored, expected a JSON object of source → https URL",
+    );
+    return undefined;
+  }
+  return parsed.data;
 }
 
 function toNonNegativeIntegerOrDefault(
@@ -446,6 +477,8 @@ export function resolveConfig(
     planDiagnosisMcpUrl: envVars.PLAN_DIAGNOSIS_MCP_URL || undefined,
     channelsSourceDatabaseUrl:
       envVars.CHANNELS_SOURCE_DATABASE_URL || undefined,
+    channelsHubToken: envVars.CHANNELS_HUB_TOKEN || undefined,
+    channelsWorkerUrls: parseWorkerUrls(envVars.CHANNELS_WORKER_URLS),
     planEngineMaxDailyStarts: toNonNegativeIntegerOrDefault(
       "PLAN_ENGINE_MAX_DAILY_STARTS",
       envVars.PLAN_ENGINE_MAX_DAILY_STARTS,

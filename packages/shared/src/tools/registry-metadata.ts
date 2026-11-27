@@ -411,6 +411,9 @@ const ALL_TOOL_NAMES = [
   "CHANNELS_CONVERSATION_LIST",
   "CHANNELS_MESSAGE_LIST",
   "CHANNELS_MESSAGE_SEARCH",
+  "CHANNELS_ACTION_LIST",
+  "CHANNELS_ACTION_CALL",
+  "CHANNELS_ACTION_SEND",
 ] as const;
 
 /**
@@ -1872,6 +1875,23 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Connections",
   },
   {
+    name: "CHANNELS_ACTION_LIST",
+    description: "List what a channel connection's worker can do",
+    category: "Connections",
+  },
+  {
+    name: "CHANNELS_ACTION_CALL",
+    description: "Run a channel worker's setup action",
+    category: "Connections",
+    dangerous: true,
+  },
+  {
+    name: "CHANNELS_ACTION_SEND",
+    description: "Send, edit or cancel a message through a channel",
+    category: "Connections",
+    dangerous: true,
+  },
+  {
     name: "ALERTS_LIST",
     description: "List the organization's alerts",
     category: "Monitoring",
@@ -2424,6 +2444,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CHANNELS_CONNECTION_CREATE",
       "CHANNELS_CONNECTION_ROTATE_TOKEN",
       "CHANNELS_CONNECTION_DELETE",
+      // Pairing, bots, groups: everything a channel's worker does but send.
+      "CHANNELS_ACTION_CALL",
     ],
     dangerous: true,
   },
@@ -2441,7 +2463,18 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "CHANNELS_CONVERSATION_LIST",
       "CHANNELS_MESSAGE_LIST",
       "CHANNELS_MESSAGE_SEARCH",
+      "CHANNELS_ACTION_LIST",
     ],
+  },
+  // Owners and admins only by default: messages go out as the caller.
+  {
+    id: "channels:send",
+    label: "Send through channels",
+    description:
+      "Send, edit and cancel messages in outside channels as yourself",
+    section: "Connections & Agents",
+    tools: ["CHANNELS_ACTION_SEND"],
+    dangerous: true,
   },
   {
     id: "agents:manage",

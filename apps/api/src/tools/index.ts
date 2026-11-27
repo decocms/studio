@@ -103,6 +103,9 @@ export const CORE_TOOLS = [
   ChannelsTools.CHANNELS_CONVERSATION_LIST,
   ChannelsTools.CHANNELS_MESSAGE_LIST,
   ChannelsTools.CHANNELS_MESSAGE_SEARCH,
+  ChannelsTools.CHANNELS_ACTION_LIST,
+  ChannelsTools.CHANNELS_ACTION_CALL,
+  ChannelsTools.CHANNELS_ACTION_SEND,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
   // The cross-org `org` param is applied at each tool's own definition, NOT
   // here — the Super Agent imports these tools directly (see
