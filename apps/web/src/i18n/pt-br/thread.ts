@@ -33,10 +33,10 @@ export const thread = {
   "thread.branchPicker.localTab": "Local",
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
-    "Aponte o preview e o CMS para o seu próprio dev server. Cole uma URL de túnel público (ex.: ngrok, cloudflared) acessível a partir deste navegador.",
+    "Aponte o preview e o CMS para o seu próprio dev server. Cole o endereço dele, ex.: http://localhost:8000. Uma URL de túnel público (ngrok, cloudflared) também funciona.",
   "thread.branchPicker.localhost.label": "Localhost",
   "thread.branchPicker.localhost.connected": "Conectado",
-  "thread.branchPicker.localUrlLabel": "URL do túnel local",
+  "thread.branchPicker.localUrlLabel": "URL local",
   "thread.branchPicker.localUrlPlaceholder": "http://localhost:8000",
   "thread.branchPicker.localTurnOff": "Desligar",
   "thread.branchPicker.moreActions": "Mais ações",
