@@ -172,6 +172,8 @@ describe("segment premise", () => {
     n: 160_653,
     rest_n: 72_556,
     comp_device: "desktop" as const,
+    comp_n: 30_000,
+    comp_rest_n: 40_000,
   };
 
   test("another store: paid media worse than the rest, and the screen difference is larger there", () => {
