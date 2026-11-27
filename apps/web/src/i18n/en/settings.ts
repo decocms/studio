@@ -579,29 +579,9 @@ export const settings = {
     "Stores only a refresh endpoint + API key; short-lived credentials are fetched on demand and refreshed automatically.",
   "settings.buckets.temporarySessionOption":
     "Temporary session (STS, auto-refreshed)",
-  "settings.connectClients.anyOtherClientDescription":
-    "Any other MCP client: paste this endpoint into it to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
-  "settings.connectClients.apiKeyOption": "API key",
   "settings.connectClients.copy": "Copy",
-  "settings.connectClients.doneHideKey": "Done, hide key",
-  "settings.connectClients.generateKey": "Generate key",
-  "settings.connectClients.generateKeyFor": "Generate key for {client}",
-  "settings.connectClients.generatingKey": "Generating…",
-  "settings.connectClients.headlessKeyHint":
-    "For CI, Conductor, or headless agents that can't open a browser.",
-  "settings.connectClients.installMethod": "Installation method",
-  "settings.connectClients.keyCreated": "Key created",
-  "settings.connectClients.mcpDescription":
-    "For clients without a shell. Sharing Library files and messaging agents need the CLI + skill.",
-  "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
-  "settings.connectClients.oauthKeyHint":
-    "Recommended for your laptop. A browser opens on first use to sign in, with no token to manage.",
-  "settings.connectClients.oauthMetadataHint":
-    "OAuth 2.1 Protected Resource Metadata is advertised on 401:",
-  "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect",
-  "settings.connectClients.recommended": "Recommended",
   "settings.connectClients.skillDescription":
     "Install the Studio skill and log in once. Your agent can then use this org's chats, agents, tasks and Library files through the decocms CLI.",
   "settings.connectClients.skillInstallStep": "1. Install the skill",
@@ -611,10 +591,7 @@ export const settings = {
   "settings.connectClients.skillNeedsBun": "Needs Bun.",
   "settings.connectClients.skillOtherAgentsHint":
     "The installer asks which agents to add the skill to.",
-  "settings.connectClients.skillTab": "CLI + skill",
   "settings.connectClients.skillTitle": "Connect your agent",
-  "settings.connectClients.snippetOneTimeWarning":
-    "Copy this snippet now. The key won't be shown again, and you can revoke it from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
   "settings.connectForms.apiKeyRequired": "API key is required",
   "settings.connectForms.baseUrlField": "Base URL",

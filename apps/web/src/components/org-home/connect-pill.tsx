@@ -3,8 +3,7 @@
  * of Settings and onto the home.
  *
  * The page it links to installs the Studio skill and its CLI login for
- * Claude, Cursor and Codex, with MCP snippets below; the pill teases all three
- * as logos. The marks are
+ * Claude, Cursor and Codex; the pill teases all three as logos. The marks are
  * decorative — the sentence beside them already names the action, so the row
  * is `aria-hidden` and the link's accessible name stays the sentence.
  * Desktop only: it offers to install a CLI on the machine you are sitting at,

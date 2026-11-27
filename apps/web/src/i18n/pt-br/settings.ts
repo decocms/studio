@@ -595,30 +595,9 @@ export const settings = {
     "Armazena apenas um endpoint de atualiza\u00e7\u00e3o + chave API; credenciais de curta dura\u00e7\u00e3o s\u00e3o buscadas sob demanda e atualizadas automaticamente.",
   "settings.buckets.temporarySessionOption":
     "Sess\u00e3o tempor\u00e1ria (STS, auto-atualizada)",
-  "settings.connectClients.anyOtherClientDescription":
-    "Qualquer outro cliente MCP: cole este endpoint nele para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
-  "settings.connectClients.apiKeyOption": "Chave API",
   "settings.connectClients.copy": "Copiar",
-  "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
-  "settings.connectClients.generateKey": "Gerar chave",
-  "settings.connectClients.generateKeyFor": "Gerar chave para {client}",
-  "settings.connectClients.generatingKey": "Gerando…",
-  "settings.connectClients.headlessKeyHint":
-    "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
-  "settings.connectClients.installMethod": "Método de instalação",
-  "settings.connectClients.keyCreated": "Chave criada",
-  "settings.connectClients.mcpDescription":
-    "Para clientes sem shell. Compartilhar arquivos da Library e mandar mensagem para agentes exige a CLI + skill.",
-  "settings.connectClients.oauthDiscoveryDetails":
-    "Detalhes de descoberta OAuth",
-  "settings.connectClients.oauthKeyHint":
-    "Recomendado para o seu laptop. Um navegador abre no primeiro uso para você entrar, sem token para gerenciar.",
-  "settings.connectClients.oauthMetadataHint":
-    "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
-  "settings.connectClients.oauthOption": "OAuth",
   "settings.connectClients.otherClient": "Outro",
   "settings.connectClients.pageTitle": "Conectar",
-  "settings.connectClients.recommended": "Recomendado",
   "settings.connectClients.skillDescription":
     "Instale a skill do Studio e faça login uma vez. Depois, seu agente usa os chats, agentes, tarefas e arquivos da Library desta org pela CLI decocms.",
   "settings.connectClients.skillInstallStep": "1. Instale a skill",
@@ -628,10 +607,7 @@ export const settings = {
   "settings.connectClients.skillNeedsBun": "Precisa do Bun.",
   "settings.connectClients.skillOtherAgentsHint":
     "O instalador pergunta em quais agentes adicionar a skill.",
-  "settings.connectClients.skillTab": "CLI + skill",
   "settings.connectClients.skillTitle": "Conectar seu agente",
-  "settings.connectClients.snippetOneTimeWarning":
-    "Copie este snippet agora. A chave não será exibida de novo, e você pode revogá-la na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
   "settings.connectForms.apiKeyRequired": "A chave API é obrigatória",
   "settings.connectForms.baseUrlField": "URL Base",
