@@ -134,6 +134,8 @@ export interface ChannelMessage {
   duration_ms: number | null;
   edited_at: string | null;
   deleted_at: string | null;
+  /** Sensitive at the source (`raw.withheld`): its content was never kept. */
+  withheld: boolean;
 }
 
 export const CHANNEL_TOKEN_PREFIX = "chit_";
@@ -756,6 +758,7 @@ function messageOf(row: {
   duration_ms: number | null;
   edited_at: Date | null;
   deleted_at: Date | null;
+  raw: unknown;
 }): ChannelMessage {
   return {
     connection_id: row.connection_id,
@@ -774,5 +777,9 @@ function messageOf(row: {
     duration_ms: row.duration_ms,
     edited_at: isoOrNull(row.edited_at),
     deleted_at: isoOrNull(row.deleted_at),
+    withheld:
+      typeof row.raw === "object" &&
+      row.raw !== null &&
+      (row.raw as { withheld?: unknown }).withheld === true,
   };
 }

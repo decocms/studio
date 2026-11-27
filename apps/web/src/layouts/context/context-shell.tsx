@@ -14,6 +14,7 @@ import {
   GitBranch01,
   Lightbulb02,
   MagicWand02,
+  MessageChatSquare,
   Stars01,
   ZapSquare,
 } from "@untitledui/icons";
@@ -22,6 +23,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { PAGE_INSET, Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import { RequireCapability } from "@/components/require-capability";
+import { useCapability } from "@/hooks/use-capability";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { SettingsPage } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -32,6 +35,7 @@ import { BrandOverview } from "./brand-overview";
 const OrgMcps = lazy(() => import("@/routes/orgs/connections"));
 const SkillsPage = lazy(() => import("@/routes/orgs/settings/skills"));
 const MemoryPage = lazy(() => import("@/routes/orgs/settings/memory"));
+const ChannelsView = lazy(() => import("@/views/channels/channels-view"));
 const RepositoriesContent = lazy(() =>
   import("@/views/settings/repositories").then((m) => ({
     default: m.RepositoriesContent,
@@ -108,6 +112,7 @@ const ORG_GROUPS: Group[] = [
         labelKey: "settings.nav.connections",
         Icon: ZapSquare,
       },
+      { id: "channels", labelKey: "channels.nav", Icon: MessageChatSquare },
       {
         id: "repositories",
         labelKey: "settings.nav.repositories",
@@ -227,6 +232,10 @@ export function ContextShell({
   children: ReactNode;
 }) {
   const t = useT();
+  // Channels shows with its org flag and to whoever may read it.
+  const channelsFlag = useOrgFlag("channels_enabled");
+  const channelsRead = useCapability("channels:read").granted;
+  const channelsEnabled = channelsFlag && channelsRead;
   const groups =
     scope === "org"
       ? ORG_GROUPS
@@ -236,6 +245,13 @@ export function ContextShell({
   const label = groups
     .flatMap((group) => group.items)
     .find((item) => item.id === section)?.labelKey;
+  /** Channels is behind its org flag; the section itself says so when it's off. */
+  const navGroups = channelsEnabled
+    ? groups
+    : groups.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.id !== "channels"),
+      }));
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
       {/* Files trail their folders after the page crumb themselves. */}
@@ -246,7 +262,7 @@ export function ContextShell({
           items={[{ key: "context-section", label: t(label) }]}
         />
       )}
-      <ContextNav groups={groups} section={section} />
+      <ContextNav groups={navGroups} section={section} />
       {/* Each section's tabs and filters sit over its own column, so the menu never moves. */}
       <Panel.Toolbar.Scope>
         {/* Without a toolbar the page itself starts on the menu's first row. */}
@@ -261,7 +277,8 @@ export function ContextShell({
             </Panel.Toolbar.Right>
           </Panel.Toolbar>
           <Page.Container.Inset value>
-            {section === "files" ? (
+            {/* Files and Channels trail their own crumbs after the section's. */}
+            {section === "files" || section === "channels" ? (
               children
             ) : (
               <Page.Breadcrumbs.Detached>{children}</Page.Breadcrumbs.Detached>
@@ -303,6 +320,14 @@ export function ContextSectionBody({
         <Suspense fallback={<Loading />}>
           <OrgMcps />
         </Suspense>
+      );
+    case "channels":
+      return (
+        <RequireCapability capability="channels:read" area="channels">
+          <Suspense fallback={<Loading />}>
+            <ChannelsView />
+          </Suspense>
+        </RequireCapability>
       );
     case "repositories":
       return (

@@ -1,0 +1,497 @@
+/*
+ * The skins: a conversation drawn the way its channel draws it (skill
+ * `channel-skins`). This file is the ONE place another product's colours and
+ * type sizes live — the exception visual-identity §5 allows, declared once.
+ * Everything around a conversation (header, list, details) stays on our own
+ * tokens. Each skin sets the same variables, light then dark:
+ *
+ *   --sk-bg     the conversation's background
+ *   --sk-fg     text            --sk-muted  times, captions
+ *   --sk-head   names, titles   --sk-link   links, thread counts
+ *   --sk-in     an incoming bubble / a card inside the conversation
+ *   --sk-out    our own bubble (channels with sides)
+ *   --sk-line   dividers        --sk-hover  a row under the pointer
+ *   --sk-chip   a reaction, a quote, a file
+ *   --sk-n0…7   name colours
+ *
+ * And where a skin has them: --sk-mention(-fg) a mention, --sk-code(-bg,
+ * -line) inline code and code blocks, --sk-tag(-fg) the APP tag, --sk-gap
+ * between the blocks of a formatted message (.sk-text).
+ *
+ * Copied as it is from the channels hub (packages/ui/src/chat.css); the one
+ * change is the dark selector, Studio's `.dark` for the hub's
+ * `[data-theme="dark"]`. Loaded by importing it from ./index.tsx.
+ */
+.sk {
+  background-color: var(--sk-bg);
+  color: var(--sk-fg);
+  --sk-n0: #1f7aec;
+  --sk-n1: #c4532d;
+  --sk-n2: #d6427d;
+  --sk-n3: #5b7a00;
+  --sk-n4: #b4691b;
+  --sk-n5: #5a4fcf;
+  --sk-n6: #008069;
+  --sk-n7: #b3437f;
+}
+.dark .sk {
+  --sk-n0: #53bdeb;
+  --sk-n1: #fc9775;
+  --sk-n2: #ff72a1;
+  --sk-n3: #a5b337;
+  --sk-n4: #ffbc38;
+  --sk-n5: #a394ff;
+  --sk-n6: #06cf9c;
+  --sk-n7: #e26ab6;
+}
+.sk .sk-muted {
+  color: var(--sk-muted);
+}
+.sk a,
+.sk .sk-link {
+  color: var(--sk-link);
+}
+.sk .sk-file {
+  background-color: var(--sk-chip);
+}
+/* A mention, where a skin's text draws one (Discord has its own, below). */
+.sk .sk-mention {
+  background-color: var(--sk-mention);
+  color: var(--sk-mention-fg);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/*
+ * A message's formatted text (components/chat/text.tsx): blocks spaced by
+ * the skin's --sk-gap, code and tables in the skin's own tokens.
+ */
+.sk-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* One paragraph stays inline, so "(editado)" can follow it on its line. */
+.sk-text:has(> p:only-child),
+.sk-text > p:only-child {
+  display: inline;
+}
+.sk-text > * + * {
+  margin-top: var(--sk-gap, 4px);
+}
+.sk-text .sk-h,
+.sk-text th {
+  font-weight: 700;
+}
+.sk-text ul,
+.sk-text ol {
+  padding-inline-start: 28px;
+}
+.sk-text ul {
+  list-style: disc;
+}
+.sk-text ul ul {
+  list-style: circle;
+}
+.sk-text ol {
+  list-style: decimal;
+}
+.sk-text a:hover {
+  text-decoration: underline;
+}
+.sk-text code,
+.sk-text pre {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  background-color: var(--sk-code-bg, var(--sk-chip));
+  border: 1px solid var(--sk-code-line, var(--sk-line));
+}
+.sk-text code {
+  color: var(--sk-code, inherit);
+  font-size: 12px;
+  line-height: 16px;
+  padding: 2px 3px;
+  border-radius: 3px;
+}
+.sk-text pre {
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 8px;
+  border-radius: 4px;
+}
+.sk-text blockquote {
+  border-left: 4px solid var(--sk-line);
+  padding-left: 10px;
+}
+/* A table scrolls inside itself, never the conversation sideways. */
+.sk-text .sk-table {
+  overflow-x: auto;
+}
+.sk-text table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+.sk-text th,
+.sk-text td {
+  border: 1px solid var(--sk-line);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+}
+
+/* ---- WhatsApp ----------------------------------------------------------- */
+[data-skin="whatsapp"] {
+  --sk-bg: #f5f1eb;
+  --sk-fg: #0a0a0a;
+  --sk-muted: #0009;
+  --sk-head: #0a0a0a;
+  --sk-link: #027eb5;
+  --sk-in: #fff;
+  --sk-out: #d9fdd3;
+  --sk-line: #0000001a;
+  --sk-hover: #0000000a;
+  --sk-chip: #0000000d;
+  --sk-pill: #ffffffeb;
+  --sk-doodle: 0.07;
+  font-size: 14.2px;
+  line-height: 19px;
+  /* The doodle wallpaper, as a quiet repeating pattern. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' fill='none' stroke='%23808080' stroke-opacity='.16' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='24' cy='26' r='9'/%3E%3Cpath d='M70 14l8 15-16 2zM112 22h20v14h-20zM150 18c6 0 10 5 6 11s-12 6-12 0M18 84c8-10 18-10 26 0M66 76a10 10 0 1 0 15 12M110 80l12 12m0-12l-12 12M150 78v18m-9-9h18M26 132h18M35 123v18M74 128c5-8 15-8 15 3s-10 10-15 3M118 136a8 8 0 1 1 .1 0M146 126l14 6-12 8zM20 164c6-6 12 6 18 0s12 6 18 0M96 160h22M124 164a5 5 0 1 0 .1 0'/%3E%3C/svg%3E");
+}
+.dark [data-skin="whatsapp"] {
+  --sk-bg: #161717;
+  --sk-fg: #fafafa;
+  --sk-muted: #fff9;
+  --sk-head: #fafafa;
+  --sk-link: #53bdeb;
+  --sk-in: #242626;
+  --sk-out: #144d37;
+  --sk-line: #ffffff1a;
+  --sk-hover: #ffffff0a;
+  --sk-chip: #0000002e;
+  --sk-pill: #242626;
+}
+.sk-wa-bubble {
+  position: relative;
+  border-radius: 7.5px;
+  box-shadow: 0 1px 0.5px #0b141a21;
+}
+/* The tail: only on the first bubble of a run, on the side it speaks from. */
+.sk-wa-tail-in {
+  border-top-left-radius: 0;
+}
+.sk-wa-tail-out {
+  border-top-right-radius: 0;
+}
+.sk-wa-tail-in::before,
+.sk-wa-tail-out::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  border: 4px solid transparent;
+  border-top-width: 6px;
+  border-bottom-width: 6px;
+}
+.sk-wa-tail-in::before {
+  left: -8px;
+  border-top-color: var(--sk-in);
+  border-right-color: var(--sk-in);
+}
+.sk-wa-tail-out::before {
+  right: -8px;
+  border-top-color: var(--sk-out);
+  border-left-color: var(--sk-out);
+}
+.sk-wa-meta {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--sk-muted);
+}
+
+/* ---- Discord ------------------------------------------------------------ */
+[data-skin="discord"] {
+  --sk-bg: #fff;
+  --sk-fg: #313338;
+  --sk-muted: #5c5e66;
+  --sk-head: #060607;
+  --sk-link: #006ce7;
+  --sk-in: #f2f3f5;
+  --sk-line: #e1e2e4;
+  --sk-hover: #f7f7f8;
+  --sk-chip: #f2f3f5;
+  --sk-mention: #5865f226;
+  --sk-mention-fg: #4752c4;
+  --sk-embed-bar: #d4d5d8;
+  --sk-button: #e3e5e8;
+  --sk-button-fg: #313338;
+  font-size: 16px;
+  line-height: 1.375;
+}
+.dark [data-skin="discord"] {
+  --sk-bg: #1a1a1e;
+  --sk-fg: #dfe0e2;
+  --sk-muted: #94959c;
+  --sk-head: #fbfbfb;
+  --sk-link: #00a8fc;
+  --sk-in: #222327;
+  --sk-line: #2e2f34;
+  --sk-hover: #222327;
+  --sk-chip: #222327;
+  --sk-mention: #5865f23d;
+  --sk-mention-fg: #c9cdfb;
+  --sk-embed-bar: #3f4147;
+  --sk-button: #4e5058;
+  --sk-button-fg: #fff;
+}
+/* A mention, wherever a page draws one inside a Discord conversation. */
+[data-skin="discord"] .sk-mention {
+  background-color: var(--sk-mention);
+  color: var(--sk-mention-fg);
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 500;
+}
+/* A bot's tag after its name. */
+.sk-dc-app {
+  background-color: #5865f2;
+  color: #fff;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 15px;
+  font-weight: 600;
+}
+/* An embed: a card with a bar on its left (the default colour: embeds don't carry theirs here). */
+.sk-dc-embed {
+  background-color: var(--sk-in);
+  border-left: 4px solid var(--sk-embed-bar);
+}
+/* A link button under a message (Discord's secondary button). */
+.sk-dc-button {
+  background-color: var(--sk-button);
+  color: var(--sk-button-fg);
+}
+/* The actions over the row under the pointer. */
+.sk-dc-tools {
+  background-color: var(--sk-bg);
+  border: 1px solid var(--sk-line);
+  box-shadow:
+    0 0 0 1px #0000000a,
+    0 2px 6px #0000001f;
+}
+/* The line from a reply up to what it answers. */
+.sk-dc-spine::before {
+  content: "";
+  position: absolute;
+  left: -36px;
+  top: 50%;
+  width: 30px;
+  height: 12px;
+  border: 2px solid var(--sk-line);
+  border-right: 0;
+  border-bottom: 0;
+  border-top-left-radius: 6px;
+}
+
+/* ---- Slack -------------------------------------------------------------- */
+/*
+ * Dark: measured on screenshots of Slack's web app (2026-11, a channel with
+ * notices and a DM with an AI app's message carrying a heading, bold, inline
+ * code, a table and a list). Light: Slack's published palette, NOT measured
+ * (no light screenshot yet) — skill `channel-skins`.
+ */
+[data-skin="slack"] {
+  --sk-bg: #fff;
+  --sk-fg: #1d1c1d;
+  --sk-muted: #616061;
+  --sk-head: #1d1c1d;
+  --sk-link: #1264a3;
+  --sk-in: #f8f8f8;
+  --sk-line: #dddddd;
+  --sk-hover: #f8f8f8;
+  --sk-chip: #efefef;
+  --sk-code: #e01e5a;
+  --sk-code-bg: #1d1c1d0a;
+  --sk-code-line: #1d1c1d21;
+  --sk-mention: #1d9bd11a;
+  --sk-mention-fg: #1264a3;
+  --sk-tag: #1d1c1d14;
+  --sk-tag-fg: #616061;
+  font-size: 15px;
+  line-height: 22px;
+}
+.dark [data-skin="slack"] {
+  --sk-bg: #212326;
+  --sk-fg: #d0d1d2;
+  --sk-muted: #aaa9ab;
+  --sk-head: #f8f8f8;
+  --sk-link: #63a4cb;
+  --sk-in: #282a2d;
+  --sk-line: #3a3c3f;
+  --sk-hover: #282a2d;
+  --sk-chip: #2c2d30;
+  --sk-code: #d39039;
+  --sk-code-bg: #303134;
+  --sk-code-line: #48494b;
+  --sk-mention: #273441;
+  --sk-mention-fg: #63a4cb;
+  --sk-tag: #2e3032;
+  --sk-tag-fg: #b8b9bb;
+}
+/* The face: 36px, 8px corners. */
+.sk-sl-face,
+.sk-sl-face * {
+  border-radius: 8px;
+}
+/* "APP" after a bot's name. */
+.sk-sl-tag {
+  background-color: var(--sk-tag);
+  color: var(--sk-tag-fg);
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 600;
+}
+.sk-sl-time {
+  font-size: 12px;
+  color: var(--sk-muted);
+}
+/* The day: a pill on a rule across the whole conversation. */
+.sk-sl-day {
+  border: 1px solid var(--sk-line);
+  background-color: var(--sk-bg);
+  border-radius: 9999px;
+  padding: 3px 16px;
+  font-size: 13px;
+  line-height: 19px;
+  font-weight: 700;
+}
+[data-skin="slack"] .sk-text {
+  --sk-gap: 8px;
+}
+[data-skin="slack"] .sk-text th,
+[data-skin="slack"] .sk-text td {
+  padding: 2px 11px;
+}
+
+/* ---- Google Chat -------------------------------------------------------- */
+/*
+ * Light: measured on screenshots of Google Chat's web app (2026-11, meeting
+ * spaces: runs of bubbles, our reply quoting someone, "Editada", notices,
+ * the App tag). Dark: Google's Material 3 palette, NOT measured (no dark
+ * screenshot yet) — skill `channel-skins`.
+ */
+[data-skin="gchat"] {
+  --sk-bg: #fff;
+  --sk-fg: #242424;
+  --sk-muted: #5e5e5e;
+  --sk-head: #242424;
+  --sk-link: #3358cb;
+  --sk-in: #f2f2f2;
+  --sk-out: #d7e2fc;
+  --sk-line: #c4c7c5;
+  --sk-hover: #f2f2f2;
+  --sk-chip: #fff;
+  --sk-quote: #fff;
+  --sk-quote-mark: #d5badb;
+  --sk-tag: #e1e2e0;
+  --sk-tag-fg: #474948;
+  --sk-code-bg: #0000000d;
+  --sk-code-line: transparent;
+  --sk-code: inherit;
+  --sk-mention: transparent;
+  --sk-mention-fg: var(--sk-link);
+  font-size: 14px;
+  line-height: 20px;
+}
+.dark [data-skin="gchat"] {
+  --sk-bg: #131314;
+  --sk-fg: #e3e3e3;
+  --sk-muted: #c4c7c5;
+  --sk-head: #e3e3e3;
+  --sk-link: #a8c7fa;
+  --sk-in: #282a2c;
+  --sk-out: #004a77;
+  --sk-line: #444746;
+  --sk-hover: #1e1f20;
+  --sk-chip: #1e1f20;
+  --sk-quote: #131314;
+  --sk-quote-mark: #8e918f;
+  --sk-tag: #444746;
+  --sk-tag-fg: #e3e3e3;
+  --sk-code-bg: #ffffff14;
+}
+.sk-gc-bubble {
+  border-radius: 18px;
+}
+.sk-gc-in {
+  background-color: var(--sk-in);
+}
+.sk-gc-out {
+  background-color: var(--sk-out);
+}
+/* One run's bubbles hug each other on the speaker's side. */
+.sk-gc-in.sk-gc-after {
+  border-top-left-radius: 4px;
+}
+.sk-gc-in.sk-gc-before {
+  border-bottom-left-radius: 4px;
+}
+.sk-gc-out.sk-gc-after {
+  border-top-right-radius: 4px;
+}
+.sk-gc-out.sk-gc-before {
+  border-bottom-right-radius: 4px;
+}
+.sk-gc-meta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--sk-muted);
+}
+.sk-gc-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sk-head);
+}
+.sk-gc-app {
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--sk-tag);
+  color: var(--sk-tag-fg);
+}
+/* A quote: a sheet of the background inside the bubble, 2px in from its edge. */
+.sk-gc-quote {
+  background-color: var(--sk-quote);
+  border-radius: 16px 16px 10px 10px;
+  margin: 2px 2px 0;
+  padding: 8px 10px;
+}
+.sk-gc-quote-mark {
+  color: var(--sk-quote-mark);
+}
+.sk-gc-chip {
+  font-size: 12px;
+  line-height: 18px;
+  background-color: var(--sk-chip);
+  border: 1px solid var(--sk-line);
+}
+[data-skin="gchat"] .sk-text a {
+  text-decoration: underline;
+}
+
+/* ---- A call's transcript: ours, not a borrowed look ---------------------- */
+[data-skin="transcript"] {
+  --sk-bg: var(--color-background);
+  --sk-fg: var(--color-foreground);
+  --sk-muted: var(--color-muted-foreground);
+  --sk-head: var(--color-foreground);
+  --sk-link: var(--color-foreground);
+  --sk-in: var(--color-muted);
+  --sk-line: var(--color-border);
+  --sk-hover: var(--color-muted);
+  --sk-chip: var(--color-muted);
+  font-size: var(--text-sm);
+}

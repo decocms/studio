@@ -172,6 +172,30 @@ describe("ChannelsStorage", () => {
     });
   });
 
+  test("a withheld message lists as withheld, without its content", async () => {
+    const { connection } = await connect();
+    await channels.ingest(orgId, connection.id, [
+      message("chat-1", "m-1", "2026-01-01T10:00:00.000Z", { text: "plain" }),
+      message("chat-1", "m-2", "2026-01-01T10:01:00.000Z", {
+        text: "secret",
+      }),
+    ]);
+    await channels.ingest(orgId, connection.id, [
+      message("chat-1", "m-2", "2026-01-01T10:01:00.000Z", {
+        raw: { withheld: true },
+      }),
+    ]);
+    const { messages } = await channels.listMessages(orgId, {
+      connectionId: connection.id,
+      conversationId: "chat-1",
+      limit: 10,
+    });
+    expect(messages.map((m) => [m.id, m.text, m.withheld])).toEqual([
+      ["m-2", null, true],
+      ["m-1", "plain", false],
+    ]);
+  });
+
   test("a message before its conversation creates a stub the conversation later fills", async () => {
     const { connection } = await connect();
     await channels.ingest(orgId, connection.id, [

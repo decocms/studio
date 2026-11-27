@@ -744,6 +744,7 @@ export interface StudioToolIO {
         duration_ms: number | null;
         edited_at: string | null;
         deleted_at: string | null;
+        withheld: boolean;
       }[];
       next_before: string | null;
     };
@@ -772,6 +773,7 @@ export interface StudioToolIO {
         duration_ms: number | null;
         edited_at: string | null;
         deleted_at: string | null;
+        withheld: boolean;
       }[];
     };
   };
