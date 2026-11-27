@@ -2,8 +2,9 @@
  * Triage: model-free rules a hypothesis passes before verification effort is
  * spent. They read the facts (facts.ts) the hypothesis cites: it needs a
  * supporting fact, its cause cannot be only a funnel number, a device
- * difference must really differ, it cannot repeat another hypothesis, and it
- * cannot contradict a probe (probes.ts).
+ * difference must really differ, it cannot repeat another hypothesis or a
+ * cause an earlier round refuted on the same page (ledger.ts), and it cannot
+ * contradict a probe (probes.ts).
  */
 
 import type { UxFact } from "./facts.ts";
@@ -48,6 +49,8 @@ export function triage(
   book: Map<string, UxFact>,
   /** Keys (`triageKey`) of hypotheses already accepted for the same opportunity. */
   kept: string[] = [],
+  /** `crossRunKey` → title of a cause an earlier round refuted on this page, which has not changed since. */
+  refutedBefore: Map<string, { title: string }> = new Map(),
 ): string | null {
   const favor = h.tree.a_favor.flatMap((c) => c.facts ?? []);
   if (favor.length === 0) {
@@ -84,6 +87,10 @@ export function triage(
     if (key && kept.includes(key)) {
       return "repete outra hipótese desta oportunidade (mesma categoria, mesmo alvo, mesmos fatos a favor)";
     }
+  }
+  const prior = refutedBefore.get(crossRunKey(h.tree) ?? "");
+  if (prior) {
+    return `uma rodada anterior já desmentiu essa causa nesta página ("${prior.title}"), e a página não mudou desde então`;
   }
   if (h.elementLabel && NOT_RESPONDING.test(`${h.title} ${h.tree.causa}`)) {
     const probe = reactedProbe(h.elementLabel, book);

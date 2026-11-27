@@ -11,6 +11,7 @@ import {
   parseOpportunityHypotheses,
 } from "./opportunities.ts";
 import type { Llm, LlmRequest } from "./ports.ts";
+import { crossRunKey } from "./triage.ts";
 import type { DiagnosisEvidence, UxOpportunity } from "./types.ts";
 
 const evidence: DiagnosisEvidence = {
@@ -367,6 +368,46 @@ describe("parseOpportunityHypotheses", () => {
     expect(fallenReason(out, "d:o1")).toBeNull();
   });
 
+  test("a cause an earlier round refuted on this page is dropped in code", () => {
+    const raw = JSON.stringify({
+      opportunities: [
+        {
+          rank: 1,
+          hypotheses: [
+            {
+              title: "tamanho escondido",
+              idea: "faz",
+              why: "porque sim",
+              prediction: "o seletor teria clique morto",
+              check: "sem_dado",
+              a_favor: [{ texto: "sinal", fatos: ["F3"], tipo: "inferencia" }],
+              alvo: { kind: "part", key: "size_selector" },
+              metrica: { key: "produto_carrinho", direcao: "sobe" },
+            },
+          ],
+        },
+      ],
+    });
+    const [first] =
+      parseOpportunityHypotheses(
+        raw,
+        [opportunity],
+        evidence,
+      ).byOpportunity.get("d:o1") ?? [];
+    const key = first?.tree ? crossRunKey(first.tree) : null;
+    if (!key) throw new Error("expected a targeted hypothesis");
+    const out = parseOpportunityHypotheses(
+      raw,
+      [opportunity],
+      evidence,
+      undefined,
+      undefined,
+      new Map([[key, { title: "Antes", why: "c1 viu", diagnosisId: "d0" }]]),
+    );
+    expect(out.byOpportunity.get("d:o1")).toEqual([]);
+    expect(out.dropped[0]).toContain("uma rodada anterior já desmentiu");
+  });
+
   test("zero hypotheses is a valid answer", () => {
     const raw = JSON.stringify({
       opportunities: [{ rank: 1, hypotheses: [] }],
@@ -520,6 +561,36 @@ describe("reading rules that knocked down a search hypothesis", () => {
 });
 
 describe("generateOpportunityHypotheses", () => {
+  test("lists the causes earlier rounds refuted, only when there are any", async () => {
+    const prompts: string[] = [];
+    const llm: Llm = async (request) => {
+      prompts.push(request.userPrompt);
+      return '{"opportunities": []}';
+    };
+    const base = {
+      llm,
+      domain: "loja.example",
+      evidence,
+      opportunities: [],
+      onUsage: () => {},
+    };
+    await generateOpportunityHypotheses(base);
+    await generateOpportunityHypotheses({
+      ...base,
+      refutedBefore: new Map([
+        [
+          "ux|part:size_selector|produto_carrinho",
+          { title: "Tamanho escondido", why: "c1 viu", diagnosisId: "d0" },
+        ],
+      ]),
+    });
+    expect(prompts[0]).not.toContain("rodadas anteriores desmentiram");
+    expect(prompts[1]).toContain(
+      "## Causas que rodadas anteriores desmentiram nesta página",
+    );
+    expect(prompts[1]).toContain('- "Tamanho escondido": c1 viu');
+  });
+
   test("sends the round's objective and the signed print URLs to the model", async () => {
     const calls: LlmRequest[] = [];
     const llm: Llm = async (request) => {

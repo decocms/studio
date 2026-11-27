@@ -66,6 +66,7 @@ import type {
 } from "../verify/types.ts";
 import type { FallenOpportunity } from "./diagnosis-steps.ts";
 import type { EngineRun } from "./engine-run.ts";
+import { refutedBeforeFor } from "./ledger.ts";
 
 /** A proposal verification refuted (it stays, as refuted). */
 export interface DroppedHypothesis {
@@ -653,6 +654,7 @@ export async function reinvestigateStep(
       opportunities: [o],
       onUsage: c.llm,
       knowledge: knowledge.entries,
+      refutedBefore: await refutedBeforeFor(run, evidence, knowledge.entries),
       tried: new Map([[o.id, triedLines(mine)]]),
       objective: diagnosis?.objective_statement,
       mediaUrl: run.mediaUrl,
@@ -777,6 +779,7 @@ export async function replaceStep(
       opportunities: [saved],
       onUsage: c.llm,
       knowledge: knowledge.entries,
+      refutedBefore: await refutedBeforeFor(run, evidence, knowledge.entries),
       objective: diagnosis?.objective_statement,
       mediaUrl: run.mediaUrl,
     });

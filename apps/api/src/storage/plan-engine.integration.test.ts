@@ -493,6 +493,17 @@ describe("PlanEngineStorage", () => {
       expect((await store.getOpportunity(ORG_A, o.id))?.page_type).toBe("pdp");
     });
 
+    it("hypotheses by id come only from the caller's org", async () => {
+      const { h } = await seedOrgA();
+      expect(await store.listHypothesesByIds(ORG_B, [h.id])).toEqual([]);
+      expect(
+        (await store.listHypothesesByIds(ORG_A, [h.id, "missing"])).map(
+          (x) => x.id,
+        ),
+      ).toEqual([h.id]);
+      expect(await store.listHypothesesByIds(ORG_A, [])).toEqual([]);
+    });
+
     it("org B cannot write to org A's rows by id", async () => {
       const { d, h } = await seedOrgA();
       await store.updateDiagnosis(ORG_B, d.id, { status: "error", error: "x" });

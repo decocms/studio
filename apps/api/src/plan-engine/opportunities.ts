@@ -7,6 +7,7 @@
  */
 
 import type { HypothesisDraft } from "../storage/plan-engine.ts";
+import type { PriorRefutation } from "./ledger.ts";
 import { normalizeDomain } from "./benchmark.ts";
 import { CLAIM_WORD } from "./claims.ts";
 import {
@@ -117,6 +118,21 @@ async function pageImages(
     }
   }
   return parts;
+}
+
+/** The prompt block for causes earlier rounds refuted; empty when none. */
+function refutedForPrompt(
+  refuted: Map<string, PriorRefutation> | undefined,
+): string {
+  if (!refuted || refuted.size === 0) return "";
+  const lines = [...refuted.values()]
+    .map((r) => `- "${r.title}": ${r.why}`)
+    .join("\n");
+  return `## Causas que rodadas anteriores desmentiram nesta página (ela não mudou desde então)
+Não proponha de novo nenhuma delas, nem com outras palavras: no mesmo alvo e na mesma etapa, a triagem descarta.
+${lines}
+
+`;
 }
 
 /** The footer line for an opportunity that left the screen. */
@@ -328,6 +344,8 @@ export async function generateOpportunityHypotheses(opts: {
   knowledge?: KnowledgeEntry[];
   /** Per opportunity: causes that already fell, with the reason; the new round must not repeat them. */
   tried?: Map<string, string[]>;
+  /** Causes earlier rounds refuted on this page, which has not changed since (ledger.ts). */
+  refutedBefore?: Map<string, PriorRefutation>;
   /** The round's goal (`objective_statement`): context in the prompt. */
   objective?: string | null;
   /** Signs screenshot URLs, since the media route only serves signed org objects. Absent = as is. */
@@ -381,7 +399,7 @@ ${factBookForPrompt(facts, evidence.gaps)}
 ## Concorrentes capturados nesta análise (só estes valem em "benchmark")
 ${captured.length > 0 ? captured.map((d) => `- ${d}`).join("\n") : 'Nenhum — o benchmark não carregou. Deixe todo "benchmark" vazio.'}
 
-${knowledgeText ? `${knowledgeText}\n\n` : ""}## Oportunidades (escreva as hipóteses de cada uma)
+${knowledgeText ? `${knowledgeText}\n\n` : ""}${refutedForPrompt(opts.refutedBefore)}## Oportunidades (escreva as hipóteses de cada uma)
 ${list}
 
 ## Etapas ("metrica.key": a da oportunidade)
@@ -429,6 +447,7 @@ Responda SÓ este JSON:
     evidence,
     knowledge,
     facts,
+    opts.refutedBefore,
   );
   return challengeHypotheses({
     llm: opts.llm,
@@ -492,6 +511,8 @@ export function parseOpportunityHypotheses(
   evidence: DiagnosisEvidence,
   knowledge?: KnowledgeBlock,
   facts: UxFact[] = factBook(evidence),
+  /** Causes earlier rounds refuted on this page (ledger.ts); triage drops a repeat. */
+  refutedBefore: Map<string, PriorRefutation> = new Map(),
 ): OpportunityHypothesesResult {
   const parsed = parseJson(raw, "hipóteses");
   const book = factIndex(facts);
@@ -602,6 +623,7 @@ export function parseOpportunityHypotheses(
           const k = d.tree ? triageKey(d.tree) : null;
           return k ? [k] : [];
         }),
+        refutedBefore,
       );
       if (gate) {
         drop(`"${title}" (${gate})`);
