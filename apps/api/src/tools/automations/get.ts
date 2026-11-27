@@ -5,6 +5,7 @@
  */
 
 import { withBuiltinActive } from "../../automations/builtin";
+import { AutomationHarnessIdSchema } from "../../automations/run-harness";
 import { triggerFrom } from "../../automations/board-column-transition";
 import { RuleFromSchema, ruleFromColumns } from "../../jira/rule-from";
 import { AutomationTriggerTypeSchema } from "./trigger-schema";
@@ -41,6 +42,7 @@ export const AUTOMATION_GET = defineTool({
         models: z.unknown(),
         tools: z.array(z.string()).nullable(),
         maxAgentSteps: z.number().nullable(),
+        harnessId: AutomationHarnessIdSchema.nullable(),
         temperature: z.number(),
         triggers: z.array(
           z.object({
@@ -92,6 +94,7 @@ export const AUTOMATION_GET = defineTool({
         models: JSON.parse(automation.models),
         tools: automation.tools ? JSON.parse(automation.tools) : null,
         maxAgentSteps: automation.max_agent_steps,
+        harnessId: automation.harness_id,
         temperature: automation.temperature,
         triggers: triggers.map((t) => ({
           id: t.id,

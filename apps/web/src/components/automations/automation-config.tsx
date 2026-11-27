@@ -221,6 +221,44 @@ export function AutomationModelControl({
 }
 
 /**
+ * Run without a sandbox (`automation_harness_decopilot`). Needs a tool list,
+ * which the server checks again with the file-tool rule.
+ */
+export function AutomationHarnessControl({
+  value,
+  hasTools,
+  onChange,
+}: {
+  value: "decopilot" | null;
+  hasTools: boolean;
+  onChange: (v: "decopilot" | null) => void;
+}) {
+  const t = useT();
+  const on = value === "decopilot";
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-semibold text-muted-foreground/60">
+        {t("automations.automationConfig.harnessLabel")}
+      </span>
+      <label className="flex w-fit items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+        <Switch
+          checked={on}
+          disabled={!on && !hasTools}
+          onCheckedChange={(next) => onChange(next ? "decopilot" : null)}
+          className="cursor-pointer"
+        />
+        {t("automations.automationConfig.harnessNoSandbox")}
+      </label>
+      <span className="text-xs text-muted-foreground/60">
+        {hasTools
+          ? t("automations.automationConfig.harnessNoSandboxHint")
+          : t("automations.automationConfig.harnessNeedsTools")}
+      </span>
+    </div>
+  );
+}
+
+/**
  * The concrete model + credential picker. Pre-selects the org's first AI
  * provider key so the model list is populated immediately (an unselected
  * credential renders an empty, broken-looking dialog).

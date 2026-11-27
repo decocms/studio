@@ -20,6 +20,10 @@ import type {
   Database,
 } from "./types";
 import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
+import {
+  type AutomationHarnessId,
+  parseAutomationHarnessId,
+} from "@/automations/run-harness";
 
 // ============================================================================
 // Input Types
@@ -38,6 +42,7 @@ export interface CreateAutomationInput {
   tools?: string | null; // JSON string[] | null = all tools
   temperature?: number;
   max_agent_steps?: number | null; // null = PARENT_STEP_LIMIT default
+  harness_id?: AutomationHarnessId | null; // null = default harness
   virtual_mcp_id: string;
 }
 
@@ -49,6 +54,7 @@ export interface UpdateAutomationInput {
   tools?: string | null;
   temperature?: number;
   max_agent_steps?: number | null;
+  harness_id?: AutomationHarnessId | null;
 }
 
 export interface CreateTriggerInput {
@@ -199,6 +205,7 @@ function automationFromDbRow(row: {
   tools: string | null;
   temperature: number;
   max_agent_steps: number | null;
+  harness_id: string | null;
   virtual_mcp_id: string;
   system_key: string | null;
   created_at: Date | string;
@@ -215,6 +222,7 @@ function automationFromDbRow(row: {
     tools: row.tools ?? null,
     temperature: row.temperature,
     max_agent_steps: row.max_agent_steps ?? null,
+    harness_id: parseAutomationHarnessId(row.harness_id),
     virtual_mcp_id: row.virtual_mcp_id,
     system_key: row.system_key ?? null,
     created_at: toIsoString(row.created_at),
@@ -271,6 +279,7 @@ const TRIGGER_JOIN_AUTOMATION_COLUMNS = [
   "a.tools as a_tools",
   "a.temperature as a_temperature",
   "a.max_agent_steps as a_max_agent_steps",
+  "a.harness_id as a_harness_id",
   "a.virtual_mcp_id as a_virtual_mcp_id",
   "a.system_key as a_system_key",
   "a.created_at as a_created_at",
@@ -288,6 +297,7 @@ function automationFromAliasedRow(row: {
   a_tools: string | null;
   a_temperature: number;
   a_max_agent_steps: number | null;
+  a_harness_id: string | null;
   a_virtual_mcp_id: string;
   a_system_key: string | null;
   a_created_at: Date | string;
@@ -304,6 +314,7 @@ function automationFromAliasedRow(row: {
     tools: row.a_tools,
     temperature: row.a_temperature,
     max_agent_steps: row.a_max_agent_steps,
+    harness_id: row.a_harness_id,
     virtual_mcp_id: row.a_virtual_mcp_id,
     system_key: row.a_system_key,
     created_at: row.a_created_at,
@@ -337,6 +348,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       tools: input.tools ?? null,
       temperature: input.temperature ?? 0.5,
       max_agent_steps: input.max_agent_steps ?? null,
+      harness_id: input.harness_id ?? null,
       virtual_mcp_id: input.virtual_mcp_id,
       created_at: now,
       updated_at: now,
@@ -394,6 +406,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.tools",
         "a.temperature",
         "a.max_agent_steps",
+        "a.harness_id",
         "a.virtual_mcp_id",
         "a.system_key",
         "a.created_at",
@@ -425,6 +438,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.tools",
         "a.temperature",
         "a.max_agent_steps",
+        "a.harness_id",
         "a.virtual_mcp_id",
         "a.system_key",
         "a.created_at",
@@ -460,6 +474,8 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       updateData.temperature = input.temperature;
     if (input.max_agent_steps !== undefined)
       updateData.max_agent_steps = input.max_agent_steps;
+    if (input.harness_id !== undefined)
+      updateData.harness_id = input.harness_id;
 
     await this.db
       .updateTable("automations")
@@ -856,7 +872,8 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         trigger_id: triggerId,
         virtual_mcp_id: automation.virtual_mcp_id,
         harness_id: harnessId,
-        // A headless agent run needs a pod, so it is a sandbox session whatever the project defaults to.
+        // A sandbox session whatever the project defaults to: a claude-code run needs a pod, and
+        // a person's reply in a decopilot run moves it to claude-code (`repinDecopilotToClaudeCode`).
         metadata: JSON.stringify({
           runtime: "sandbox",
           [AUTOMATION_THREAD_KEY]: automation.id,

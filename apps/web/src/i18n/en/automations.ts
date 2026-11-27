@@ -23,6 +23,12 @@ export const automations = {
     "Connect an AI provider in settings to pick a specific model.",
   "automations.automationConfig.context": "Context",
   "automations.automationConfig.filesCode": "Files & code",
+  "automations.automationConfig.harnessLabel": "Run",
+  "automations.automationConfig.harnessNeedsTools":
+    "Pick the tools first: a run without a sandbox only gets the tools listed.",
+  "automations.automationConfig.harnessNoSandbox": "Run without a sandbox",
+  "automations.automationConfig.harnessNoSandboxHint":
+    "Cheaper for runs that only call the tools listed. The model, tools and max steps above apply. File tools are not available.",
   "automations.automationConfig.loadingModels": "Loading models…",
   "automations.automationConfig.loadingTools": "Loading tools…",
   "automations.automationConfig.modelLabel": "Model",

@@ -63,7 +63,7 @@ export interface ResolvedAutomationModel {
  * Returns null (= all tools) for null/empty/malformed values so a bad write can
  * never silently strip every tool from an automation.
  */
-function parseToolAllowlist(raw: string | null): string[] | null {
+export function parseToolAllowlist(raw: string | null): string[] | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);

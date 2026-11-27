@@ -177,6 +177,8 @@ export interface AutomationDetail {
   tools: string[] | null;
   // Parent agent-loop step cap. null = platform default (PARENT_STEP_LIMIT).
   maxAgentSteps: number | null;
+  // "decopilot" runs without a sandbox. null = default harness.
+  harnessId: "decopilot" | null;
   temperature: number;
   triggers: AutomationTrigger[];
 }

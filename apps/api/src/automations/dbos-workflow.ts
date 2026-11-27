@@ -73,6 +73,7 @@ import {
   type ResolvedAutomationModel,
 } from "./build-stream-request";
 import { computeNextRunAt, type StudioContextFactory } from "./fire";
+import { resolveAutomationRunHarness } from "./run-harness";
 import { agentSandboxEnabled } from "@/settings";
 
 /**
@@ -397,7 +398,10 @@ async function createRunThreadStep(
   return await rt.storage.createAutomationRunThread(
     automation,
     triggerId,
-    agentSandboxEnabled() ? "claude-code" : "decopilot",
+    await resolveAutomationRunHarness(automation, {
+      sandboxAvailable: agentSandboxEnabled(),
+      context: () => fireContext(rt, automation),
+    }),
   );
 }
 

@@ -28,6 +28,12 @@ export const automations = {
     "Conecte um provedor de IA nas configurações para selecionar um modelo específico.",
   "automations.automationConfig.context": "Contexto",
   "automations.automationConfig.filesCode": "Arquivos e código",
+  "automations.automationConfig.harnessLabel": "Execução",
+  "automations.automationConfig.harnessNeedsTools":
+    "Escolha as ferramentas antes: sem sandbox, a execução só recebe as ferramentas da lista.",
+  "automations.automationConfig.harnessNoSandbox": "Rodar sem sandbox",
+  "automations.automationConfig.harnessNoSandboxHint":
+    "Mais barato para execuções que só chamam as ferramentas da lista. O modelo, as ferramentas e o máx. de passos acima passam a valer. Ferramentas de arquivo não ficam disponíveis.",
   "automations.automationConfig.loadingModels": "Carregando modelos…",
   "automations.automationConfig.loadingTools": "Carregando ferramentas…",
   "automations.automationConfig.modelLabel": "Modelo",

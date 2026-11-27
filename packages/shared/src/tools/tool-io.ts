@@ -127,6 +127,7 @@ export interface StudioToolIO {
             home_chat_org_connections?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
+            automation_harness_decopilot?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
             sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -226,6 +227,7 @@ export interface StudioToolIO {
             home_chat_org_connections?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
+            automation_harness_decopilot?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
             sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -317,6 +319,7 @@ export interface StudioToolIO {
             home_chat_org_connections?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
+            automation_harness_decopilot?: boolean | undefined;
             sandbox_run_metadata?: boolean | undefined;
             sandbox_chat_user_memory?: boolean | undefined;
             sandbox_repo_snapshots?: boolean | undefined;
@@ -7606,6 +7609,7 @@ export interface StudioToolIO {
         | undefined;
       tools?: string[] | null | undefined;
       maxAgentSteps?: number | null | undefined;
+      harnessId?: "decopilot" | null | undefined;
       temperature?: number | undefined;
       active?: boolean | undefined;
     };
@@ -7627,6 +7631,7 @@ export interface StudioToolIO {
         models: unknown;
         tools: string[] | null;
         maxAgentSteps: number | null;
+        harnessId: "decopilot" | null;
         temperature: number;
         triggers: {
           id: string;
@@ -7707,6 +7712,7 @@ export interface StudioToolIO {
         | undefined;
       tools?: string[] | null | undefined;
       maxAgentSteps?: number | null | undefined;
+      harnessId?: "decopilot" | null | undefined;
       temperature?: number | undefined;
     };
     output: { id: string; name: string; active: boolean; updated_at: string };

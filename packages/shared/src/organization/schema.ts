@@ -269,6 +269,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Use Codex for new sandbox chats of members with a Codex credential: their linked ChatGPT subscription, or an org Responses API provider other than the deco gateway. Everyone else stays on Claude Code. Off by default; requires hosted sandboxes. Existing chats keep their pinned runtime.",
     ),
+  automation_harness_decopilot: z
+    .boolean()
+    .optional()
+    .describe(
+      "Let an automation choose to run on hosted Decopilot instead of a sandbox: no pod and no Claude Code setup per fire, and the automation's model, tool list and step limit apply. Only for automations restricted to a tool list. Off by default; turning it off sends those automations back to the sandbox.",
+    ),
   sandbox_run_metadata: z
     .boolean()
     .optional()

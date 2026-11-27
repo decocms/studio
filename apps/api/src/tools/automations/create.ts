@@ -13,6 +13,11 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { ChatTierSchema } from "@decocms/shared/organization/schema";
+import {
+  automationHarnessError,
+  automationHarnessFlagEnabled,
+  AutomationHarnessIdSchema,
+} from "../../automations/run-harness";
 import { normalizeMessages } from "./normalize-messages";
 import { ToolsAllowlistSchema } from "./trigger-schema";
 
@@ -58,6 +63,9 @@ export const AUTOMATION_CREATE = defineTool({
     // (PARENT_STEP_LIMIT). Raise it for automations that legitimately need
     // more reasoning/tool steps before stopping.
     maxAgentSteps: z.number().int().min(1).max(100).nullable().optional(),
+    // "decopilot" runs without a sandbox; needs `tools` and the org's
+    // `automation_harness_decopilot` flag. null/omitted = default harness.
+    harnessId: AutomationHarnessIdSchema.nullable().optional(),
     temperature: z.number().default(0.5),
     active: z.boolean().default(true),
   }),
@@ -79,6 +87,15 @@ export const AUTOMATION_CREATE = defineTool({
 
     const normalizedMessages = normalizeMessages(input.messages);
 
+    if (input.harnessId) {
+      const error = automationHarnessError({
+        chosen: input.harnessId,
+        toolAllowlist: input.tools ?? null,
+        flagEnabled: await automationHarnessFlagEnabled(ctx, organization.id),
+      });
+      if (error) throw new Error(error);
+    }
+
     const automation = await ctx.storage.automations.create({
       organization_id: organization.id,
       created_by: userId,
@@ -90,6 +107,7 @@ export const AUTOMATION_CREATE = defineTool({
           ? null
           : JSON.stringify(input.tools),
       max_agent_steps: input.maxAgentSteps ?? null,
+      harness_id: input.harnessId ?? null,
       temperature: input.temperature,
       active: input.active,
       virtual_mcp_id: input.virtual_mcp_id,

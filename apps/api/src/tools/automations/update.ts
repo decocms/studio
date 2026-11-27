@@ -11,6 +11,12 @@ import { syncAutomationActiveChanged } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { ChatTierSchema } from "@decocms/shared/organization/schema";
+import { parseToolAllowlist } from "../../automations/build-stream-request";
+import {
+  automationHarnessError,
+  automationHarnessFlagEnabled,
+  AutomationHarnessIdSchema,
+} from "../../automations/run-harness";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { normalizeMessages } from "./normalize-messages";
 import { ToolsAllowlistSchema } from "./trigger-schema";
@@ -57,6 +63,9 @@ export const AUTOMATION_UPDATE = defineTool({
     // Parent agent-loop step cap. null resets to the platform default
     // (PARENT_STEP_LIMIT); a number sets it; omitting leaves it untouched.
     maxAgentSteps: z.number().int().min(1).max(100).nullable().optional(),
+    // "decopilot" runs without a sandbox (see AUTOMATION_CREATE). null resets
+    // to the default harness; omitting leaves it untouched.
+    harnessId: AutomationHarnessIdSchema.nullable().optional(),
     temperature: z.number().optional(),
   }),
   outputSchema: z.object({
@@ -99,6 +108,31 @@ export const AUTOMATION_UPDATE = defineTool({
       };
     }
 
+    const harness =
+      input.harnessId === undefined ? existing.harness_id : input.harnessId;
+    if (
+      harness &&
+      (input.harnessId !== undefined || input.tools !== undefined)
+    ) {
+      const flagEnabled = await automationHarnessFlagEnabled(
+        ctx,
+        organization.id,
+      );
+      // With the flag off a stored choice does not apply, so it never blocks
+      // an edit of the tool list; choosing it again needs the flag.
+      if (input.harnessId !== undefined || flagEnabled) {
+        const error = automationHarnessError({
+          chosen: harness,
+          toolAllowlist:
+            input.tools === undefined
+              ? parseToolAllowlist(existing.tools)
+              : input.tools,
+          flagEnabled,
+        });
+        if (error) throw new Error(error);
+      }
+    }
+
     // Build update payload
     const updateData: Record<string, unknown> = {};
     if (input.name !== undefined) updateData.name = input.name;
@@ -116,6 +150,7 @@ export const AUTOMATION_UPDATE = defineTool({
       updateData.temperature = input.temperature;
     if (input.maxAgentSteps !== undefined)
       updateData.max_agent_steps = input.maxAgentSteps;
+    if (input.harnessId !== undefined) updateData.harness_id = input.harnessId;
     const automation = await ctx.storage.automations.update(
       input.id,
       organization.id,

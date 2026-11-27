@@ -16,6 +16,7 @@ import type { SprintState } from "@decocms/shared/sprints";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
+import type { AutomationHarnessId } from "../automations/run-harness";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
@@ -1669,6 +1670,9 @@ export interface AutomationTable {
   temperature: number;
   // Parent agent-loop step cap (AI SDK stopWhen). null = PARENT_STEP_LIMIT.
   max_agent_steps: number | null;
+  // The harness the automation chose (`automations/run-harness.ts`).
+  // null = the default: the sandbox where the deployment has one.
+  harness_id: string | null;
   virtual_mcp_id: string;
   /** Set on a built-in automation Studio seeds in every org (see
    *  `automations/builtin.ts`); null on the ones people create. */
@@ -1691,6 +1695,7 @@ export interface Automation {
   tools: string | null;
   temperature: number;
   max_agent_steps: number | null;
+  harness_id: AutomationHarnessId | null;
   virtual_mcp_id: string;
   system_key: string | null;
   created_at: string;

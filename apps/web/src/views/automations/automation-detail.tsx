@@ -7,12 +7,14 @@
 import { type SimpleModeTier } from "@/components/chat/simple-mode-tier-dropdown";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
+  AutomationHarnessControl,
   AutomationModelControl,
   AutomationToolsControl,
   type AutomationModelOverride,
 } from "@/components/automations/automation-config";
 import { User } from "@/components/user/user.tsx";
 import { useAutomation, useAutomationActions } from "@/hooks/use-automations";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useChatTask, useChatStream } from "@/components/chat/context";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -67,6 +69,8 @@ interface SettingsFormData {
   tools: string[] | null;
   // Parent agent-loop step cap (null = platform default).
   maxAgentSteps: number | null;
+  // "decopilot" runs without a sandbox (null = default harness).
+  harnessId: "decopilot" | null;
 }
 
 // Platform default for the parent agent loop (PARENT_STEP_LIMIT) — shown as
@@ -221,8 +225,12 @@ export function SettingsTab({
       modelOverride: defaultModelOverride,
       tools: automation.tools ?? null,
       maxAgentSteps: automation.maxAgentSteps ?? null,
+      harnessId: automation.harnessId ?? null,
     },
   });
+  // Off, the field is left out of saves: a stored choice no longer applies
+  // and stays as it is.
+  const harnessFlag = useOrgFlag("automation_harness_decopilot");
 
   const watchActive = form.watch("active");
 
@@ -291,6 +299,7 @@ export function SettingsTab({
       models,
       tools: formData.tools,
       maxAgentSteps: formData.maxAgentSteps,
+      ...(harnessFlag ? { harnessId: formData.harnessId } : {}),
       messages: tiptapDocToMessages(tiptapDoc),
       temperature: 0,
     };
@@ -680,8 +689,23 @@ export function SettingsTab({
             <AutomationToolsControl
               agentId={agentId || null}
               value={form.watch("tools")}
-              onChange={(v) => form.setValue("tools", v, { shouldDirty: true })}
+              onChange={(v) => {
+                form.setValue("tools", v, { shouldDirty: true });
+                // Without a tool list the run needs the sandbox again.
+                if (!v?.length && form.getValues("harnessId")) {
+                  form.setValue("harnessId", null, { shouldDirty: true });
+                }
+              }}
             />
+            {harnessFlag && (
+              <AutomationHarnessControl
+                value={form.watch("harnessId")}
+                hasTools={!!form.watch("tools")?.length}
+                onChange={(v) =>
+                  form.setValue("harnessId", v, { shouldDirty: true })
+                }
+              />
+            )}
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-muted-foreground/60">
                 {t("automations.automationDetail.maxSteps")}
