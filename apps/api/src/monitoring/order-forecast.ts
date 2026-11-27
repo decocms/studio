@@ -1,7 +1,7 @@
 /**
  * The Monitor's sales projection from the Timestral forecasting model, for
- * orgs with `monitor_timestral_projection`: orders and revenue per local clock
- * hour, 112 days of context. A batch takes the model tens of seconds, so the
+ * every monitored store: orders and revenue per local clock hour, 112 days of
+ * context. A batch takes the model tens of seconds, so the
  * order-monitor sweep runs it once per store and local hour, off the alert
  * path (`dbos-order-monitor.ts`), and stores it; the day view maps the stored
  * forecast onto what's in so far. Alerts keep judging by the baseline. Without
@@ -320,14 +320,13 @@ export interface SweptStore {
   day?: { timezone: string; done: number; backfill: number[] };
 }
 
-/** The forecasts due at `at`: one per read store of an org in `enabledOrgs`. */
+/** The forecasts due at `at`: one per store whose day the sweep read. */
 export function forecastJobs(
   stores: readonly SweptStore[],
-  enabledOrgs: ReadonlySet<string>,
   at: Date,
 ): ForecastJob[] {
   return stores.flatMap(({ organizationId, connectionId, day }) =>
-    day && enabledOrgs.has(organizationId)
+    day
       ? [
           {
             organizationId,

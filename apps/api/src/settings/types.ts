@@ -330,9 +330,8 @@ export interface Settings {
    *  monitoring/dbos-order-monitor.ts. */
   orderMonitorIngestUrl: string | undefined;
   /** The Timestral forecasting service (`POST /forecast`) behind the Monitor's
-   *  sales projection, for orgs with `monitor_timestral_projection`; bearer
-   *  token optional. Unset url = the baseline projection for every org. See
-   *  monitoring/order-forecast.ts. */
+   *  sales projection; bearer token optional. Unset url = the baseline
+   *  projection for every store. See monitoring/order-forecast.ts. */
   timestralUrl: string | undefined;
   timestralToken: string | undefined;
   /** OneDollarStats backend key — the legacy platform's pageview source

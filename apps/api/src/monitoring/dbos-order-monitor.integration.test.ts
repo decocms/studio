@@ -13,7 +13,6 @@ import {
   type MonitoredStore,
   OrderMonitorStorage,
 } from "@/storage/order-monitor";
-import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import {
   forecastOneStore,
   planForecasts,
@@ -173,11 +172,11 @@ describe("the sweep's model forecast", () => {
     title: "On",
     orgSlug: "forecast-on",
   };
-  const off: MonitoredStore = {
+  const other: MonitoredStore = {
     ...on,
-    organizationId: "org_forecast_off",
-    connectionId: "conn_forecast_off",
-    orgSlug: "forecast-off",
+    organizationId: "org_forecast_other",
+    connectionId: "conn_forecast_other",
+    orgSlug: "forecast-other",
   };
   // 10:08 in São Paulo: hour 10 under way.
   const at = new Date("2026-11-26T13:08:00Z");
@@ -189,10 +188,12 @@ describe("the sweep's model forecast", () => {
       day: read,
     },
     {
-      organizationId: off.organizationId,
-      connectionId: off.connectionId,
+      organizationId: other.organizationId,
+      connectionId: other.connectionId,
       day: read,
     },
+    // A store whose day the sweep couldn't read.
+    { organizationId: other.organizationId, connectionId: "conn_unread" },
   ];
   const history = (): HourlyDay[] =>
     Array.from({ length: HISTORY_DAYS + 1 }, () => ({
@@ -227,14 +228,7 @@ describe("the sweep's model forecast", () => {
     await resetTestPgDatabase(database);
     storage = new OrderMonitorStorage(database.db);
     await insertStore(database, on, USER_F);
-    await insertStore(database, off, USER_F);
-    const settings = new OrganizationSettingsStorage(database.db);
-    await settings.upsert(on.organizationId, {
-      flags: { monitor_timestral_projection: true },
-    });
-    await settings.upsert(off.organizationId, {
-      flags: { monitor_timestral_projection: false },
-    });
+    await insertStore(database, other, USER_F);
   });
 
   afterAll(async () => {
@@ -243,20 +237,19 @@ describe("the sweep's model forecast", () => {
     await closeTestPgDatabase(database);
   });
 
-  test("plans one forecast per store of an org with the flag on, none without the service", async () => {
+  test("plans one forecast per store the sweep read, in every org, none without the service", async () => {
     setGlobalSettings(resolveConfig({ TIMESTRAL_URL: server.url.href }));
     const jobs = await planForecasts(database.db, swept, at);
-    expect(jobs).toEqual([
-      {
-        organizationId: on.organizationId,
-        connectionId: on.connectionId,
-        timezone: "America/Sao_Paulo",
-        at: at.toISOString(),
-        date: "2026-11-26",
-        hour: 10,
-        backfill: [],
-      },
-    ]);
+    const due = (store: MonitoredStore) => ({
+      organizationId: store.organizationId,
+      connectionId: store.connectionId,
+      timezone: "America/Sao_Paulo",
+      at: at.toISOString(),
+      date: "2026-11-26",
+      hour: 10,
+      backfill: [],
+    });
+    expect(jobs).toEqual([due(on), due(other)]);
     setGlobalSettings(resolveConfig({}));
     expect(await planForecasts(database.db, swept, at)).toEqual([]);
   });

@@ -137,7 +137,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
-            monitor_timestral_projection?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
@@ -237,7 +236,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
-            monitor_timestral_projection?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;
@@ -329,7 +327,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             experiments_v2_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
-            monitor_timestral_projection?: boolean | undefined;
             site_create_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
             blog_ai_enabled?: boolean | undefined;

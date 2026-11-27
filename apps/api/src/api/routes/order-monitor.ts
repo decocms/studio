@@ -24,7 +24,6 @@ import type {
   OrderMonitorStore,
   OrderMonitorVerdict,
 } from "@decocms/shared/order-monitor";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -255,13 +254,8 @@ export const createOrderMonitorRoutes = () => {
       if (!getSettings().timestralUrl || !view.forecast.projection) {
         return c.json(view);
       }
-      // The sweep's model forecast for the store's hour, when the org has it on.
-      const settings = await g.ctx.storage.organizationSettings
-        .get(orgId)
-        .catch(() => null);
-      if (!orgFlagEnabled(settings?.flags, "monitor_timestral_projection")) {
-        return c.json(view);
-      }
+      // The sweep's model forecast for the store's hour; without a fresh one
+      // the baseline projection stays.
       const forecast = await g.storage
         .latestForecast(orgId, connectionId, view.date)
         .catch(() => null);

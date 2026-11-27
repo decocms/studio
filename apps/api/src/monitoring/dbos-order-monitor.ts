@@ -8,9 +8,8 @@
  * `[order-monitor] transition`: that list is what a rule's thresholds get
  * checked against.
  *
- * Once the verdicts are written, stores of orgs with
- * `monitor_timestral_projection` get the model's forecast for their local hour
- * (`order-forecast.ts`): a child workflow per store and hour on
+ * Once the verdicts are written, every store the sweep read gets the model's
+ * forecast for its local hour (`order-forecast.ts`): a child workflow per store and hour on
  * ORDER_FORECAST_QUEUE, which every tick of the hour asks for by the same id,
  * so the model runs once per store and hour and the sweep never waits on it.
  *
@@ -25,7 +24,6 @@
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import { ORDER_MONITOR_ALERT_SOURCE } from "@decocms/shared/alerts";
 import type { OrderMonitorVerdict } from "@decocms/shared/order-monitor";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { type Kysely, sql } from "kysely";
 import { orgHasFeatureAsUser } from "@/core/plan-feature-gate";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
@@ -36,7 +34,6 @@ import {
   type MonitoredStore,
   OrderMonitorStorage,
 } from "@/storage/order-monitor";
-import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import type { Database } from "@/storage/types";
 import { emitAlertsUpdated } from "@/tools/alerts/events";
 import {
@@ -249,7 +246,8 @@ async function evaluateOneStore(
 }
 
 /**
- * Deletes the orgs' forecasts past their use and lists the ones due at `at`.
+ * Deletes the orgs' forecasts past their use and lists the ones due at `at`,
+ * none without the forecasting service.
  * Never throws: it runs after the verdicts are written and the forecast is
  * best-effort.
  */
@@ -265,16 +263,7 @@ export async function planForecasts(
       new Date(at.getTime() - FORECAST_RETENTION_MS),
     );
     if (!getSettings().timestralUrl) return [];
-    const settings = new OrganizationSettingsStorage(db);
-    const enabled = await Promise.all(
-      orgs.map(async (id) =>
-        orgFlagEnabled(
-          (await settings.get(id))?.flags,
-          "monitor_timestral_projection",
-        ),
-      ),
-    );
-    return forecastJobs(stores, new Set(orgs.filter((_, i) => enabled[i])), at);
+    return forecastJobs(stores, at);
   } catch (err) {
     console.warn("[order-monitor] forecast planning failed", {
       error: err instanceof Error ? err.message : String(err),

@@ -428,20 +428,23 @@ describe("forecastJobs", () => {
     backfill: [3],
   };
 
-  it("asks for one forecast per read store of an org with the flag on", () => {
+  it("asks for one forecast per store whose day the sweep read, in every org", () => {
     const jobs = forecastJobs(
       [
-        { organizationId: "on", connectionId: "a", day: read },
-        { organizationId: "off", connectionId: "b", day: read },
+        { organizationId: "x", connectionId: "a", day: read },
+        {
+          organizationId: "y",
+          connectionId: "b",
+          day: { timezone: "Europe/Lisbon", done: 52, backfill: [] },
+        },
         // The sweep couldn't read this one's day.
-        { organizationId: "on", connectionId: "c" },
+        { organizationId: "x", connectionId: "c" },
       ],
-      new Set(["on"]),
       at,
     );
     expect(jobs).toEqual([
       {
-        organizationId: "on",
+        organizationId: "x",
         connectionId: "a",
         timezone: "America/Sao_Paulo",
         at: at.toISOString(),
@@ -449,16 +452,22 @@ describe("forecastJobs", () => {
         hour: 10,
         backfill: [3],
       },
+      {
+        organizationId: "y",
+        connectionId: "b",
+        timezone: "Europe/Lisbon",
+        at: at.toISOString(),
+        date: "2026-11-26",
+        hour: 13,
+        backfill: [],
+      },
     ]);
   });
 
-  it("asks for nothing when no org has the flag on", () => {
+  it("asks for nothing when the sweep read no store", () => {
+    expect(forecastJobs([], at)).toEqual([]);
     expect(
-      forecastJobs(
-        [{ organizationId: "off", connectionId: "b", day: read }],
-        new Set(),
-        at,
-      ),
+      forecastJobs([{ organizationId: "x", connectionId: "c" }], at),
     ).toEqual([]);
   });
 
@@ -472,7 +481,6 @@ describe("forecastJobs", () => {
             day: { ...read, done },
           },
         ],
-        new Set(["on"]),
         new Date(iso),
       ).map(forecastWorkflowId)[0];
     // 10:08, 10:13 and 10:58 local: hour 10.
@@ -486,7 +494,6 @@ describe("forecastJobs", () => {
       forecastWorkflowId({
         ...forecastJobs(
           [{ organizationId: "on", connectionId: "b", day: read }],
-          new Set(["on"]),
           new Date("2026-11-26T13:08:00Z"),
         )[0]!,
       }),
