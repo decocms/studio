@@ -189,6 +189,29 @@ function lastByKey<T>(items: T[], key: (item: T) => string): T[] {
 const keep = (table: string, column: string) =>
   sql<never>`coalesce(excluded.${sql.ref(column)}, ${sql.ref(`${table}.${column}`)})`;
 
+/**
+ * A message marked `raw: { withheld: true }` (sensitive at the source) clears
+ * its content: an omitted field can't, since omitted keeps what was stored.
+ */
+const keepUnlessWithheld = (column: string) =>
+  sql<never>`case when excluded.raw @> '{"withheld": true}'::jsonb then null else ${keep("messages", column)} end`;
+
+export interface ChannelConnectionDetail {
+  connection: ChannelConnection;
+  counts: { conversations: number; messages: number; people: number };
+  last_event_at: string | null;
+  sync: { source_cursor_at: string | null; last_error: string | null };
+}
+
+/** A connection as the hub forwarder sees it: where it is in the hub. */
+export interface ChannelSourceSync {
+  id: string;
+  organizationId: string;
+  source: string;
+  externalId: string;
+  cursor: { at: string; id: string } | null;
+}
+
 export class ChannelsStorage {
   constructor(private readonly db: Kysely<Database>) {}
 
@@ -245,6 +268,102 @@ export class ChannelsStorage {
       .orderBy("created_at", "desc")
       .execute();
     return rows.map(connectionOf);
+  }
+
+  /** A connection with what it holds and where its hub sync stands. */
+  async getConnection(
+    organizationId: string,
+    connectionId: string,
+  ): Promise<ChannelConnectionDetail | null> {
+    const row = await this.db
+      .selectFrom("channels.connections as c")
+      .selectAll("c")
+      .select([
+        sql<number>`(SELECT count(*)::int FROM channels.conversations WHERE connection_id = c.id)`.as(
+          "conversation_count",
+        ),
+        sql<number>`(SELECT count(*)::int FROM channels.messages WHERE connection_id = c.id)`.as(
+          "message_count",
+        ),
+        sql<number>`(SELECT count(*)::int FROM channels.people WHERE connection_id = c.id)`.as(
+          "person_count",
+        ),
+      ])
+      .where("c.organization_id", "=", organizationId)
+      .where("c.id", "=", connectionId)
+      .executeTakeFirst();
+    if (!row) return null;
+    return {
+      connection: connectionOf(row),
+      counts: {
+        conversations: row.conversation_count,
+        messages: row.message_count,
+        people: row.person_count,
+      },
+      last_event_at: isoOrNull(row.last_event_at),
+      sync: {
+        source_cursor_at: isoOrNull(row.source_cursor_at),
+        last_error: row.source_error,
+      },
+    };
+  }
+
+  /** Every connection, across orgs, with its hub cursor. */
+  async listSourceSyncs(): Promise<ChannelSourceSync[]> {
+    const rows = await this.db
+      .selectFrom("channels.connections")
+      .select([
+        "id",
+        "organization_id",
+        "source",
+        "external_id",
+        // Microseconds kept: one hub transaction stamps all its rows with the
+        // same mirrored_at, and a millisecond cursor would re-read them forever.
+        sql<
+          string | null
+        >`to_char(source_cursor_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as(
+          "source_cursor_at",
+        ),
+        "source_cursor_id",
+      ])
+      .orderBy("id")
+      .execute();
+    return rows.map((r) => ({
+      id: r.id,
+      organizationId: r.organization_id,
+      source: r.source,
+      externalId: r.external_id,
+      cursor:
+        r.source_cursor_at && r.source_cursor_id
+          ? { at: r.source_cursor_at, id: r.source_cursor_id }
+          : null,
+    }));
+  }
+
+  /** A clean sync: the cursor moves (when given) and the last error clears. */
+  async recordSourceSync(
+    connectionId: string,
+    cursor: { at: string; id: string } | null,
+  ): Promise<void> {
+    await this.db
+      .updateTable("channels.connections")
+      .set({
+        ...(cursor
+          ? { source_cursor_at: cursor.at, source_cursor_id: cursor.id }
+          : {}),
+        source_error: null,
+        source_synced_at: new Date(),
+      })
+      .where("id", "=", connectionId)
+      .execute();
+  }
+
+  async recordSourceError(connectionId: string, error: string): Promise<void> {
+    await this.db
+      .updateTable("channels.connections")
+      .set({ source_error: error.slice(0, 1000) })
+      .where("id", "=", connectionId)
+      .execute();
   }
 
   /** Deletes the connection and, by cascade, everything it brought in. */
@@ -403,12 +522,12 @@ export class ChannelsStorage {
                 author_id: keep("messages", "author_id"),
                 author_name: keep("messages", "author_name"),
                 ts: sql<Date>`excluded.ts`,
-                text: keep("messages", "text"),
-                derived_text: keep("messages", "derived_text"),
+                text: keepUnlessWithheld("text"),
+                derived_text: keepUnlessWithheld("derived_text"),
                 kind: keep("messages", "kind"),
                 reply_to: keep("messages", "reply_to"),
                 thread_id: keep("messages", "thread_id"),
-                attachments: keep("messages", "attachments"),
+                attachments: keepUnlessWithheld("attachments"),
                 offset_ms: keep("messages", "offset_ms"),
                 duration_ms: keep("messages", "duration_ms"),
                 edited_at: keep("messages", "edited_at"),

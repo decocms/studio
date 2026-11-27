@@ -35,6 +35,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       col.notNull().defaultTo(sql`now()`),
     )
     .addColumn("last_event_at", "timestamptz")
+    // The hub forwarder's position in the channels hub: the last copied row
+    // by (mirrored_at, id), its last failure and its last clean run.
+    .addColumn("source_cursor_at", "timestamptz")
+    .addColumn("source_cursor_id", "text")
+    .addColumn("source_error", "text")
+    .addColumn("source_synced_at", "timestamptz")
     .addUniqueConstraint("connections_org_source_external", [
       "organization_id",
       "source",

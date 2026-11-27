@@ -28,6 +28,10 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerChannelsHubForwarderWorkflow,
+  setChannelsHubForwarderRuntime,
+} from "@/tools/channels/dbos-hub-forwarder";
+import {
   registerDemoBoardResetWorkflow,
   setDemoBoardResetRuntime,
 } from "@/tools/demo-board/dbos-demo-board-reset";
@@ -1697,6 +1701,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Every minute: the channels hub's new rows into each channel connection.
+  setChannelsHubForwarderRuntime({
+    db: database.db,
+    sourceDatabaseUrl: getSettings().channelsSourceDatabaseUrl,
+  });
+
   // Daily: demo orgs' boards back to their capture.
   setDemoBoardResetRuntime({ db: database.db });
 
@@ -2009,6 +2019,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerChannelsHubForwarderWorkflow();
   registerDemoBoardResetWorkflow();
   registerOrderMonitorWorkflow();
   registerOrderIngestBackfillWorkflow();

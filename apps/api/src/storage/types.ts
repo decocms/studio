@@ -436,6 +436,10 @@ export interface ChannelsConnectionTable {
   created_at: ChannelsStamp;
   updated_at: ChannelsStamp;
   last_event_at: ChannelsOptionalStamp;
+  source_cursor_at: ChannelsOptionalStamp;
+  source_cursor_id: ChannelsOptional<string>;
+  source_error: ChannelsOptional<string>;
+  source_synced_at: ChannelsOptionalStamp;
 }
 
 export interface ChannelsConversationTable {
