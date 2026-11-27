@@ -1,0 +1,51 @@
+export const channels = {
+  "channels.nav": "Channels",
+  "channels.unavailableTitle": "Channels aren't enabled",
+  "channels.unavailableDescription":
+    "Channels aren't turned on for this organization.",
+  "channels.connect": "Connect a channel",
+  "channels.emptyTitle": "No channels connected",
+  "channels.emptyDescription":
+    "Connect a WhatsApp number, a Discord bot or another account so its conversations show up here.",
+  "channels.errorTitle": "Couldn't load channels",
+  "channels.retry": "Retry",
+  "channels.lastEvent": "Last event {time}",
+  "channels.neverEvent": "No events yet",
+  "channels.rowMenu": "Actions",
+  "channels.rotateToken": "Rotate token",
+  "channels.delete": "Delete",
+  "channels.cancel": "Cancel",
+  "channels.form.title": "Connect a channel",
+  "channels.form.description":
+    "Its worker sends conversations to Studio with the token you get next.",
+  "channels.form.source": "Source",
+  "channels.form.externalId": "Account id",
+  "channels.form.externalIdHint":
+    "The account at the source: a phone number, a bot or workspace id.",
+  "channels.form.name": "Name (optional)",
+  "channels.form.submit": "Connect",
+  "channels.form.submitting": "Connecting…",
+  "channels.token.title": "Ingestion token",
+  "channels.token.description":
+    "Copy it into the channel's worker now. You won't see it again: closing this discards it.",
+  "channels.token.copy": "Copy token",
+  "channels.token.copied": "Token copied",
+  "channels.token.done": "Done",
+  "channels.rotate.title": "Rotate the token for {name}?",
+  "channels.rotate.description":
+    "The current token stops working at once. The worker needs the new one to keep sending.",
+  "channels.delete.title": "Delete {name}?",
+  "channels.delete.description":
+    "Everything indexed from it (conversations, people and messages) is deleted, and its token stops working.",
+  "channels.deleted": "Channel deleted",
+  "channels.searchConversations": "Search conversations",
+  "channels.noConversations": "No conversations yet",
+  "channels.noConversationsMatch": 'No conversations match "{query}"',
+  "channels.loadMore": "Load more",
+  "channels.loadOlder": "Load older",
+  "channels.noMessages": "No messages yet",
+  "channels.messageDeleted": "Message deleted",
+  "channels.attachmentsOne": "1 attachment",
+  "channels.attachments": "{count} attachments",
+  "channels.unknownAuthor": "Unknown",
+} as const;

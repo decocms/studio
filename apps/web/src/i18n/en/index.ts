@@ -51,6 +51,7 @@ import { settings } from "./settings.ts";
 import { announcements } from "./announcements.ts";
 import { assets } from "./assets.ts";
 import { plan } from "./plan.ts";
+import { channels } from "./channels.ts";
 
 // English is the source of truth: every domain file is spread here and
 // TranslationKey is derived from the result. pt-BR mirrors this structure
@@ -107,6 +108,7 @@ export const en = {
   ...announcements,
   ...assets,
   ...plan,
+  ...channels,
   ...projects,
   ...page,
 } as const;
