@@ -5,8 +5,9 @@
  *
  * What Studio keeps of a message is what the ingestion route accepts: no
  * reactions, no pictures of people, attachments as `{ name, type, size, url }`
- * (or what a worker's mirror wrote), and nothing that says which side is ours,
- * so every message sits on the others' side.
+ * (or what a worker's mirror wrote), whether it was withheld as sensitive,
+ * and nothing that says which side is ours, so every message sits on the
+ * others' side.
  */
 import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import type {
@@ -82,6 +83,8 @@ export function toChat(rows: MessageRow[]): ChatMessage[] {
       // A voice note's transcript is its text; beside a caption it goes under it.
       text: m.text ?? m.derived_text,
       note: m.text ? m.derived_text : null,
+      // Sensitive at the source: the skin says so where the content would be.
+      withheld: m.withheld,
       deleted: !!m.deleted_at,
       edited: !!m.edited_at,
       reply: quoted

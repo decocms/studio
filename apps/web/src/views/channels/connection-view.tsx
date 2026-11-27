@@ -30,10 +30,7 @@ import { MetricCard } from "@decocms/ui/components/metric-card.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import type {
-  StudioToolIO,
-  StudioToolName,
-} from "@decocms/shared/tools/tool-io";
+import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { ChatView, skinOf } from "@/components/channel-skins/index.tsx";
 import { ChatText } from "@/components/channel-skins/text.tsx";
 import { CopySnippet } from "@/components/connect/copy-snippet.tsx";
@@ -44,11 +41,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { channelName } from "@/lib/channel-accounts";
 import { formatRelativeTime } from "@/lib/format-time";
 import { KEYS } from "@/lib/query-keys";
-import {
-  callStudioTool,
-  StudioToolError,
-  useStudioTools,
-} from "@/lib/studio-tools";
+import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
 import { ChannelMark } from "./channel-mark.tsx";
 import {
@@ -60,31 +53,6 @@ import { toChat } from "./to-chat.ts";
 
 type Conversation =
   StudioToolIO["CHANNELS_CONVERSATION_LIST"]["output"]["conversations"][number];
-
-/** CHANNELS_CONNECTION_GET's answer (apps/api src/tools/channels). */
-interface ConnectionDetail {
-  connection: Connection;
-  counts: { conversations: number; messages: number; people: number };
-  last_event_at: string | null;
-  sync: { source_cursor_at: string | null; last_error: string | null };
-}
-
-/**
- * CHANNELS_CONNECTION_GET, typed by hand until the generated tool-io carries
- * it. A server without the tool answers 404 "Unknown tool": the detail then
- * shows what the list already knows.
- */
-const getConnection = (orgSlug: string, id: string) =>
-  callStudioTool(
-    orgSlug,
-    "CHANNELS_CONNECTION_GET" as StudioToolName,
-    { id } as never,
-  ) as unknown as Promise<ConnectionDetail>;
-
-const isUnknownTool = (error: unknown) =>
-  error instanceof StudioToolError &&
-  error.status === 404 &&
-  error.message.startsWith("Unknown tool");
 
 /** Servers, workspaces and spaces are square at their source; people and groups round. */
 const squareFaces = (source: string) =>
@@ -273,13 +241,13 @@ export function ConnectionView({
 function Overview({ connection }: { connection: Connection }) {
   const t = useT();
   const { org } = useProjectContext();
+  const studio = useStudioTools();
   const [{ language }] = usePreferences();
   const detail = useQuery({
     queryKey: KEYS.channelsConnection(org.id, connection.id),
-    queryFn: () => getConnection(org.slug, connection.id),
-    retry: (count, error) => !isUnknownTool(error) && count < 2,
+    queryFn: () =>
+      studio.call("CHANNELS_CONNECTION_GET", { id: connection.id }),
   });
-  const missing = isUnknownTool(detail.error);
   const data = detail.data;
   const lastEvent = data?.last_event_at ?? connection.last_event_at;
   const error = data?.sync.last_error ?? null;
@@ -347,12 +315,7 @@ function Overview({ connection }: { connection: Connection }) {
           value={count(data?.counts.people)}
         />
       </div>
-      {missing && (
-        <p className="text-xs text-muted-foreground">
-          {t("channels.detailUnavailable")}
-        </p>
-      )}
-      {detail.isError && !missing && (
+      {detail.isError && (
         <p className="text-xs text-destructive">
           {detail.error.message}{" "}
           <button

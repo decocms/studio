@@ -59,8 +59,6 @@ export const channels = {
   "channels.count.conversations": "Conversations",
   "channels.count.messages": "Messages",
   "channels.count.people": "People",
-  "channels.detailUnavailable":
-    "Counts and sync state aren't available on this server yet.",
   "channels.fact.lastEvent": "Last event",
   "channels.fact.sync": "Synced from the hub",
   "channels.fact.created": "Connected on",
@@ -75,7 +73,7 @@ export const channels = {
   "channelSkins.yesterday": "Yesterday",
   "channelSkins.at": "at",
   "channelSkins.deleted": "This message was deleted",
-  "channelSkins.withheld": "Sensitive content",
+  "channelSkins.withheld": "Content withheld",
   "channelSkins.forwarded": "Forwarded",
   "channelSkins.edited": "Edited",
   "channelSkins.editedParen": "(edited)",

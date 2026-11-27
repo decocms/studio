@@ -23,6 +23,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { PAGE_INSET, Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import { RequireCapability } from "@/components/require-capability";
+import { useCapability } from "@/hooks/use-capability";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { SettingsPage } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
@@ -231,7 +232,10 @@ export function ContextShell({
   children: ReactNode;
 }) {
   const t = useT();
-  const channelsEnabled = useOrgFlag("channels_enabled");
+  // Channels shows with its org flag and to whoever may read it.
+  const channelsFlag = useOrgFlag("channels_enabled");
+  const channelsRead = useCapability("channels:read").granted;
+  const channelsEnabled = channelsFlag && channelsRead;
   const groups =
     scope === "org"
       ? ORG_GROUPS
@@ -319,9 +323,11 @@ export function ContextSectionBody({
       );
     case "channels":
       return (
-        <Suspense fallback={<Loading />}>
-          <ChannelsView />
-        </Suspense>
+        <RequireCapability capability="channels:read" area="channels">
+          <Suspense fallback={<Loading />}>
+            <ChannelsView />
+          </Suspense>
+        </RequireCapability>
       );
     case "repositories":
       return (

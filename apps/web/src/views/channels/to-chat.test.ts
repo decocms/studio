@@ -18,6 +18,7 @@ const row = (over: Partial<MessageRow>): MessageRow => ({
   duration_ms: null,
   edited_at: null,
   deleted_at: null,
+  withheld: false,
   ...over,
 });
 
@@ -64,6 +65,13 @@ describe("toChat", () => {
     expect(
       toChat([row({ text: "caption", derived_text: "transcript" })])[0],
     ).toMatchObject({ text: "caption", note: "transcript" });
+  });
+
+  test("marks a withheld message so the skin says its content was withheld", () => {
+    expect(toChat([row({ withheld: true })])[0]).toMatchObject({
+      withheld: true,
+      text: null,
+    });
   });
 
   test("marks deleted and edited messages and keeps a call's offset", () => {
