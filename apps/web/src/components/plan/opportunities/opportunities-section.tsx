@@ -1,8 +1,8 @@
 /**
- * "Found for you" on Plan: the store analysis behind the active goal, with
- * its two biggest losses. It hides itself where this deployment has no
- * analysis, asks to connect the store's data when it is not set up, and
- * keeps its own errors here so the rest of Plan works as usual.
+ * "Found for you" on Plan: the store analysis behind the active goal, led by
+ * its four top losses, the most certain first. It hides itself where this
+ * deployment has no analysis, asks to connect the store's data when it is not
+ * set up, and keeps its own errors here so the rest of Plan works as usual.
  */
 
 import type { ReactNode } from "react";
@@ -31,6 +31,7 @@ import { PAGE_LABEL } from "./labels.ts";
 import {
   type OpportunityActions,
   OpportunityCard,
+  OpportunityRankCard,
 } from "./opportunity-card.tsx";
 import {
   errorText,
@@ -116,10 +117,11 @@ function SectionSkeleton() {
         <Skeleton className="h-6 w-56" />
         <Skeleton className="h-4 w-full max-w-lg" />
       </div>
-      <Skeleton className="h-40 w-full rounded-xl" />
-      <div className="grid gap-4 md:grid-cols-2">
-        <Skeleton className="h-72 w-full rounded-xl" />
-        <Skeleton className="h-72 w-full rounded-xl" />
+      <Skeleton className="h-72 w-full rounded-xl" />
+      <div className="grid gap-4 md:grid-cols-3">
+        <Skeleton className="h-36 w-full rounded-xl" />
+        <Skeleton className="h-36 w-full rounded-xl" />
+        <Skeleton className="h-36 w-full rounded-xl" />
       </div>
     </div>
   );
@@ -463,26 +465,32 @@ function StoreSection({
   }
 
   const others = view.others.length;
+  const [first, ...rest] = view.top;
   return (
     <Frame eyebrow={eyebrow} action={<NewRunButton onNewRun={onNewRun} />}>
-      {setup}
       {stale}
       {phase.refreshing && (
         <p className="text-sm text-muted-foreground" role="status">
           {t("plan.opportunities.refreshing")}
         </p>
       )}
+      {first && (
+        <OpportunityCard opportunity={first} position={0} {...actions} />
+      )}
+      {rest.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {rest.map((opportunity, index) => (
+            <OpportunityRankCard
+              key={opportunity.id}
+              opportunity={opportunity}
+              position={index + 1}
+              onOpenOpportunity={actions.onOpenOpportunity}
+            />
+          ))}
+        </div>
+      )}
       <Summary view={view} needs={needs} />
-      <div className="grid items-start gap-4 md:grid-cols-2">
-        {view.top.map((opportunity, position) => (
-          <OpportunityCard
-            key={opportunity.id}
-            opportunity={opportunity}
-            position={position}
-            {...actions}
-          />
-        ))}
-      </div>
+      {setup}
       {onOpenStore && (
         <Button variant="link" className="self-center" onClick={onOpenStore}>
           {others === 0

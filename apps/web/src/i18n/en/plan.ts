@@ -32,6 +32,7 @@ export const plan = {
   "plan.objective.connectHint":
     "Connect meetings or messages, like Grain or WhatsApp, so I can find it next time.",
   "plan.objective.saveError": "Could not save the goal. Try again.",
+  "plan.idea.open": "I have an idea",
   "plan.idea.heading": "What do you want to improve in the store?",
   "plan.idea.description":
     "Say it however it comes to you, even vaguely. A few quick questions fill in what only you know, then the agent builds the case: the problem in numbers, who already does it, the money at stake, effort and the A/B test.",
@@ -317,7 +318,7 @@ export const plan = {
   "plan.guide.resume.discard": "Discard",
   "plan.opportunities.heading": "Found for you",
   "plan.opportunities.description":
-    "The agents measured where the store loses the most, tested why, and set aside the two biggest losses for your goal.",
+    "The agents measured where the store loses the most, tested why, and set aside the biggest losses for your goal, most certain first.",
   "plan.opportunities.scope.whole": "Whole site",
   "plan.opportunities.scope.analysed": "Analysed {date}",
   "plan.opportunities.newRun": "New analysis",
@@ -335,8 +336,7 @@ export const plan = {
   "plan.opportunities.summary.monthly.other": "a month across these {count}",
   "plan.opportunities.summary.sources": "Sources",
   "plan.opportunities.summary.gaps": "Did not answer",
-  "plan.opportunities.card.biggest": "Biggest loss",
-  "plan.opportunities.card.second": "2nd biggest loss",
+  "plan.opportunities.card.rank": "#{position}",
   "plan.opportunities.card.perMonth": "/month",
   "plan.opportunities.card.atStake": "at stake if {delta} pp of the gap closes",
   "plan.opportunities.card.ceiling": "up to {value} closing all of it",
@@ -406,7 +406,7 @@ export const plan = {
   "plan.opportunities.store.unavailable":
     "This organization does not have the store analysis.",
   "plan.opportunities.newRun.description":
-    "Measures again, looks into why, and updates the two biggest losses. The other pages keep their last analysis.",
+    "Measures again, looks into why, and updates the biggest losses. The other pages keep their last analysis.",
   "plan.opportunities.newRun.site": "Whole site",
   "plan.opportunities.newRun.siteHint": "All 5 pages at once",
   "plan.opportunities.newRun.or": "Or only the parts you choose",

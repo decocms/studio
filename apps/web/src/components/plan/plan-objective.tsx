@@ -1,6 +1,6 @@
 /** The store goal at the top of Plan: a member writes it, and may ask the AI to find it in what the brand wrote and said. The form is shared with Plan goals. */
 
-import { useRef, useState, type FormEvent } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import { Edit03, Stars02, StopCircle, Target04 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { PLAN_OBJECTIVE_MAX_LENGTH } from "@decocms/shared/organization/schema";
@@ -365,7 +365,12 @@ function StoreGoalForm({
   );
 }
 
-export function PlanObjective() {
+export function PlanObjective({
+  action,
+}: {
+  /** Beside the goal's edit button, and under the form while there is no goal. */
+  action?: ReactNode;
+}) {
   const t = useT();
   const objective = usePlanObjective();
   const [editing, setEditing] = useState(false);
@@ -383,6 +388,7 @@ export function PlanObjective() {
             {t("plan.objective.empty")}
           </p>
           <StoreGoalForm initial="" />
+          {action}
         </>
       ) : editing ? (
         <StoreGoalForm initial={statement} onDone={() => setEditing(false)} />
@@ -391,10 +397,17 @@ export function PlanObjective() {
           <p className="max-w-[720px] text-2xl leading-snug font-medium text-balance text-foreground">
             {statement}
           </p>
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-            <Edit03 />
-            {t("plan.objective.edit")}
-          </Button>
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              <Edit03 />
+              {t("plan.objective.edit")}
+            </Button>
+            {action && <div className="ml-auto">{action}</div>}
+          </div>
         </div>
       )}
     </section>

@@ -115,8 +115,8 @@ export function Thinking({
   );
 }
 
-/** The question, one word after the other. */
-function Words({ text, delay }: { text: string; delay: number }) {
+/** A heading, one word after the other. */
+export function Words({ text, delay }: { text: string; delay: number }) {
   return text.split(/\s+/).map((word, i) => (
     <Fragment key={i}>
       <span
@@ -129,7 +129,7 @@ function Words({ text, delay }: { text: string; delay: number }) {
   ));
 }
 
-const WORD_MS = 45;
+export const WORD_MS = 45;
 const REACTION_MS = 350;
 
 /** A dot per answered question and a wider one for the current. Given a

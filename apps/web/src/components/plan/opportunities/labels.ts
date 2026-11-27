@@ -2,7 +2,8 @@
 
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { PageType, StoreOpportunity } from "./diagnosis-schema.ts";
-import type { ConfidenceLevel, HypothesisVerdict } from "./opportunity-view.ts";
+import type { ConfidenceLevel } from "@decocms/shared/plan-confidence";
+import type { HypothesisVerdict } from "./opportunity-view.ts";
 
 export const PAGE_LABEL: Record<PageType, TranslationKey> = {
   home: "plan.opportunities.page.home",

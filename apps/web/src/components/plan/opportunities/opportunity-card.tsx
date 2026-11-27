@@ -1,10 +1,12 @@
 /**
- * One of the two biggest losses on Plan: what it is worth a month, the loss
- * the engine measured, how far the investigation got, and the next step —
- * a business case once a hypothesis is ready, the hypotheses otherwise.
+ * The losses that lead Plan. The first gets the full card: what it is worth a
+ * month, the loss the engine measured, how far the investigation got, and the
+ * next step — a business case once a hypothesis is ready, the hypotheses
+ * otherwise. The ones after it get a compact card that opens the loss.
  */
 
 import { useState } from "react";
+import { confidenceLevel } from "@decocms/shared/plan-confidence";
 import {
   ArrowRight,
   ChevronDown,
@@ -29,7 +31,12 @@ import type {
   StoreOpportunityHypothesis,
 } from "./diagnosis-schema.ts";
 import { CreateCaseButton } from "./create-case-button.tsx";
-import { DEVICE_LABEL, PAGE_LABEL, VERDICT_LABEL } from "./labels.ts";
+import {
+  CONFIDENCE_LABEL,
+  DEVICE_LABEL,
+  PAGE_LABEL,
+  VERDICT_LABEL,
+} from "./labels.ts";
 import {
   cardState,
   dataBadge,
@@ -209,6 +216,95 @@ function Hypotheses({
   );
 }
 
+function RankBadge({ position }: { position: number }) {
+  const t = useT();
+  const label = t("plan.opportunities.card.rank", { position: position + 1 });
+  return position === 0 ? (
+    <Badge variant="lime">
+      <Trophy01 />
+      {label}
+    </Badge>
+  ) : (
+    <Badge variant="muted">{label}</Badge>
+  );
+}
+
+/** A loss after the first: where it is, what it is worth, how sure the
+ *  engine is. The whole card opens the loss. */
+export function OpportunityRankCard({
+  opportunity,
+  position,
+  onOpenOpportunity,
+}: Pick<OpportunityActions, "onOpenOpportunity"> & {
+  opportunity: StoreOpportunity;
+  position: number;
+}) {
+  const t = useT();
+  const [{ language }] = usePreferences();
+  const { money } = opportunity;
+  const level = confidenceLevel(opportunity.confidence);
+  const DeviceIcon = opportunity.device === "desktop" ? Monitor01 : Phone01;
+  const body = (
+    <>
+      <div className="flex flex-wrap gap-1.5">
+        <RankBadge position={position} />
+        <Badge variant="muted">{t(PAGE_LABEL[opportunity.page_type])}</Badge>
+        <Badge variant="muted">
+          <DeviceIcon />
+          {t(DEVICE_LABEL[opportunity.device])}
+        </Badge>
+      </div>
+      <h3 className="line-clamp-3 text-sm font-medium text-foreground">
+        {opportunity.title}
+      </h3>
+      <div className="mt-auto flex flex-col gap-0.5">
+        <p className="text-xl font-medium text-foreground">
+          {money ? (
+            <>
+              {formatMoney(money.monthly_value, language)}
+              <span className="text-xs font-normal text-muted-foreground">
+                {t("plan.opportunities.card.perMonth")}
+              </span>
+            </>
+          ) : (
+            <span className="text-sm font-normal text-muted-foreground">
+              {t("plan.opportunities.card.noMoney")}
+            </span>
+          )}
+        </p>
+        {level && (
+          <p className="text-xs text-muted-foreground">
+            {`${t(CONFIDENCE_LABEL[level])} · ${Math.round(opportunity.confidence * 100)}%`}
+          </p>
+        )}
+      </div>
+    </>
+  );
+  if (!onOpenOpportunity) {
+    return <Card className="h-full gap-3">{body}</Card>;
+  }
+  return (
+    <Card
+      asChild
+      className="h-full gap-3 text-left transition-colors hover:bg-accent/50 focus-ring"
+    >
+      <button
+        type="button"
+        onClick={() => {
+          track("plan_opportunity_opened", {
+            state: cardState(opportunity),
+            position,
+            action: "see_hypotheses",
+          });
+          onOpenOpportunity(opportunity.id);
+        }}
+      >
+        {body}
+      </button>
+    </Card>
+  );
+}
+
 export function OpportunityCard({
   opportunity,
   position,
@@ -217,7 +313,7 @@ export function OpportunityCard({
   onOpenOpportunity,
 }: OpportunityActions & {
   opportunity: StoreOpportunity;
-  /** 0 for the biggest loss. */
+  /** 0 for the first place. */
   position: number;
 }) {
   const t = useT();
@@ -234,14 +330,7 @@ export function OpportunityCard({
   return (
     <Card className={cn("gap-4", biggest && "ring-1 ring-brand")}>
       <div className="flex flex-wrap gap-1.5">
-        {biggest ? (
-          <Badge variant="lime">
-            <Trophy01 />
-            {t("plan.opportunities.card.biggest")}
-          </Badge>
-        ) : (
-          <Badge variant="muted">{t("plan.opportunities.card.second")}</Badge>
-        )}
+        <RankBadge position={position} />
         <Badge variant="muted">{t(PAGE_LABEL[opportunity.page_type])}</Badge>
         <Badge variant="muted">
           <DeviceIcon />

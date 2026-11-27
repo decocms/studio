@@ -145,20 +145,30 @@ describe("buildStoreView", () => {
     expect(view.running).toBe(false);
   });
 
-  test("top 2 by monthly value, retired excluded", () => {
+  test("ranks by confidence level, then money; retired excluded", () => {
     const pdp = diagnosis("d-pdp", "pdp");
     const home = diagnosis("d-home", "home");
     const retired = opportunity("o-retired", pdp.id, 99_000, {
       outcome: { retired: true } as UxOpportunity["outcome"],
+      confidence: 0.9,
     });
+    // Medium: 5k, 8k. High: 1M at 88%, 100k at 92%. Low: 50k.
     const a = opportunity("o-a", pdp.id, 5_000);
     const b = opportunity("o-b", home.id, 8_000, { area: "home_destaque" });
-    const c = opportunity("o-c", pdp.id, 5_000, { confidence: 0.9 });
-    const d = opportunity("o-d", home.id, null, { area: "home_vitrines" });
+    const c = opportunity("o-c", pdp.id, 100_000, { confidence: 0.92 });
+    const d = opportunity("o-d", home.id, 1_000_000, {
+      area: "home_vitrines",
+      confidence: 0.88,
+    });
+    const e = opportunity("o-e", pdp.id, 50_000, { confidence: 0.2 });
+    const f = opportunity("o-f", home.id, null, {
+      area: "home_destaque",
+      confidence: 0.6,
+    });
     const view = buildStoreView({
       profile: null,
       diagnoses: [pdp, home],
-      opportunities: [retired, a, b, c, d],
+      opportunities: [retired, a, b, c, d, e, f],
       hypotheses: [
         hypothesis("h-a", a, {
           lifecycle: "condicao_confirmada",
@@ -173,11 +183,10 @@ describe("buildStoreView", () => {
         hypothesis("h-nao", a, { kind: "nao_faria", opportunity_id: null }),
       ],
     });
-    expect(ids(view.top)).toEqual(["o-b", "o-c"]);
-    expect(ids(view.others)).toEqual(["o-a", "o-d"]);
+    expect(ids(view.top)).toEqual(["o-d", "o-c", "o-b", "o-a"]);
+    expect(ids(view.others)).toEqual(["o-f", "o-e"]);
     expect(view.top[0]!.page_type).toBe("home");
-    const withHyp = view.others[0];
-    expect(withHyp!.hypotheses).toEqual([
+    expect(view.top[3]!.hypotheses).toEqual([
       {
         id: "h-a",
         title: "hipótese h-a",
@@ -186,6 +195,21 @@ describe("buildStoreView", () => {
         status: "pending",
       },
     ]);
+  });
+
+  test("shows the losses there are when fewer than four", () => {
+    const pdp = diagnosis("d-pdp", "pdp");
+    const view = buildStoreView({
+      profile: null,
+      diagnoses: [pdp],
+      opportunities: [
+        opportunity("o-a", pdp.id, 1_000),
+        opportunity("o-b", pdp.id, 2_000),
+      ],
+      hypotheses: [],
+    });
+    expect(ids(view.top)).toEqual(["o-b", "o-a"]);
+    expect(view.others).toEqual([]);
   });
 
   test("filters by goal_id", () => {

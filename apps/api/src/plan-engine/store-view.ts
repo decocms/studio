@@ -4,6 +4,7 @@
  * funnel numbers come from `measureMetric` (metrics.ts).
  */
 
+import { byConfidenceThenValue } from "@decocms/shared/plan-confidence";
 import type {
   GapDetail,
   StoreFunnelPoint,
@@ -81,13 +82,8 @@ export function coveredElsewhere(
   );
 }
 
-/** By value (R$/month), then confidence; without a money estimate it goes last. */
-export const byValue = (
-  a: Pick<UxOpportunity, "money" | "confidence">,
-  b: Pick<UxOpportunity, "money" | "confidence">,
-) =>
-  (b.money?.monthly_value ?? -1) - (a.money?.monthly_value ?? -1) ||
-  b.confidence - a.confidence;
+/** How many losses lead the Plan; the rest are listed on the Store tab. */
+const TOP_OPPORTUNITIES = 4;
 
 const DEVICES: UxDevice[] = ["mobile", "desktop"];
 
@@ -186,7 +182,7 @@ export function buildStoreView(input: {
           status: h.status,
         })),
     }))
-    .sort(byValue);
+    .sort(byConfidenceThenValue);
 
   const sources = new Set<StoreSource>();
   const pageGaps: SourceGap[] = [];
@@ -243,8 +239,8 @@ export function buildStoreView(input: {
 
   return {
     pages,
-    top: included.slice(0, 2),
-    others: included.slice(2),
+    top: included.slice(0, TOP_OPPORTUNITIES),
+    others: included.slice(TOP_OPPORTUNITIES),
     sources: STORE_SOURCES.filter((s) => sources.has(s)),
     running: pages.some((p) => p.status === "running"),
     setup: buildSetup(input.profile, pageGaps, input.hasModel),

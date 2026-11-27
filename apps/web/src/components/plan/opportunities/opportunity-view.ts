@@ -325,16 +325,6 @@ export function safeImageSrc(value: string | null): string | null {
   return href?.startsWith("https:") ? href : null;
 }
 
-export type ConfidenceLevel = "high" | "medium" | "low";
-
-/** The engine's 0–1 confidence, in the words the page uses. */
-export function confidenceLevel(confidence: number): ConfidenceLevel | null {
-  if (!Number.isFinite(confidence)) return null;
-  if (confidence >= 0.7) return "high";
-  if (confidence >= 0.4) return "medium";
-  return "low";
-}
-
 const OpportunityIdSchema = z.string().trim().min(1).max(128);
 
 /** The route's `$opportunityId`, or null when it cannot be an engine id. */
