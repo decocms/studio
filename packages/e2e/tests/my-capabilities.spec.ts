@@ -104,12 +104,14 @@ test.describe("GET /api/auth/custom/my-capabilities/:slug", () => {
     expect(body.capabilities["assets:manage"]).toBe(true);
     expect(body.capabilities["repositories:connect"]).toBe(true);
     expect(body.capabilities["changes:propose"]).toBe(true);
+    expect(body.capabilities["channels:read"]).toBe(true);
     const granted = new Set([
       "agents:manage",
       "connections:manage",
       "assets:manage",
       "repositories:connect",
       "changes:propose",
+      "channels:read",
     ]);
     const others = Object.entries(body.capabilities)
       .filter(([id]) => !granted.has(id))
