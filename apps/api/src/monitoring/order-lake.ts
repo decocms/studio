@@ -54,8 +54,8 @@ const ORDERS_SQL = byDay(
   ["placed", "revenue", "items", "currency"],
 );
 
-/** Local days before day 0 the forecasting model reads. */
-export const HISTORY_DAYS = 112;
+/** Local days before day 0 the forecasting model reads: 112 days of context for today and for each of the 28 days it calibrates on. */
+export const HISTORY_DAYS = 140;
 
 // The model's context: orders and revenue per local clock hour, ORDERS_SQL's
 // filters. Two days of slack cover the zone's offset.

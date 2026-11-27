@@ -1,13 +1,15 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import type { OrderMonitorForecast } from "@decocms/shared/order-monitor";
 import {
   buildRequest,
+  CONTEXT_DAYS,
   cleanHistory,
   forecastCacheKey,
   type ModelForecast,
   modelProjection,
   requestForecast,
   runModel,
+  type TimestralService,
   toProjection,
 } from "./order-forecast";
 import { HISTORY_DAYS, type HourlyDay } from "./order-lake";
@@ -100,14 +102,30 @@ describe("buildRequest", () => {
     const { series, horizon } = buildRequest(tagged(), 10);
     expect(horizon).toBe(14);
     const [orders, revenue] = series;
-    expect(orders).toHaveLength(HISTORY_DAYS * 24 + 10);
-    // Last value: today's hour 9; first: the oldest day's hour 0.
+    expect(orders).toHaveLength(CONTEXT_DAYS * 24);
+    // Last value: today's hour 9; first: hour 10 of the day CONTEXT_DAYS back.
     expect(orders!.at(-1)).toBe(10);
-    expect(orders![0]).toBe(HISTORY_DAYS * 100 + 1);
+    expect(orders![0]).toBe(CONTEXT_DAYS * 100 + 11);
     expect(revenue!.at(-1)).toBe(-10);
   });
 
-  it("adds the last 28 kept days, each ending at its own hour, left-padded to one length", () => {
+  it("gives each of the last 28 days the full context, ending at its own hour", () => {
+    const { series, calibration } = buildRequest(tagged(), 10);
+    expect(calibration.map((c) => c.daysAgo)).toEqual(
+      Array.from({ length: 28 }, (_, i) => i + 1),
+    );
+    expect(series).toHaveLength(2 + 2 * 28);
+    for (const s of series) {
+      expect(s).toHaveLength(CONTEXT_DAYS * 24);
+      expect(s.includes(null)).toBe(false);
+    }
+    // Day 28's series: hour 10 of day 28 + CONTEXT_DAYS up to its hour 9.
+    const day28 = series.at(-2)!;
+    expect(day28[0]).toBe((28 + CONTEXT_DAYS) * 100 + 11);
+    expect(day28.at(-1)).toBe(28 * 100 + 10);
+  });
+
+  it("left-pads a calibration day past a dropped one, whose context runs out of history", () => {
     const days = tagged();
     days[2] = null;
     const { series, calibration } = buildRequest(days, 10);
@@ -115,14 +133,16 @@ describe("buildRequest", () => {
       1,
       ...Array.from({ length: 27 }, (_, i) => i + 3),
     ]);
-    expect(series).toHaveLength(2 + 2 * 28);
     expect(new Set(series.map((s) => s.length))).toEqual(
-      new Set([HISTORY_DAYS * 24 + 10]),
+      new Set([CONTEXT_DAYS * 24]),
     );
-    // Day 1's series stops at its hour 9, after a day of padding.
+    // Day 29 would need hours of day 141, which the history doesn't hold.
+    const day29 = series.at(-2)!;
+    expect(day29.slice(0, 14)).toEqual(new Array(14).fill(null));
+    expect(day29[14]).toBe(HISTORY_DAYS * 100 + 1);
+    expect(day29.at(-1)).toBe(29 * 100 + 10);
     const day1 = series[2]!;
     expect(day1.at(-1)).toBe(100 + 10);
-    expect(day1.slice(0, 24)).toEqual(new Array(24).fill(null));
     // Its rest of day: hours 10..23.
     expect(calibration[0]!.actual.orders).toBe(
       HOURS.slice(10).reduce((s, h) => s + 100 + h + 1, 0),
@@ -133,7 +153,7 @@ describe("buildRequest", () => {
     const days = tagged();
     days[30] = null;
     const [orders] = buildRequest(days, 0).series;
-    const start = (HISTORY_DAYS - 30) * 24;
+    const start = (CONTEXT_DAYS - 30) * 24;
     expect(orders!.slice(start, start + 24)).toEqual(new Array(24).fill(null));
     expect(orders![start + 24]).toBe(29 * 100 + 1);
   });
@@ -212,6 +232,12 @@ const server = Bun.serve({
 });
 afterAll(() => server.stop(true));
 const service = { url: server.url.href, token: "t0ken", timeoutMs: 200 };
+/** Its own URL on the same server, so a cooldown stays within one test. */
+const serviceAt = (path: string, cooldownMs?: number) => ({
+  ...service,
+  url: `${server.url.href}${path}`,
+  cooldownMs,
+});
 
 describe("requestForecast", () => {
   it("sends the bearer token and returns the median per series", async () => {
@@ -256,7 +282,12 @@ describe("runModel", () => {
 
 describe("modelProjection", () => {
   const at = new Date("2026-11-26T10:30:00Z");
-  const args = (connectionId: string, flags: Record<string, unknown>) => ({
+  const on = { monitor_timestral_projection: true };
+  const args = (
+    connectionId: string,
+    flags: Record<string, unknown>,
+    service: TimestralService = serviceAt(connectionId),
+  ) => ({
     organizationId: "org",
     connectionId,
     at,
@@ -282,9 +313,7 @@ describe("modelProjection", () => {
   it("falls back to the baseline when the model fails", async () => {
     for (const failing of ["500", "malformed", "slow"] as const) {
       mode = failing;
-      const p = await modelProjection(
-        args(`fails-${failing}`, { monitor_timestral_projection: true }),
-      );
+      const p = await modelProjection(args(`fails-${failing}`, on));
       expect(p).toBe(baseline);
     }
   });
@@ -292,30 +321,115 @@ describe("modelProjection", () => {
   it("falls back to the baseline when the lake read fails", async () => {
     mode = "ok";
     const p = await modelProjection({
-      ...args("lake-down", { monitor_timestral_projection: true }),
+      ...args("lake-down", on),
       loadHistory: () => Promise.reject(new Error("lake down")),
     });
     expect(p).toBe(baseline);
   });
 
   it("forecasts once per store hour, and again after a failure", async () => {
+    // No cooldown, so the retry reaches the service.
+    const svc = serviceAt("cached", 0);
     mode = "500";
-    const flags = { monitor_timestral_projection: true };
-    await modelProjection(args("cached", flags));
+    await modelProjection(args("cached", on, svc));
     mode = "ok";
     value = 3;
     const before = hits;
-    const first = await modelProjection(args("cached", flags));
+    const first = await modelProjection(args("cached", on, svc));
     expect(first).not.toBe(baseline);
     expect(first.orders[11]).toBe(3);
     value = 9;
-    const again = await modelProjection(args("cached", flags));
+    const again = await modelProjection(args("cached", on, svc));
     expect(again.orders[11]).toBe(3);
     expect(hits).toBe(before + 1);
     // Another store is its own forecast.
-    const other = await modelProjection(args("cached-other", flags));
+    const other = await modelProjection(args("cached-other", on, svc));
     expect(other.orders[11]).toBe(9);
     expect(hits).toBe(before + 2);
+  });
+});
+
+describe("modelProjection's cooldown", () => {
+  const at = new Date("2026-11-26T10:30:00Z");
+  const on = { monitor_timestral_projection: true };
+  let loads = 0;
+  const args = (connectionId: string, service: TimestralService) => ({
+    organizationId: "org",
+    connectionId,
+    at,
+    day: storeDay(42),
+    baseline,
+    flags: on,
+    service,
+    loadHistory: async () => {
+      loads++;
+      return history();
+    },
+  });
+  const serviceWarnings = (warn: { mock: { calls: unknown[][] } }) =>
+    warn.mock.calls.filter((c) =>
+      String(c[0]).includes("forecast service failed"),
+    ).length;
+
+  it("skips a failed service for the cooldown, logging once, then calls it again", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const down = serviceAt("cooldown", 300);
+      mode = "500";
+      expect(await modelProjection(args("a", down))).toBe(baseline);
+      mode = "ok";
+      value = 3;
+      const [hitsBefore, loadsBefore] = [hits, loads];
+      // Another store, same service: today's projection without the lake or the model.
+      expect(await modelProjection(args("b", down))).toBe(baseline);
+      expect(await modelProjection(args("c", down))).toBe(baseline);
+      expect([hits, loads]).toEqual([hitsBefore, loadsBefore]);
+      expect(serviceWarnings(warn)).toBe(1);
+      // Another service URL isn't cooling down.
+      const other = await modelProjection(args("b", serviceAt("elsewhere")));
+      expect(other.orders[11]).toBe(3);
+      await Bun.sleep(350);
+      const back = await modelProjection(args("c", down));
+      expect(back.orders[11]).toBe(3);
+      expect(serviceWarnings(warn)).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("logs once for failures that were in flight together", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mode = "slow";
+      const down = serviceAt("burst", 60_000);
+      const before = hits;
+      const out = await Promise.all(
+        ["1", "2", "3", "4", "5"].map((id) => modelProjection(args(id, down))),
+      );
+      expect(out.every((p) => p === baseline)).toBe(true);
+      expect(hits).toBe(before + 5);
+      expect(serviceWarnings(warn)).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("doesn't cool the service down over a failed lake read", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mode = "ok";
+      value = 5;
+      const svc = serviceAt("lake-only", 60_000);
+      const p = await modelProjection({
+        ...args("x", svc),
+        loadHistory: () => Promise.reject(new Error("lake down")),
+      });
+      expect(p).toBe(baseline);
+      expect(serviceWarnings(warn)).toBe(0);
+      expect((await modelProjection(args("y", svc))).orders[11]).toBe(5);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

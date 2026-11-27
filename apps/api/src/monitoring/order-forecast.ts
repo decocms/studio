@@ -2,7 +2,8 @@
  * The Monitor's sales projection from the Timestral forecasting model, for
  * orgs with `monitor_timestral_projection`: orders and revenue per local clock
  * hour, 112 days of context. Only the day view reads it; the sweep keeps
- * judging by the baseline. Any failure leaves the baseline's projection.
+ * judging by the baseline. Any failure leaves the baseline's projection, and a
+ * failed service call skips the service for COOLDOWN_MS.
  *
  * The spread comes from the model's own misses: each of the last 28 days is
  * forecast from the same hour, and how its actual rest of day compared with
@@ -17,6 +18,10 @@ import type { HourlyDay } from "./order-lake";
 import type { StoreDay } from "./order-rules";
 
 const TIMEOUT_MS = 3_000;
+/** After a failed call, the service is skipped this long. */
+const COOLDOWN_MS = 60_000;
+/** Days of history each series gives the model. */
+export const CONTEXT_DAYS = 112;
 const CACHE_TTL_MS = 10 * 60_000;
 const CACHE_MAX = 500;
 /** A past day under this share of its trailing kept days' median is an ingest outage. */
@@ -31,7 +36,11 @@ export interface TimestralService {
   url: string;
   token?: string;
   timeoutMs?: number;
+  cooldownMs?: number;
 }
+
+/** The service failed or timed out, as opposed to the lake or the history. */
+class ForecastServiceError extends Error {}
 
 /** The model's median for the clock hours from `hour` on, and each calibration day's actual ÷ forecast rest of day. */
 export interface ModelForecast {
@@ -80,9 +89,9 @@ export function cleanHistory(
 
 /**
  * One batch: today's orders and revenue, then the same pair for each of the
- * last CALIBRATION_DAYS kept days, each series ending at its day's `hour`,
- * left-padded with nulls to one length. `actual` is each calibration day's
- * rest of day from `hour` on.
+ * last CALIBRATION_DAYS kept days, each series the CONTEXT_DAYS × 24 hours
+ * before its day's `hour`, left-padded with nulls to one length. `actual` is
+ * each calibration day's rest of day from `hour` on.
  */
 export function buildRequest(days: (HourlyDay | null)[], hour: number) {
   const last = days.length - 1;
@@ -107,9 +116,11 @@ export function buildRequest(days: (HourlyDay | null)[], hour: number) {
         revenue: sum(d.revenue.slice(hour)),
       },
     }));
+  const context = (s: Hours, d: number) =>
+    s.slice(Math.max(0, end(d) - CONTEXT_DAYS * 24), end(d));
   const series = [0, ...calibration.map((c) => c.daysAgo)].flatMap((d) => [
-    orders.slice(0, end(d)),
-    revenue.slice(0, end(d)),
+    context(orders, d),
+    context(revenue, d),
   ]);
   const length = Math.max(...series.map((s) => s.length));
   return {
@@ -126,8 +137,22 @@ const ForecastResponseSchema = z.object({
   quantiles: z.object({ "0.5": z.array(z.array(z.number())) }),
 });
 
-/** The model's median per series; throws on a timeout, a non-200 or a body of another shape. */
+/** The model's median per series; throws a ForecastServiceError on a timeout, a non-200 or a body of another shape. */
 export async function requestForecast(
+  service: TimestralService,
+  series: Hours[],
+  horizon: number,
+): Promise<number[][]> {
+  try {
+    return await callService(service, series, horizon);
+  } catch (err) {
+    throw new ForecastServiceError(
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+async function callService(
   service: TimestralService,
   series: Hours[],
   horizon: number,
@@ -258,7 +283,11 @@ function cached(
   return forecast;
 }
 
-/** `baseline` when the org's flag is off; otherwise the model's projection, or `baseline` when it fails. */
+/** Service URL → when calling it again is allowed. */
+const cooldowns = new Map<string, number>();
+const coolingDown = (url: string) => (cooldowns.get(url) ?? 0) > Date.now();
+
+/** `baseline` when the org's flag is off or the service is cooling down; otherwise the model's projection, or `baseline` when it fails. */
 export async function modelProjection(args: {
   organizationId: string;
   connectionId: string;
@@ -270,7 +299,10 @@ export async function modelProjection(args: {
   loadHistory: () => Promise<HourlyDay[]>;
 }): Promise<OrderMonitorForecast> {
   const { day, baseline } = args;
-  if (!orgFlagEnabled(args.flags, "monitor_timestral_projection")) {
+  if (
+    !orgFlagEnabled(args.flags, "monitor_timestral_projection") ||
+    coolingDown(args.service.url)
+  ) {
     return baseline;
   }
   const hour = Math.floor(day.done / 4);
@@ -290,10 +322,24 @@ export async function modelProjection(args: {
     );
     return toProjection(baseline, day, model);
   } catch (err) {
-    console.warn("[order-monitor] model forecast failed, using the baseline", {
-      connectionId: args.connectionId,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    const error = err instanceof Error ? err.message : String(err);
+    if (!(err instanceof ForecastServiceError)) {
+      console.warn(
+        "[order-monitor] model forecast failed, using the baseline",
+        {
+          connectionId: args.connectionId,
+          error,
+        },
+      );
+    } else if (!coolingDown(args.service.url)) {
+      // Concurrent failures land here once: the first starts the cooldown.
+      const ms = args.service.cooldownMs ?? COOLDOWN_MS;
+      cooldowns.set(args.service.url, Date.now() + ms);
+      console.warn(
+        `[order-monitor] forecast service failed, using the baseline for ${ms / 1000} s`,
+        { connectionId: args.connectionId, error },
+      );
+    }
     return baseline;
   }
 }
