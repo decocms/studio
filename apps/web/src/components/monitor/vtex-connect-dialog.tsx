@@ -77,6 +77,12 @@ const reason = (error: unknown) =>
 /** VTEX refused the app key: fixed in the dialog, not reported as a dead end. */
 class RejectedKeyError extends Error {}
 
+/** The License Manager resources a VTEX 403 names, e.g. `FeedHookV3Admin`. */
+export const missingVtexResources = (message: string) =>
+  /^VTEX 403\b/.test(message)
+    ? message.match(/access to the resources \[([^\]]+)\]/)?.[1]
+    : undefined;
+
 /**
  * Installs the order ingest on a VTEX connection: `vtexId` reuses one,
  * none creates it from the registry; `keys` saves its account and app key.
@@ -171,6 +177,12 @@ function useVtexInstall() {
       } catch (error) {
         if (!existing) await actions.delete.mutateAsync(ingest.id);
         const message = reason(error);
+        // The key works but its role lacks a resource: the fix is in VTEX's
+        // License Manager, not in the key typed here.
+        const resources = missingVtexResources(message);
+        if (resources) {
+          throw new Error(t("monitor.vtex.missingPermissions", { resources }));
+        }
         throw /^VTEX 40[13]\b/.test(message)
           ? new RejectedKeyError(t("monitor.vtex.rejected"))
           : new Error(message);
