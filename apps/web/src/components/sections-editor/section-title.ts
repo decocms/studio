@@ -16,16 +16,25 @@ const RENDER_CONFIG = { escape: formatMustacheValue };
  * `resolveSectionImageTemplate`). Only returns a value when the title is a
  * Mustache template — a plain title carries no props and is already covered by
  * the resolve-type-derived label.
+ *
+ * Without a template, a `@titleBy <prop>` on the section's props names it too:
+ * it is how array items are labelled, so authors reach for it on sections as
+ * well, and it would otherwise be silently ignored here.
  */
 export function resolveSectionTitleTemplate(
   resolveType: string,
   meta: LiveMeta,
 ): string | undefined {
+  let byProp: string | undefined;
   for (const schema of sectionSchemaChain(resolveType, meta)) {
     const title = typeof schema.title === "string" ? schema.title : undefined;
     if (title?.includes("{{")) return title;
+    const titleBy = (schema as { titleBy?: unknown }).titleBy;
+    if (!byProp && typeof titleBy === "string" && titleBy.trim()) {
+      byProp = titleBy.includes("{{") ? titleBy : `{{{${titleBy.trim()}}}}`;
+    }
   }
-  return undefined;
+  return byProp;
 }
 
 /**
