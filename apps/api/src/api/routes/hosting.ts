@@ -256,17 +256,30 @@ const HEATMAP_DEVICES = new Set(["mobile", "tablet", "desktop"]);
  *  surface (which falls back to `/` and `mobile` on anything else — answering
  *  for a page nobody asked about). Absent values keep the read surface's
  *  defaults. Returns `null` when a value is present but invalid. */
+const HEATMAP_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
 export function heatmapParams(
   page: string | undefined,
   device: string | undefined,
-): { page?: string; device?: string } | null {
+  from?: string,
+  to?: string,
+): { page?: string; device?: string; from?: string; to?: string } | null {
   if (page !== undefined && (!page.startsWith("/") || page.length > 512)) {
     return null;
   }
   if (device !== undefined && !HEATMAP_DEVICES.has(device)) return null;
+  // A custom window is both days or neither; the read surface checks the rest.
+  if ((from === undefined) !== (to === undefined)) return null;
+  if (
+    from !== undefined &&
+    !(HEATMAP_DAY.test(from) && HEATMAP_DAY.test(to ?? ""))
+  ) {
+    return null;
+  }
   return {
     ...(page !== undefined ? { page } : {}),
     ...(device !== undefined ? { device } : {}),
+    ...(from !== undefined && to !== undefined ? { from, to } : {}),
   };
 }
 
@@ -501,6 +514,9 @@ export interface AnalyticsDataQuery {
   /** `view=heatmap` only. */
   page?: string;
   device?: string;
+  /** `view=heatmap` only: a custom window of UTC days, both included. */
+  from?: string;
+  to?: string;
   /** Segment filters, `dim:op:value`. */
   filters: string[];
   currency?: string;
@@ -561,7 +577,9 @@ export async function readAnalyticsData(
     return reply({ error: `unknown range: ${range}` }, 400);
   }
   const heatmap =
-    view === "heatmap" ? heatmapParams(query.page, query.device) : {};
+    view === "heatmap"
+      ? heatmapParams(query.page, query.device, query.from, query.to)
+      : {};
   if (!heatmap) {
     return reply({ error: "invalid heatmap page or device" }, 400);
   }
@@ -985,7 +1003,7 @@ export const createHostingRoutes = () => {
     }
   });
 
-  // GET /api/:org/hosting/:site/analytics/data?view=&range= (+ page, device for
+  // GET /api/:org/hosting/:site/analytics/data?view=&range= (+ page, device, from, to for
   // view=heatmap, f/currency/prop for a segment) — see readAnalyticsData.
   app.get("/:site/analytics/data", async (c) => {
     const ctx = c.get("studioContext");
@@ -999,6 +1017,8 @@ export const createHostingRoutes = () => {
       range: c.req.query("range"),
       page: c.req.query("page"),
       device: c.req.query("device"),
+      from: c.req.query("from"),
+      to: c.req.query("to"),
       filters: c.req.queries("f") ?? [],
       currency: c.req.query("currency"),
       prop: c.req.query("prop"),

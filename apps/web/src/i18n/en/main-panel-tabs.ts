@@ -393,6 +393,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.range24h": "24 h",
   "mainPanelTabs.analyticsTab.heatmap.range7d": "7 days",
   "mainPanelTabs.analyticsTab.heatmap.range30d": "30 days",
+  "mainPanelTabs.analyticsTab.heatmap.rangecustom": "Custom",
+  "mainPanelTabs.analyticsTab.heatmap.rangeFrom": "From",
+  "mainPanelTabs.analyticsTab.heatmap.rangeTo": "To",
+  "mainPanelTabs.analyticsTab.heatmap.rangeInvalid":
+    "Pick a start on or before the end, up to {max} days.",
   "mainPanelTabs.analyticsTab.heatmap.map": "Map",
   "mainPanelTabs.analyticsTab.heatmap.clicks": "Clicks",
   "mainPanelTabs.analyticsTab.heatmap.clicksHint": "Where people click",

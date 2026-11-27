@@ -6,6 +6,7 @@ import {
   parseHeatmap,
   pickView,
   rampCss,
+  rangeQuery,
   reachAt,
   readViewMessage,
   renderWidth,
@@ -427,5 +428,27 @@ describe("hmFunnel", () => {
 
   it("has no baseline when the panel is absent", () => {
     expect(parseHeatmap({}).pageFunnel).toBeNull();
+  });
+});
+
+describe("rangeQuery", () => {
+  const w = { from: "2026-10-01", to: "2026-10-07" };
+  it("sends a preset as the range and a custom window as its days", () => {
+    expect(rangeQuery("7d", w)).toBe("range=7d");
+    expect(rangeQuery("custom", w)).toBe("from=2026-10-01&to=2026-10-07");
+    expect(rangeQuery("custom", { from: w.from, to: w.from })).toBe(
+      "from=2026-10-01&to=2026-10-01",
+    );
+  });
+
+  it("refuses a window the read surface would refuse", () => {
+    expect(rangeQuery("custom", { from: "", to: w.to })).toBeNull();
+    expect(rangeQuery("custom", { from: w.to, to: w.from })).toBeNull();
+    expect(
+      rangeQuery("custom", { from: "2026-10-01", to: "2026-11-01" }),
+    ).toBeNull();
+    expect(rangeQuery("custom", { from: "2026-10-01", to: "2026-10-31" })).toBe(
+      "from=2026-10-01&to=2026-10-31",
+    );
   });
 });

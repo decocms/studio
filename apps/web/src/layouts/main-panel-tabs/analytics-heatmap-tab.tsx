@@ -54,6 +54,7 @@ import {
   FUNNEL_STEPS,
   HEAT_DEVICES,
   HEAT_MODES,
+  HEAT_MAX_DAYS,
   HEAT_RANGES,
   VIEW_PROTOCOL,
   elementCtr,
@@ -75,6 +76,8 @@ import {
   type HeatMode,
   type HeatRamp,
   type HeatRange,
+  rangeQuery,
+  utcDay,
   type HeatmapModel,
   type PlacedBlock,
   type PlacedItem,
@@ -134,6 +137,12 @@ export function HeatmapView({
   const [page, setPage] = useState("/");
   const [device, setDevice] = useState<HeatDevice>("desktop");
   const [range, setRange] = useState<HeatRange>("7d");
+  const [today] = useState(() => Date.now());
+  const [custom, setCustom] = useState(() => ({
+    from: utcDay(today - 6 * 86_400_000),
+    to: utcDay(today),
+  }));
+  const period = rangeQuery(range, custom);
   const [mode, setMode] = useState<HeatMode>("clicks");
   const [clickType, setClickType] = useState<ClickType>("all");
   const [sample, setSample] = useState("");
@@ -144,14 +153,14 @@ export function HeatmapView({
   const origin = origins[0];
 
   const query = useQuery({
-    queryKey: KEYS.analyticsHeatmap(orgSlug, site, range, page, device),
+    queryKey: KEYS.analyticsHeatmap(orgSlug, site, period ?? "", page, device),
     queryFn: () =>
       fetchJson(
-        `${base}/analytics/data?view=heatmap&range=${range}&page=${encodeURIComponent(
+        `${base}/analytics/data?view=heatmap&${period}&page=${encodeURIComponent(
           page,
         )}&device=${device}`,
       ),
-    enabled: enabled && Boolean(origin),
+    enabled: enabled && Boolean(origin) && period !== null,
     retry: false,
     staleTime: 60_000,
     placeholderData: (prev) => prev,
@@ -242,6 +251,32 @@ export function HeatmapView({
         }))}
         onChange={setRange}
       />
+      {range === "custom" && (
+        <>
+          <Input
+            type="date"
+            aria-label={t(k("rangeFrom"))}
+            className="h-8 w-36"
+            value={custom.from}
+            max={custom.to || undefined}
+            onChange={(e) => setCustom({ ...custom, from: e.target.value })}
+          />
+          <Input
+            type="date"
+            aria-label={t(k("rangeTo"))}
+            className="h-8 w-36"
+            value={custom.to}
+            min={custom.from || undefined}
+            max={utcDay(today)}
+            onChange={(e) => setCustom({ ...custom, to: e.target.value })}
+          />
+          {period === null && (
+            <span className="text-xs text-destructive">
+              {t(k("rangeInvalid"), { max: HEAT_MAX_DAYS })}
+            </span>
+          )}
+        </>
+      )}
       {query.isFetching && model && <Spinner size="xs" />}
     </div>
   );
