@@ -409,6 +409,83 @@ export interface ChannelAccountClaimTable {
   used_at: ColumnType<Date | null, never, Date | string | null>;
 }
 
+// Channels (migration 276, schema `channels`).
+type ChannelsOptional<T> = ColumnType<T | null, T | null | undefined, T | null>;
+type ChannelsOptionalStamp = ColumnType<
+  Date | null,
+  Date | string | null | undefined,
+  Date | string | null
+>;
+type ChannelsStamp = ColumnType<Date, Date | string | undefined, Date | string>;
+/** jsonb: written as a JSON string, read back parsed. */
+type ChannelsJsonb = ColumnType<
+  unknown,
+  string | null | undefined,
+  string | null
+>;
+
+export interface ChannelsConnectionTable {
+  id: string;
+  organization_id: string;
+  source: string;
+  external_id: string;
+  name: ChannelsOptional<string>;
+  kind: ChannelsOptional<string>;
+  token_hash: string;
+  created_by: ChannelsOptional<string>;
+  created_at: ChannelsStamp;
+  updated_at: ChannelsStamp;
+  last_event_at: ChannelsOptionalStamp;
+}
+
+export interface ChannelsConversationTable {
+  connection_id: string;
+  organization_id: string;
+  external_id: string;
+  kind: ColumnType<string, string | undefined, string>;
+  title: ChannelsOptional<string>;
+  parent_id: ChannelsOptional<string>;
+  space: ChannelsOptional<string>;
+  started_at: ChannelsOptionalStamp;
+  last_message_at: ChannelsOptionalStamp;
+  deleted_at: ChannelsOptionalStamp;
+  raw: ChannelsJsonb;
+  updated_at: ChannelsStamp;
+}
+
+export interface ChannelsPersonTable {
+  connection_id: string;
+  organization_id: string;
+  external_id: string;
+  name: ChannelsOptional<string>;
+  email: ChannelsOptional<string>;
+  phone: ChannelsOptional<string>;
+  raw: ChannelsJsonb;
+  updated_at: ChannelsStamp;
+}
+
+export interface ChannelsMessageTable {
+  connection_id: string;
+  organization_id: string;
+  conversation_id: string;
+  external_id: string;
+  author_id: ChannelsOptional<string>;
+  author_name: ChannelsOptional<string>;
+  ts: ColumnType<Date, Date | string, Date | string>;
+  text: ChannelsOptional<string>;
+  derived_text: ChannelsOptional<string>;
+  kind: ChannelsOptional<string>;
+  reply_to: ChannelsOptional<string>;
+  thread_id: ChannelsOptional<string>;
+  attachments: ChannelsJsonb;
+  offset_ms: ChannelsOptional<number>;
+  duration_ms: ChannelsOptional<number>;
+  edited_at: ChannelsOptionalStamp;
+  deleted_at: ChannelsOptionalStamp;
+  raw: ChannelsJsonb;
+  updated_at: ChannelsStamp;
+}
+
 /** One of an org's Plan goals (migration 268). */
 export interface PlanGoalTable {
   id: string;
@@ -2949,6 +3026,10 @@ export interface Database {
   alerts: AlertTable;
   channel_accounts: ChannelAccountTable;
   channel_account_claims: ChannelAccountClaimTable;
+  "channels.connections": ChannelsConnectionTable;
+  "channels.conversations": ChannelsConversationTable;
+  "channels.people": ChannelsPersonTable;
+  "channels.messages": ChannelsMessageTable;
   alert_rule_settings: AlertRuleSettingsTable;
   plan_goals: PlanGoalTable;
   member_plan_state: MemberPlanStateTable;

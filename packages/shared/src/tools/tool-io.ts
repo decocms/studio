@@ -150,6 +150,7 @@ export interface StudioToolIO {
             plan_engine_native?: boolean | undefined;
             invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
+            channels_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -249,6 +250,7 @@ export interface StudioToolIO {
             plan_engine_native?: boolean | undefined;
             invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
+            channels_enabled?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -340,6 +342,7 @@ export interface StudioToolIO {
             plan_engine_native?: boolean | undefined;
             invite_links_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
+            channels_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -629,6 +632,129 @@ export interface StudioToolIO {
   CHANNEL_ACCOUNT_DISCONNECT: {
     input: { channel: string; accountId: string };
     output: { disconnected: boolean };
+  };
+  CHANNELS_CONNECTION_CREATE: {
+    input: {
+      source: "discord" | "slack" | "teams" | "whatsapp" | "grain" | "gchat";
+      external_id: string;
+      name?: string | undefined;
+      kind?: string | undefined;
+    };
+    output: {
+      connection: {
+        id: string;
+        source: string;
+        external_id: string;
+        name: string | null;
+        kind: string | null;
+        created_by: string | null;
+        created_at: string;
+        updated_at: string;
+        last_event_at: string | null;
+      };
+      token: string;
+    };
+  };
+  CHANNELS_CONNECTION_ROTATE_TOKEN: {
+    input: { id: string };
+    output: { token: string };
+  };
+  CHANNELS_CONNECTION_LIST: {
+    input: { [x: string]: never };
+    output: {
+      connections: {
+        id: string;
+        source: string;
+        external_id: string;
+        name: string | null;
+        kind: string | null;
+        created_by: string | null;
+        created_at: string;
+        updated_at: string;
+        last_event_at: string | null;
+      }[];
+    };
+  };
+  CHANNELS_CONNECTION_DELETE: {
+    input: { id: string };
+    output: { deleted: boolean };
+  };
+  CHANNELS_CONVERSATION_LIST: {
+    input: {
+      connection_id?: string | undefined;
+      query?: string | undefined;
+      limit?: number | undefined;
+      cursor?: string | undefined;
+    };
+    output: {
+      conversations: {
+        connection_id: string;
+        id: string;
+        kind: string;
+        title: string | null;
+        parent_id: string | null;
+        space: string | null;
+        started_at: string | null;
+        last_message_at: string | null;
+      }[];
+      next_cursor: string | null;
+    };
+  };
+  CHANNELS_MESSAGE_LIST: {
+    input: {
+      connection_id: string;
+      conversation_id: string;
+      limit?: number | undefined;
+      before?: string | undefined;
+    };
+    output: {
+      messages: {
+        connection_id: string;
+        conversation_id: string;
+        id: string;
+        author_id: string | null;
+        author_name: string | null;
+        ts: string;
+        text: string | null;
+        derived_text: string | null;
+        kind: string | null;
+        reply_to: string | null;
+        thread_id: string | null;
+        attachments: unknown;
+        offset_ms: number | null;
+        duration_ms: number | null;
+        edited_at: string | null;
+        deleted_at: string | null;
+      }[];
+      next_before: string | null;
+    };
+  };
+  CHANNELS_MESSAGE_SEARCH: {
+    input: {
+      query: string;
+      connection_id?: string | undefined;
+      limit?: number | undefined;
+    };
+    output: {
+      messages: {
+        connection_id: string;
+        conversation_id: string;
+        id: string;
+        author_id: string | null;
+        author_name: string | null;
+        ts: string;
+        text: string | null;
+        derived_text: string | null;
+        kind: string | null;
+        reply_to: string | null;
+        thread_id: string | null;
+        attachments: unknown;
+        offset_ms: number | null;
+        duration_ms: number | null;
+        edited_at: string | null;
+        deleted_at: string | null;
+      }[];
+    };
   };
   TASK_BOARD_ITEM_CREATE: {
     input: {

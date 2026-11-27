@@ -79,6 +79,7 @@ const SERVICE_TOKEN_ROUTES: readonly (readonly string[])[] = [
   ["internal", "channel-accounts"],
   ["internal", "channel-accounts", "token"],
   ["internal", "channel-accounts", "claims"],
+  ["channels", "connections", "*", "events"],
   ["internal", "repositories", "resolve"],
   ["internal", "repositories", "*", "tree"],
   ["internal", "repositories", "*", "file"],

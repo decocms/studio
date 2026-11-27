@@ -56,6 +56,7 @@ const createMockContext = (
     notifications: null as never,
     alerts: null as never,
     channelAccounts: null as never,
+    channels: null as never,
     orgFsEntries: null as never,
     oauthPkceStates: null as never,
     codexSubscriptions: null as never,
