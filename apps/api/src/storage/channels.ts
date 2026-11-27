@@ -324,25 +324,39 @@ export class ChannelsStorage {
     };
   }
 
-  /** Every connection, across orgs, with its hub cursor. */
-  async listSourceSyncs(): Promise<ChannelSourceSync[]> {
+  /**
+   * The connections the hub forwarder copies into: only in `orgIds` (deco's
+   * list, never an org's own choice) and only while the org has
+   * `channels_enabled` on.
+   */
+  async listSourceSyncs(orgIds: string[]): Promise<ChannelSourceSync[]> {
+    if (orgIds.length === 0) return [];
     const rows = await this.db
       .selectFrom("channels.connections")
+      .innerJoin(
+        "organization_settings",
+        "organization_settings.organizationId",
+        "channels.connections.organization_id",
+      )
+      .where("channels.connections.organization_id", "in", orgIds)
+      .where(
+        sql<boolean>`organization_settings.flags ->> 'channels_enabled' = 'true'`,
+      )
       .select([
-        "id",
-        "organization_id",
-        "source",
-        "external_id",
+        "channels.connections.id",
+        "channels.connections.organization_id",
+        "channels.connections.source",
+        "channels.connections.external_id",
         // Microseconds kept: one hub transaction stamps all its rows with the
         // same mirrored_at, and a millisecond cursor would re-read them forever.
         sql<
           string | null
-        >`to_char(source_cursor_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as(
+        >`to_char(channels.connections.source_cursor_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as(
           "source_cursor_at",
         ),
-        "source_cursor_id",
+        "channels.connections.source_cursor_id",
       ])
-      .orderBy("id")
+      .orderBy("channels.connections.id")
       .execute();
     return rows.map((r) => ({
       id: r.id,

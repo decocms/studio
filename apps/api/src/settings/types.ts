@@ -353,6 +353,11 @@ export interface Settings {
   /** The channels hub's Postgres (CHANNELS_SOURCE_DATABASE_URL), read by the
    *  hub forwarder job. Unset = the job does nothing. */
   channelsSourceDatabaseUrl: string | undefined;
+  /** Studio org ids the hub forwarder may copy into (CHANNELS_SOURCE_ORG_IDS,
+   *  comma-separated). The link to the hub is deco's decision, never an org's:
+   *  a connection elsewhere with the same account id gets nothing. Empty =
+   *  the job does nothing. */
+  channelsSourceOrgIds: string[];
   /** The bearer each channel worker accepts as admin (CHANNELS_HUB_TOKEN).
    *  Unset = the CHANNELS_ACTION_* tools refuse. */
   channelsHubToken: string | undefined;

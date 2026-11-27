@@ -477,6 +477,10 @@ export function resolveConfig(
     planDiagnosisMcpUrl: envVars.PLAN_DIAGNOSIS_MCP_URL || undefined,
     channelsSourceDatabaseUrl:
       envVars.CHANNELS_SOURCE_DATABASE_URL || undefined,
+    channelsSourceOrgIds: (envVars.CHANNELS_SOURCE_ORG_IDS ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
     channelsHubToken: envVars.CHANNELS_HUB_TOKEN || undefined,
     channelsWorkerUrls: parseWorkerUrls(envVars.CHANNELS_WORKER_URLS),
     planEngineMaxDailyStarts: toNonNegativeIntegerOrDefault(
