@@ -77,7 +77,16 @@ export interface HypothesisVerification {
   base_confidence?: number;
   /** Refuted: the investigation lines the proof opens. Absent = none. */
   novas_linhas?: string[];
+  /** Confirmed: whether independent checks agree (`confirmationStrength`). Absent = not confirmed, or older. */
+  strength?: ConfirmationStrength;
 }
+
+/**
+ * "corroborada": confirming checks from at least two independent vantage
+ * points (the code, and the live page or the data on a given screen).
+ * "isolada": one vantage point, so one model reading decided it.
+ */
+export type ConfirmationStrength = "corroborada" | "isolada";
 
 export const MAX_CHECKS = 4;
 export const MAX_STEPS = 8;
@@ -113,11 +122,18 @@ export function decodeVerification(
     ) {
       return null;
     }
-    const { base_confidence, ...rest } = parsed as HypothesisVerification;
-    return typeof base_confidence === "number" &&
+    const { base_confidence, strength, ...rest } =
+      parsed as HypothesisVerification;
+    return {
+      ...rest,
+      ...(typeof base_confidence === "number" &&
       Number.isFinite(base_confidence)
-      ? { ...rest, base_confidence }
-      : rest;
+        ? { base_confidence }
+        : {}),
+      ...(strength === "corroborada" || strength === "isolada"
+        ? { strength }
+        : {}),
+    };
   } catch {
     return null;
   }

@@ -64,6 +64,13 @@ describe("verification codec", () => {
       decodeVerification(JSON.stringify({ ...v, base_confidence: "alta" })),
     ).toEqual(v);
   });
+  test("strength round-trips; an unknown one disappears", () => {
+    const strong = { ...v, strength: "corroborada" as const };
+    expect(decodeVerification(encodeVerification(strong))).toEqual(strong);
+    expect(
+      decodeVerification(JSON.stringify({ ...v, strength: "forte" })),
+    ).toEqual(v);
+  });
   test("encode of null is null", () => {
     expect(encodeVerification(null)).toBeNull();
   });

@@ -138,6 +138,19 @@ describe("buildDossier", () => {
     expect(md).toContain("Tracking: fontes divergem");
   });
 
+  test("an isolated confirmation says one vantage point decided; an older one says nothing", () => {
+    const isolated = buildDossier({
+      hypothesis: {
+        ...h,
+        verification: { ...h.verification!, strength: "isolada" },
+      },
+      opportunity: o,
+    });
+    expect(isolated).toContain("Confirmação isolada");
+    expect(md).not.toContain("Confirmação isolada");
+    expect(md).not.toContain("Confirmação corroborada");
+  });
+
   test("causal effect is always untested, and the conclusion does not promise conversion", () => {
     expect(md).toContain("Efeito causal: Não testado");
     expect(md).toContain("15.274 por grupo, 2 semana(s)");

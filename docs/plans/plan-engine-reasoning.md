@@ -1,7 +1,8 @@
 # Plan engine reasoning
 
-Status: phase 0 shipped (the yardstick). Phases 1 to 4 are proposals, one
-pull request each, measured with the yardstick before the next starts.
+Status: phase 0 (the yardstick) and phase 1 (graded confirmation) are
+implemented. Phases 2 to 4 are proposals, one pull request each, measured
+with the yardstick before the next starts.
 
 The Plan engine (`apps/api/src/plan-engine/`) turns a store's measured losses
 into opportunities and, for each one, into competing causes that it tries to
@@ -117,19 +118,24 @@ baseline later phases must beat.
 The repeat check sees only causes with a target. Most traffic and commercial
 causes have none.
 
-### Phase 1: typed proof for "confirmed" (ARTEX `prove_goal`, XBOW validator)
+### Phase 1: graded confirmation (ARTEX typed evidence, XBOW validator)
 
-After the judge, code keeps "confirmed" only when the hypothesis has all
-three of:
+The first plan was a hard guard: keep "confirmed" only with a measured
+baseline, a proof test and a second test from another source. The baseline
+rounds showed it would demote 11 of 12 confirmed hypotheses. Only one had two
+confirming tests, and none had them from two sources. So a confirmation now
+carries its strength instead:
 
-- **baseline:** a cited fact with `measured: true`;
-- **proof:** a test with `measures_cause: true` whose outcome met the
-  `confirms_if` written before it ran;
-- **verification:** a second test from another source (live, repo or data).
+- **corroborated:** confirming tests from at least two vantage points. The
+  code counts as one; the live page and the data count once per screen.
+- **isolated:** one vantage point decided.
 
-Without all three, the verdict becomes inconclusive and the reason goes to
-the lifecycle log. The +0.2 confidence step applies only when the guard
-passes. Files: `verify/verdict.ts`, `verify/index.ts`, `lifecycle.ts`.
+Corroborated adds 0.2 to the confidence and isolated adds 0.1, both capped at
+0.9. The dossier, which the independent reviewer reads, says which kind of
+confirmation it was. A code answer that cites a line the file does not have
+no longer decides; before, only a missing file was caught. Files:
+`verify/verdict.ts` (`confirmationStrength`), `verify/index.ts`,
+`verify/types.ts`, `verify/repo.ts`, `dossier.ts`.
 
 ### Phase 2: hypothesis ledger across rounds (ARTEX graph, Reflexion)
 

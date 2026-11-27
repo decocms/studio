@@ -23,8 +23,8 @@ import { type ParsedPlan, type PlanContext, planVerification } from "./plan.ts";
 import { type RepoSnapshot, runRepoCheck } from "./repo.ts";
 import type { CheckRun, HypothesisVerification, VerifyCheck } from "./types.ts";
 import {
-  CONFIRM_BOOST,
-  CONFIRM_CEILING,
+  confirmationStrength,
+  confirmedConfidence,
   type JudgeResult,
   judgeVerification,
   type RewriteDraft,
@@ -125,9 +125,6 @@ async function cycle(
   return { plan, judged: await deps.judge(h, runs, allowRewrite) };
 }
 
-const confirmedConfidence = (c: number) =>
-  Math.min(CONFIRM_CEILING, c + CONFIRM_BOOST);
-
 /** Temporary hypothesis for the rewrite: same identity, the draft's text. */
 function draftHypothesis(h: UxHypothesis, d: RewriteDraft): UxHypothesis {
   return {
@@ -203,10 +200,14 @@ export async function verifyHypothesis(
     const j = first.judged;
 
     if (j.verdict === "confirmada") {
+      const strength = confirmationStrength(j.runs);
       return {
         kind: "keep",
-        verification: verification("confirmada", j.summary, j.runs),
-        confidence: confirmedConfidence(base.confidence),
+        verification: {
+          ...verification("confirmada", j.summary, j.runs),
+          strength,
+        },
+        confidence: confirmedConfidence(base.confidence, strength),
       };
     }
     // The judge rewrote when it could not: counts as refuted.
@@ -275,14 +276,23 @@ export async function verifyHypothesis(
         reason: s.summary,
       };
     }
+    if (s.verdict === "confirmada") {
+      const strength = confirmationStrength(s.runs);
+      return {
+        kind: "rewrite",
+        draft,
+        verification: {
+          ...verification("reescrita", s.summary, s.runs, from),
+          strength,
+        },
+        confidence: confirmedConfidence(base.confidence, strength),
+      };
+    }
     return {
       kind: "rewrite",
       draft,
       verification: verification("reescrita", s.summary, s.runs, from),
-      confidence:
-        s.verdict === "confirmada"
-          ? confirmedConfidence(base.confidence)
-          : base.confidence,
+      confidence: base.confidence,
     };
   } catch (e) {
     rethrowNoAiModel(e);

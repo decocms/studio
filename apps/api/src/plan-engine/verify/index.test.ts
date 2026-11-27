@@ -40,6 +40,14 @@ const judged = (
   verdict: JudgeResult["verdict"],
   rewrite: RewriteDraft | null = null,
 ): JudgeResult => ({ verdict, summary: `sum-${verdict}`, runs: [], rewrite });
+const confirming = (check: VerifyCheck): CheckRun => ({
+  ...run(check),
+  outcome: "confirma",
+});
+const corroborated: JudgeResult = {
+  ...judged("confirmada"),
+  runs: [confirming(chk("c1", "repo")), confirming(chk("c2", "live"))],
+};
 const draft: RewriteDraft = {
   title: "Novo",
   why: "novo porquê",
@@ -203,13 +211,22 @@ describe("verifyHypothesis", () => {
     if (out.kind === "keep") expect(out.confidence).toBe(0.8);
   });
 
-  test("confirmed raises 0.2, capped at 0.9", async () => {
-    const out = await verifyHypothesis(h({ confidence: 0.8 }), deps());
+  test("confirmed by the code and the page raises 0.2, capped at 0.9", async () => {
+    const both = deps({ judge: async () => corroborated });
+    const out = await verifyHypothesis(h({ confidence: 0.8 }), both);
     expect(out).toMatchObject({ kind: "keep" });
     expect((out as { confidence: number }).confidence).toBeCloseTo(0.9);
-    const low = await verifyHypothesis(h({ confidence: 0.5 }), deps());
+    const low = await verifyHypothesis(h({ confidence: 0.5 }), both);
     expect(low).toMatchObject({ kind: "keep" });
     expect((low as { confidence: number }).confidence).toBeCloseTo(0.7);
+    expect(low.verification.strength).toBe("corroborada");
+  });
+
+  test("confirmed from one vantage point raises 0.1 and says so", async () => {
+    const out = await verifyHypothesis(h({ confidence: 0.5 }), deps());
+    expect(out).toMatchObject({ kind: "keep" });
+    expect((out as { confidence: number }).confidence).toBeCloseTo(0.6);
+    expect(out.verification.strength).toBe("isolada");
   });
 
   test("repo throws: that test becomes nao_testou and the hypothesis continues", async () => {
@@ -389,7 +406,7 @@ describe("verify again", () => {
   test("confirming again does not raise twice: starts from the prior confidence", async () => {
     const out = await verifyHypothesis(
       h({ confidence: 0.7, verification: prior({ base_confidence: 0.5 }) }),
-      deps(),
+      deps({ judge: async () => corroborated }),
     );
     expect(out.kind).toBe("keep");
     if (out.kind === "keep") expect(out.confidence).toBeCloseTo(0.7);
@@ -408,7 +425,7 @@ describe("verify again", () => {
   test("old verification without base: the current confidence is the base", async () => {
     const out = await verifyHypothesis(
       h({ confidence: 0.6, verification: prior() }),
-      deps(),
+      deps({ judge: async () => corroborated }),
     );
     expect(out.verification.base_confidence).toBe(0.6);
     if (out.kind === "keep") expect(out.confidence).toBeCloseTo(0.8);
