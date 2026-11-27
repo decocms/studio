@@ -1,7 +1,9 @@
 /**
  * Fast Preview with the org's `cms_auto_commit` flag off: a save is held in
  * Studio instead of committed, every read lays it over the branch head, and
- * publishing commits it in one commit before merging. The repository is an
+ * publishing commits it in one commit before merging. With
+ * `cms_background_commit` on, an auto-commit org holds it the same way and
+ * commits it right after answering. The repository is an
  * in-memory fake whose commits apply to its files; the pending store is an
  * in-memory stand-in for the `decofile_pending_blocks` table.
  */
@@ -267,5 +269,141 @@ describe("a save once auto-commit is back on", () => {
     expect(
       JSON.parse(repo.files.get(".deco/blocks/pages-home.json") ?? "{}"),
     ).toEqual({ ...HOME, name: "Live" });
+  });
+});
+
+const BACKGROUND = { cms_background_commit: true };
+
+/** Resolves once `done()` holds, failing the test after a second. */
+async function until(done: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!done()) {
+    if (Date.now() > deadline) throw new Error("condition never held");
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
+/** Holds every commit until `release()`: the save must not wait for it. */
+function gateCommits(repo: ReturnType<typeof fakeRepo>) {
+  const commit = repo.client.commitFiles.bind(repo.client);
+  let release = () => {};
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  repo.client.commitFiles = (async (input) => {
+    await gate;
+    return commit(input);
+  }) as RepoContentClient["commitFiles"];
+  return { release };
+}
+
+describe("a save with background commit on", () => {
+  it("answers before its commit, which then lands and clears the row", async () => {
+    const { app, repo, pending } = setup(BACKGROUND);
+    const { release } = gateCommits(repo);
+
+    const res = await patch(app, {
+      set: { "pages-home": { ...HOME, name: "Fast" } },
+    });
+    expect(res.status).toBe(200);
+    const { version } = (await res.json()) as { version: string };
+    expect(version).toMatch(/^head0\.[0-9a-f]{16}$/);
+    expect(repo.commits).toHaveLength(0);
+    expect((await read(app)).decofile["pages-home"]).toEqual({
+      ...HOME,
+      name: "Fast",
+    });
+
+    release();
+    await until(() => pending.rows.size === 0);
+    expect(repo.commits).toHaveLength(1);
+    expect(
+      JSON.parse(repo.files.get(".deco/blocks/pages-home.json") ?? "{}"),
+    ).toEqual({ ...HOME, name: "Fast" });
+    expect((await read(app)).version).toBe("head1");
+  });
+
+  it("commits a save made while the previous commit runs, without losing it", async () => {
+    const { app, repo, pending } = setup(BACKGROUND);
+    const { release } = gateCommits(repo);
+
+    await patch(app, { set: { "pages-home": { ...HOME, name: "One" } } });
+    await patch(app, { set: { "pages-about": { __resolveType: "page" } } });
+    release();
+    await until(() => pending.rows.size === 0);
+
+    expect(repo.files.has(".deco/blocks/pages-about.json")).toBe(true);
+    expect(
+      JSON.parse(repo.files.get(".deco/blocks/pages-home.json") ?? "{}"),
+    ).toEqual({ ...HOME, name: "One" });
+  });
+
+  it("accepts an edit of its own last save when that save's commit lands mid-hold", async () => {
+    const { app, repo, pending } = setup(BACKGROUND);
+    const first = { ...HOME, name: "First" };
+    await patch(app, { set: { "pages-home": first } });
+    await until(() => pending.rows.size === 0);
+
+    // Hold the next save in a row, then land it on the branch between the
+    // head read and the hold of the save after it.
+    const held = { ...HOME, name: "Second" };
+    const { release } = gateCommits(repo);
+    await patch(app, {
+      set: { "pages-home": held },
+      expect: { "pages-home": await decoBlockFingerprint(first) },
+    });
+    const write = pending.store.write;
+    pending.store.write = async (...args) => {
+      pending.store.write = write;
+      release();
+      await until(() => pending.rows.size === 0);
+      return write(...args);
+    };
+
+    const res = await patch(app, {
+      set: { "pages-home": { ...HOME, name: "Third" } },
+      expect: { "pages-home": await decoBlockFingerprint(held) },
+    });
+    expect(res.status).toBe(200);
+    await until(() => pending.rows.size === 0);
+    expect(
+      JSON.parse(repo.files.get(".deco/blocks/pages-home.json") ?? "{}"),
+    ).toEqual({ ...HOME, name: "Third" });
+  });
+
+  it("still rejects an edit made against a version the branch no longer has", async () => {
+    const { app, pending } = setup(BACKGROUND);
+    await patch(app, { set: { "pages-home": { ...HOME, name: "New" } } });
+    await until(() => pending.rows.size === 0);
+
+    const res = await patch(app, {
+      set: { "pages-home": { ...HOME, name: "Stale" } },
+      expect: { "pages-home": await decoBlockFingerprint(HOME) },
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("keeps a save whose commit fails held, and commits it on the editor's next read", async () => {
+    const { app, repo, pending } = setup(BACKGROUND);
+    const commit = repo.client.commitFiles.bind(repo.client);
+    repo.client.commitFiles = (async () => {
+      throw new Error("GitHub is down");
+    }) as RepoContentClient["commitFiles"];
+
+    expect(
+      (await patch(app, { set: { "pages-home": { ...HOME, name: "Kept" } } }))
+        .status,
+    ).toBe(200);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(pending.rows.size).toBe(1);
+    expect((await read(app)).decofile["pages-home"]).toEqual({
+      ...HOME,
+      name: "Kept",
+    });
+
+    repo.client.commitFiles = commit;
+    await read(app);
+    await until(() => pending.rows.size === 0);
+    expect(repo.commits).toHaveLength(1);
   });
 });

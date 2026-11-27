@@ -1248,6 +1248,10 @@ export const sandbox = {
     "Add your site's address above to preview drafts. Until then, new chats start a coding session.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Instant preview (experimental)",
+  "sandbox.cmsSettings.backgroundCommit.label":
+    "Show saves before they are committed",
+  "sandbox.cmsSettings.backgroundCommit.description":
+    "The preview shows each edit as soon as Studio has it, and it reaches the branch a few seconds later. Applies to every project in this organization.",
   "sandbox.cmsSettings.pullRequestDrafts.label": "Pull request drafts",
   "sandbox.cmsSettings.pullRequestDrafts.description":
     "Opening a pull request from the version switcher edits its content on the pull request's own preview, without starting a sandbox.",

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Control, FieldValues } from "react-hook-form";
 import { SettingsCardRow } from "@/components/settings/settings-section";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
@@ -10,7 +11,9 @@ import { useT } from "@/i18n/use-t.ts";
 
 /**
  * The Preview card's rows: the preview server URL, then the Fast Preview
- * switch it gates and, with Fast Preview on, in-place render.
+ * switch it gates and, with Fast Preview on, in-place render and the
+ * organization's background-commit row (`backgroundCommit`, which renders its
+ * own row or nothing).
  *
  * A Blocks v8 site is always Fast Preview (`fastPreviewCapability`), so it
  * gets no Fast Preview switch: in its place, a hint while there is no URL
@@ -23,6 +26,7 @@ export function PreviewSettingsRows<T extends FieldValues>({
   isBlocksV8,
   previewServerUrl,
   fastPreview,
+  backgroundCommit,
 }: {
   control: Control<T>;
   isBlocksV8: boolean;
@@ -30,6 +34,8 @@ export function PreviewSettingsRows<T extends FieldValues>({
   previewServerUrl: string | null | undefined;
   /** Watched `metadata.fastPreview`. */
   fastPreview: boolean | null | undefined;
+  /** v7 only: the v8 hosted CMS does not commit saves to a branch. */
+  backgroundCommit?: ReactNode;
 }) {
   const t = useT();
   const fastPreviewOn = isBlocksV8 || !!fastPreview;
@@ -59,6 +65,7 @@ export function PreviewSettingsRows<T extends FieldValues>({
           <InPlaceRenderField control={control} fastPreview={fastPreviewOn} />
         </SettingsCardRow>
       )}
+      {fastPreviewOn && !isBlocksV8 && backgroundCommit}
       {fastPreviewOn && !isBlocksV8 && (
         <SettingsCardRow>
           <PullRequestDraftsField control={control} />

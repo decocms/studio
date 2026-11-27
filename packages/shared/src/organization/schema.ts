@@ -365,6 +365,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Fast Preview: commit each CMS save to the editing branch. On by default (see DEFAULT_ON_FLAGS). Off, saves are kept in Studio and shown in the editor and the preview, and reach the branch in one commit when someone publishes or submits for review.",
     ),
+  cms_background_commit: z
+    .boolean()
+    .optional()
+    .describe(
+      "Fast Preview with `cms_auto_commit` on: answer a CMS save once Studio holds it, so the preview shows it without waiting for GitHub, and commit it to the editing branch in the background a few seconds later. Off by default: each save waits for its commit.",
+    ),
   hide_default_blog_blocks: z
     .boolean()
     .optional()

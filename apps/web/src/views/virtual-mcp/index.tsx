@@ -85,6 +85,7 @@ import { SiteTokenSection } from "./settings/site-token-section";
 import { BlocksV8SiteSection } from "./settings/blocks-v8-site-section";
 import { cmsSiteOf } from "@/cms/cms-api";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
+import { BackgroundCommitRow } from "@/components/sandbox/runtime-card/background-commit-row";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
@@ -1185,6 +1186,7 @@ function VirtualMcpDetailViewWithData({
                       isBlocksV8={hostedCms}
                       previewServerUrl={form.watch("metadata.previewServerUrl")}
                       fastPreview={form.watch("metadata.fastPreview")}
+                      backgroundCommit={<BackgroundCommitRow />}
                     />
                   </SettingsCard>
                 </SettingsSection>

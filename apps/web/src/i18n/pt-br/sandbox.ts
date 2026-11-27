@@ -1278,6 +1278,10 @@ export const sandbox = {
     "Adicione o endereço do seu site acima para visualizar rascunhos. Até lá, novos chats começam uma sessão de código.",
   "sandbox.cmsSettings.fastPreviewInPlace.label":
     "Preview instantâneo (experimental)",
+  "sandbox.cmsSettings.backgroundCommit.label":
+    "Mostrar o salvamento antes do commit",
+  "sandbox.cmsSettings.backgroundCommit.description":
+    "O preview mostra cada edição assim que o Studio a recebe, e ela chega à branch alguns segundos depois. Vale para todos os projetos desta organização.",
   "sandbox.cmsSettings.pullRequestDrafts.label": "Drafts de pull request",
   "sandbox.cmsSettings.pullRequestDrafts.description":
     "Abrir um pull request pelo seletor de versões edita o conteúdo dele no preview do próprio pull request, sem iniciar um sandbox.",

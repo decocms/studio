@@ -83,6 +83,7 @@ function setup(
       access: { getRole: () => "owner", check: async () => {} },
       storage: {
         decofilePendingBlocks: { list: async () => pending },
+        organizationSettings: { get: async () => ({ flags: {} }) },
         virtualMcps: {
           findById: async (id: string) => ({
             id,
