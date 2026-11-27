@@ -1,8 +1,7 @@
 # Plan engine reasoning
 
-Status: phase 0 (the yardstick) and phase 1 (graded confirmation) are
-implemented. Phases 2 to 4 are proposals, one pull request each, measured
-with the yardstick before the next starts.
+Status: phases 0, 1, 2 and 4 are implemented. Phase 3 adds model calls, so
+it waits for a replay with human labels to show it pays off.
 
 The Plan engine (`apps/api/src/plan-engine/`) turns a store's measured losses
 into opportunities and, for each one, into competing causes that it tries to
@@ -137,20 +136,25 @@ no longer decides; before, only a missing file was caught. Files:
 `verify/verdict.ts` (`confirmationStrength`), `verify/index.ts`,
 `verify/types.ts`, `verify/repo.ts`, `dossier.ts`.
 
-### Phase 2: hypothesis ledger across rounds (ARTEX graph, Reflexion)
+### Phase 2: refuted causes blocked in code (ARTEX negatives, Reflexion)
 
-A storage query returns the org's earlier hypotheses for the same domain and
-page type: 90 days, at most 20 per step. Each comes with its verdict and the
-page signature (`knowledge/validity.ts`). The writer receives them as "tried
-in earlier rounds":
+Memory across rounds already existed: each verdict becomes a knowledge entry
+(`knowledge/learn.ts`) with the page signature, and the entry goes stale when
+the page changes (`knowledge/validity.ts`). It reached the model only through
+the prompt, though, and only when selected among the other entries. Now each
+hypotheses call (first round, reinvestigation and reserve) does three things:
 
-- refuted on the same page: triage drops it by `crossRunKey` unless it brings
-  a new mechanism;
-- refuted on a page that has since changed: one more check is allowed;
-- confirmed and still open: carried as context, not written again.
+- reads the refuted verdicts that still hold for this page type, up to 40,
+  plus the hypotheses behind them (`listHypothesesByIds`, scoped to the org);
+- lists them in the prompt;
+- has triage drop a cause with the same `crossRunKey` (category, target,
+  funnel step).
 
-Files: `storage/plan-engine.ts`, `reinvestigate.ts` (`triedLines`),
-`opportunities.ts`, `triage.ts`.
+A page that changed lets the cause be tried once more, since its verdict is
+stale. Refuting it again records a verdict on the new page. Team dismissals
+stay as prompt context only: they are judgment, not evidence. Files:
+`ledger.ts`, `run/ledger.ts`, `triage.ts`, `opportunities.ts`,
+`storage/plan-engine.ts`.
 
 ### Phase 3: write wide, verify narrow (co-scientist, Tree of Thoughts)
 
@@ -168,19 +172,22 @@ next to `HYPOTHESES_BATCH` caps the number of calls, and their cost goes to
 `plan_cost_events`. The phase ships only if the yardstick shows more human
 acceptance at an agreed cost per opportunity.
 
-### Phase 4: sequential falsification on data (POPPER, simplified)
+### Phase 4: segment verdicts beyond sampling noise (POPPER, simplified)
 
-Traffic, segment, device and stage causes state up to three predictions in a
-closed vocabulary over the evidence already collected. For example:
+The data check (`data-checks.ts`) already decides traffic causes in code,
+with no model judge. Its segment comparison used ratios alone, though: a
+desktop segment of 40 users at 25% "converted like the rest" and refuted the
+cause. Now each side of the comparison is a one-sided test at 5%
+(`zAgainst`):
 
-- "the gap in segment A is larger than in B";
-- "the effect shows on mobile and not on desktop".
+- **confirm** needs the segment below the rest beyond noise on both screens;
+- **refute** needs the "worse" zone (below 85% of the rest) ruled out on the
+  other screen, not just a close number.
 
-Code evaluates each prediction with the existing mix adjustment
-(`losses.ts` `lossResidual`, `data-checks.ts`), turns it into an e-value and
-multiplies the e-values. At α = 0.1 the cause is refuted, supported or left
-inconclusive. For these causes this replaces the model judge inside the
-`data-checks` step. No new BigQuery queries.
+Otherwise the cause stays undecided, and the observation gives the sample
+sizes. This controls how often a data verdict is wrong, which is the part of
+POPPER that fits without new queries. Sequential e-values over several
+predictions are left for when the model writes typed predictions.
 
 ### Left out
 

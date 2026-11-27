@@ -1,6 +1,9 @@
 /**
  * Data-only check for hypotheses that cannot be verified on the page: the
  * decider is the gap adjusted for the channel mix (segments.ts). No model, no browser.
+ * A segment comparison decides only beyond sampling noise, one-sided at 5%:
+ * a small segment that merely looks worse, or merely looks the same, stays
+ * undecided instead of confirming or refuting a cause.
  */
 
 import { SEGMENT_WORD } from "./reliability.ts";
@@ -18,6 +21,29 @@ const SEGMENT_WORSE = 0.85;
 const SEGMENT_SAME = 0.95;
 
 const DEVICE_WORD = { mobile: "celular", desktop: "computador" } as const;
+
+/** One-sided z at α = 5%. */
+const Z_ONE_SIDED = 1.644854;
+
+/**
+ * Where rate `a` (of `na`) sits against `ratio × b` (of `nb`), in standard
+ * errors: below −Z_ONE_SIDED it is lower beyond noise, above Z_ONE_SIDED higher.
+ * Exported for tests.
+ */
+export function zAgainst(
+  a: number,
+  na: number,
+  b: number,
+  nb: number,
+  ratio = 1,
+): number {
+  const se = Math.sqrt(
+    (a * (1 - a)) / na + (ratio * ratio * (b * (1 - b))) / nb,
+  );
+  const diff = a - ratio * b;
+  if (se > 0) return diff / se;
+  return diff === 0 ? 0 : diff > 0 ? Infinity : -Infinity;
+}
 
 /** Replaces what the test asserts with the segment question. */
 function withCheck(
@@ -43,6 +69,8 @@ function withCheck(
 const EXPLAINS = 0.5;
 /** Below this the mix barely explains it. */
 const BARELY = 0.2;
+
+const int = (v: number) => v.toLocaleString("pt-BR");
 
 const pp = (v: number) =>
   `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} pp`;
@@ -113,15 +141,39 @@ export function trafficCheck(
         device === "mobile" ? "desktop" : "mobile",
       )
     : null;
-  if (p && p.comp_rate != null && p.comp_rest_rate != null && p.comp_device) {
+  if (
+    p &&
+    p.comp_rate != null &&
+    p.comp_rest_rate != null &&
+    p.comp_n &&
+    p.comp_rest_n &&
+    p.comp_device
+  ) {
     const name = SEGMENT_WORD[p.key] ?? p.key;
     const pc = (v: number) =>
       `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
     const here = DEVICE_WORD[p.device];
     const there = DEVICE_WORD[p.comp_device];
     const observed = `${name}: ${pc(p.rate)} no ${here} contra ${pc(p.rest_rate)} do resto; no ${there}, ${pc(p.comp_rate)} contra ${pc(p.comp_rest_rate)}.`;
-    const worseHere = p.rate < p.rest_rate;
-    const worseThere = p.comp_rate < p.comp_rest_rate * SEGMENT_WORSE;
+    const worseHere =
+      zAgainst(p.rate, p.n, p.rest_rate, p.rest_n) < -Z_ONE_SIDED;
+    const zThere = zAgainst(
+      p.comp_rate,
+      p.comp_n,
+      p.comp_rest_rate,
+      p.comp_rest_n,
+    );
+    const worseThere =
+      p.comp_rate < p.comp_rest_rate * SEGMENT_WORSE && zThere < -Z_ONE_SIDED;
+    // "Converts like the rest" needs the "worse" zone ruled out, not just a close number.
+    const outOfWorse =
+      zAgainst(
+        p.comp_rate,
+        p.comp_n,
+        p.comp_rest_rate,
+        p.comp_rest_n,
+        SEGMENT_WORSE,
+      ) > Z_ONE_SIDED;
     if (worseHere && worseThere) {
       return withCheck(
         result(
@@ -131,7 +183,7 @@ export function trafficCheck(
         `${name} converte menos que o resto nas duas telas`,
       );
     }
-    if (p.comp_rate >= p.comp_rest_rate * SEGMENT_SAME) {
+    if (p.comp_rate >= p.comp_rest_rate * SEGMENT_SAME && outOfWorse) {
       const out = withCheck(
         result(
           "desmente",
@@ -146,8 +198,18 @@ export function trafficCheck(
         ],
       };
     }
+    // The numbers point one way but the sample cannot tell: say so, not "in between".
+    const looked =
+      p.rate < p.rest_rate &&
+      (p.comp_rate < p.comp_rest_rate * SEGMENT_WORSE ||
+        p.comp_rate >= p.comp_rest_rate * SEGMENT_SAME);
     return withCheck(
-      result("nao_decidiu", observed),
+      result(
+        "nao_decidiu",
+        looked
+          ? `${observed} Com ${int(p.n)} × ${int(p.rest_n)} no ${here} e ${int(p.comp_n)} × ${int(p.comp_rest_n)} no ${there}, a diferença não sai do ruído da amostra.`
+          : observed,
+      ),
       `${name} converte menos que o resto nas duas telas`,
     );
   }

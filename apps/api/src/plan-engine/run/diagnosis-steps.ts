@@ -54,6 +54,7 @@ import type {
 } from "../types.ts";
 import { codeGapOf } from "../verify/code-source.ts";
 import type { EngineRun } from "./engine-run.ts";
+import { refutedBeforeFor } from "./ledger.ts";
 
 /** An opportunity left with no hypothesis standing (see fallenReason). */
 export interface FallenOpportunity {
@@ -653,6 +654,7 @@ export async function hypothesesStep(
       opportunities: mine,
       onUsage: costs.llm,
       knowledge: knowledge.entries,
+      refutedBefore: await refutedBeforeFor(run, evidence, knowledge.entries),
       objective: diagnosis?.objective_statement,
       mediaUrl: run.mediaUrl,
     });

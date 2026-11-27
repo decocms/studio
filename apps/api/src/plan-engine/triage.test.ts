@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { factIndex, type UxFact } from "./facts.ts";
 import type { HypothesisTree, UxClaim } from "./tree.ts";
-import { reactedProbe, triage, triageKey } from "./triage.ts";
+import { crossRunKey, reactedProbe, triage, triageKey } from "./triage.ts";
 
 const fact = (
   id: string,
@@ -131,5 +131,47 @@ describe("triage", () => {
     );
     expect(out).toContain("a sonda tocou no elemento e a página reagiu (F7");
     expect(reactedProbe('button "Zoom"', book)).toBeNull();
+  });
+});
+
+describe("a cause an earlier round refuted on this page", () => {
+  const sized = tree({
+    fatos_contraste: ["F3", "F4"],
+    metrica: {
+      key: "produto_carrinho",
+      direcao: "sobe",
+      efeito_esperado_pp: 1,
+    },
+  });
+  const refuted = new Map([
+    [crossRunKey(sized) ?? "", { title: "O tamanho fica escondido" }],
+  ]);
+
+  test("the same target and step is dropped, whatever the wording", () => {
+    expect(
+      triage(
+        input({ ...sized, causa: "o seletor some abaixo da dobra" }),
+        book,
+        [],
+        refuted,
+      ),
+    ).toContain(
+      'uma rodada anterior já desmentiu essa causa nesta página ("O tamanho fica escondido")',
+    );
+  });
+
+  test("another step on the same target is a different cause", () => {
+    const other = {
+      ...sized,
+      metrica: { ...sized.metrica, key: "pagina_produto" as const },
+    };
+    expect(triage(input(other), book, [], refuted)).toBeNull();
+  });
+
+  test("the key ignores fact ids, which change every round", () => {
+    expect(crossRunKey({ ...sized, a_favor: [claim(["F9"])] })).toBe(
+      crossRunKey(sized),
+    );
+    expect(crossRunKey(tree({ alvo: null }))).toBeNull();
   });
 });

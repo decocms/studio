@@ -1052,6 +1052,24 @@ export class PlanEngineStorage {
     }
   }
 
+  /** The org's hypotheses with these ids, from any diagnosis; unknown ids are skipped. */
+  async listHypothesesByIds(
+    orgId: string,
+    ids: string[],
+  ): Promise<UxHypothesis[]> {
+    if (ids.length === 0) return [];
+    try {
+      const { rows } = await sql<Row>`
+        SELECT * FROM plan_ux_hypotheses
+         WHERE organization_id = ${orgId}
+           AND id IN (${sql.join(ids)})
+      `.execute(this.db);
+      return rows.map(rowToHypothesis);
+    } catch (err) {
+      rethrow("listHypothesesByIds failed", err);
+    }
+  }
+
   async saveHypothesisMockup(
     orgId: string,
     id: string,
