@@ -58,6 +58,8 @@ const MessageSchema = z.object({
   duration_ms: z.number().nullable(),
   edited_at: z.string().nullable(),
   deleted_at: z.string().nullable(),
+  /** Sensitive at the source: no content was kept, say so instead. */
+  withheld: z.boolean(),
 });
 
 const limit = (max: number) => z.number().int().min(1).max(max).default(50);
