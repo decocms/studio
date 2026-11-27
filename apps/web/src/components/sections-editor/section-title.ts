@@ -14,8 +14,7 @@ const RENDER_CONFIG = { escape: formatMustacheValue };
 /**
  * Read the `@title` template from the section's schema chain (mirror of
  * `resolveSectionImageTemplate`). Only returns a value when the title is a
- * Mustache template — a plain title carries no props and is already covered by
- * the resolve-type-derived label.
+ * Mustache template; {@link getSectionDisplayTitle} reads a plain title.
  */
 export function resolveSectionTitleTemplate(
   resolveType: string,
@@ -28,12 +27,20 @@ export function resolveSectionTitleTemplate(
   return undefined;
 }
 
-/**
- * Resolve a section's display name from its component's `@title` Mustache
- * template, evaluated against the section's own props. Returns undefined when
- * there is no template, it renders empty, or rendering fails — callers fall
- * back to the resolve-type-derived label.
- */
+function renderTitleTemplate(
+  template: string,
+  data: Record<string, unknown>,
+): string | undefined {
+  try {
+    return (
+      Mustache.render(template, data, {}, RENDER_CONFIG).trim() || undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+/** The section's `@title`, rendered against its props when it's a template. */
 export function getSectionDisplayTitle(
   formData: RawSection,
   meta: LiveMeta | null | undefined,
@@ -43,12 +50,33 @@ export function getSectionDisplayTitle(
   const ctx = resolveSectionPreviewContext(formData, isV8Schema(meta));
   if (!ctx) return undefined;
 
-  try {
-    const titleTpl = resolveSectionTitleTemplate(ctx.resolveType, meta);
-    if (!titleTpl) return undefined;
-    const rendered = Mustache.render(titleTpl, ctx.data, {}, RENDER_CONFIG);
-    return rendered.trim() || undefined;
-  } catch {
-    return undefined;
+  const titleTpl = resolveSectionTitleTemplate(ctx.resolveType, meta);
+  const rendered = titleTpl && renderTitleTemplate(titleTpl, ctx.data);
+  if (rendered) return rendered;
+
+  return resolveSectionPlainTitle(ctx.resolveType, meta);
+}
+
+/**
+ * The first authored plain `@title` in the section's schema chain. Without
+ * one, deco titles the definition with the file path (`resolveType`, or
+ * `resolveType@Props` on Props), which the resolve-type label already shortens.
+ */
+function resolveSectionPlainTitle(
+  resolveType: string,
+  meta: LiveMeta,
+): string | undefined {
+  for (const schema of sectionSchemaChain(resolveType, meta)) {
+    const title = typeof schema.title === "string" ? schema.title.trim() : "";
+    if (
+      !title ||
+      title.includes("{{") ||
+      title === resolveType ||
+      title.startsWith(`${resolveType}@`)
+    ) {
+      continue;
+    }
+    return title;
   }
+  return undefined;
 }
