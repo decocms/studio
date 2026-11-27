@@ -83,8 +83,8 @@ test.describe("settings tabs", () => {
       page.getByRole("heading", { name: "Connect your agent" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("tab", { name: /CLI \+ skill/ }),
-      "the skill opens first",
+      page.getByRole("tab", { name: /Claude/ }),
+      "the skill install opens on Claude first",
     ).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
 
