@@ -303,6 +303,8 @@ export const monitor = {
   "monitor.vtex.appToken": "App token",
   "monitor.vtex.rejected":
     "A VTEX recusou essa key. Confira o nome da conta, a app key e o app token.",
+  "monitor.vtex.missingPermissions":
+    "Falta a permissão {resources} nessa key da VTEX. Adicione-a ao perfil da app key no License Manager da VTEX e conecte de novo.",
   "monitor.vtex.connecting": "Conectando…",
   "monitor.vtex.unavailable": "O monitor de pedidos não está disponível aqui",
   "monitor.action.revert": "Reverter",
