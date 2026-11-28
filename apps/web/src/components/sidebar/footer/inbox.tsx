@@ -20,7 +20,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { useInboxFeed } from "@/hooks/use-inbox-feed";
@@ -86,6 +85,8 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
           ))}
         </div>
       )}
+      {/* Native overflow, not ScrollArea: the popover only has a max-height,
+          so the Radix viewport's h-full never resolves and nothing scrolls. */}
       {updates.length === 0 && invitations.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
           <Bell01 size={24} className="text-muted-foreground/50" />
@@ -97,7 +98,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
           </p>
         </div>
       ) : (
-        <ScrollArea className="min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
           {updates.map((update) => {
             const key = taskKey(org.slug, update.taskKeySeq);
             return (
@@ -120,7 +121,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
             );
           })}
           {hasMore && <LoadMoreSentinel onReach={fetchMore} />}
-        </ScrollArea>
+        </div>
       )}
     </>
   );
