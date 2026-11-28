@@ -36,7 +36,7 @@ export function DeleteOrganizationSection() {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      await studio.call("ORGANIZATION_DELETE", { id: org.id });
+      await studio.call("ORGANIZATION_DELETE", {});
     },
     onSuccess: () => {
       track("organization_deleted", { organization_id: org.id });
